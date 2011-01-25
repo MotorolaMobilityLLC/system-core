@@ -75,6 +75,14 @@ ifneq (,$(filter userdebug eng,$(TARGET_BUILD_VARIANT)))
 TOOLS += r
 endif
 
+# Motorola - BEGIN - IKAPP-606 - wqnt78 - 3/10/2010 - apython enabler
+
+# Note: sendevent2 is in toolbox instead of motobox to avoid GPL issues
+
+TOOLS += sendevent2
+
+# Motorola - END - IKAPP-606 - wqnt78 - 3/10/2010 - apython enabler
+
 ALL_TOOLS = $(TOOLS)
 ALL_TOOLS += \
 	cp \
