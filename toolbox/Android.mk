@@ -45,6 +45,14 @@ OUR_TOOLS := \
     top \
 
 ALL_TOOLS = $(BSD_TOOLS) $(OUR_TOOLS)
+# Motorola - BEGIN - IKAPP-606 - wqnt78 - 3/10/2010 - apython enabler
+
+# Note: sendevent2 is in toolbox instead of motobox to avoid GPL issues
+
+TOOLS += sendevent2
+
+# Motorola - END - IKAPP-606 - wqnt78 - 3/10/2010 - apython enabler
+
 
 # Motorola, rknize2, 2013-Apr-16, IKJBXLINE-3829
 TOOLS += setfattr
