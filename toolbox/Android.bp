@@ -52,6 +52,7 @@ cc_defaults {
         "getprop.cpp",
         "newfs_msdos.c",
         "setfattr.c",
+        "sendevent2.c",
     ],
     generated_headers: [
         "toolbox_input_labels",
@@ -69,6 +70,7 @@ cc_defaults {
         "getprop",
         "newfs_msdos",
         "setfattr",
+        "sendevent2",
     ],
 }
 
