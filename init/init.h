@@ -80,7 +80,7 @@ struct svcenvinfo {
 #define SVC_RESTART     0x100 /* Use to safely restart (stop, wait, start) a service */
 #define SVC_DISABLED_START 0x200 /* a start was requested but it was disabled at the time */
 
-#define NR_SVC_SUPP_GIDS 12    /* twelve supplementary groups */
+#define NR_SVC_SUPP_GIDS 32    /* 32 supplementary groups */
 
 #define COMMAND_RETRY_TIMEOUT 5
 
