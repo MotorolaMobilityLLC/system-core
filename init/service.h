@@ -42,7 +42,7 @@
 #define SVC_DISABLED_START 0x200  // A start was requested but it was disabled at the time.
 #define SVC_EXEC           0x400  // This synthetic service corresponds to an 'exec'.
 
-#define NR_SVC_SUPP_GIDS 12    // twelve supplementary groups
+#define NR_SVC_SUPP_GIDS 32    /* 32 supplementary groups */
 
 class Action;
 class ServiceManager;
