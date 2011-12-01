@@ -95,6 +95,7 @@ struct {
     { "net.",             AID_SYSTEM,   0 },
     { "dev.",             AID_SYSTEM,   0 },
     { "runtime.",         AID_SYSTEM,   0 },
+    { "hw.whisper",       AID_MOT_WHISPER, 0 },
     { "hw.",              AID_SYSTEM,   0 },
     { "sys.",             AID_SYSTEM,   0 },
     { "sys.powerctl",     AID_SHELL,    0 },
@@ -121,6 +122,7 @@ struct {
 #ifdef DOLBY_UDC_MULTICHANNEL
     { "dolby.audio",      AID_MEDIA,    0 },
 #endif // DOLBY_UDC_MULTICHANNEL
+    { "tcmd.",            AID_MOT_TCMD, AID_MOT_WHISPER },
     { NULL, 0, 0 }
 };
 
