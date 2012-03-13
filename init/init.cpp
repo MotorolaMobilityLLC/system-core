@@ -1191,6 +1191,32 @@ int main(int argc, char** argv) {
 
     init_parse_config_file("/init.rc");
 
+    /* BEGIN IKKRNBSP-1013, 3/13/2012, jcarlyle, Add more init.rc layers. */
+    char path[PROP_VALUE_MAX*2], bootprop[PROP_VALUE_MAX];
+
+    /* If androidboot.baseband is set, check for a baseband-specific
+     * initialization file and read if present. */
+    if (property_get("ro.baseband", bootprop) > 0) {
+        snprintf(path, sizeof(path), "/init.%s.rc", bootprop);
+        if (access(path, R_OK) == 0) {
+            INFO("Reading baseband [%s] specific config file", bootprop);
+            init_parse_config_file(path);
+        }
+    }
+
+    /* If androidboot.carrier is set or if ro.carrier is
+     * defined in the default build properties, check for a carrier-specific
+     * initialization and read if present. */
+    if (property_get("ro.carrier", bootprop) > 0) {
+        snprintf(path, sizeof(path), "/init.%s.rc", bootprop);
+        if (access(path, R_OK) == 0) {
+            INFO("Reading bootprop [%s] specific config file", bootprop);
+            init_parse_config_file(path);
+        }
+    }
+
+    /* END IKKRNBSP-1013, 3/13/2012, jcarlyle, Add more init.rc layers. */
+
     action_for_each_trigger("early-init", action_add_queue_tail);
 
     // Queue an action that waits for coldboot done so we know ueventd has set up all of /dev...
