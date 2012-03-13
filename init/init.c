@@ -71,6 +71,8 @@ static int   bootchart_count;
 
 static char console[32];
 static char bootmode[32];
+static char baseband[32];
+static char carrier[32];
 static char hardware[32];
 static unsigned revision = 0;
 static char qemu[32];
@@ -814,6 +816,7 @@ static void export_kernel_boot_props(void)
         { "ro.boot.mode", "ro.bootmode", "unknown", },
         { "ro.boot.baseband", "ro.baseband", "unknown", },
         { "ro.boot.bootloader", "ro.bootloader", "unknown", },
+        { "ro.boot.carrier", "ro.carrier", "unknown", },
     };
 
     for (i = 0; i < ARRAY_SIZE(prop_map); i++) {
@@ -841,6 +844,14 @@ static void export_kernel_boot_props(void)
 
     snprintf(tmp, PROP_VALUE_MAX, "%d", revision);
     property_set("ro.revision", tmp);
+
+    ret = property_get("ro.boot.baseband", tmp);
+    if (ret)
+        strlcpy(baseband, tmp, sizeof(baseband));
+
+    ret = property_get("ro.boot.carrier", tmp);
+    if (ret)
+        strlcpy(carrier, tmp, sizeof(carrier));
 
     /* TODO: these are obsolete. We should delete them */
     property_set("ro.factorytest", "0");
@@ -1043,12 +1054,14 @@ int main(int argc, char **argv)
     struct pollfd ufds[4];
     char *tmpdev;
     char* debuggable;
-    char tmp[32];
+    char tmp[64]; /* IKKRNBSP-1013, 3/13/2012, jcarlyle */
     int property_set_fd_init = 0;
     int signal_fd_init = 0;
     int keychord_fd_init = 0;
     bool is_charger = false;
     bool is_ffbm = false;
+    char product[32]; /* IKKRNBSP-1013, 3/13/2012, jcarlyle */
+    unsigned int local_revision = 0; /* IKKRNBSP-1013, 3/13/2012, jcarlyle */
 
     if (!strcmp(basename(argv[0]), "ueventd"))
         return ueventd_main(argc, argv);
@@ -1118,6 +1131,42 @@ int main(int argc, char **argv)
 
     INFO("reading config file\n");
     init_parse_config_file("/init.rc");
+
+    /* BEGIN IKKRNBSP-1013, 3/13/2012, jcarlyle, Add more init.rc layers. */
+
+    /* If kernel's product is different from androidboot.hardware=, check for
+     * a kernel product-specific initialization file and read if present. */
+    product[0] = '\0';
+    get_hardware_name(product, &local_revision);
+    if (product[0] && (strncmp(product, hardware, sizeof(product) != 0))) {
+        snprintf(tmp, sizeof(tmp), "/init.%s.rc", product);
+        if (access(tmp, R_OK) == 0) {
+            INFO("Reading product [%s] specific config file", product);
+            init_parse_config_file(tmp);
+        }
+    }
+
+    /* If androidboot.baseband is set, check for a baseband-specific
+     * initialization file and read if present. */
+    if (baseband[0]) {
+        snprintf(tmp, sizeof(tmp), "/init.%s.rc", baseband);
+        if (access(tmp, R_OK) == 0) {
+            INFO("Reading baseband [%s] specific config file", baseband);
+            init_parse_config_file(tmp);
+        }
+    }
+
+    /* If androidboot.carrier is set, check for a carrier-specific
+     * initialization and red if present. */
+    if (carrier[0]) {
+        snprintf(tmp, sizeof(tmp), "/init.%s.rc", carrier);
+        if (access(tmp, R_OK) == 0) {
+            INFO("Reading carrier [%s] specific config file", carrier);
+            init_parse_config_file(tmp);
+        }
+    }
+
+    /* END IKKRNBSP-1013, 3/13/2012, jcarlyle, Add more init.rc layers. */
 
     action_for_each_trigger("early-init", action_add_queue_tail);
 
