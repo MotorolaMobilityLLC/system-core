@@ -209,7 +209,11 @@ on post-fs-data
     chown root log /data/dontpanic/apanic_app_threads
     chmod 0640 /data/dontpanic/apanic_app_threads
 
-    write /proc/apanic_console 1
+    # If there is no apanic handle action in the init.<device>.rc file, you
+    # must uncomment this line, otherwise apanic proc entry
+    # won't be removed.
+    # write /proc/apanic_console 1
+
 
     # create basic filesystem structure
     mkdir /data/misc 01771 system misc
