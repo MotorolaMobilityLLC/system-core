@@ -4,6 +4,7 @@
 * and/or permission notice(s).
 */
 /*
+ * Copyright (c) 2011-2013 The Linux Foundation. All rights reserved.
  * Copyright 2008, The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -722,11 +723,6 @@ ifc_configure(const char *ifname,
     }
     if (ifc_set_prefixLength(ifname, prefixLength)) {
         printerr("failed to set prefixLength %d: %s\n", prefixLength, strerror(errno));
-        ifc_close();
-        return -1;
-    }
-    if (ifc_create_default_route(ifname, gateway)) {
-        printerr("failed to set default route %s: %s\n", ipaddr_to_string(gateway), strerror(errno));
         ifc_close();
         return -1;
     }
