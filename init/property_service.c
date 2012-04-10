@@ -136,6 +136,7 @@ struct {
     { "media.proxy.",     AID_RADIO, AID_RADIO }, // w19837, IKASANTISPRINT-59,Sprint TV support
     { "slate.keyevent",   AID_SYSTEM,   0 }, // fsk050, IKASANTISPRINT-207,slate suport
     { "slate.penevent",   AID_SYSTEM,   0 }, // fsk050, IKASANTISPRINT-207,slate suport
+    { "persist.mot.proximity.", AID_RADIO, 0 },
     { NULL, 0, 0 }
 };
 
