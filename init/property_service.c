@@ -136,6 +136,7 @@ struct {
     { "slate.keyevent",   AID_SYSTEM,   0 }, // fsk050, IKASANTISPRINT-207,slate suport
     { "slate.penevent",   AID_SYSTEM,   0 }, // fsk050, IKASANTISPRINT-207,slate suport
     { "persist.atvc.",    AID_MOT_ATVC,  0 },
+    { "persist.mot.proximity.", AID_RADIO, 0 },
     { NULL, 0, 0 }
 };
 
