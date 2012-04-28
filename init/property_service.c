@@ -566,11 +566,12 @@ static void load_persistent_properties()
             close(fd);
         }
         closedir(dir);
+        /* Set the flag only after PERSISTENT_PROPERTY_DIR has been mounted*/
+        persistent_properties_loaded = 1;
     } else {
         ERROR("Unable to open persistent property directory %s errno: %d\n", PERSISTENT_PROPERTY_DIR, errno);
     }
 
-    persistent_properties_loaded = 1;
 }
 
 void property_init(void)
