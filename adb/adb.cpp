@@ -63,6 +63,7 @@ void fatal(const char *fmt, ...)
     fprintf(stderr, "error: ");
     vfprintf(stderr, fmt, ap);
     fprintf(stderr, "\n");
+    LOGE("fatal %s\n", fmt);
     va_end(ap);
     exit(-1);
 }
@@ -74,6 +75,7 @@ void fatal_errno(const char *fmt, ...)
     fprintf(stderr, "error: %s: ", strerror(errno));
     vfprintf(stderr, fmt, ap);
     fprintf(stderr, "\n");
+    LOGE("fatal_errno %s\n", fmt);
     va_end(ap);
     exit(-1);
 }
@@ -106,6 +108,9 @@ void start_device_log(void) {
 int adb_trace_mask;
 
 std::string get_trace_setting_from_env() {
+
+    klog_init();
+
     const char* setting = getenv("ADB_TRACE");
     if (setting == nullptr) {
         setting = "";
