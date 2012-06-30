@@ -258,6 +258,7 @@ static const struct android_id_info android_ids[] = {
     { "net_raw",       AID_NET_RAW, },
     { "net_admin",     AID_NET_ADMIN, },
     { "net_bw_stats",  AID_NET_BW_STATS, },
+    { "ims", AID_IMS, },
     { "net_bw_acct",   AID_NET_BW_ACCT, },
     { "net_bt_stack",  AID_NET_BT_STACK, },
     { "readproc",      AID_READPROC, },
