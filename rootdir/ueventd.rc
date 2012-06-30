@@ -28,6 +28,9 @@ subsystem adf
 # the msm hw3d client device node is world writable/readable.
 /dev/msm_hw3dc            0666   root       root
 
+# the DIAG device node is not world writable/readable.
+/dev/diag                 0660   system     qcom_diag
+
 # gpu driver for adreno200 is globally accessible
 /dev/kgsl                 0666   root       root
 
@@ -35,7 +38,6 @@ subsystem adf
 /dev/dri/*                0666   root       graphics
 
 # these should not be world writable
-/dev/diag                 0660   radio      radio
 /dev/diag_arm9            0660   radio      radio
 /dev/android_adb          0660   adb        adb
 /dev/android_adb_enable   0660   adb        adb
