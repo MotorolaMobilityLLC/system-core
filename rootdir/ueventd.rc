@@ -59,6 +59,9 @@ subsystem sound
 # the msm hw3d client device node is world writable/readable.
 /dev/msm_hw3dc            0666   root       root
 
+# the DIAG device node is not world writable/readable.
+/dev/diag                 0660   system     qcom_diag
+
 # gpu driver for adreno200 is globally accessible
 /dev/kgsl                 0666   root       root
 
@@ -66,7 +69,6 @@ subsystem sound
 /dev/dri/*                0666   root       graphics
 
 # these should not be world writable
-/dev/diag                 0660   radio      radio
 /dev/diag_arm9            0660   radio      radio
 /dev/ttyMSM0              0600   bluetooth  bluetooth
 /dev/uhid                 0660   uhid       uhid
