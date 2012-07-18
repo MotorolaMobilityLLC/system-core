@@ -850,12 +850,7 @@ static void export_kernel_boot_props(void)
     property_set("ro.revision", tmp);
 
     /* TODO: these are obsolete. We should delete them */
-    if (!strcmp(bootmode,"factory"))
-        property_set("ro.factorytest", "1");
-    else if (!strcmp(bootmode,"factory2"))
-        property_set("ro.factorytest", "2");
-    else
-        property_set("ro.factorytest", "0");
+    property_set("ro.factorytest", "0");
 }
 
 static void process_kernel_cmdline(void)
