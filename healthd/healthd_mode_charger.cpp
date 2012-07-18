@@ -74,7 +74,7 @@ char *locale;
 
 #define BATTERY_UNKNOWN_TIME    (2 * MSEC_PER_SEC)
 #define POWER_ON_KEY_TIME       (2 * MSEC_PER_SEC)
-#define UNPLUGGED_SHUTDOWN_TIME (10 * MSEC_PER_SEC)
+#define UNPLUGGED_SHUTDOWN_TIME (MSEC_PER_SEC/2)
 
 #define LAST_KMSG_PATH          "/proc/last_kmsg"
 #define LAST_KMSG_PSTORE_PATH   "/sys/fs/pstore/console-ramoops"
