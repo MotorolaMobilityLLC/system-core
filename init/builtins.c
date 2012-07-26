@@ -309,10 +309,9 @@ int do_exec(int nargs, char **args)
     pid = fork();
     if (!pid)
     {
-        if (execv(par[0],par) == -1) {
-            ERROR("cannot exec '%s': %s\n", par[0], strerror(errno));
-        }
-        _exit(1);
+        status = execv(par[0],par);
+        ERROR("execv for '%s' returns=%d\n", par[0], status);
+        _exit(status);
     }
     else
     {
