@@ -817,7 +817,7 @@ try_loading_again:
         if (fw_fd < 0) {
             fw_fd = open(file3, O_RDONLY);
             if (fw_fd < 0) {
-                if (booting) {
+                if (booting || (access("/system/etc/firmware", F_OK) != 0)) {
                         /* If we're not fully booted, we may be missing
                          * filesystems needed for firmware, wait and retry.
                          */
