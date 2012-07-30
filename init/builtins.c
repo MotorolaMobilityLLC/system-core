@@ -309,7 +309,24 @@ int do_exec(int nargs, char **args)
     pid = fork();
     if (!pid)
     {
-        status = execv(par[0],par);
+        /* Add ENV to support property set/get operation in exec*/
+        char tmp[32];
+        int fd, sz;
+        static const char *ENV[2];
+        const char *key = "ANDROID_PROPERTY_WORKSPACE";
+
+        if (properties_inited()) {
+            get_property_workspace(&fd, &sz);
+            sprintf(tmp, "%d,%d", dup(fd), sz);
+            size_t len = strlen(key) + strlen(tmp) + 2;
+            char *entry = malloc(len);
+            if (entry != NULL) {
+                snprintf(entry, len, "%s=%s", key, tmp);
+                ENV[0] = entry;
+            }
+        }
+        INFO("To exec child process %s \n", args[1]);
+        status = execve(par[0],par,(char**) ENV);
         ERROR("execv for '%s' returns=%d\n", par[0], status);
         _exit(status);
     }
