@@ -127,6 +127,7 @@ struct {
 #endif // DOLBY_UDC_MULTICHANNEL
     { "tcmd.",            AID_MOT_TCMD, AID_MOT_WHISPER },
     { "mot.backup_restore.", AID_MOT_TCMD, 0},
+    { "persist.atvc.",    AID_MOT_ATVC,  0 },
     { NULL, 0, 0 }
 };
 
@@ -612,6 +613,66 @@ void load_persist_props(void)
     load_persistent_properties();
 }
 
+void update_legacy_atvc_properties(void)
+{
+    char atvc_property_value[PROP_VALUE_MAX];
+    int ret;
+
+    ret = property_get("persist.atvc.simswap", atvc_property_value);
+    if (ret) {
+        property_set("ro.sys.atvc_allow_simswap", atvc_property_value);
+    } else {
+        property_set("ro.sys.atvc_allow_simswap", "0");
+        property_set("ro.sys.atvc_efem", "0");
+    }
+
+    ret = property_get("persist.atvc.log", atvc_property_value);
+    if (ret) {
+        property_set("ro.sys.atvc_allow_bp_log", atvc_property_value);
+        property_set("ro.sys.atvc_allow_ap_mot_log", atvc_property_value);
+        property_set("ro.sys.atvc_allow_gki_log", atvc_property_value);
+    } else {
+        property_set("ro.sys.atvc_allow_bp_log", "0");
+        property_set("ro.sys.atvc_allow_ap_mot_log", "0");
+        property_set("ro.sys.atvc_allow_gki_log", "0");
+    }
+
+    ret = property_get("persist.atvc.netmon_usb", atvc_property_value);
+    if (ret) {
+        property_set("ro.sys.atvc_allow_netmon_usb", atvc_property_value);
+    } else {
+        property_set("ro.sys.atvc_allow_netmon_usb", "0");
+    }
+
+    ret = property_get("persist.atvc.netmon_ih", atvc_property_value);
+    if (ret) {
+        property_set("ro.sys.atvc_allow_netmon_ih", atvc_property_value);
+    } else {
+        property_set("ro.sys.atvc_allow_netmon_ih", "0");
+    }
+
+    ret = property_get("persist.atvc.allow_res_core", atvc_property_value);
+    if (ret) {
+        property_set("ro.sys.atvc_allow_res_core", atvc_property_value);
+    } else {
+        property_set("ro.sys.atvc_allow_res_core", "0");
+    }
+
+    ret = property_get("persist.atvc.allow_res_panic", atvc_property_value);
+    if (ret) {
+        property_set("ro.sys.atvc_allow_res_panic", atvc_property_value);
+    } else {
+        property_set("ro.sys.atvc_allow_res_panic", "0");
+    }
+
+    ret = property_get("persist.atvc.allow_all_core", atvc_property_value);
+    if (ret) {
+        property_set("ro.sys.atvc_allow_all_core", atvc_property_value);
+    } else {
+        property_set("ro.sys.atvc_allow_all_core", "0");
+    }
+}
+
 void start_property_service(void)
 {
     int fd;
@@ -621,6 +682,8 @@ void start_property_service(void)
     load_override_properties();
     /* Read persistent properties after all default values have been loaded. */
     load_persistent_properties();
+
+    update_legacy_atvc_properties();
 
     fd = create_socket(PROP_SERVICE_NAME, SOCK_STREAM, 0666, 0, 0);
     if(fd < 0) return;
