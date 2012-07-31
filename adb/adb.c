@@ -1217,7 +1217,17 @@ static void drop_capabilities_bounding_set_if_needed() {
 
 static int should_drop_privileges() {
 #ifndef ALLOW_ADBD_ROOT
-    return 1;
+    /* BEGIN Motorola, Darren Shu - w36016, July 31,2012, IKSECURITY-199 */
+    /* Observe Motorola Access Token properties */
+    int secure = 1;
+    char value[PROPERTY_VALUE_MAX];
+    value[0] = 0x00;
+    property_get("persist.atvc.adb", value, "");
+    if (strcmp(value, "1") == 0) {
+        secure = 0;
+    }
+    return secure;
+    /* END IKSECURITY-199 */
 #else /* ALLOW_ADBD_ROOT */
     int secure = 0;
     char value[PROPERTY_VALUE_MAX];
@@ -1243,6 +1253,15 @@ static int should_drop_privileges() {
             }
         }
     }
+
+    /* BEGIN Motorola, Darren Shu - w36016, July 31,2012, IKSECURITY-199 */
+    /* Observe Motorola Access Token properties */
+    property_get("persist.atvc.adb", value, "");
+    if (strcmp(value, "1") == 0) {
+        secure = 0;
+    }
+    /* END IKSECURITY-199 */
+
     return secure;
 #endif /* ALLOW_ADBD_ROOT */
 }
