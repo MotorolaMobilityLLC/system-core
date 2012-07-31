@@ -105,6 +105,7 @@
 #define AID_MOT_WHISPER   9009  /* Whisper Protocol access */
 #define AID_MOT_CAIF      9010  /* can create CAIF sockets */
 #define AID_MOT_DLNA      9011  /*DLNA native */
+#define AID_MOT_ATVC      9012  /* mot_atvc - This is for use of the ATVC service ONLY */
 #define AID_SPRINT_EXTENSION 9013  /* IKASANTISPRINT-149 sprint extension service */
 
 #define AID_MISC          9998  /* access to misc storage */
@@ -198,6 +199,7 @@ static const struct android_id_info android_ids[] = {
     { "mot_caif",	AID_MOT_CAIF, },
     { "mot_dlna",	AID_MOT_DLNA, },
     { "sprint_extension", AID_SPRINT_EXTENSION, },
+    { "mot_atvc",	AID_MOT_ATVC, },
 };
 
 #define android_id_count \
