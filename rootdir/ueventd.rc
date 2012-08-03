@@ -17,7 +17,7 @@ subsystem adf
 # group, then they'll only see log entries for their UID.
 /dev/log/*                0666   root       log
 
-# the msm hw3d client device node is world writable/readable.
+# the msm hw3d client device node is world writable/readable
 /dev/msm_hw3dc            0666   root       root
 
 # the DIAG device node is not world writable/readable.
@@ -39,7 +39,7 @@ subsystem adf
 /dev/alarm                0664   system     radio
 /dev/rtc0                 0640   system     system
 /dev/tty0                 0660   root       system
-/dev/graphics/*           0660   root       graphics
+/dev/graphics/*           0660   system     graphics
 /dev/msm_hw3dm            0660   system     graphics
 /dev/input/*              0660   root       input
 /dev/eac                  0660   root       audio
