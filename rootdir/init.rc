@@ -723,3 +723,15 @@ service logcatd /system/bin/logcat -b all -v threadtime -v usec -v printable -D 
     # logd for write to /data/misc/logd, log group for read from log daemon
     user logd
     group log
+
+    on property:ro.build.type=eng
+    chmod 0777 /data/anr
+    chmod 0777 /data/misc
+
+on property:ro.build.type=userdebug
+    chmod 0777 /data/anr
+    chmod 0777 /data/misc
+
+on property:ro.build.type=user
+    chmod 0771 /data/anr
+    chmod 01771 /data/misc
