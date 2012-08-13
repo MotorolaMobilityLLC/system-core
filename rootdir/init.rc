@@ -726,3 +726,17 @@ on property:persist.mot.demo_mode_charging=1
 
 on property:persist.mot.demo_mode_charging=1 && property:ro.carrier=vzw
     write /sys/class/power_supply/battery/device/force_demo_mode 35
+
+on property:ro.build.type=eng
+    chmod 0777 /data/anr
+    chmod 0777 /data/misc
+
+on property:ro.build.type=userdebug
+    chmod 0777 /data/anr
+    chmod 0777 /data/misc
+
+on property:ro.build.type=user
+    chmod 0771 /data/anr
+    chmod 01771 /data/misc
+
+
