@@ -244,8 +244,7 @@ int dhcp_do_request(const char *interface,
     int wait_time = 30;
     char * dhcp_param = "-ABKL";
     int wifiorbt = get_device_type(interface);
-    if (wifiorbt < 0) return -1;
-    if( autoip_enabled[wifiorbt] ) {
+    if( wifiorbt >= 0 && autoip_enabled[wifiorbt] ) {
         wait_time = 90;
         dhcp_param = "-BK";
     }
