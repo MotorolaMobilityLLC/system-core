@@ -37,6 +37,7 @@
 #include <cutils/multiuser.h>
 
 #include <private/android_filesystem_config.h>
+#include <cutils/properties.h> // Motorola a18689 02/23/2012 IKHSS7-7040
 
 #include "fuse.h"
 
@@ -1767,9 +1768,18 @@ static int run(const char* source_path, const char* dest_path, uid_t uid,
     char opts[256];
     int res;
     struct fuse fuse;
+    char prop[PROPERTY_VALUE_MAX]; // Motorola a18689 02/23/2012 IKHSS7-7040
 
     /* cleanup from previous instance, if necessary */
     umount2(dest_path, 2);
+
+    // BEGIN Motorola a18689 02/23/2012 IKHSS7-7040
+    property_get("sys.mot.sdcardservice.quit", prop, "");
+    if (strcmp(prop, "true") == 0) {
+        // sdcard service launched just for umount, quit now
+        return 0;
+    }
+    // END IKSS7-7040
 
     fd = open("/dev/fuse", O_RDWR);
     if (fd < 0){
