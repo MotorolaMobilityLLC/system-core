@@ -47,6 +47,7 @@
 #include <packagelistparser/packagelistparser.h>
 
 #include <private/android_filesystem_config.h>
+#include <cutils/properties.h> // Motorola a18689 02/23/2012 IKHSS7-7040
 
 /* FUSE_CANONICAL_PATH is not currently upstreamed */
 #define FUSE_CANONICAL_PATH 2016
@@ -1842,6 +1843,7 @@ static void run(const char* source_path, const char* label, uid_t uid,
     pthread_t thread_default;
     pthread_t thread_read;
     pthread_t thread_write;
+    char prop[PROPERTY_VALUE_MAX]; // Motorola a18689 02/23/2012 IKHSS7-7040
 
     memset(&global, 0, sizeof(global));
     memset(&fuse_default, 0, sizeof(fuse_default));
@@ -1850,6 +1852,14 @@ static void run(const char* source_path, const char* label, uid_t uid,
     memset(&handler_default, 0, sizeof(handler_default));
     memset(&handler_read, 0, sizeof(handler_read));
     memset(&handler_write, 0, sizeof(handler_write));
+
+    // BEGIN Motorola a18689 02/23/2012 IKHSS7-7040
+    property_get("sys.mot.sdcardservice.quit", prop, "");
+    if (strcmp(prop, "true") == 0) {
+        // sdcard service launched just for umount, quit now
+        return;
+    }
+    // END IKSS7-7040
 
     pthread_mutex_init(&global.lock, NULL);
     global.package_to_appid = hashmapCreate(256, str_hash, str_icase_equals);
