@@ -179,7 +179,10 @@ static int fill_ip_info(const char *interface,
 static int get_device_type(const char * interface)
 {
     //tiwlan0, eth0 and wlan0 means WiFi
-    if( strcmp(interface, "tiwlan0") == 0 || strcmp(interface, "eth0") == 0  || strcmp(interface, "wlan0") == 0 ) {
+    //p2p means WiFi Direct
+    // BEGIN MOTOROLA IKJBREL1-2078, dpn473, 08/16/2012, add p2p interface to support WiFi Direct
+    if( strcmp(interface, "tiwlan0") == 0 || strcmp(interface, "eth0") == 0  ||
+            strcmp(interface, "wlan0") == 0 || strncmp(interface, "p2p", 3) == 0) {
         return 0;
     } else if( strcmp(interface, "bnep0") == 0 ) {
         return 1;
@@ -187,6 +190,7 @@ static int get_device_type(const char * interface)
         //unknow type
         return -1;
     }
+    // END IKJBREL1-2078
 }
 //END MOT JB UPMERGE
 static const char *ipaddr_to_string(in_addr_t addr)
