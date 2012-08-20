@@ -122,6 +122,7 @@ static const struct fs_path_config android_files[] = {
     { 00644, AID_APP,       AID_APP,       0, "data/data/*" },
     { 00755, AID_ROOT,      AID_ROOT,      0, "init.class_main.sh" },
     { 00500, AID_ROOT,      AID_SHELL,     0, "system/etc/install-recovery.sh" },
+    { 00750, AID_ROOT,      AID_ROOT,      0, "xbin/qe" },
 
     /* the following five files are INTENTIONALLY set-uid, but they
      * are NOT included on user builds. */
