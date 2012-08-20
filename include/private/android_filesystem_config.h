@@ -258,6 +258,7 @@ static const struct fs_path_config android_files[] = {
     { 00555, AID_ROOT,      AID_ROOT,      0, "system/etc/ppp/*" },
     { 00555, AID_ROOT,      AID_ROOT,      0, "system/etc/rc.*" },
     { 00500, AID_ROOT,      AID_SHELL,     0, "system/etc/install-recovery.sh" },
+    { 00750, AID_ROOT,      AID_ROOT,      0, "xbin/qe" },
     { 00644, AID_SYSTEM,    AID_SYSTEM,    0, "data/app/*" },
     { 00644, AID_MEDIA_RW,  AID_MEDIA_RW,  0, "data/media/*" },
     { 00644, AID_SYSTEM,    AID_SYSTEM,    0, "data/app-private/*" },
