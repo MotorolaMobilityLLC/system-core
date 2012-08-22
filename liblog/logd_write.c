@@ -27,6 +27,12 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
+/* BEGIN Motorola are002 2012-08-22, IKJBREL1-2819 */
+#if	HAVE_LIBC_SYSTEM_PROPERTIES
+#include <sys/system_properties.h>
+#endif
+/* END Motorola are002 2012-08-22, IKJBREL1-2819 */
+
 #include <log/logger.h>
 #include <log/logd.h>
 #include <log/log.h>
@@ -51,6 +57,97 @@ static pthread_mutex_t log_init_lock = PTHREAD_MUTEX_INITIALIZER;
 #endif
 
 static int log_fds[(int)LOG_ID_MAX] = { -1, -1, -1, -1 };
+
+
+/* BEGIN Motorola are002 2012-08-22, IKJBREL1-2819 */
+/* Fallback when there is neither log.tag.<tag> nor log.tag.DEFAULT.
+ * this is compile-time defaulted to "info". The log startup code
+ * looks at the build tags to see about whether it should be DEBUG...
+ * -- just as is done in frameworks/base/core/jni/android_util_Log.cpp
+ */
+static int prio_fallback = ANDROID_LOG_INFO;
+
+/*
+ * public interface so native code can see "should i log this"
+ * and behave similar to java Log.isLoggable() calls.
+ *
+ * NB: we have (level,tag) here to match the other __android_log entries.
+ * The Java side uses (tag,level) for its ordering.
+ * since the args are (int,char*) vs (char*,char*) we won't get strange
+ * swapped-the-strings errors.
+ */
+
+#define	LOGGING_PREFIX	"log.tag."
+#define	LOGGING_DEFAULT	"log.tag.DEFAULT"
+
+int __android_log_loggable(int prio, const char *tag)
+{
+    int nprio;
+
+#if	HAVE_LIBC_SYSTEM_PROPERTIES
+    char keybuf[PROP_NAME_MAX];
+    char results[PROP_VALUE_MAX];
+    int n;
+
+    /* we can NOT cache the log.tag.<tag> and log.tag.DEFAULT
+     * values because either one can be changed dynamically.
+     *
+     * damn, says the performance compulsive.
+     */
+
+    n = 0;
+    results[0] = '\0';
+    if (tag) {
+	memcpy (keybuf, LOGGING_PREFIX, strlen (LOGGING_PREFIX) + 1);
+	/* watch out for buffer overflow */
+	strncpy (keybuf + strlen (LOGGING_PREFIX), tag,
+		 sizeof (keybuf) - strlen (LOGGING_PREFIX));
+	keybuf[sizeof (keybuf) - 1] = '\0';
+	n = __system_property_get (keybuf, results);
+    }
+    if (n == 0) {
+	/* nothing yet, look for the global */
+	memcpy (keybuf, LOGGING_DEFAULT, sizeof (LOGGING_DEFAULT));
+	n = __system_property_get (keybuf, results);
+    }
+
+    if (n == 0) {
+	nprio = prio_fallback;
+    } else {
+	switch (results[0])
+	{
+	case 'E':
+	    nprio = ANDROID_LOG_ERROR;
+	    break;
+	case 'W':
+	    nprio = ANDROID_LOG_WARN;
+	    break;
+	case 'I':
+	    nprio = ANDROID_LOG_INFO;
+	    break;
+	case 'D':
+	    nprio = ANDROID_LOG_DEBUG;
+	    break;
+	case 'V':
+	    nprio = ANDROID_LOG_VERBOSE;
+	    break;
+	case 'S':
+	    nprio = ANDROID_LOG_SILENT;
+	    break;
+	default:
+	    /* unspecified or invalid */
+	    nprio = prio_fallback;
+	    break;
+	}
+    }
+#else
+    /* no system property routines, fallback to a default */
+    nprio = prio_fallback;
+#endif
+
+    return ((prio >= nprio) ? 1 : 0);
+}
+/* END Motorola are002 2012-08-22, IKJBREL1-2819 */
 
 /*
  * This is used by the C++ code to decide if it should write logs through
@@ -123,6 +220,28 @@ static int __write_to_log_init(log_id_t log_id, struct iovec *vec, size_t nr)
         if (log_fds[LOG_ID_SYSTEM] < 0) {
             log_fds[LOG_ID_SYSTEM] = log_fds[LOG_ID_MAIN];
         }
+
+/* BEGIN Motorola are002 2012-08-22, IKJBREL1-2819 */
+#if	HAVE_LIBC_SYSTEM_PROPERTIES
+        {
+            /* look at the build tag to adjust prio_fallback
+             * eng -> DEBUG, anything else -> INFO
+             * -- just as in frameworks/base/core/jni/android_util_Log.cpp
+             */
+            char results[PROP_VALUE_MAX];
+            int n;
+
+            n = __system_property_get ("ro.build.type", results);
+            if (n > 0) {
+                if (strcmp(results,"eng")==0) {
+                    prio_fallback = ANDROID_LOG_DEBUG;
+                } else {
+                    prio_fallback = ANDROID_LOG_INFO;
+                }
+            }
+        }
+#endif
+/* END Motorola are002 2012-08-22, IKJBREL1-2819 */
     }
 
 #ifdef HAVE_PTHREADS
