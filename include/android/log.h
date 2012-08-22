@@ -121,6 +121,16 @@ void __android_log_assert(const char *cond, const char *tag,
 #endif
     ;
 
+/* BEGIN Motorola are002 2012-08-22, IKJBREL1-2819 */
+/*
+ * dynamic check whether priority/tag combination should be logged.
+ * Same semantics as java-side android.util.Log.isLoggable(),
+ * using "log.tag.<tag>" and "log.tag.DEFAULT"
+ */
+int __android_log_loggable(int prio, const char *tag);
+
+/* END Motorola are002 2012-08-22, IKJBREL1-2819 */
+
 #ifdef __cplusplus
 }
 #endif

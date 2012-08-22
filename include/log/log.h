@@ -532,7 +532,7 @@ typedef enum {
     __android_log_btwrite(tag, type, payload, len)
 
 // TODO: remove these prototypes and their users
-#define android_testLog(prio, tag) (1)
+#define android_testLog(prio, tag) (__android_log_loggable((prio), (tag))) /* Motorola are002 2012-08-22, IKJBREL1-2819 */
 #define android_writevLog(vec,num) do{}while(0)
 #define android_write1Log(str,len) do{}while (0)
 #define android_setMinPriority(tag, prio) do{}while(0)
