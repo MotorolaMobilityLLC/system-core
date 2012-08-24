@@ -87,7 +87,9 @@ static inline bool audio_is_low_visibility(audio_stream_type_t stream)
 {
     switch (stream) {
     case AUDIO_STREAM_SYSTEM:
+/*Motorola IKJBREL1-2955 VZW & ATT require SMS notifications durig voice call
     case AUDIO_STREAM_NOTIFICATION:
+*/
     case AUDIO_STREAM_RING:
         return true;
     default:
