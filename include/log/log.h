@@ -158,7 +158,7 @@ extern "C" {
  */
 #ifndef IF_ALOGV
 #if LOG_NDEBUG
-#define IF_ALOGV() if (false)
+#define IF_ALOGV() if (0)   // Motorola are002, 2012/9/4, IKJBREL1-5284, 'false' is not C intrinsic
 #else
 #define IF_ALOGV() IF_ALOG(LOG_VERBOSE, LOG_TAG)
 #endif
