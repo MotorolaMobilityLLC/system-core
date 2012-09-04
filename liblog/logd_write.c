@@ -105,11 +105,21 @@ int __android_log_loggable(int prio, const char *tag)
 	keybuf[sizeof (keybuf) - 1] = '\0';
 	n = __system_property_get (keybuf, results);
     }
+    /* BEGIN Motorola are002, 2012/9/4, IKJBREL1-5284, ignore log.tag.DEFAULT */
+#if     0
+    /* disabled here for the native side of the world.
+     * This reflects the fact that the checking of log.tag.DEFAULT
+     * is something Motorola added to ICS (IKCORE8-849) and we have
+     * not yet decided to bring it forward to the JB release. We
+     * suppress the check here so that we have the same semantics for
+     * both java and native.
+     */
     if (n == 0) {
 	/* nothing yet, look for the global */
-	memcpy (keybuf, LOGGING_DEFAULT, sizeof (LOGGING_DEFAULT));
-	n = __system_property_get (keybuf, results);
+	n = __system_property_get (LOGGING_DEFAULT, results);
     }
+#endif
+    /* END Motorola are002, 2012/9/4, IKJBREL1-5284, */
 
     if (n == 0) {
 	nprio = prio_fallback;
