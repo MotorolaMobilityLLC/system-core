@@ -104,6 +104,7 @@ struct {
     { "bluetooth.",       AID_BLUETOOTH,   0 },
     { "dhcp.",            AID_SYSTEM,   0 },
     { "dhcp.",            AID_DHCP,     0 },
+    { "debug.nfc.",       AID_NFC,      0 }, // rjones1, 6/25/2012, IKMAIN-46254
     { "debug.",           AID_SYSTEM,   0 },
     { "debug.",           AID_SHELL,    0 },
     { "log.",             AID_SHELL,    0 },
