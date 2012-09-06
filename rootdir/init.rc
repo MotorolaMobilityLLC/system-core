@@ -615,6 +615,7 @@ service surfaceflinger /system/bin/surfaceflinger
     user system
     group graphics drmrpc
     onrestart restart zygote
+    onrestart setprop sys.sf.restart 1
 
 service drm /system/bin/drmserver
     class main
