@@ -510,6 +510,7 @@ service surfaceflinger /system/bin/surfaceflinger
     user system
     group graphics drmrpc
     onrestart restart zygote
+    onrestart setprop sys.sf.restart 1
 
 service zygote /system/bin/app_process -Xzygote /system/bin --zygote --start-system-server
     class main
