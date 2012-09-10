@@ -610,7 +610,20 @@ static void load_override_properties() {
  */
 void load_persist_props(void)
 {
+    /* BEGIN Motorola Hong-Mei Li 2012-09-10, IKJBREL1-5477 */
+    /* To load all default properties for encrypted system. This is mandatory
+     * for re-launch the main class service to be triggered on property, and
+     * that property has no backup on /data (user never changes it at runtime).
+     * Also, we reset persistent_properties_loaded flag to avoid persist props
+     * to be overwrite by default values.
+     */
+    persistent_properties_loaded = 0;
+    load_properties_from_file(PROP_PATH_SYSTEM_BUILD);
+    load_properties_from_file(PROP_PATH_SYSTEM_DEFAULT);
+    /* END Motorola Hong-Mei Li 2012-09-10, IKJBREL1-5477 */
+
     load_override_properties();
+
     /* Read persistent properties after all default values have been loaded. */
     load_persistent_properties();
 }
