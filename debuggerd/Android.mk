@@ -30,6 +30,14 @@ LOCAL_SHARED_LIBRARIES := \
 	libcorkscrew \
 	libselinux
 
+#BEGIN Motorola, w20048, Apr/11/2012, IKMAIN-35156, Health Monitor Bringup
+ifneq ($(strip $(HELSMON_INCL)),)
+LOCAL_SHARED_LIBRARIES += libhelsmon
+LOCAL_C_INCLUDES += $(HELSMON_INCL)
+LOCAL_CFLAGS += -DWITH_HELSMON
+endif
+#END IKMAIN-35156
+
 include $(BUILD_EXECUTABLE)
 
 include $(CLEAR_VARS)
