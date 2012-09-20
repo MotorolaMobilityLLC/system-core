@@ -52,6 +52,12 @@
 
 #include <private/android_filesystem_config.h>
 
+//BEGIN Motorola, w20048, Apr/11/2012, IKMAIN-35156, Health Monitor Bringup
+#ifdef WITH_HELSMON
+#include "helsmon.h"
+#endif
+//END IKMAIN-35156
+
 #include "backtrace.h"
 #include "getevent.h"
 #include "signal_sender.h"
@@ -528,6 +534,30 @@ static bool perform_dump(const debugger_request_t& request, int fd, int tombston
         *crash_signal = signal;
         engrave_tombstone(tombstone_fd, backtrace_map, request.pid, request.tid, siblings, signal,
                           request.original_si_code, request.abort_msg_address, amfd_data);
+        //BEGIN Motorola, w20048, Apr/11/2012, IKMAIN-35156, Health Monitor Bringup
+#ifdef WITH_HELSMON
+        if (!is_helsmond_pid(request.pid)) {
+            /*
+             * "helsmond" is not crashing.
+             * Notify it about the crash of the other process
+             *
+             * Note: "helsmon_exec_task()" performs no operation if "helsmond"
+             * is not already running
+             */
+            size_t helsmon_cmd_len;
+            char helsmon_cmd[512];
+            helsmon_cmd_len = sprintf(helsmon_cmd,
+                    "start report_native_crash -p %d", request.pid);
+            helsmon_exec_task(helsmon_cmd, helsmon_cmd_len, sizeof(helsmon_cmd), 1);
+        } else {
+            /*
+             * "helsmond" is crashing and stopped. Don't talk to it now
+             * Should not happen if helsmond is well-done
+             */
+            LOG("helsmond crashed");
+        }
+#endif
+        //END IKMAIN-35156
         break;
 
       default:
