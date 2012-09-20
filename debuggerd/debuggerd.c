@@ -44,6 +44,12 @@
 
 #include <private/android_filesystem_config.h>
 
+//BEGIN Motorola, w20048, Apr/11/2012, IKMAIN-35156, Health Monitor Bringup
+#ifdef WITH_HELSMON
+#include "helsmon.h"
+#endif
+//END IKMAIN-35156
+
 #include "backtrace.h"
 #include "getevent.h"
 #include "tombstone.h"
@@ -357,6 +363,30 @@ static void handle_request(int fd) {
                         tombstone_path = engrave_tombstone(request.pid, request.tid,
                                 signal, request.abort_msg_address, !attach_gdb, false,
                                 &detach_failed, &total_sleep_time_usec);
+                        //BEGIN Motorola, w20048, Apr/11/2012, IKMAIN-35156, Health Monitor Bringup
+#ifdef WITH_HELSMON
+                        if (!is_helsmond_pid(request.pid)) {
+                            /*
+                             * "helsmond" is not crashing.
+                             * Notify it about the crash of the other process
+                             *
+                             * Note: "helsmon_exec_task()" performs no operation if "helsmond"
+                             * is not already running
+                             */
+                            size_t helsmon_cmd_len;
+                            char helsmon_cmd[512];
+                            helsmon_cmd_len = sprintf(helsmon_cmd,
+                                    "start report_native_crash -p %d", request.pid);
+                            helsmon_exec_task(helsmon_cmd, helsmon_cmd_len, sizeof(helsmon_cmd), 1);
+                        } else {
+                            /*
+                             * "helsmond" is crashing and stopped. Don't talk to it now
+                             * Should not happen if helsmond is well-done
+                             */
+                            LOG("helsmond crashed");
+                        }
+#endif
+                        //END IKMAIN-35156
                         break;
                     }
 
@@ -375,7 +405,7 @@ static void handle_request(int fd) {
                     close(fd);
                     fd = -1;
                 }
-                free(tombstone_path);
+                if (tombstone_path) free(tombstone_path);   //Motorola, w20048, IKMAINJB-408
             }
 
             XLOG("detaching\n");
