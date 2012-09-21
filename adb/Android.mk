@@ -132,6 +132,7 @@ include $(BUILD_EXECUTABLE)
 
 # adb host tool for device-as-host
 # =========================================================
+ifeq ($(TARGET_HAS_HOST_ADB),true)
 ifneq ($(SDK_ONLY),true)
 include $(CLEAR_VARS)
 
@@ -170,4 +171,5 @@ LOCAL_STATIC_LIBRARIES := libzipfile libunz libcutils liblog
 LOCAL_SHARED_LIBRARIES := libcrypto
 
 include $(BUILD_EXECUTABLE)
+endif
 endif
