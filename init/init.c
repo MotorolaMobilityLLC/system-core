@@ -815,13 +815,14 @@ static void export_kernel_boot_props(void)
         { "ro.boot.baseband", "ro.baseband", "unknown", },
         { "ro.boot.bootloader", "ro.bootloader", "unknown", },
         { "ro.boot.radio", "ro.hw.radio", NULL, },
+        { "ro.boot.carrier", "ro.carrier", NULL, },
     };
 
     for (i = 0; i < ARRAY_SIZE(prop_map); i++) {
         ret = property_get(prop_map[i].src_prop, tmp);
         if (ret > 0)
             property_set(prop_map[i].dest_prop, tmp);
-        else
+        else if (prop_map[i].def_val)
             property_set(prop_map[i].dest_prop, prop_map[i].def_val);
     }
 
