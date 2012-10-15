@@ -726,11 +726,11 @@ static char* find_and_open_tombstone(int* fd) {
     if (errno != ENOENT)
       continue;
 
-    *fd = open(path, O_CREAT | O_EXCL | O_WRONLY | O_NOFOLLOW | O_CLOEXEC, 0600);
+    *fd = open(path, O_CREAT | O_EXCL | O_WRONLY | O_NOFOLLOW | O_CLOEXEC, 0640);
     if (*fd < 0)
       continue;   // raced ?
 
-    fchown(*fd, AID_SYSTEM, AID_SYSTEM);
+    fchown(*fd, AID_SYSTEM, AID_MOT_TOMBSTONE);
     return strdup(path);
   }
 
@@ -746,7 +746,7 @@ static char* find_and_open_tombstone(int* fd) {
     ALOGE("failed to open tombstone file '%s': %s\n", path, strerror(errno));
     return NULL;
   }
-  fchown(*fd, AID_SYSTEM, AID_SYSTEM);
+  fchown(*fd, AID_SYSTEM, AID_MOT_TOMBSTONE);
   return strdup(path);
 }
 
@@ -788,14 +788,18 @@ char* engrave_tombstone(pid_t pid, pid_t tid, int signal, int original_si_code,
   log.current_tid = tid;
   log.crashed_tid = tid;
 
-  if ((mkdir(TOMBSTONE_DIR, 0755) == -1) && (errno != EEXIST)) {
+  /* BEGIN Motorola, wcg763, 02/01/10, JIRA IKMAP-4768; qa6317, 02/10/10, IKMAP-5931 */
+  if ((mkdir(TOMBSTONE_DIR, 02755) == -1) && (errno != EEXIST)) {
     _LOG(&log, logtype::ERROR, "failed to create %s: %s\n", TOMBSTONE_DIR, strerror(errno));
   }
-
-  if (chown(TOMBSTONE_DIR, AID_SYSTEM, AID_SYSTEM) == -1) {
+  /* 02775 instead of 0775 forces all created files in this dir to have gid of dir's gid */
+  if (chmod(TOMBSTONE_DIR, 02775) == -1) {
+    _LOG(&log, logtype::ERROR, "failed to change mode of %s: %s\n", TOMBSTONE_DIR, strerror(errno));
+  }
+  if (chown(TOMBSTONE_DIR, AID_SYSTEM, AID_MOT_TOMBSTONE) == -1) {
     _LOG(&log, logtype::ERROR, "failed to change ownership of %s: %s\n", TOMBSTONE_DIR, strerror(errno));
   }
-
+  /* END IKMAP-4768; IKMAP-5931 */
   int fd = -1;
   char* path = NULL;
   if (selinux_android_restorecon(TOMBSTONE_DIR, 0) == 0) {
