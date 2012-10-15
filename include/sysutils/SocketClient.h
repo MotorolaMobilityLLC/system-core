@@ -44,6 +44,7 @@ public:
     // Send null-terminated C strings:
     int sendMsg(int code, const char *msg, bool addErrno);
     int sendMsg(int code, const char *msg, bool addErrno, bool useCmdNum);
+    int sendMsgWithCmdNum(int code, const char *msg, int cmdNum);
 
     // Provides a mechanism to send a response code to the client.
     // Sends the code and a null character.
