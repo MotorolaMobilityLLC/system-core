@@ -759,11 +759,11 @@ static char* find_and_open_tombstone(int* fd)
         if (errno != ENOENT)
             continue;
 
-        *fd = open(path, O_CREAT | O_EXCL | O_WRONLY, 0600);
+        *fd = open(path, O_CREAT | O_EXCL | O_WRONLY, 0640);
         if (*fd < 0)
             continue;   /* raced ? */
 
-        fchown(*fd, AID_SYSTEM, AID_SYSTEM);
+        fchown(*fd, AID_SYSTEM, AID_MOT_TOMBSTONE);
         return strdup(path);
     }
 
@@ -774,7 +774,7 @@ static char* find_and_open_tombstone(int* fd)
         LOG("failed to open tombstone file '%s': %s\n", path, strerror(errno));
         return NULL;
     }
-    fchown(*fd, AID_SYSTEM, AID_SYSTEM);
+    fchown(*fd, AID_SYSTEM, AID_MOT_TOMBSTONE);
     return strdup(path);
 }
 
@@ -810,8 +810,12 @@ static int activity_manager_connect() {
 char* engrave_tombstone(pid_t pid, pid_t tid, int signal, uintptr_t abort_msg_address,
         bool dump_sibling_threads, bool quiet, bool* detach_failed,
         int* total_sleep_time_usec) {
-    mkdir(TOMBSTONE_DIR, 0755);
-    chown(TOMBSTONE_DIR, AID_SYSTEM, AID_SYSTEM);
+    /* BEGIN Motorola, wcg763, 02/01/10, JIRA IKMAP-4768; qa6317, 02/10/10, IKMAP-5931 */
+    mkdir(TOMBSTONE_DIR, 02755);
+    chmod(TOMBSTONE_DIR, 02775);
+    /* 02775 instead of 0775 forces all created files in this dir to have gid of dir's gid */
+    chown(TOMBSTONE_DIR, AID_SYSTEM, AID_MOT_TOMBSTONE);
+    /* END IKMAP-4768; IKMAP-5931 */
 
     if (selinux_android_restorecon(TOMBSTONE_DIR) == -1) {
         *detach_failed = false;
