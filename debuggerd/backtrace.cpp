@@ -67,6 +67,22 @@ static void dump_process_footer(log_t* log, pid_t pid) {
   _LOG(log, logtype::BACKTRACE, "\n----- end %d -----\n", pid);
 }
 
+static void dump_kernel_stack(log_t* log, pid_t tid) {
+    char buf[64];
+
+    snprintf(buf, sizeof(buf), "/proc/%d/stack", tid);
+    _LOG(log, false, "%s:\n", buf);
+
+    FILE* fp = fopen(buf, "r");
+    if (fp) {
+        while (fgets(buf, sizeof(buf), fp) != NULL)
+            _LOG(log, false, "  %s", buf);
+        fclose(fp);
+    } else {
+        _LOG(log, false, "  ERROR %d (%s)", errno, strerror(errno));
+    }
+}
+
 static void dump_thread(
     log_t* log, pid_t tid, bool attached, bool* detach_failed, int* total_sleep_time_usec) {
   char path[PATH_MAX];
@@ -103,6 +119,8 @@ static void dump_thread(
   } else {
     ALOGE("Unwind failed: tid = %d", tid);
   }
+
+  dump_kernel_stack(log, tid);
 
   if (!attached && ptrace(PTRACE_DETACH, tid, 0, 0) != 0) {
     _LOG(log, logtype::ERROR, "ptrace detach from %d failed: %s\n", tid, strerror(errno));
