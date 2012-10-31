@@ -33,6 +33,7 @@
 #include "output_file.h"
 #include "sparse_crc32.h"
 #include "sparse_format.h"
+#include "sparse_defs.h"
 
 #ifndef _WIN32
 #include <sys/mman.h>
@@ -72,7 +73,7 @@ struct sparse_file_ops {
 			void *data);
 	int (*write_fill_chunk)(struct output_file *out, int64_t len,
 			uint32_t fill_val);
-	int (*write_skip_chunk)(struct output_file *out, int64_t len);
+	int (*write_skip_chunk)(struct output_file *out, int64_t len, bool last_block);
 	int (*write_end_chunk)(struct output_file *out);
 };
 
@@ -344,12 +345,12 @@ int read_all(int fd, void *buf, size_t len)
 	return 0;
 }
 
-static int write_sparse_skip_chunk(struct output_file *out, int64_t skip_len)
+static int write_sparse_skip_chunk(struct output_file *out, int64_t skip_len, bool last_block)
 {
 	chunk_header_t chunk_header;
 	int ret;
 
-	if (skip_len % out->block_size) {
+	if (!last_block && (skip_len % out->block_size)) {
 		error("don't care size %"PRIi64" is not a multiple of the block size %u",
 				skip_len, out->block_size);
 		return -1;
@@ -358,7 +359,10 @@ static int write_sparse_skip_chunk(struct output_file *out, int64_t skip_len)
 	/* We are skipping data, so emit a don't care chunk. */
 	chunk_header.chunk_type = CHUNK_TYPE_DONT_CARE;
 	chunk_header.reserved1 = 0;
-	chunk_header.chunk_sz = skip_len / out->block_size;
+	if (last_block)
+		chunk_header.chunk_sz = DIV_ROUND_UP(skip_len, out->block_size);
+	else
+		chunk_header.chunk_sz = skip_len / out->block_size;
 	chunk_header.total_sz = CHUNK_HEADER_LEN;
 	ret = out->ops->write(out, &chunk_header, sizeof(chunk_header));
 	if (ret < 0)
@@ -430,6 +434,7 @@ static int write_sparse_data_chunk(struct output_file *out, int64_t len,
 	if (ret < 0)
 		return -1;
 	if (zero_len) {
+		/* only happens in last chunk */
 		ret = out->ops->write(out, out->zero_buf, zero_len);
 		if (ret < 0)
 			return -1;
@@ -523,8 +528,9 @@ static int write_normal_fill_chunk(struct output_file *out, int64_t len,
 	return 0;
 }
 
-static int write_normal_skip_chunk(struct output_file *out, int64_t len)
+static int write_normal_skip_chunk(struct output_file *out, int64_t len, bool last_block)
 {
+	bool tmp = last_block;
 	return out->ops->skip(out, len);
 }
 
@@ -558,11 +564,13 @@ static int output_file_init(struct output_file *out, int block_size,
 	out->crc32 = 0;
 	out->use_crc = crc;
 
-	out->zero_buf = calloc(block_size, 1);
+	out->zero_buf = malloc(block_size);
 	if (!out->zero_buf) {
 		error_errno("malloc zero_buf");
 		return -ENOMEM;
 	}
+	/* used for last chunk, filled with 0xFF for most flash */
+	memset(out->zero_buf, 0xFF, block_size);
 
 	out->fill_buf = calloc(block_size, 1);
 	if (!out->fill_buf) {
@@ -770,7 +778,7 @@ int write_file_chunk(struct output_file *out, int64_t len,
 	return ret;
 }
 
-int write_skip_chunk(struct output_file *out, int64_t len)
+int write_skip_chunk(struct output_file *out, int64_t len, bool last_block)
 {
-	return out->sparse_ops->write_skip_chunk(out, len);
+	return out->sparse_ops->write_skip_chunk(out, len, last_block);
 }
