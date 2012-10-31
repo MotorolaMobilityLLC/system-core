@@ -37,7 +37,7 @@ int write_file_chunk(struct output_file *out, int64_t len,
 		const char *file, int64_t offset);
 int write_fd_chunk(struct output_file *out, int64_t len,
 		int fd, int64_t offset);
-int write_skip_chunk(struct output_file *out, int64_t len);
+int write_skip_chunk(struct output_file *out, int64_t len, bool last_block);
 void output_file_close(struct output_file *out);
 
 int read_all(int fd, void *buf, size_t len);
