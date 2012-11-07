@@ -294,6 +294,7 @@ enum {
     NATIVE_WINDOW_SET_POST_TRANSFORM_CROP   = 16,   /* private */
     NATIVE_WINDOW_SET_BUFFERS_STICKY_TRANSFORM = 17,/* private */
     NATIVE_WINDOW_SET_SIDEBAND_STREAM       = 18,
+    NATIVE_WINDOW_SET_BUFFERS_SIZE          = 19,   /* private */
 };
 
 /* parameter for NATIVE_WINDOW_[API_][DIS]CONNECT */
