@@ -123,6 +123,7 @@ struct {
     { "dolby.audio",      AID_MEDIA,    0 },
 #endif // DOLBY_UDC_MULTICHANNEL
     { "tcmd.",            AID_MOT_TCMD, AID_MOT_WHISPER },
+    { "mot.backup_restore.", AID_MOT_TCMD, 0},
     { NULL, 0, 0 }
 };
 
