@@ -312,6 +312,7 @@ enum {
     NATIVE_WINDOW_SET_BUFFERS_DATASPACE     = 19,
     NATIVE_WINDOW_SET_SURFACE_DAMAGE        = 20,   /* private */
     NATIVE_WINDOW_SET_BUFFERS_SIZE          = 21,   /* private */
+    NATIVE_WINDOW_UPDATE_BUFFERS_GEOMETRY   = 22,   /* private */
 };
 
 /* parameter for NATIVE_WINDOW_[API_][DIS]CONNECT */
