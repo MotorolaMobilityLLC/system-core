@@ -762,7 +762,7 @@ static char* find_and_open_tombstone(int* fd)
         *fd = open(path, O_CREAT | O_EXCL | O_WRONLY, 0640);
         if (*fd < 0)
             continue;   /* raced ? */
-
+        fchmod(*fd,0640);
         fchown(*fd, AID_SYSTEM, AID_MOT_TOMBSTONE);
         return strdup(path);
     }
@@ -774,6 +774,7 @@ static char* find_and_open_tombstone(int* fd)
         LOG("failed to open tombstone file '%s': %s\n", path, strerror(errno));
         return NULL;
     }
+    fchmod(*fd,0640);
     fchown(*fd, AID_SYSTEM, AID_MOT_TOMBSTONE);
     return strdup(path);
 }
