@@ -29,6 +29,7 @@ static int remote_read(apacket *p, atransport *t)
 {
     if(usb_read(t->usb, &p->msg, sizeof(amessage))){
         D("remote usb: read terminated (message)");
+	    exit(-1);
         return -1;
     }
 
