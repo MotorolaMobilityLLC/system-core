@@ -505,7 +505,7 @@ service ril-daemon /system/bin/rild
     socket rild stream 660 root radio
     socket rild-debug stream 660 radio system
     user root
-    group radio cache inet misc audio log qcom_diag
+    group radio cache inet misc audio log qcom_diag net_raw
 
 service surfaceflinger /system/bin/surfaceflinger
     class main
