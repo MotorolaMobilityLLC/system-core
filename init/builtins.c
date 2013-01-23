@@ -55,9 +55,31 @@ void add_environment(const char *name, const char *value);
 
 extern int init_module(void *, unsigned long, const char *);
 
+// BEGIN Motorola, wljv10, 01/23/2013, IKKRNBSP-1333 no hard link access
+static int is_hard_link(const char *path)
+{
+    int rv = 1;
+    struct stat sb;
+
+    if(stat(path, &sb) == 0) {
+      if((S_ISDIR(sb.st_mode)) || (sb.st_nlink == 1))
+        rv = 0;
+      else
+        ERROR("Invalid hard link (%s), nlink=%ld ignoring!\n", path,
+            (long)sb.st_nlink);
+    }
+    return(rv);
+}
+// END IKKRNBSP-1333
+
 static int write_file(const char *path, const char *value)
 {
     int fd, ret, len;
+
+    // BEGIN Motorola, wljv10, 01/23/2013, IKKRNBSP-1333 no hard link access
+    if(is_hard_link(path))
+      return -1;
+    // END IKKRNBSP-1333
 
     fd = open(path, O_WRONLY|O_CREAT|O_NOFOLLOW, 0600);
 
@@ -81,6 +103,11 @@ static int write_file(const char *path, const char *value)
 static int _open(const char *path)
 {
     int fd;
+
+    // BEGIN Motorola, wljv10, 01/23/2013, IKKRNBSP-1333 no hard link access
+    if(is_hard_link(path))
+      return(-1);
+    // END IKKRNBSP-1333
 
     fd = open(path, O_RDONLY | O_NOFOLLOW);
     if (fd < 0)
@@ -832,11 +859,19 @@ int do_copy(int nargs, char **args)
     if (stat(args[1], &info) < 0) 
         return -1;
 
-    if ((fd1 = open(args[1], O_RDONLY)) < 0) 
+    // BEGIN Motorola, wljv10, 01/23/2013, IKKRNBSP-1333 no hard link access
+    if(is_hard_link(args[1]))
         goto out_err;
 
-    if ((fd2 = open(args[2], O_WRONLY|O_CREAT|O_TRUNC, 0660)) < 0)
+    if(is_hard_link(args[2]))
         goto out_err;
+
+    if ((fd1 = open(args[1], O_RDONLY|O_NOFOLLOW)) < 0)
+        goto out_err;
+
+    if ((fd2 = open(args[2], O_WRONLY|O_CREAT|O_TRUNC|O_NOFOLLOW, 0660)) < 0)
+        goto out_err;
+    // END IKKRNBSP-1333
 
     if (!(buffer = malloc(info.st_size)))
         goto out_err;
