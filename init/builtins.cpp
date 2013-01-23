@@ -54,6 +54,33 @@ int add_environment(const char *name, const char *value);
 
 // System call provided by bionic but not in any header file.
 extern "C" int init_module(void *, unsigned long, const char *);
+// BEGIN Motorola, wljv10, 01/23/2013, IKKRNBSP-1333 no hard link access
+static int is_hard_link(const char *path)
+{
+    int rv = 1;
+    struct stat sb;
+
+    if(stat(path, &sb) == 0) {
+      if((S_ISDIR(sb.st_mode)) || (sb.st_nlink == 1))
+        rv = 0;
+      else
+        ERROR("Invalid hard link (%s), nlink=%ld ignoring!\n", path,
+            (long)sb.st_nlink);
+    }
+    return(rv);
+}
+// END IKKRNBSP-1333
+
+    // BEGIN Motorola, wljv10, 01/23/2013, IKKRNBSP-1333 no hard link access
+    if(is_hard_link(path))
+      return -1;
+    // END IKKRNBSP-1333
+
+    // BEGIN Motorola, wljv10, 01/23/2013, IKKRNBSP-1333 no hard link access
+    if(is_hard_link(path))
+      return(-1);
+    // END IKKRNBSP-1333
+
 
 static int insmod(const char *filename, char *options)
 {
@@ -670,11 +697,19 @@ int do_copy(int nargs, char **args)
     if (stat(args[1], &info) < 0)
         return -1;
 
-    if ((fd1 = open(args[1], O_RDONLY|O_CLOEXEC)) < 0)
+    // BEGIN Motorola, wljv10, 01/23/2013, IKKRNBSP-1333 no hard link access
+    if(is_hard_link(args[1]))
         goto out_err;
 
-    if ((fd2 = open(args[2], O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0660)) < 0)
+    if(is_hard_link(args[2]))
         goto out_err;
+
+    if ((fd1 = open(args[1], O_RDONLY|O_CLOEXEC|O_NOFOLLOW)) < 0)
+        goto out_err;
+
+    if ((fd2 = open(args[2], O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC|O_NOFOLLOW, 0660)) < 0)
+        goto out_err;
+    // END IKKRNBSP-1333
 
     if (!(buffer = (char*) malloc(info.st_size)))
         goto out_err;
