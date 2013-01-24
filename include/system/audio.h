@@ -367,6 +367,7 @@ enum {
     AUDIO_DEVICE_OUT_PROXY                     = 0x40000,
     AUDIO_DEVICE_OUT_FM                        = 0x80000,
     AUDIO_DEVICE_OUT_FM_TX                     = 0x100000,
+    AUDIO_DEVICE_OUT_EMU_DOCK                  = 0x200000,
     AUDIO_DEVICE_OUT_DEFAULT                   = AUDIO_DEVICE_BIT_DEFAULT,
     AUDIO_DEVICE_OUT_ALL      = (AUDIO_DEVICE_OUT_EARPIECE |
                                  AUDIO_DEVICE_OUT_SPEAKER |
@@ -389,6 +390,7 @@ enum {
                                  AUDIO_DEVICE_OUT_PROXY |
                                  AUDIO_DEVICE_OUT_FM |
                                  AUDIO_DEVICE_OUT_FM_TX |
+                                 AUDIO_DEVICE_OUT_EMU_DOCK |
                                  AUDIO_DEVICE_OUT_DEFAULT),
     AUDIO_DEVICE_OUT_ALL_A2DP = (AUDIO_DEVICE_OUT_BLUETOOTH_A2DP |
                                  AUDIO_DEVICE_OUT_BLUETOOTH_A2DP_HEADPHONES |
