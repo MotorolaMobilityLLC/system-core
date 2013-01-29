@@ -59,6 +59,7 @@ typedef enum {
                                         */
     AUDIO_STREAM_DTMF             = 8,
     AUDIO_STREAM_TTS              = 9,
+    AUDIO_STREAM_INCALL_MUSIC     = 10,
 
     AUDIO_STREAM_CNT,
     AUDIO_STREAM_MAX              = AUDIO_STREAM_CNT - 1,
@@ -756,9 +757,10 @@ typedef enum {
 //Qualcomm Flags
     AUDIO_OUTPUT_FLAG_LPA = 0x1000,      // use LPA
     AUDIO_OUTPUT_FLAG_TUNNEL = 0x2000,   // use Tunnel
-    AUDIO_OUTPUT_FLAG_VOIP_RX = 0x4000   // use this flag in combination with DIRECT to
+    AUDIO_OUTPUT_FLAG_VOIP_RX = 0x4000,  // use this flag in combination with DIRECT to
                                          // indicate HAL to activate EC & NS
                                          // path for VOIP calls
+    AUDIO_OUTPUT_FLAG_INCALL_MUSIC = 0x8000 //use this flag for incall music delivery
 } audio_output_flags_t;
 
 /* The audio input flags are analogous to audio output flags.
