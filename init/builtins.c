@@ -67,7 +67,8 @@ static int is_hard_link(const char *path)
       else
         ERROR("Invalid hard link (%s), nlink=%ld ignoring!\n", path,
             (long)sb.st_nlink);
-    }
+    } else if (errno == ENOENT)
+        rv = 0;
     return(rv);
 }
 // END IKKRNBSP-1333
