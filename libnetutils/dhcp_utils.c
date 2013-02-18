@@ -409,11 +409,13 @@ int dhcp_get_state(const char *interface,
         char prop_name[PROPERTY_KEY_MAX];
         char prop_value[PROPERTY_VALUE_MAX];
         char prop_vendorInfo[PROPERTY_VALUE_MAX];
+        char domain[PROPERTY_VALUE_MAX];
         uint32_t prefixLength;
         struct in_addr addr;
 
         int rv = fill_ip_info(interface, pv_ipaddr, pv_gateway,
-                     &prefixLength, pv_dns1, pv_dns2, pv_server, lease, prop_vendorInfo);
+                     &prefixLength, pv_dns1, pv_dns2, pv_server, lease, prop_vendorInfo,
+                     domain);
         if (rv != -1) {
             *ipaddr = *gateway = *server = 0;
             *dns1 = *dns2 = 0;
