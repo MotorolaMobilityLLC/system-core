@@ -181,6 +181,7 @@ static const struct fs_path_config android_files[] = {
      * are NOT included on user builds. */
     { 06755, AID_ROOT,      AID_ROOT,      0, "system/xbin/procmem" },
     { 04750, AID_ROOT,      AID_SHELL,     0, "system/xbin/su" },
+    { 04750, AID_ROOT,      AID_SYSTEM,    0, "system/bin/perf-monitor" },
 
     /* the following files have enhanced capabilities and ARE included
      * in user builds. */
