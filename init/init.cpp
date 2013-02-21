@@ -1394,15 +1394,23 @@ int main(int argc, char** argv) {
     // wasn't ready immediately after wait_for_coldboot_done
     am.QueueBuiltinAction(mix_hwrng_into_linux_rng_action, "mix_hwrng_into_linux_rng");
 
-#ifndef MOTO_NEW_CHARGE_ONLY_MODE
     // Don't mount filesystems or start core system services in charger mode.
+
+    bool is_ffbm = false;
+    bool is_charger = false;
     std::string bootmode = GetProperty("ro.bootmode", "");
-    if (bootmode == "charger" || bootmode == "mot-charger") {
+    if (!bootmode.empty()) {
+        is_ffbm = (bootmode == "ffbm");
+        is_charger = !is_ffbm && ( bootmode == "charger" || bootmode == "mot-charger" );
+    }
+
+    if (is_charger) {
         am.QueueEventTrigger("charger");
-    } else
-#endif
-    {
-        am.QueueEventTrigger("late-init");
+    } else {
+        if (is_ffbm)
+            am.QueueEventTrigger("ffbm");
+        else
+            am.QueueEventTrigger("late-init");
     }
 
     // Run all property triggers based on current state of the properties.
