@@ -1172,15 +1172,24 @@ int main(int argc, char** argv) {
     // wasn't ready immediately after wait_for_coldboot_done
     queue_builtin_action(mix_hwrng_into_linux_rng_action, "mix_hwrng_into_linux_rng");
 
-#ifndef MOTO_NEW_CHARGE_ONLY_MODE
     // Don't mount filesystems or start core system services in charger mode.
+    bool is_ffbm = false;
+    bool is_charger = false;
+#ifndef MOTO_NEW_CHARGE_ONLY_MODE
     char bootmode[PROP_VALUE_MAX];
-    if (property_get("ro.bootmode", bootmode) > 0 && (strcmp(bootmode, "charger") == 0 || strcmp(bootmode, "mot-charger") == 0) ) {
-        action_for_each_trigger("charger", action_add_queue_tail);
-    } else
+    if (property_get("ro.bootmode", bootmode) > 0) {
+        is_ffbm = strcmp(bootmode, "ffbm") == 0;
+        is_charger = !is_ffbm && ( strcmp(bootmode, "charger") == 0 || strcmp(bootmode, "mot-charger") == 0 );
+    }
 #endif
-    {
-        action_for_each_trigger("late-init", action_add_queue_tail);
+ 
+    if (is_charger ) {
+        action_for_each_trigger("charger", action_add_queue_tail);
+    } else {
+        if (is_ffbm)
+            action_for_each_trigger("ffbm", action_add_queue_tail);
+        else
+            action_for_each_trigger("late-init", action_add_queue_tail);
     }
 
     // Run all property triggers based on current state of the properties.
