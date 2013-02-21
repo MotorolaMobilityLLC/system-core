@@ -812,13 +812,25 @@ int main(int argc, char** argv) {
     am.QueueBuiltinAction(MixHwrngIntoLinuxRngAction, "MixHwrngIntoLinuxRng");
 
     // Don't mount filesystems or start core system services in charger mode.
+    bool is_ffbm = false;
+    bool is_charger = false;
+#ifndef MOTO_NEW_CHARGE_ONLY_MODE
     std::string bootmode = GetProperty("ro.bootmode", "");
-    if (bootmode == "sfactory") {
+    if (!bootmode.empty()) {
+        is_ffbm = (bootmode == "ffbm");
+        is_charger = !is_ffbm && ( bootmode == "charger" || bootmode == "mot-charger" );
+    }
+#endif
+
+    if (bootmode == "factory") {
         am.QueueEventTrigger("late-factory-init");
-    } else if (bootmode == "charger" || bootmode == "mot-charger") {
+    } else if (is_charger) {
         am.QueueEventTrigger("charger");
     } else {
-        am.QueueEventTrigger("late-init");
+        if (is_ffbm)
+            am.QueueEventTrigger("ffbm");
+        else
+            am.QueueEventTrigger("late-init");
     }
 
     // Run all property triggers based on current state of the properties.
