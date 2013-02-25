@@ -72,6 +72,10 @@ LOCAL_SRC_FILES:= \
     ueventd_parser.cpp \
     watchdogd.cpp \
 
+ifeq ($(TARGET_HAVE_VMWARE),true)
+LOCAL_CFLAGS += -DSUPPORT_VMW
+endif
+
 ifdef DOLBY_DAP
 LOCAL_CFLAGS += -DDOLBY_DAP
 endif #DOLBY_DAP
