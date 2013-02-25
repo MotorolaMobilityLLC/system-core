@@ -55,6 +55,7 @@
 #include <sys/un.h>
 #include <sys/select.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <netinet/in.h>
 #include <sys/mman.h>
 #include <sys/atomics.h>
@@ -252,6 +253,21 @@ static int check_control_perms(const char *name, unsigned int uid, unsigned int 
     int i;
     if (uid == AID_SYSTEM || uid == AID_ROOT)
       return check_control_mac_perms(name, sctx);
+
+    /* VMware BEGIN */
+#ifdef SUPPORT_VMW
+    /* only allow code signed by the same signature as the MVP enabler to enable mvpd */
+    /* DO NOT REMOVE THIS COMMENT MVP_FEATURE_mvpdsec */
+    if (strcmp("mvpd", name) == 0) {
+        struct stat s;
+        if (stat("/data/data/com.vmware.mvp.enabled", &s) == 0) {
+            if ((s.st_uid == uid) && (s.st_gid == gid)) {
+                return 1;
+            }
+        }
+    }
+#endif
+    /* VMware END */
 
     /* Search the ACL */
     for (i = 0; control_perms[i].service; i++) {
