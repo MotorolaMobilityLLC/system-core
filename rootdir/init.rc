@@ -394,6 +394,9 @@ on boot
     write /proc/sys/net/core/rmem_max  2097152
     write /proc/sys/net/core/wmem_max  2097152
 
+# VMware MVP feature list (generated)
+    setprop ro.mvp.features srvc,grbks,vpncrt,vpn,mvpdsec,ftx
+
     class_start core
     class_start main
 
