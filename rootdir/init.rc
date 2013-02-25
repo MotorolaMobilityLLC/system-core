@@ -465,6 +465,9 @@ on boot
     # Define default initial receive window size in segments.
     setprop net.tcp.default_init_rwnd 60
 
+# VMware MVP feature list (generated)
+    setprop ro.mvp.features srvc,grbks,vpncrt,vpn,mvpdsec,ftx
+
     class_start core
 
 on nonencrypted
