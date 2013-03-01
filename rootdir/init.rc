@@ -575,10 +575,6 @@ service dumpstate /system/bin/dumpstate -s
     disabled
     oneshot
 
-service sshd /system/bin/start-ssh
-    class main
-    disabled
-
 service mdnsd /system/bin/mdnsd
     class main
     user mdnsr
