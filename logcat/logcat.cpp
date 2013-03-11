@@ -122,6 +122,22 @@ struct android_logcat_context_internal {
     bool hasOpenedEventTagMap;
 };
 
+// BEGIN Motorola, a5705c, 2013-05-03, IKJB42MAIN-6672
+void sigpipe_handler(int n)
+{
+    (void)n;
+    exit(EXIT_FAILURE);
+}
+
+void install_sigpipe_handler()
+{
+    struct sigaction act;
+    memset(&act, 0, sizeof(act));
+    act.sa_handler = sigpipe_handler;
+    sigaction(SIGPIPE, &act, NULL);
+}
+// END IKJB42MAIN-6672
+
 // Creates a context associated with this logcat instance
 android_logcat_context create_android_logcat() {
     android_logcat_context_internal* context;
