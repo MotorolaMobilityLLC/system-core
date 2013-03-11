@@ -14,6 +14,7 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <arpa/inet.h>
+#include <signal.h> // Motorola, a5705c, 2013-05-03, IKJB42MAIN-6672
 
 #include <cutils/sockets.h>
 #include <log/log.h>
@@ -308,6 +309,22 @@ static const char *multiplier_of_size(unsigned long value)
     return multipliers[i];
 }
 
+// BEGIN Motorola, a5705c, 2013-05-03, IKJB42MAIN-6672
+static void sigpipe_handler(int n)
+{
+    (void)n;
+    exit(EXIT_FAILURE);
+}
+
+static void install_sigpipe_handler()
+{
+    struct sigaction act;
+    memset(&act, 0, sizeof(act));
+    act.sa_handler = sigpipe_handler;
+    sigaction(SIGPIPE, &act, NULL);
+}
+// END IKJB42MAIN-6672
+
 int main(int argc, char **argv)
 {
     int err;
@@ -328,6 +345,7 @@ int main(int argc, char **argv)
     log_time tail_time(log_time::EPOCH);
 
     signal(SIGPIPE, exit);
+    install_sigpipe_handler(); // Motorola, a5705c, 2013-05-03, IKJB42MAIN-6672
 
     g_logformat = android_log_format_new();
 
