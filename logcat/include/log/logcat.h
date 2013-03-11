@@ -113,6 +113,11 @@ int android_logcat_system(const char* command);
 FILE* android_logcat_popen(android_logcat_context* ctx, const char* command);
 int android_logcat_pclose(android_logcat_context* ctx, FILE* output);
 
+// BEGIN Motorola, a5705c, 2013-05-03, IKJB42MAIN-6672
+void sigpipe_handler(int n);
+void install_sigpipe_handler();
+// END IKJB42MAIN-6672
+
 #endif /* __ANDROID_USE_LIBLOG_LOGCAT_INTERFACE */
 
 #ifdef __cplusplus
