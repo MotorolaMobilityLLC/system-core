@@ -695,6 +695,21 @@ void update_legacy_atvc_properties(void)
         property_set("ro.sys.atvc_allow_all_core", "0");
     }
 }
+/* BEGIN IKJB42MAIN-6952, 03/13/2013, w60013, rename persist.sys.usb.config */
+void update_persistent_usb_property(void)
+{
+	char currPath[PATH_MAX];
+	char newPath[PATH_MAX];
+
+	snprintf(currPath, sizeof(currPath), "%s/persist.sys.usb.config",
+				PERSISTENT_PROPERTY_DIR);
+	snprintf(newPath, sizeof(newPath), "%s/persist.mot.usb.config",
+				PERSISTENT_PROPERTY_DIR);
+	if (rename(currPath, newPath)) {
+		ERROR("Unable to rename persistent prop file %s\n", currPath);
+	}
+}
+/* END IKJB42MAIN-6952 */
 
 void start_property_service(void)
 {
@@ -703,6 +718,19 @@ void start_property_service(void)
     load_properties_from_file(PROP_PATH_SYSTEM_BUILD);
     load_properties_from_file(PROP_PATH_SYSTEM_DEFAULT);
     load_override_properties();
+
+    /* BEGIN IKJB42MAIN-6952, 03/13/2013, w60013 */
+    /* Rename the persist.sys.usb.config property to persist.mot.usb.config to
+     * avoid triggering on property change during boot up. When on property
+     * trigger actions run along with init usb shell script then USB enumeration
+     * issues are seen (double enunumeration or no enumeration). init usb shell
+     * script will use persist.mot.usb.config to set persist.sys.usb.config
+     * correctly if bootmode is normal. For other bootmodes this property will
+     * be not used
+     */
+    update_persistent_usb_property();
+    /* END IKJB42MAIN-6952 */
+
     /* Read persistent properties after all default values have been loaded. */
     load_persistent_properties();
 
