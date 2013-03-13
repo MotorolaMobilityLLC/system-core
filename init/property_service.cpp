@@ -677,6 +677,21 @@ unsigned int mt_get_chip_hw_ver(void) {
     ERROR("read hw version fail, ret: %d\n", ret);
     return 0;
 }
+/* BEGIN IKJB42MAIN-6952, 03/13/2013, w60013, rename persist.sys.usb.config */
+void update_persistent_usb_property(void)
+{
+	char currPath[PATH_MAX];
+	char newPath[PATH_MAX];
+
+	snprintf(currPath, sizeof(currPath), "%s/persist.sys.usb.config",
+				PERSISTENT_PROPERTY_DIR);
+	snprintf(newPath, sizeof(newPath), "%s/persist.mot.usb.config",
+				PERSISTENT_PROPERTY_DIR);
+	if (rename(currPath, newPath)) {
+		ERROR("Unable to rename persistent prop file %s\n", currPath);
+	}
+}
+/* END IKJB42MAIN-6952 */
 
 /* When booting an encrypted system, /data is not mounted when the
  * property service is started, so any properties stored there are
@@ -762,6 +777,7 @@ void load_system_props() {
     load_properties_from_file(PROP_PATH_SYSTEM_BUILD, NULL);
     load_properties_from_file(PROP_PATH_VENDOR_BUILD, NULL);
     load_properties_from_file(PROP_PATH_FACTORY, "ro.*");
+
     load_recovery_id_prop();
 }
 
