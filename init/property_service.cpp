@@ -699,6 +699,23 @@ static void load_override_properties() {
     }
 }
 
+/* BEGIN IKJB42MAIN-6952, 03/13/2013, w60013, rename persist.sys.usb.config */
+void update_persistent_usb_property(void)
+{
+	char currPath[PATH_MAX];
+	char newPath[PATH_MAX];
+
+	snprintf(currPath, sizeof(currPath), "%s/persist.sys.usb.config",
+				PERSISTENT_PROPERTY_DIR);
+	snprintf(newPath, sizeof(newPath), "%s/persist.mot.usb.config",
+				PERSISTENT_PROPERTY_DIR);
+	if (rename(currPath, newPath)) {
+		PLOG(ERROR) << "Unable to rename persistent prop file "
+                            << currPath;
+	}
+}
+/* END IKJB42MAIN-6952 */
+
 /* When booting an encrypted system, /data is not mounted when the
  * property service is started, so any properties stored there are
  * not loaded.  Vold triggers init to load these properties once it
