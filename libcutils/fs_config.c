@@ -138,6 +138,10 @@ static const struct fs_path_config android_files[] = {
     { 00500, AID_ROOT,      AID_SHELL,     0, "system/etc/install-recovery.sh" },
     { 00750, AID_ROOT,      AID_ROOT,      0, "xbin/qe" },
 
+    /* the following file is INTENTIONALLY set-uid, and IS included
+     * in user builds. */
+    { 06750, AID_ROOT,      AID_DIAG,      0, "system/xbin/sudo" },
+
     /* the following two files are INTENTIONALLY set-uid, but they
      * are NOT included on user builds. */
     { 04750, AID_ROOT,      AID_SHELL,     0, "system/xbin/su" },
