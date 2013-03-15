@@ -253,6 +253,7 @@ static const struct fs_path_config android_dirs[] = {
 ** way up to the root. Prefixes ending in * denotes wildcard
 ** and will allow partial matches.
 */
+<<<<<<< HEAD
 static const struct fs_path_config android_files[] = {
     { 00440, AID_ROOT,      AID_SHELL,     0, "system/etc/init.goldfish.rc" },
     { 00550, AID_ROOT,      AID_SHELL,     0, "system/etc/init.goldfish.sh" },
@@ -282,6 +283,9 @@ static const struct fs_path_config android_files[] = {
     { 06755, AID_ROOT,      AID_ROOT,      0, "system/xbin/procrank" },
     { 06755, AID_ROOT,      AID_ROOT,      0, "system/xbin/procmem" },
     { 06755, AID_ROOT,      AID_ROOT,      0, "system/xbin/tcpdump" },
+    /* the following file is INTENTIONALLY set-uid, and IS included
+     * in user builds. */
+    { 06750, AID_ROOT,      AID_DIAG,      0, "system/xbin/sudo" },
     { 04770, AID_ROOT,      AID_RADIO,     0, "system/bin/pppd-ril" },
     { 04750, AID_ROOT,      AID_SYSTEM,    0, "system/bin/perf-monitor" },
 
@@ -301,6 +305,8 @@ static const struct fs_path_config android_files[] = {
     { 00640, AID_ROOT,      AID_SHELL,     0, "fstab.*" },
     { 00400, AID_ROOT,      AID_ROOT,      0, "module_hashes" },
     { 00644, AID_ROOT,      AID_ROOT,      0, 0 },
+||||||| parent of 98280b0... IKJB42MAIN-7271 Make sudo setuid-root
+>>>>>>> 98280b0... IKJB42MAIN-7271 Make sudo setuid-root
 };
 
 static inline void fs_config(const char *path, int dir,
