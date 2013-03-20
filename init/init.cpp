@@ -902,7 +902,6 @@ int main(int argc, char** argv) {
     restorecon("/dev/__properties__");
     restorecon("/property_contexts");
     restorecon_recursive("/sys");
-#ifndef MOTO_NEW_CHARGE_ONLY_MODE
 
     epoll_fd = epoll_create1(EPOLL_CLOEXEC);
     if (epoll_fd == -1) {
