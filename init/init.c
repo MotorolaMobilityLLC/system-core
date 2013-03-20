@@ -1120,10 +1120,12 @@ int main(int argc, char **argv)
     restorecon("/dev/socket");
     restorecon("/dev/__properties__");
     restorecon_recursive("/sys");
+#ifndef MOTO_NEW_CHARGE_ONLY_MODE
 
     is_ffbm = !strncmp(bootmode, "ffbm", 4);
     if (!is_ffbm)
         is_charger = !strcmp(bootmode, "charger");
+#endif
 
     INFO("property init\n");
     if (!is_charger)
