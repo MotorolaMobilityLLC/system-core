@@ -525,7 +525,7 @@ service zygote /system/bin/app_process -Xzygote /system/bin --zygote --start-sys
 service drm /system/bin/drmserver
     class main
     user drm
-    group drm system inet drmrpc mot_drm mot_tpapi mot_secclkd
+    group drm inet drmrpc mot_drm mot_tpapi mot_secclkd
 
 service media /system/bin/mediaserver
     class main
