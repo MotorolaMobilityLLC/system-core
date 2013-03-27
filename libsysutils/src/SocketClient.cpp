@@ -141,6 +141,9 @@ int SocketClient::sendCode(int code) {
 }
 
 char *SocketClient::quoteArg(const char *arg) {
+    if(arg == NULL) {
+        return NULL; // caller should check the return value
+    }
     int len = strlen(arg);
     char *result = (char *)malloc(len * 2 + 3);
     char *current = result;
