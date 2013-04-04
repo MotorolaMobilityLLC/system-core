@@ -99,6 +99,7 @@ struct {
     { "dev.",             AID_SYSTEM,   0 },
     { "runtime.",         AID_SYSTEM,   0 },
     { "hw.whisper",       AID_MOT_WHISPER, 0 },
+    { "hw.aov.",          AID_AUDIO,    0 }, // w30289, IKJBXLINE-3025
     { "hw.",              AID_SYSTEM,   0 },
     { "sys.",             AID_SYSTEM,   0 },
     { "sys.powerctl",     AID_SHELL,    0 },
