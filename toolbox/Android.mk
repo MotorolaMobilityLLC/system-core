@@ -46,6 +46,9 @@ OUR_TOOLS := \
 
 ALL_TOOLS = $(BSD_TOOLS) $(OUR_TOOLS)
 
+# Motorola, rknize2, 2013-Apr-16, IKJBXLINE-3829
+TOOLS += setfattr
+
 LOCAL_SRC_FILES := \
     start_stop.cpp \
     toolbox.c \
