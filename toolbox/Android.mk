@@ -83,6 +83,9 @@ TOOLS += sendevent2
 
 # Motorola - END - IKAPP-606 - wqnt78 - 3/10/2010 - apython enabler
 
+# Motorola, rknize2, 2013-Apr-16, IKJBXLINE-3829
+TOOLS += setfattr
+
 ALL_TOOLS = $(TOOLS)
 ALL_TOOLS += \
 	cp \

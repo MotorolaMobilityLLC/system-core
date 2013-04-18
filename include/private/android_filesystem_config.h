@@ -231,8 +231,8 @@ static const struct fs_path_config android_dirs[] = {
     { 00771, AID_SHELL,  AID_SHELL,  0, "data/local" },
     { 01771, AID_SYSTEM, AID_MISC,   0, "data/misc" },
     { 00770, AID_DHCP,   AID_DHCP,   0, "data/misc/dhcp" },
-    { 00775, AID_MEDIA_RW, AID_MEDIA_RW, 0, "data/media" },
-    { 00775, AID_MEDIA_RW, AID_MEDIA_RW, 0, "data/media/Music" },
+    { 00775, AID_ROOT,   AID_SDCARD_RW, 0, "data/media" },
+    { 00775, AID_ROOT,   AID_SDCARD_RW, 0, "data/media/Music" },
     { 00771, AID_SYSTEM, AID_SYSTEM, 0, "data" },
     { 00750, AID_ROOT,   AID_SHELL,  0, "sbin" },
     { 00755, AID_ROOT,   AID_SHELL,  0, "system/bin" },
@@ -255,7 +255,6 @@ static const struct fs_path_config android_dirs[] = {
 ** way up to the root. Prefixes ending in * denotes wildcard
 ** and will allow partial matches.
 */
-<<<<<<< HEAD
 static const struct fs_path_config android_files[] = {
     { 00440, AID_ROOT,      AID_SHELL,     0, "system/etc/init.goldfish.rc" },
     { 00550, AID_ROOT,      AID_SHELL,     0, "system/etc/init.goldfish.sh" },
@@ -269,7 +268,7 @@ static const struct fs_path_config android_files[] = {
     { 00750, AID_ROOT,      AID_ROOT,      0, "xbin/qe" },
     { 00500, AID_ROOT,      AID_SHELL,     0, "system/etc/install-recovery.sh" },
     { 00644, AID_SYSTEM,    AID_SYSTEM,    0, "data/app/*" },
-    { 00644, AID_MEDIA_RW,  AID_MEDIA_RW,  0, "data/media/*" },
+    { 00644, AID_ROOT,      AID_SDCARD_RW, 0, "data/media/*" },
     { 00644, AID_SYSTEM,    AID_SYSTEM,    0, "data/app-private/*" },
     { 00644, AID_APP,       AID_APP,       0, "data/data/*" },
     { 00755, AID_ROOT,      AID_ROOT,      0, "system/bin/ping" },
