@@ -108,6 +108,7 @@
 #define AID_MOT_DLNA      9011  /*DLNA native */
 #define AID_MOT_ATVC      9012  /* mot_atvc - This is for use of the ATVC service ONLY */
 #define AID_SPRINT_EXTENSION 9013  /* IKASANTISPRINT-149 sprint extension service */
+#define AID_MOT_DBVC      9014  /* mot_dbvc - This group is used to access DataBlock feature related data */
 
 #define AID_MISC          9998  /* access to misc storage */
 #define AID_NOBODY        9999
@@ -199,6 +200,7 @@ static const struct android_id_info android_ids[] = {
     { "mot_dlna",	AID_MOT_DLNA, },
     { "mot_atvc",      AID_MOT_ATVC, },
     { "sprint_extension", AID_SPRINT_EXTENSION, },
+    { "mot_dbvc",	AID_MOT_DBVC, },
     { "nobody",        AID_NOBODY, },
 };
 
