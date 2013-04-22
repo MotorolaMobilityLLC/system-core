@@ -401,11 +401,69 @@ void open_devnull_stdio(void)
     }
 }
 
+static char *skip_spaces(const char *str)
+{
+    while (isspace(*str))
+        ++str;
+
+    return (char *)str;
+}
+
+/* Support for quoted argument values with spaces. */
+static char *next_arg(char *args, char **param, char **value)
+{
+    int n;
+    char *end;
+
+    *param = args;
+
+    n = strcspn(args, " =");
+    if (args[n] != '=') {
+        /* found parameter with no value */
+        *value = NULL;
+        return skip_spaces(args + n);
+    }
+    else {
+        args[n] = '\0';
+        *value = args + n + 1;
+        if (**value == '"') {
+            /* value starts with quote */
+            ++(*value);
+            end = strchr(*value, '"');
+            if (!end || *(end + 1) != ' ')
+                ERROR("Error: Argument value without closing quote or "
+                    "quote within value\n");
+            else
+                *end = '\0';
+        }
+        else {
+            end = strchr(*value, ' ');
+            if (end)
+                *end = '\0';
+        }
+
+        if (end)
+            return skip_spaces(end + 1);
+
+        return NULL;
+    }
+}
+
 void import_kernel_cmdline(bool in_qemu, std::function<void(char*,bool)> import_kernel_nv)
 {
     char cmdline[2048];
     char *ptr;
     int fd;
+    char *arg;
+    char *param;
+    char *val;
+
+    #define MAX_ARG_SZ 256
+    arg =(char*)  malloc(MAX_ARG_SZ);
+    if (!arg) {
+        ERROR("Error: Can't alloc buffer for command line processing\n");
+        return;
+    }
 
     fd = open("/proc/cmdline", O_RDONLY | O_CLOEXEC);
     if (fd >= 0) {
@@ -421,13 +479,16 @@ void import_kernel_cmdline(bool in_qemu, std::function<void(char*,bool)> import_
         cmdline[0] = 0;
     }
 
-    ptr = cmdline;
+    ptr = skip_spaces(cmdline);
     while (ptr && *ptr) {
-        char *x = strchr(ptr, ' ');
-        if (x != 0) *x++ = 0;
-        import_kernel_nv(ptr, in_qemu);
-        ptr = x;
+        ptr = next_arg(ptr, &param, &val);
+        if (val) {
+            snprintf(arg, MAX_ARG_SZ, "%s=%s", param, val);
+            import_kernel_nv(arg, in_qemu);
+        }
     }
+
+    free(arg);
 }
 
 int make_dir(const char *path, mode_t mode)
