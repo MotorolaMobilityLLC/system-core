@@ -47,7 +47,12 @@ int property_get(const char *key, char *value, const char *default_value)
     
     if(default_value) {
         len = strlen(default_value);
-        memcpy(value, default_value, len + 1);
+        if (len > PROP_VALUE_MAX-1) {   /* no buffer overruns! */
+            len = PROP_VALUE_MAX-1;
+            memcpy(value, default_value, len);
+            value[len] = '\0';
+        } else
+            memcpy(value, default_value, len + 1);
     }
     return len;
 }
