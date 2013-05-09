@@ -9,6 +9,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <signal.h> // Motorola, xhm476, 2013-05-10, IKJB42MAIN-11363
 
 #include <cutils/sched_policy.h>
 
@@ -257,6 +258,22 @@ void ps_threads(int pid)
     closedir(d);
 }
 
+// BEGIN Motorola, xhm476, 2013-05-10, IKJB42MAIN-11363
+static void sigpipe_handler(int n)
+{
+    (void)n;
+    exit(EXIT_FAILURE);
+}
+
+static void install_sigpipe_handler()
+{
+    struct sigaction act;
+    memset(&act, 0, sizeof(act));
+    act.sa_handler = sigpipe_handler;
+    sigaction(SIGPIPE, &act, NULL);
+}
+// END IKJB42MAIN-11363
+
 int ps_main(int argc, char **argv)
 {
     DIR *d;
@@ -264,6 +281,7 @@ int ps_main(int argc, char **argv)
     int pidfilter = 0;
     int threads = 0;
 
+    install_sigpipe_handler(); // Motorola, xhm476, 2013-05-10, IKJB42MAIN-11363
     while(argc > 1){
         if(!strcmp(argv[1],"-t")) {
             threads = 1;
