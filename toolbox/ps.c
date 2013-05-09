@@ -10,7 +10,7 @@
 #include <dirent.h>
 
 #include <pwd.h>
-
+#include <signal.h> // Motorola, xhm476, 2013-05-10, IKJB42MAIN-11363
 #include <cutils/sched_policy.h>
 
 static char *nexttoksep(char **strp, char *sep)
@@ -200,6 +200,22 @@ void ps_threads(int pid, char *namefilter)
     closedir(d);    
 }
 
+// BEGIN Motorola, xhm476, 2013-05-10, IKJB42MAIN-11363
+static void sigpipe_handler(int n)
+{
+    (void)n;
+    exit(EXIT_FAILURE);
+}
+
+static void install_sigpipe_handler()
+{
+    struct sigaction act;
+    memset(&act, 0, sizeof(act));
+    act.sa_handler = sigpipe_handler;
+    sigaction(SIGPIPE, &act, NULL);
+}
+// END IKJB42MAIN-11363
+
 int ps_main(int argc, char **argv)
 {
     DIR *d;
@@ -207,7 +223,9 @@ int ps_main(int argc, char **argv)
     char *namefilter = 0;
     int pidfilter = 0;
     int threads = 0;
-    
+
+    install_sigpipe_handler(); // Motorola, xhm476, 2013-05-10, IKJB42MAIN-11363
+
     d = opendir("/proc");
     if(d == 0) return -1;
 
