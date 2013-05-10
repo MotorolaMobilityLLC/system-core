@@ -29,6 +29,7 @@ typedef enum {
     SP_SYSTEM     = 2,  // can't be used with set_sched_policy()
     SP_AUDIO_APP  = 3,
     SP_AUDIO_SYS  = 4,
+    SP_REALTIME   = 5, /* Motorola, rknize2, 05/10/2013, IKJBXLINE-9555 */
     SP_CNT,
     SP_MAX        = SP_CNT - 1,
     SP_SYSTEM_DEFAULT = SP_FOREGROUND,
