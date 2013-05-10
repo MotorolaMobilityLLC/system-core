@@ -856,7 +856,13 @@ static void export_kernel_boot_props(void)
         strlcpy(hardware, tmp, sizeof(hardware));
     property_set("ro.hardware", hardware);
 
-    snprintf(tmp, PROP_VALUE_MAX, "%d", revision);
+    snprintf(tmp, PROP_VALUE_MAX, "%x", revision);
+    switch(tmp[0]){
+        case '1': tmp[0] = 's'; break;
+        case '2': tmp[0] = 'm'; break;
+        case '8': tmp[0] = 'p'; break;
+        case '9': tmp[0] = 'd'; break;
+    }
     property_set("ro.revision", tmp);
 
     ret = property_get("ro.boot.baseband", tmp);
