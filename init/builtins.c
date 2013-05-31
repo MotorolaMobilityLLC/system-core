@@ -35,6 +35,8 @@
 #include <cutils/partition_utils.h>
 #include <cutils/android_reboot.h>
 #include <fs_mgr.h>
+#include <pthread.h>
+#include <sys/poll.h>
 #include <selinux/selinux.h>
 #include <selinux/label.h>
 
@@ -252,6 +254,36 @@ int do_enable(int nargs, char **args)
         return -1;
     }
     return 0;
+}
+
+#define MAX_PARAMETERS 64
+static void *exec_properties_service(void *arg)
+{
+    int rc;
+    struct pollfd pfds[2];
+
+    pfds[0].fd = get_property_set_fd();
+    pfds[0].events = POLLIN;
+    pfds[0].revents = 0;
+
+    pfds[1].fd = (int)arg;
+    pfds[1].events = POLLIN;
+    pfds[1].revents = 0;
+
+    for (;;) {
+        do {
+            rc = poll(pfds, 2, -1);
+        } while (rc == -1 && errno == EINTR);
+
+        if (pfds[0].revents & POLLIN) {
+            handle_property_set_fd();
+        }
+        if (pfds[1].revents & POLLHUP) {
+            break;
+        }
+    }
+
+    return NULL;
 }
 
 #define MAX_PARAMETERS 64
