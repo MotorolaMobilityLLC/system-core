@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#define _GNU_SOURCE
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -35,7 +36,8 @@
 #include <cutils/android_reboot.h>
 #include <sys/system_properties.h>
 #include <fs_mgr.h>
-
+#include <pthread.h>
+#include <sys/poll.h>
 #include <selinux/selinux.h>
 #include <selinux/label.h>
 
@@ -238,9 +240,110 @@ int do_domainname(int nargs, char **args)
     return write_file("/proc/sys/kernel/domainname", args[1]);
 }
 
+static void *exec_properties_service(void *arg)
+{
+    int rc;
+    struct pollfd pfds[2];
+
+    pfds[0].fd = get_property_set_fd();
+    pfds[0].events = POLLIN;
+    pfds[0].revents = 0;
+
+    pfds[1].fd = (int)arg;
+    pfds[1].events = POLLIN;
+    pfds[1].revents = 0;
+
+    for (;;) {
+        do {
+            rc = poll(pfds, 2, -1);
+        } while (rc == -1 && errno == EINTR);
+
+        if (pfds[0].revents & POLLIN) {
+            handle_property_set_fd();
+        }
+        if (pfds[1].revents & POLLHUP) {
+            break;
+        }
+    }
+
+    return NULL;
+}
+
+#define MAX_PARAMETERS 64
 int do_exec(int nargs, char **args)
 {
-    return -1;
+    pid_t pid;
+    int status, i, j;
+    char *par[MAX_PARAMETERS];
+    char prop_val[PROP_VALUE_MAX];
+    size_t len;
+
+    if (nargs > MAX_PARAMETERS)
+    {
+        return -1;
+    }
+
+    for(i=0, j=1; i<(nargs-1) ;i++,j++)
+    {
+        if ((args[j])
+            &&
+            (!expand_props(prop_val, args[j], sizeof(prop_val))))
+
+        {
+            len = strlen(args[j]);
+            if (strlen(prop_val) <= len) {
+                /* Overwrite arg with expansion.
+                 *
+                 * For now, only allow an expansion length that
+                 * can fit within the original arg length to
+                 * avoid extra allocations.
+                 * On failure, use original argument.
+                 */
+                strncpy(args[j], prop_val, len + 1);
+            }
+        }
+        par[i] = args[j];
+    }
+
+    par[i] = (char*)0;
+    pid = fork();
+    if (!pid)
+    {
+        if (execv(par[0],par) == -1) {
+            ERROR("cannot exec '%s': %s\n", par[0], strerror(errno));
+        }
+        _exit(1);
+    }
+    else
+    {
+	int rc = 1, fd[2];
+        pthread_t pt;
+
+        /* Create properties service thread to handle any setprop
+           calls within the exec task to speed things up.
+           Ignore errors as even without the service thread,
+           the setprop will still execute and the caller using
+           setprop/bionic will timeout in a short time anyways.
+         */
+        if (pipe2(fd, O_CLOEXEC) != -1) {
+            rc = pthread_create(&pt, NULL, exec_properties_service, (void *)fd[0]);
+            if (rc != 0) {
+                close(fd[0]);
+                close(fd[1]);
+            }
+        }
+
+
+        while(wait(&status)!=pid);
+	
+        if (rc == 0) {
+            close(fd[1]);
+            pthread_join(pt, NULL);
+            close(fd[0]);
+        }
+    }
+
+    return 0;
 }
 
 int do_export(int nargs, char **args)
