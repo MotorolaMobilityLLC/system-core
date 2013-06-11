@@ -78,6 +78,8 @@ typedef enum {
                                           /* An example of remote presentation is Wifi Display */
                                           /*  where a dongle attached to a TV can be used to   */
                                           /*  play the mix captured by this audio source.      */
+    AUDIO_SOURCE_FM_RX               = 9,
+    AUDIO_SOURCE_FM_RX_A2DP          = 10,
     AUDIO_SOURCE_CNT,
     AUDIO_SOURCE_MAX                 = AUDIO_SOURCE_CNT - 1,
     AUDIO_SOURCE_HOTWORD             = 1999, /* A low-priority, preemptible audio source for
@@ -361,6 +363,8 @@ enum {
     AUDIO_DEVICE_OUT_ANC_HEADSET               = 0x10000,
     AUDIO_DEVICE_OUT_ANC_HEADPHONE             = 0x20000,
     AUDIO_DEVICE_OUT_PROXY                     = 0x40000,
+    AUDIO_DEVICE_OUT_FM                        = 0x80000,
+    AUDIO_DEVICE_OUT_FM_TX                     = 0x100000,
     AUDIO_DEVICE_OUT_DEFAULT                   = AUDIO_DEVICE_BIT_DEFAULT,
     AUDIO_DEVICE_OUT_ALL      = (AUDIO_DEVICE_OUT_EARPIECE |
                                  AUDIO_DEVICE_OUT_SPEAKER |
@@ -381,6 +385,8 @@ enum {
                                  AUDIO_DEVICE_OUT_ANC_HEADSET |
                                  AUDIO_DEVICE_OUT_ANC_HEADPHONE |
                                  AUDIO_DEVICE_OUT_PROXY |
+                                 AUDIO_DEVICE_OUT_FM |
+                                 AUDIO_DEVICE_OUT_FM_TX |
                                  AUDIO_DEVICE_OUT_DEFAULT),
     AUDIO_DEVICE_OUT_ALL_A2DP = (AUDIO_DEVICE_OUT_BLUETOOTH_A2DP |
                                  AUDIO_DEVICE_OUT_BLUETOOTH_A2DP_HEADPHONES |
@@ -407,6 +413,8 @@ enum {
     AUDIO_DEVICE_IN_USB_DEVICE            = AUDIO_DEVICE_BIT_IN | 0x1000,
     AUDIO_DEVICE_IN_ANC_HEADSET           = AUDIO_DEVICE_BIT_IN | 0x2000,
     AUDIO_DEVICE_IN_PROXY                 = AUDIO_DEVICE_BIT_IN | 0x4000,
+    AUDIO_DEVICE_IN_FM_RX                 = AUDIO_DEVICE_BIT_IN | 0x8000,
+    AUDIO_DEVICE_IN_FM_RX_A2DP            = AUDIO_DEVICE_BIT_IN | 0x10000,
     AUDIO_DEVICE_IN_DEFAULT               = AUDIO_DEVICE_BIT_IN | AUDIO_DEVICE_BIT_DEFAULT,
 
     AUDIO_DEVICE_IN_ALL     = (AUDIO_DEVICE_IN_COMMUNICATION |
@@ -423,6 +431,8 @@ enum {
                                AUDIO_DEVICE_IN_USB_ACCESSORY |
                                AUDIO_DEVICE_IN_USB_DEVICE |
                                AUDIO_DEVICE_IN_ANC_HEADSET |
+                               AUDIO_DEVICE_IN_FM_RX |
+                               AUDIO_DEVICE_IN_FM_RX_A2DP |
                                AUDIO_DEVICE_IN_PROXY |
                                AUDIO_DEVICE_IN_DEFAULT),
     AUDIO_DEVICE_IN_ALL_SCO = AUDIO_DEVICE_IN_BLUETOOTH_SCO_HEADSET,
