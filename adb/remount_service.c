@@ -21,6 +21,7 @@
 #include <fcntl.h>
 #include <sys/mount.h>
 #include <errno.h>
+#include <cutils/properties.h>
 
 #include "sysdeps.h"
 
@@ -103,16 +104,52 @@ static void write_string(int fd, const char* str)
     writex(fd, str, strlen(str));
 }
 
+/* BEGIN Motorola, eMMC write protect feature */
+int MOT_check_system_is_write_protected(int out)
+{
+    char buf[512];
+    int size;
+    int fd = unix_open("/proc/cmdline", O_RDONLY);
+
+    if (fd < 0)
+        return 0;
+
+    buf[sizeof(buf) - 1] = '\0';
+    size = adb_read(fd, buf, sizeof(buf) - 1);
+    adb_close(fd);
+
+    if (strstr(buf, "write_protect=1") != NULL) {
+        char value[PROPERTY_VALUE_MAX];
+        property_get("ro.boot.secure_hardware", value, "");
+
+        write_string(out, "System folder is write protected. To disable use:\n");
+
+        if (strcmp(value, "1") == 0) {
+            write_string(out, "fastboot oem unlock\n");
+        } else {
+            write_string(out, "fastboot oem wptest disable\n");
+        }
+        return 1;
+    }
+    else if (strstr(buf, "write_protect=0") == NULL)
+        write_string(out, "WARNING: System folder write protect state unknown!\n");
+
+    return 0;
+}
+
 void remount_service(int fd, void *cookie)
 {
-    int ret = remount_system();
+    if (MOT_check_system_is_write_protected(fd) == 0) {
 
-    if (!ret)
-       write_string(fd, "remount succeeded\n");
-    else {
-        char    buffer[200];
-        snprintf(buffer, sizeof(buffer), "remount failed: %s\n", strerror(errno));
-        write_string(fd, buffer);
+        int ret = remount_system();
+
+        if (!ret) {
+            write_string(fd, "remount succeeded\n");
+        } else {
+            char    buffer[200];
+            snprintf(buffer, sizeof(buffer), "remount failed: %s\n", strerror(errno));
+            write_string(fd, buffer);
+        }
     }
 
     adb_close(fd);
