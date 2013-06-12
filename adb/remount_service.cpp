@@ -28,6 +28,7 @@
 #include <unistd.h>
 
 #include <string>
+#include <asm/setup.h>
 
 #include <android-base/properties.h>
 
@@ -114,6 +115,37 @@ static bool remount_partition(int fd, const char* dir) {
     return true;
 }
 
+/* BEGIN Motorola, eMMC write protect feature */
+int MOT_check_system_is_write_protected(int out)
+{
+    char buf[COMMAND_LINE_SIZE];
+    int size;
+    int fd = unix_open("/proc/cmdline", O_RDONLY);
+
+    if (fd < 0)
+        return 0;
+
+    buf[sizeof(buf) - 1] = '\0';
+    size = adb_read(fd, buf, sizeof(buf) - 1);
+    adb_close(fd);
+
+    if (strstr(buf, "write_protect=1") != NULL) {
+        std::string value = android::base::GetProperty("ro.boot.secure_hardware", "");
+        WriteFdExactly(out, "System folder is write protected. To disable use:\n");
+
+        if (value == "1") {
+            WriteFdExactly(out, "fastboot oem unlock\n");
+        } else {
+            WriteFdExactly(out, "fastboot oem wptest disable\n");
+        }
+        return 1;
+    }
+    else if (strstr(buf, "write_protect=0") == NULL)
+        WriteFdExactly(out, "WARNING: System folder write protect state unknown!\n");
+
+    return 0;
+}
+
 void remount_service(int fd, void* cookie) {
     if (getuid() != 0) {
         WriteFdExactly(fd, "Not running as root. Try \"adb root\" first.\n");
@@ -143,9 +175,14 @@ void remount_service(int fd, void* cookie) {
     if (android::base::GetBoolProperty("ro.build.system_root_image", false)) {
         success &= remount_partition(fd, "/");
     } else {
-        success &= remount_partition(fd, "/system");
+        if (MOT_check_system_is_write_protected(fd) == 0)
+            success &= remount_partition(fd, "/system");
+        else
+            success = false;
     }
+
     success &= remount_partition(fd, "/odm");
+
     success &= remount_partition(fd, "/oem");
     success &= remount_partition(fd, "/product");
     success &= remount_partition(fd, "/vendor");
