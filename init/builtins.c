@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-#define _GNU_SOURCE
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -273,7 +272,7 @@ int do_exec(int nargs, char **args)
     int status, i, j;
     char *par[MAX_PARAMETERS];
     char prop_val[PROP_VALUE_MAX];
-    size_t len;
+    int len;
 
     if (nargs > MAX_PARAMETERS)
     {
