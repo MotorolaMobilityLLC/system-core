@@ -270,6 +270,9 @@ int dhcp_do_request(const char *interface,
 
     /* Wait for the daemon to return a result */
     if (wait_for_property(result_prop_name, NULL, wait_time) < 0) {
+        // BEGIN MOT W20079 IKJBDVX-772 mark it so will monitor next time
+        property_set(result_prop_name, "failed");
+        // END MOT IKJBDVX-772
         snprintf(errmsg, sizeof(errmsg), "%s", "Timed out waiting for DHCP to finish");
         return -1;
     }
@@ -508,6 +511,7 @@ int dhcp_do_request_renew(const char *interface,
 
     /* Wait for the daemon to return a result */
     if (wait_for_property(result_prop_name, NULL, 30) < 0) {
+        property_set(result_prop_name, "failed");//MOT W20079 IKJBDVX-772
         snprintf(errmsg, sizeof(errmsg), "%s", "Timed out waiting for DHCP Renew to finish");
         return -1;
     }
