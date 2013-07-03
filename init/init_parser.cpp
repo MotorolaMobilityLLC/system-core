@@ -178,6 +178,7 @@ static int lookup_keyword(const char *s)
         if (!strcmp(s, "estart")) return K_restart;
         if (!strcmp(s, "estorecon")) return K_restorecon;
         if (!strcmp(s, "estorecon_recursive")) return K_restorecon_recursive;
+        if (!strcmp(s, "limit")) return K_rlimit;
         if (!strcmp(s, "mdir")) return K_rmdir;
         if (!strcmp(s, "m")) return K_rm;
         break;
@@ -869,6 +870,25 @@ static void parse_line_service(struct parse_state *state, int nargs, char **args
     case K_critical:
         svc->flags |= SVC_CRITICAL;
         break;
+    case K_rlimit: { /* resource cur max */
+        struct svcrlimitinfo *ri;
+        if (nargs < 3) {
+            parse_error(state, "rlimit option requires resource, cur, max arguments\n");
+            break;
+        }
+        ri = (svcrlimitinfo*) calloc(1, sizeof(*ri));
+        if (!ri) {
+            parse_error(state, "out of memory\n");
+            break;
+        }
+
+        ri->resource = atoi(args[1]);
+        ri->limit.rlim_cur = atoi(args[2]);
+        ri->limit.rlim_max = atoi(args[3]);
+        ri->next = svc->rlimits;
+        svc->rlimits = ri;
+        break;
+    }
     case K_setenv: { /* name value */
         if (nargs < 3) {
             parse_error(state, "setenv option requires name and value arguments\n");
