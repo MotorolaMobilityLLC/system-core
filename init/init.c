@@ -29,6 +29,7 @@
 #include <stdarg.h>
 #include <mtd/mtd-user.h>
 #include <sys/types.h>
+#include <sys/resource.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 
@@ -239,6 +240,7 @@ void service_start(struct service *svc, const char *dynamic_args)
     if (pid == 0) {
         struct socketinfo *si;
         struct svcenvinfo *ei;
+        struct svcrlimitinfo *ri;
         char tmp[32];
         int fd, sz;
 
@@ -262,6 +264,13 @@ void service_start(struct service *svc, const char *dynamic_args)
                                   si->perm, si->uid, si->gid);
             if (s >= 0) {
                 publish_socket(si->name, s);
+            }
+        }
+
+        for (ri = svc->rlimits; ri; ri = ri->next) {
+            if (setrlimit(ri->resource, &ri->limit)) {
+                ERROR("Failed to set pid %d rlimit %d %lu %lu\n",
+                      getpid(), ri->resource, ri->limit.rlim_cur, ri->limit.rlim_max);
             }
         }
 
