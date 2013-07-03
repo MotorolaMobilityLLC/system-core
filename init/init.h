@@ -19,6 +19,7 @@
 
 #include <cutils/list.h>
 
+#include <sys/resource.h>
 #include <sys/stat.h>
 
 void handle_control_message(const char *msg, const char *arg);
@@ -68,6 +69,12 @@ struct svcenvinfo {
     const char *value;
 };
 
+struct svcrlimitinfo {
+    struct svcrlimitinfo *next;
+    int resource;
+    struct rlimit limit;
+};
+
 #define SVC_DISABLED    0x01  /* do not autostart with class */
 #define SVC_ONESHOT     0x02  /* do not restart on exit */
 #define SVC_RUNNING     0x04  /* currently active */
@@ -106,6 +113,7 @@ struct service {
 
     struct socketinfo *sockets;
     struct svcenvinfo *envvars;
+    struct svcrlimitinfo *rlimits;
 
     struct action onrestart;  /* Actions to execute on restart. */
     
