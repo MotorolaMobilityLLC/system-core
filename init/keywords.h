@@ -79,6 +79,7 @@ enum {
     KEYWORD(restart,     COMMAND, 1, do_restart)
     KEYWORD(restorecon,  COMMAND, 1, do_restorecon)
     KEYWORD(restorecon_recursive,  COMMAND, 1, do_restorecon_recursive)
+    KEYWORD(rlimit,      OPTION,  3, 0)
     KEYWORD(rm,          COMMAND, 1, do_rm)
     KEYWORD(rmdir,       COMMAND, 1, do_rmdir)
     KEYWORD(seclabel,    OPTION,  0, 0)
