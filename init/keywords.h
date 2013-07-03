@@ -71,6 +71,7 @@ enum {
     KEYWORD(powerctl,    COMMAND, 1, do_powerctl)
     KEYWORD(restart,     COMMAND, 1, do_restart)
     KEYWORD(restorecon,  COMMAND, 1, do_restorecon)
+    KEYWORD(rlimit,      OPTION,  3, 0)
     KEYWORD(rm,          COMMAND, 1, do_rm)
     KEYWORD(rmdir,       COMMAND, 1, do_rmdir)
     KEYWORD(seclabel,    OPTION,  0, 0)
