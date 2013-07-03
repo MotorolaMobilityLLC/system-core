@@ -513,6 +513,8 @@ service surfaceflinger /system/bin/surfaceflinger
     class main
     user system
     group graphics drmrpc
+    # allow the minimum realtime scheduler priority: RLIMIT_RTPRIO(14)=1
+    rlimit 14 1 1
     onrestart restart zygote
     onrestart setprop sys.sf.restart 1
 
