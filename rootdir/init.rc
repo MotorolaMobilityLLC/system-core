@@ -536,7 +536,9 @@ service drm /system/bin/drmserver
 service media /system/bin/mediaserver
     class main
     user media
-    group audio camera inet net_bt net_bt_admin net_bw_acct drmrpc mediadrm qcom_diag mot_drm mot_tpapi mot_secclkd 
+    group audio camera inet net_bt net_bt_admin net_bw_acct drmrpc mediadrm qcom_diag mot_drm mot_tpapi mot_secclkd
+    # allow the minimum realtime scheduler priority: RLIMIT_RTPRIO(14)=1
+    rlimit 14 4 4
     ioprio rt 4
 
 service bootanim /system/bin/bootanimation
