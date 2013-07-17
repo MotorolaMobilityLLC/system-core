@@ -727,6 +727,25 @@ static inline size_t audio_bytes_per_sample(audio_format_t format)
     return size;
 }
 
+//This enum used for  resource management in 8x10
+#ifdef RESOURCE_MANAGER
+typedef enum {
+       USECASE_PCM_PLAYBACK = 0,
+       USECASE_PCM_RECORDING,
+       USECASE_NON_TUNNEL_DSP_PLAYBACK,
+       USECASE_TUNNEL_DSP_PLAYBACK,
+       USECASE_LPA_PLAYBACK,
+       USECASE_NON_TUNNEL_VIDEO_DSP_PLAYBACK,
+       USECASE_VIDEO_PLAYBACK,
+       USECASE_VIDEO_RECORD,
+       USECASE_VOICE_CALL,
+       USECASE_VOIP_CALL,
+       USECASE_VIDEO_TELEPHONY,
+       USECASE_FM_PLAYBACK,
+       USECASE_ULL,
+} audio_use_case_value_t;
+#endif
+
 __END_DECLS
 
 #endif  // ANDROID_AUDIO_CORE_H

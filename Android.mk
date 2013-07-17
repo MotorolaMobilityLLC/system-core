@@ -15,4 +15,10 @@
 #
 LOCAL_PATH := $(my-dir)
 
+# RESOURCE MANAGER
+ifeq ($(strip $(BOARD_USES_RESOURCE_MANAGER)),true)
+LOCAL_CFLAGS += -DRESOURCE_MANAGER
+endif
+# RESOURCE MANAGER
+
 include $(call first-makefiles-under,$(LOCAL_PATH))
