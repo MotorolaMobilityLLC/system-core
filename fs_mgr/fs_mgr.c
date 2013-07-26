@@ -468,9 +468,9 @@ int fs_mgr_mount_all(struct fstab *fstab)
                    fstab->recs[attempted_idx].blk_device, fstab->recs[attempted_idx].mount_point,
                    fstab->recs[attempted_idx].fs_options, strerror(mount_errno));
             ++error_count;
-            if (!strncmp(fstab[i].mnt_point, "/data", 5)) {
+            if (!strncmp(fstab->recs[i].mount_point, "/data", 5)) {
                 int rc;
-                rc = recover_userdata(fstab[i].type, fstab[i].blk_dev, fstab[i].mnt_point);
+                rc = recover_userdata(fstab->recs[i].fs_type, fstab->recs[i].blk_device, fstab->recs[i].mount_point);
                 if (!rc) {
                     /* Userdata recovery succeeded, retry this mount. */
                     i--;
