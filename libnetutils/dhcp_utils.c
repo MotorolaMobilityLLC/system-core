@@ -406,8 +406,7 @@ int dhcp_get_state(const char *interface,
     if (result) {
         char pv_ipaddr[PROPERTY_VALUE_MAX];
         char pv_gateway[PROPERTY_VALUE_MAX];
-        char pv_dns1[PROPERTY_VALUE_MAX];
-        char pv_dns2[PROPERTY_VALUE_MAX];
+        char *pv_dns[2];
         char pv_server[PROPERTY_VALUE_MAX];
         char prop_name[PROPERTY_KEY_MAX];
         char prop_value[PROPERTY_VALUE_MAX];
@@ -417,7 +416,7 @@ int dhcp_get_state(const char *interface,
         struct in_addr addr;
 
         int rv = fill_ip_info(interface, pv_ipaddr, pv_gateway,
-                     &prefixLength, pv_dns1, pv_dns2, pv_server, lease, prop_vendorInfo,
+                     &prefixLength, pv_dns, pv_server, lease, prop_vendorInfo,
                      domain);
         if (rv != -1) {
             *ipaddr = *gateway = *server = 0;
@@ -428,10 +427,10 @@ int dhcp_get_state(const char *interface,
             if (inet_aton(pv_gateway, &addr)) {
                 *gateway = addr.s_addr;
             }
-            if (inet_aton(pv_dns1, &addr)) {
+            if (inet_aton(pv_dns[1], &addr)) {
                 *dns1= addr.s_addr;
             }
-            if (inet_aton(pv_dns2, &addr)) {
+            if (inet_aton(pv_dns[2], &addr)) {
                 *dns2= addr.s_addr;
             }
             if (inet_aton(pv_server, &addr)) {
