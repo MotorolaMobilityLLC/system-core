@@ -306,8 +306,6 @@ static const struct fs_path_config android_files[] = {
     { 00640, AID_ROOT,      AID_SHELL,     0, "fstab.*" },
     { 00400, AID_ROOT,      AID_ROOT,      0, "module_hashes" },
     { 00644, AID_ROOT,      AID_ROOT,      0, 0 },
-||||||| parent of 98280b0... IKJB42MAIN-7271 Make sudo setuid-root
->>>>>>> 98280b0... IKJB42MAIN-7271 Make sudo setuid-root
 };
 
 static inline void fs_config(const char *path, int dir,
