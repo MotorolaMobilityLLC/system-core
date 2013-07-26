@@ -32,6 +32,7 @@
 #include <errno.h>    // errno
 #include <cutils/partition_utils.h> // partition_wiped()
 #include <sys/mount.h>// BLKGETSIZE
+#include "ext4_utils.h"
 #include "make_ext4fs.h" // make_ext4fs
 #include "fs_mgr_priv.h" // ERROR
 /* Avoid redefinition warnings */
