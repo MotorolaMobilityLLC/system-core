@@ -280,6 +280,7 @@ typedef enum {
     AUDIO_FORMAT_DTS_LBR             = 0x15000000UL,
     AUDIO_FORMAT_AMR_WB_PLUS         = 0x16000000UL,
     AUDIO_FORMAT_MP2                 = 0x17000000UL,
+    AUDIO_FORMAT_EVRCNW              = 0x18000000UL,
     AUDIO_FORMAT_MAIN_MASK           = 0xFF000000UL,
     AUDIO_FORMAT_SUB_MASK            = 0x00FFFFFFUL,
 
@@ -1404,6 +1405,7 @@ static inline bool audio_is_valid_format(audio_format_t format)
     case AUDIO_FORMAT_DTS_LBR:
     case AUDIO_FORMAT_AMR_WB_PLUS:
     case AUDIO_FORMAT_MP2:
+    case AUDIO_FORMAT_EVRCNW:
         return true;
     default:
         return false;
@@ -1420,6 +1422,7 @@ static inline bool audio_is_supported_compressed(audio_format_t format)
     if (format == AUDIO_FORMAT_AMR_NB ||
         format == AUDIO_FORMAT_AMR_WB ||
         format == AUDIO_FORMAT_EVRC ||
+        format == AUDIO_FORMAT_EVRCNW ||
         format == AUDIO_FORMAT_QCELP ||
         format == AUDIO_FORMAT_AAC)
         return true;
