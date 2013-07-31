@@ -98,6 +98,12 @@ enum {
     CAMERA_MSG_ALL_MSGS = 0xFFFF
 };
 
+/** meta data type in CameraMetaDataCallback */
+enum {
+    CAMERA_META_DATA_ASD = 0x001,    //ASD data
+    CAMERA_META_DATA_FD = 0x002,     //FD/FP data
+};
+
 /** cmdType in sendCommand functions */
 enum {
     CAMERA_CMD_START_SMOOTH_ZOOM = 1,
