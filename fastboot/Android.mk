@@ -23,7 +23,7 @@ LOCAL_C_INCLUDES := $(LOCAL_PATH)/../mkbootimg \
   $(LOCAL_PATH)/../../extras/f2fs_utils
 LOCAL_SRC_FILES := protocol.c engine.c bootimg_utils.cpp fastboot.cpp util.c fs.c
 LOCAL_MODULE := fastboot
-LOCAL_MODULE_TAGS := debug
+LOCAL_MODULE_TAGS := debug optional
 LOCAL_CONLYFLAGS += -std=gnu99
 LOCAL_CFLAGS += -Wall -Wextra -Werror -Wunreachable-code
 
