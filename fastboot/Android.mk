@@ -21,7 +21,7 @@ LOCAL_C_INCLUDES := $(LOCAL_PATH)/../mkbootimg \
   $(LOCAL_PATH)/../../extras/f2fs_utils
 LOCAL_SRC_FILES := protocol.c engine.c bootimg.c fastboot.c util.c fs.c
 LOCAL_MODULE := fastboot
-LOCAL_MODULE_TAGS := debug
+LOCAL_MODULE_TAGS := debug optional
 LOCAL_CFLAGS += -std=gnu99 -Werror
 
 ifeq ($(HOST_OS),linux)
