@@ -36,7 +36,7 @@ LOCAL_SRC_FILES := \
     util.cpp \
 
 LOCAL_MODULE := fastboot
-LOCAL_MODULE_TAGS := debug
+LOCAL_MODULE_TAGS := debug optional
 LOCAL_MODULE_HOST_OS := darwin linux windows
 LOCAL_CONLYFLAGS += -std=gnu99
 LOCAL_CFLAGS += -Wall -Wextra -Werror -Wunreachable-code
