@@ -37,7 +37,7 @@ LOCAL_SRC_FILES := \
     util.cpp \
 
 LOCAL_MODULE := fastboot
-LOCAL_MODULE_TAGS := debug
+LOCAL_MODULE_TAGS := debug optional
 LOCAL_MODULE_HOST_OS := darwin linux windows
 LOCAL_CFLAGS += -Wall -Wextra -Werror -Wunreachable-code
 LOCAL_REQUIRED_MODULES := mke2fs make_f2fs
