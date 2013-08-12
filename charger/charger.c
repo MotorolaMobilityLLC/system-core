@@ -66,6 +66,8 @@
 
 #define BATTERY_FULL_THRESH     95
 
+#define BACKLIGHT_TOGGLE_PATH "/sys/class/leds/lcd-backlight/brightness"
+
 #define LAST_KMSG_PATH          "/proc/last_kmsg"
 #define LAST_KMSG_MAX_SZ        (32 * 1024)
 
@@ -185,6 +187,36 @@ static struct charger charger_state = {
 static int char_width;
 static int char_height;
 
+/*On certain targets the FBIOBLANK ioctl does not turn off the
+ * backlight. In those cases we need to manually toggle it on/off
+ */
+static int set_backlight(int toggle)
+{
+        int fd;
+        char buffer[10];
+
+        memset(buffer, '\0', sizeof(buffer));
+        fd = open(BACKLIGHT_TOGGLE_PATH, O_RDWR);
+        if (fd < 0) {
+                LOGE("Could not open backlight node : %s", strerror(errno));
+                goto cleanup;
+        }
+        if (toggle) {
+                LOGI("Enabling backlight");
+                snprintf(buffer, sizeof(int), "%d\n", 100);
+        } else {
+                LOGI("Disabling backlight");
+                snprintf(buffer, sizeof(int), "%d\n", 0);
+        }
+        if (write(fd, buffer,strlen(buffer)) < 0) {
+                LOGE("Could not write to backlight node : %s", strerror(errno));
+                goto cleanup;
+        }
+cleanup:
+        if (fd >= 0)
+                close(fd);
+        return 0;
+}
 /* current time in milliseconds */
 static int64_t curr_time_ms(void)
 {
@@ -719,6 +751,7 @@ static void update_screen_state(struct charger *charger, int64_t now)
         reset_animation(batt_anim);
         charger->next_screen_transition = -1;
         gr_fb_blank(true);
+        set_backlight(false);
         LOGV("[%lld] animation done\n", now);
         if (charger->num_supplies_online > 0)
             request_suspend(true);
@@ -752,8 +785,11 @@ static void update_screen_state(struct charger *charger, int64_t now)
     }
 
     /* unblank the screen  on first cycle */
-    if (batt_anim->cur_cycle == 0)
+    if (batt_anim->cur_cycle == 0) {
         gr_fb_blank(false);
+        set_backlight(true);
+    }
+
 
     /* draw the new frame (@ cur_frame) */
     redraw_screen(charger);
@@ -1017,6 +1053,7 @@ int main(int argc, char **argv)
 
 #ifndef CHARGER_DISABLE_INIT_BLANK
     gr_fb_blank(true);
+    set_backlight(false);
 #endif
 
     charger->next_screen_transition = now - 1;
