@@ -104,6 +104,7 @@ enum {
 enum {
     CAMERA_META_DATA_ASD = 0x001,    //ASD data
     CAMERA_META_DATA_FD = 0x002,     //FD/FP data
+    CAMERA_META_DATA_HDR = 0x003,    //Auto HDR data
 };
 
 /** cmdType in sendCommand functions */
