@@ -808,11 +808,11 @@ static void process_firmware_event(struct uevent *uevent)
 
     l = asprintf(&file2, FIRMWARE_DIR2"/%s", uevent->firmware);
     if (l == -1)
-        goto data_free_out;
+        goto file1_free_out;
 
     l = asprintf(&file3, FIRMWARE_DIR3"/%s", uevent->firmware);
     if (l == -1)
-        goto data_free_out;
+        goto file2_free_out;
 
     loading_fd = open(loading, O_WRONLY);
     if(loading_fd < 0)
@@ -855,9 +855,11 @@ data_close_out:
 loading_close_out:
     close(loading_fd);
 file_free_out:
-    free(file1);
-    free(file2);
     free(file3);
+file2_free_out:
+    free(file2);
+file1_free_out:
+    free(file1);
 data_free_out:
     free(data);
 loading_free_out:
