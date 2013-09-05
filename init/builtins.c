@@ -509,6 +509,7 @@ int do_mount(int nargs, char **args)
             sprintf(tmp, "/dev/block/loop%d", n);
             loop = open(tmp, mode);
             if (loop < 0) {
+                close(fd);
                 return -1;
             }
 
