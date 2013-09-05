@@ -436,6 +436,13 @@ int fs_mgr_mount_all(struct fstab *fstab)
                    "%s at %s options: %s error: %s\n",
                    fstab->recs[attempted_idx].blk_device, fstab->recs[attempted_idx].mount_point,
                    fstab->recs[attempted_idx].fs_options, strerror(mount_errno));
+            if (!strncmp(fstab->recs[attempted_idx].mount_point, "/data", 5)) {
+                int rc;
+                rc = recover_userdata(fstab->recs[attempted_idx].fs_type, fstab->recs[attempted_idx].blk_device, fstab->recs[attempted_idx].mount_point);
+                if (rc) {
+                    ERROR("userdata format failed.\n");
+                }
+            }
             ++error_count;
             continue;
         }
