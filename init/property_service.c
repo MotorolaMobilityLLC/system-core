@@ -96,6 +96,10 @@ struct {
     { "persist.service.bdroid.", AID_BLUETOOTH,   0 },
     { "selinux."         , AID_SYSTEM,   0 },
     { "tcmd.",            AID_MOT_TCMD, AID_MOT_WHISPER },
+    { "persist.sprint.dm", AID_SPRINT_EXTENSION, 0}, // a21739, IKASANTISPRINT-517
+    { "media.proxy.",     AID_RADIO, AID_RADIO }, // w19837, IKASANTISPRINT-59,Sprint TV support
+    { "slate.keyevent",   AID_SYSTEM,   0 }, // fsk050, IKASANTISPRINT-207,slate suport
+    { "slate.penevent",   AID_SYSTEM,   0 }, // fsk050, IKASANTISPRINT-207,slate suport
     { NULL, 0, 0 }
 };
 

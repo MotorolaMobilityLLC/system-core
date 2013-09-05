@@ -96,6 +96,12 @@ LOCAL_SHARED_LIBRARIES := \
 	libusbhost \
 	libselinux
 
+#BEGIN Motorola, xdkg47, 11-05-2012, IKMAINJB-6081/support property blacklist for Sprint TV
+ifeq ($(PRODUCT_HAVE_HTTP_RTSP_PROXY), true)
+LOCAL_CFLAGS += -DENABLE_BLACKLIST
+endif
+#END IKMAINJB-6081
+
 LOCAL_MODULE := toolbox
 
 # Including this will define $(intermediates).
