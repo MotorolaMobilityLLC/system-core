@@ -76,6 +76,7 @@ struct {
     { "net.",             AID_SYSTEM,   0 },
     { "dev.",             AID_SYSTEM,   0 },
     { "runtime.",         AID_SYSTEM,   0 },
+    { "hw.whisper",       AID_MOT_WHISPER, 0 },
     { "hw.",              AID_SYSTEM,   0 },
     { "sys.",             AID_SYSTEM,   0 },
     { "sys.powerctl",     AID_SHELL,    0 },
@@ -94,6 +95,7 @@ struct {
     { "persist.security.", AID_SYSTEM,   0 },
     { "persist.service.bdroid.", AID_BLUETOOTH,   0 },
     { "selinux."         , AID_SYSTEM,   0 },
+    { "tcmd.",            AID_MOT_TCMD, AID_MOT_WHISPER },
     { NULL, 0, 0 }
 };
 
