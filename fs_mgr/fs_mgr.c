@@ -35,7 +35,7 @@
 #include <cutils/partition_utils.h>
 #include <cutils/properties.h>
 #include <logwrap/logwrap.h>
-
+#include "recover_userdata.h"
 #include "mincrypt/rsa.h"
 #include "mincrypt/sha.h"
 #include "mincrypt/sha256.h"
