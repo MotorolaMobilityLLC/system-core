@@ -110,6 +110,7 @@
 #define AID_MOT_WHISPER   9009  /* Whisper Protocol access */
 #define AID_MOT_CAIF      9010  /* can create CAIF sockets */
 #define AID_MOT_DLNA      9011  /*DLNA native */
+#define AID_SPRINT_EXTENSION 9013  /* IKASANTISPRINT-149 sprint extension service */
 
 #define AID_EVERYBODY     9997  /* shared between all apps in the same profile */
 #define AID_MISC          9998  /* access to misc storage */
@@ -213,6 +214,7 @@ static const struct android_id_info android_ids[] = {
     { "mot_whisper",	AID_MOT_WHISPER, },
     { "mot_caif",	AID_MOT_CAIF, },
     { "mot_dlna",	AID_MOT_DLNA, },
+    { "sprint_extension", AID_SPRINT_EXTENSION, },
 };
 
 #define android_id_count \
