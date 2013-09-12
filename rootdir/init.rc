@@ -505,12 +505,12 @@ service zygote /system/bin/app_process -Xzygote /system/bin --zygote --start-sys
 service drm /system/bin/drmserver
     class main
     user drm
-    group drm system inet drmrpc
+    group drm system inet drmrpc mot_drm mot_tpapi mot_secclkd
 
 service media /system/bin/mediaserver
     class main
     user media
-    group audio camera inet net_bt net_bt_admin net_bw_acct drmrpc mediadrm
+    group audio camera inet net_bt net_bt_admin net_bw_acct drmrpc mediadrm qcom_diag mot_drm mot_tpapi mot_secclkd
     ioprio rt 4
 
 service bootanim /system/bin/bootanimation
