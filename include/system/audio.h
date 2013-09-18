@@ -394,7 +394,14 @@ typedef enum {
     AUDIO_OUTPUT_FLAG_DEEP_BUFFER = 0x8, // use deep audio buffers
     AUDIO_OUTPUT_FLAG_COMPRESS_OFFLOAD = 0x10,  // offload playback of compressed
                                                 // streams to hardware codec
-    AUDIO_OUTPUT_FLAG_NON_BLOCKING = 0x20 // use non-blocking write
+    AUDIO_OUTPUT_FLAG_NON_BLOCKING = 0x20, // use non-blocking write
+//QCOM Flags
+    AUDIO_OUTPUT_FLAG_LPA = 0x1000,      // use LPA
+    AUDIO_OUTPUT_FLAG_TUNNEL = 0x2000,   // use Tunnel
+    AUDIO_OUTPUT_FLAG_VOIP_RX = 0x4000,  // use this flag in combination with DIRECT to
+                                         // indicate HAL to activate EC & NS
+                                         // path for VOIP calls
+    AUDIO_OUTPUT_FLAG_INCALL_MUSIC = 0x8000 //use this flag for incall music delivery
 } audio_output_flags_t;
 
 /* The audio input flags are analogous to audio output flags.
