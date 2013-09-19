@@ -70,7 +70,6 @@ static int   bootchart_count;
 static char console[32];
 static char bootmode[32];
 static char baseband[32];
-static char carrier[32];
 static char hardware[32];
 static unsigned revision = 0;
 static char qemu[32];
@@ -863,10 +862,6 @@ static void export_kernel_boot_props(void)
     if (ret)
         strlcpy(baseband, tmp, sizeof(baseband));
 
-    ret = property_get("ro.boot.carrier", tmp);
-    if (ret)
-        strlcpy(carrier, tmp, sizeof(carrier));
-
     /* TODO: these are obsolete. We should delete them */
     property_set("ro.factorytest", "0");
 }
@@ -1093,6 +1088,7 @@ int main(int argc, char **argv)
     bool is_ffbm = false;
     char product[32]; /* IKKRNBSP-1013, 3/13/2012, jcarlyle */
     unsigned int local_revision = 0; /* IKKRNBSP-1013, 3/13/2012, jcarlyle */
+    char carrier[PROP_VALUE_MAX];
 
     if (!strcmp(basename(argv[0]), "ueventd"))
         return ueventd_main(argc, argv);
@@ -1188,9 +1184,10 @@ int main(int argc, char **argv)
         }
     }
 
-    /* If androidboot.carrier is set, check for a carrier-specific
-     * initialization and red if present. */
-    if (carrier[0]) {
+    /* If androidboot.carrier is set or if ro.carrier is
+     * defined in the default build properties, check for a carrier-specific
+     * initialization and read if present. */
+    if (property_get("ro.carrier", carrier)) {
         snprintf(tmp, sizeof(tmp), "/init.%s.rc", carrier);
         if (access(tmp, R_OK) == 0) {
             INFO("Reading carrier [%s] specific config file", carrier);
