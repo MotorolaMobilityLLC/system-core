@@ -140,6 +140,7 @@ struct {
     { "slate.penevent",   AID_SYSTEM,   0 }, // fsk050, IKASANTISPRINT-207,slate suport
     { "persist.mot.proximity.", AID_RADIO, 0 },
     { "persist.tcmd.", AID_MOT_TCMD, AID_SYSTEM },
+    { "persist.camera.", AID_MEDIA, 0 }, // e13470, IKXREL1KK-397
     { NULL, 0, 0 }
 };
 
