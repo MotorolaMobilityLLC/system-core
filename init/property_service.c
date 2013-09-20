@@ -156,6 +156,7 @@ struct {
     { "dumpstate", AID_RADIO, 0 },       //IKJBXLINE-4714
     { "bugreport", AID_LOG, 0},
     { "ril-daemon",AID_RADIO, AID_RADIO },
+    { "ril-daemon1", AID_RADIO, 0 },
      {NULL, 0, 0 }
 };
 
