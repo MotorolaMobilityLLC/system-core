@@ -132,6 +132,10 @@ struct {
     { "tcmd.",            AID_MOT_TCMD, AID_MOT_WHISPER },
     { "mot.backup_restore.", AID_MOT_TCMD, 0},
     { "persist.atvc.",    AID_MOT_ATVC,  0 },
+    { "persist.sprint.dm", AID_SPRINT_EXTENSION, 0}, // a21739, IKASANTISPRINT-517
+    { "media.proxy.",     AID_RADIO, AID_RADIO }, // w19837, IKASANTISPRINT-59,Sprint TV support
+    { "slate.keyevent",   AID_SYSTEM,   0 }, // fsk050, IKASANTISPRINT-207,slate suport
+    { "slate.penevent",   AID_SYSTEM,   0 }, // fsk050, IKASANTISPRINT-207,slate suport
     { NULL, 0, 0 }
 };
 
