@@ -475,13 +475,13 @@ int Looper::removeFd(int fd) {
             return 0;
         }
 
+        mRequests.removeItemsAt(requestIndex); // Motorola, a20175, 2012/11/29, IKJBREL2-1263
+
         int epollResult = epoll_ctl(mEpollFd, EPOLL_CTL_DEL, fd, NULL);
         if (epollResult < 0) {
             ALOGE("Error removing epoll events for fd %d, errno=%d", fd, errno);
             return -1;
         }
-
-        mRequests.removeItemsAt(requestIndex);
     } // release lock
     return 1;
 }
