@@ -65,6 +65,12 @@ enum {
      * be allowed to use this level */
     ANDROID_PRIORITY_HIGHEST        = -20,
 
+    // BEGIN Motorola, IKJBXLINE-9555, rknize2, 05/10/2013
+    /* Because of the way Android munges the policy with the priority, handle
+     * RT as a special case. Actual RT priority is set using a different API */
+    ANDROID_PRIORITY_REALTIME       = -21,
+    // END Motorola, IKJBXLINE-9555
+
     ANDROID_PRIORITY_DEFAULT        = ANDROID_PRIORITY_NORMAL,
     ANDROID_PRIORITY_MORE_FAVORABLE = -1,
     ANDROID_PRIORITY_LESS_FAVORABLE = +1,
