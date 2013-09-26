@@ -9,7 +9,6 @@ on boot
     chown system system /sys/kernel/debug/tracing
     chown system system /sys/kernel/debug/tracing/tracing_on
     chown system system /sys/kernel/debug/tracing/trace_clock
-    chown system system /sys/kernel/debug/tracing/trace_marker
     chown system system /sys/kernel/debug/tracing/buffer_size_kb
     chown system system /sys/kernel/debug/tracing/options/overwrite
     chown system system /sys/kernel/debug/tracing/events
@@ -26,7 +25,6 @@ on boot
     chmod 0770 /sys/kernel/debug/tracing
     chmod 0660 /sys/kernel/debug/tracing/tracing_on
     chmod 0664 /sys/kernel/debug/tracing/trace_clock
-    chmod 0220 /sys/kernel/debug/tracing/trace_marker
     chmod 0664 /sys/kernel/debug/tracing/buffer_size_kb
     chmod 0664 /sys/kernel/debug/tracing/options/overwrite
     chmod 0770 /sys/kernel/debug/tracing/events
