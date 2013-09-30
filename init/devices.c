@@ -52,6 +52,7 @@
 #define FIRMWARE_DIR3   "/firmware/image"
 
 extern struct selabel_handle *sehandle;
+extern char bootdevice[32];
 
 static int device_fd = -1;
 
@@ -507,6 +508,10 @@ static char **parse_platform_block_device(struct uevent *uevent)
         link_num++;
     else
         links[link_num] = NULL;
+
+    if (!strncmp(device, bootdevice, sizeof(bootdevice))) {
+        make_link(link_path, "/dev/block/bootdevice");
+    }
 
     return links;
 }
