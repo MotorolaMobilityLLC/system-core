@@ -103,6 +103,8 @@
 namespace android {
 namespace init {
 
+std::string boot_device;
+
 class ColdBoot {
   public:
     ColdBoot(UeventListener& uevent_listener, DeviceHandler& device_handler)
@@ -240,6 +242,8 @@ DeviceHandler CreateDeviceHandler() {
      */
     std::string hardware = android::base::GetProperty("ro.hardware", "");
     parser.ParseConfig("/ueventd." + hardware + ".rc");
+
+    boot_device = android::base::GetProperty("ro.boot.bootdevice", "");
 
     return DeviceHandler(std::move(dev_permissions), std::move(sysfs_permissions),
                          std::move(subsystems), true);
