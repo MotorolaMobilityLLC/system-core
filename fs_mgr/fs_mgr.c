@@ -55,12 +55,15 @@
 
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(*(a)))
 
+#define CRYPT_KEY_IN_FOOTER "footer"
+#define CRYPT_FOOTER_OFFSET 0x4000
+#define CRYPT_MAGIC         0xD0B5B1C4
+
 #define MAX_MOUNT_RETRIES 2
 
 #define IS_USERDATA(rec) (!strncmp((rec)->mount_point, "/data", 5))
 #define IS_CACHE(rec) (!strncmp((rec)->mount_point, "/cache", 6))
 #define IS_FORMATTABLE(rec) (IS_USERDATA(rec) || IS_CACHE(rec))
-
 
 /*
  * gettime() - returns the time in seconds of the system's monotonic clock or
@@ -346,9 +349,57 @@ static int mount_with_alternatives(struct fstab *fstab, int start_idx, int *end_
  * first successful mount.
  * Returns -1 on error, and  FS_MGR_MNTALL_* otherwise.
  */
+static int partition_encrypted(struct fstab_rec *fstab_entry)
+{
+    int fd = -1;
+    struct stat statbuf;
+    unsigned int sectors;
+    off64_t offset;
+    __le32 crypt_magic = 0;
+    int ret = 0;
+
+    if (!(fstab_entry->fs_mgr_flags & MF_CRYPT))
+        return 0;
+
+    if (fstab_entry->key_loc[0] == '/') {
+        if ((fd = open(fstab_entry->key_loc, O_RDWR)) < 0) {
+            goto out;
+        }
+    } else if (!strcmp(fstab_entry->key_loc, CRYPT_KEY_IN_FOOTER)) {
+        if ((fd = open(fstab_entry->blk_device, O_RDWR)) < 0) {
+            goto out;
+        }
+        if ((ioctl(fd, BLKGETSIZE, &sectors)) == -1) {
+            goto out;
+        }
+        offset = ((off64_t)sectors * 512) - CRYPT_FOOTER_OFFSET;
+        if (lseek64(fd, offset, SEEK_SET) == -1) {
+            goto out;
+        }
+    } else {
+        goto out;
+    }
+
+    if (read(fd, &crypt_magic, sizeof(crypt_magic)) != sizeof(crypt_magic)) {
+        goto out;
+    }
+    if (crypt_magic != CRYPT_MAGIC) {
+        goto out;
+    }
+
+    /* It's probably encrypted! */
+    ret = 1;
+
+out:
+    if (fd >= 0) {
+        close(fd);
+    }
+    return ret;
+}
+
 int fs_mgr_mount_all(struct fstab *fstab)
 {
-    int i = 0;
+    int i = 0, retry = MAX_MOUNT_RETRIES;
     int encryptable = FS_MGR_MNTALL_DEV_NOT_ENCRYPTED;
     int error_count = 0;
     int mret = -1;
@@ -414,13 +465,13 @@ int fs_mgr_mount_all(struct fstab *fstab)
                 }
             }
             /* Success!  Go get the next one */
+            retry = MAX_MOUNT_RETRIES;
             continue;
         }
 
-
          /*mount failure:  try to format userdata/cache if they are wiped */
         if(mret && mount_errno != EBUSY && mount_errno != EACCES &&
-            partition_wiped(fstab->recs[attempted_idx].blk_device)) {
+            partition_encrypted(&fstab->recs[attempted_idx])) {
 
             if (IS_FORMATTABLE(&fstab->recs[attempted_idx])) {
                 int tabs = 0;
@@ -463,11 +514,27 @@ int fs_mgr_mount_all(struct fstab *fstab)
             }
             encryptable = FS_MGR_MNTALL_DEV_MIGHT_BE_ENCRYPTED;
         } else {
-            ERROR("Failed to mount an un-encryptable or wiped partition on"
-                   "%s at %s options: %s error: %s\n",
-                   fstab->recs[attempted_idx].blk_device, fstab->recs[attempted_idx].mount_point,
-                   fstab->recs[attempted_idx].fs_options, strerror(mount_errno));
-            ++error_count;
+            if (partition_wiped(fstab->recs[attempted_idx].blk_device)) {
+                ERROR("Blank partition on %s for %s\n",
+                        fstab->recs[attempted_idx].blk_device, fstab->recs[attempted_idx].mount_point);
+            } else if (retry > 0) {
+                /* Mount failed, but the device does not appear to be erased
+                 * and encryption is not enabled.  Try again.
+                 */
+                ERROR("Cannot mount filesystem on %s at %s; retrying...\n",
+                        fstab->recs[attempted_idx].blk_device, fstab->recs[attempted_idx].mount_point);
+                retry--;
+                i--;
+                continue;
+            } else {
+                ERROR("Failed to mount an un-encryptable or wiped partition on"
+                       "%s at %s options: %s error: %s\n",
+                       fstab->recs[attempted_idx].blk_device, fstab->recs[attempted_idx].mount_point,
+                       fstab->recs[attempted_idx].fs_options, strerror(mount_errno));
+                       ++error_count;
+            }
+            retry = MAX_MOUNT_RETRIES;
+
             if (!strncmp(fstab->recs[i].mount_point, "/data", 5)) {
                 int rc;
                 rc = recover_userdata(fstab->recs[i].fs_type, fstab->recs[i].blk_device, fstab->recs[i].mount_point);
