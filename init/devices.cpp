@@ -343,6 +343,16 @@ std::vector<std::string> DeviceHandler::GetBlockDeviceSymlinks(const Uevent& uev
     auto last_slash = uevent.path.rfind('/');
     links.emplace_back(link_path + "/" + uevent.path.substr(last_slash + 1));
 
+    if (!boot_device.empty() && (device.find(boot_device) != std:string::npos)) {
+        const std:string bootdevice = "/dev/block/bootdevice";
+        if (mkdir_recursive(Dirname(bootdevice), 0755, sehandle_)) {
+            PLOG(ERROR) << "Failed to create directory " << Dirname(bootdevice);
+        }
+        if (symlink(link_path.c_str(), bootdevice.c_str()) && errno != EEXIST) {
+            PLOG(ERROR) << "Failed to symlink " << link_path << " to " << bootdevice;
+        }
+    } 
+
     return links;
 }
 

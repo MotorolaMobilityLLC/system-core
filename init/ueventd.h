@@ -20,6 +20,8 @@
 namespace android {
 namespace init {
 
+extern std::string boot_device;
+
 int ueventd_main(int argc, char** argv);
 
 }  // namespace init
