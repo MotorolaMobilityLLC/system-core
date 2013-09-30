@@ -59,6 +59,12 @@
 
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(*(a)))
 
+#define CRYPT_KEY_IN_FOOTER "footer"
+#define CRYPT_FOOTER_OFFSET 0x4000
+#define CRYPT_MAGIC         0xD0B5B1C4
+
+#define MAX_MOUNT_RETRIES 2
+
 struct flag_list {
     const char *name;
     unsigned flag;
@@ -570,9 +576,57 @@ static int fs_match(char *in1, char *in2)
     return ret;
 }
 
+static int partition_encrypted(struct fstab_rec *fstab_entry)
+{
+    int fd = -1;
+    struct stat statbuf;
+    unsigned int sectors;
+    off64_t offset;
+    __le32 crypt_magic = 0;
+    int ret = 0;
+
+    if (!(fstab_entry->fs_mgr_flags & MF_CRYPT))
+        return 0;
+
+    if (fstab_entry->key_loc[0] == '/') {
+        if ((fd = open(fstab_entry->key_loc, O_RDWR)) < 0) {
+            goto out;
+        }
+    } else if (!strcmp(fstab_entry->key_loc, CRYPT_KEY_IN_FOOTER)) {
+        if ((fd = open(fstab_entry->blk_device, O_RDWR)) < 0) {
+            goto out;
+        }
+        if ((ioctl(fd, BLKGETSIZE, &sectors)) == -1) {
+            goto out;
+        }
+        offset = ((off64_t)sectors * 512) - CRYPT_FOOTER_OFFSET;
+        if (lseek64(fd, offset, SEEK_SET) == -1) {
+            goto out;
+        }
+    } else {
+        goto out;
+    }
+
+    if (read(fd, &crypt_magic, sizeof(crypt_magic)) != sizeof(crypt_magic)) {
+        goto out;
+    }
+    if (crypt_magic != CRYPT_MAGIC) {
+        goto out;
+    }
+
+    /* It's probably encrypted! */
+    ret = 1;
+
+out:
+    if (fd >= 0) {
+        close(fd);
+    }
+    return ret;
+}
+
 int fs_mgr_mount_all(struct fstab *fstab)
 {
-    int i = 0;
+    int i = 0, retry = MAX_MOUNT_RETRIES;
     int encrypted = 0;
     int ret = -1;
     int mret;
@@ -616,12 +670,13 @@ int fs_mgr_mount_all(struct fstab *fstab)
 
         if (!mret) {
             /* Success!  Go get the next one */
+            retry = MAX_MOUNT_RETRIES;
             continue;
         }
 
         /* mount(2) returned an error, check if it's encrypted and deal with it */
         if ((fstab->recs[i].fs_mgr_flags & MF_CRYPT) &&
-            !partition_wiped(fstab->recs[i].blk_device)) {
+                partition_encrypted(&fstab->recs[i])) {
             /* Need to mount a tmpfs at this mountpoint for now, and set
              * properties that vold will query later for decrypting
              */
@@ -633,8 +688,24 @@ int fs_mgr_mount_all(struct fstab *fstab)
             }
             encrypted = 1;
         } else {
-            ERROR("Cannot mount filesystem on %s at %s\n",
-                    fstab->recs[i].blk_device, fstab->recs[i].mount_point);
+            if (partition_wiped(fstab->recs[i].blk_device)) {
+                ERROR("Blank partition on %s for %s\n",
+                        fstab->recs[i].blk_device, fstab->recs[i].mount_point);
+            } else if (retry > 0) {
+                /* Mount failed, but the device does not appear to be erased
+                 * and encryption is not enabled.  Try again.
+                 */
+                ERROR("Cannot mount filesystem on %s at %s; retrying...\n",
+                        fstab->recs[i].blk_device, fstab->recs[i].mount_point);
+                retry--;
+                i--;
+                continue;
+            } else {
+                ERROR("Cannot mount filesystem on %s at %s\n",
+                        fstab->recs[i].blk_device, fstab->recs[i].mount_point);
+            }
+            retry = MAX_MOUNT_RETRIES;
+
             if (!strncmp(fstab->recs[i].mount_point, "/data", 5)) {
                 int rc;
                 rc = recover_userdata(fstab->recs[i].fs_type, fstab->recs[i].blk_device, fstab->recs[i].mount_point);
@@ -645,8 +716,8 @@ int fs_mgr_mount_all(struct fstab *fstab)
                 } else {
                     ERROR("userdata format failed.\n");
                 }
-           }
-           goto out;
+            }
+            goto out;
         }
     }
 
