@@ -54,6 +54,7 @@
 #include "ueventd_parser.h"
 #include "util.h"
 #include "log.h"
+#include "property_service.h"
 
 #define SYSFS_PREFIX    "/sys"
 static const char *firmware_dirs[] = { "/etc/firmware",
@@ -61,6 +62,8 @@ static const char *firmware_dirs[] = { "/etc/firmware",
                                        "/firmware/image" };
 
 extern struct selabel_handle *sehandle;
+
+extern std::string boot_device;
 
 static android::base::unique_fd device_fd;
 
@@ -526,6 +529,19 @@ err:
     return NULL;
 }
 
+static void make_link_init(const char* oldpath, const char* newpath) {
+  const char* slash = strrchr(newpath, '/');
+  if (!slash) return;
+
+  if (mkdir_recursive(dirname(newpath), 0755)) {
+    PLOG(ERROR) << "Failed to create directory " << dirname(newpath);
+  }
+
+  if (symlink(oldpath, newpath) && errno != EEXIST) {
+    PLOG(ERROR) << "Failed to symlink " << oldpath << " to " << newpath;
+  }
+}
+
 char** get_block_device_symlinks(struct uevent* uevent) {
     const char *device;
     struct platform_node *pdev;
@@ -585,20 +601,12 @@ char** get_block_device_symlinks(struct uevent* uevent) {
     else
         links[link_num] = NULL;
 
+    if (pdev && !boot_device.empty() && strstr(device, boot_device.c_str())) {
+        /* Create bootdevice symlink for platform boot stroage device */
+        make_link_init(link_path, "/dev/block/bootdevice");
+    }
+
     return links;
-}
-
-static void make_link_init(const char* oldpath, const char* newpath) {
-  const char* slash = strrchr(newpath, '/');
-  if (!slash) return;
-
-  if (mkdir_recursive(dirname(newpath), 0755)) {
-    PLOG(ERROR) << "Failed to create directory " << dirname(newpath);
-  }
-
-  if (symlink(oldpath, newpath) && errno != EEXIST) {
-    PLOG(ERROR) << "Failed to symlink " << oldpath << " to " << newpath;
-  }
 }
 
 static void remove_link(const char* oldpath, const char* newpath) {
