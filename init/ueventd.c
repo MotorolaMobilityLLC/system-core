@@ -33,6 +33,7 @@
 
 static char hardware[32];
 static unsigned revision = 0;
+char bootdevice[32];
 
 static void import_kernel_nv(char *name, int in_qemu)
 {
@@ -43,6 +44,10 @@ static void import_kernel_nv(char *name, int in_qemu)
             if (!strcmp(name,"androidboot.hardware"))
             {
                 strlcpy(hardware, value, sizeof(hardware));
+            }
+            else if (!strcmp(name,"androidboot.bootdevice"))
+            {
+                strlcpy(bootdevice, value, sizeof(bootdevice));
             }
         }
     }
