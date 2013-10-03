@@ -77,7 +77,7 @@ extern "C" {
 #if LOG_NDEBUG
 #define ALOGV(...)   ((void)0)
 #else
-#define ALOGV(...) ALOG(LOG_VERBOSE, LOG_TAG, __VA_ARGS__)
+#define ALOGV(...) ((void)ALOG(LOG_VERBOSE, LOG_TAG, __VA_ARGS__))
 #endif
 #endif
 
@@ -89,7 +89,7 @@ extern "C" {
 #else
 #define ALOGV_IF(cond, ...) \
     ( (CONDITION(cond)) \
-    ? ALOG(LOG_VERBOSE, LOG_TAG, __VA_ARGS__) \
+    ? ((void)ALOG(LOG_VERBOSE, LOG_TAG, __VA_ARGS__)) \
     : (void)0 )
 #endif
 #endif
@@ -98,13 +98,13 @@ extern "C" {
  * Simplified macro to send a debug log message using the current LOG_TAG.
  */
 #ifndef ALOGD
-#define ALOGD(...) ALOG(LOG_DEBUG, LOG_TAG, __VA_ARGS__)
+#define ALOGD(...) ((void)ALOG(LOG_DEBUG, LOG_TAG, __VA_ARGS__))
 #endif
 
 #ifndef ALOGD_IF
 #define ALOGD_IF(cond, ...) \
     ( (CONDITION(cond)) \
-    ? ALOG(LOG_DEBUG, LOG_TAG, __VA_ARGS__) \
+    ? ((void)ALOG(LOG_DEBUG, LOG_TAG, __VA_ARGS__)) \
     : (void)0 )
 #endif
 
@@ -112,13 +112,13 @@ extern "C" {
  * Simplified macro to send an info log message using the current LOG_TAG.
  */
 #ifndef ALOGI
-#define ALOGI(...) ALOG(LOG_INFO, LOG_TAG, __VA_ARGS__)
+#define ALOGI(...) ((void)ALOG(LOG_INFO, LOG_TAG, __VA_ARGS__))
 #endif
 
 #ifndef ALOGI_IF
 #define ALOGI_IF(cond, ...) \
     ( (CONDITION(cond)) \
-    ? ALOG(LOG_INFO, LOG_TAG, __VA_ARGS__) \
+    ? ((void)ALOG(LOG_INFO, LOG_TAG, __VA_ARGS__)) \
     : (void)0 )
 #endif
 
@@ -126,13 +126,13 @@ extern "C" {
  * Simplified macro to send a warning log message using the current LOG_TAG.
  */
 #ifndef ALOGW
-#define ALOGW(...) ALOG(LOG_WARN, LOG_TAG, __VA_ARGS__)
+#define ALOGW(...) ((void)ALOG(LOG_WARN, LOG_TAG, __VA_ARGS__))
 #endif
 
 #ifndef ALOGW_IF
 #define ALOGW_IF(cond, ...) \
     ( (CONDITION(cond)) \
-    ? ALOG(LOG_WARN, LOG_TAG, __VA_ARGS__) \
+    ? ((void)ALOG(LOG_WARN, LOG_TAG, __VA_ARGS__)) \
     : (void)0 )
 #endif
 
@@ -140,13 +140,13 @@ extern "C" {
  * Simplified macro to send an error log message using the current LOG_TAG.
  */
 #ifndef ALOGE
-#define ALOGE(...) ALOG(LOG_ERROR, LOG_TAG, __VA_ARGS__)
+#define ALOGE(...) ((void)ALOG(LOG_ERROR, LOG_TAG, __VA_ARGS__))
 #endif
 
 #ifndef ALOGE_IF
 #define ALOGE_IF(cond, ...) \
     ( (CONDITION(cond)) \
-    ? ALOG(LOG_ERROR, LOG_TAG, __VA_ARGS__) \
+    ? ((void)ALOG(LOG_ERROR, LOG_TAG, __VA_ARGS__)) \
     : (void)0 )
 #endif
 
@@ -432,35 +432,18 @@ extern "C" {
 
 /*
  * Log macro that allows you to specify a number for the priority.
- *
- * Since all of the above variations end up here, this is where the lower
- * priority messages can be filtered out. The if statement below can be
- * optimizaed out by the compiler since all of the expressions are
- * constant.
  */
-#ifdef THROTTLE_LOGCAT_SPAM
-#define LOG_LOGGABLE(priority) (priority >= ANDROID_LOG_WARN)
-#else
-#define LOG_LOGGABLE(priority) (1)
-#endif
-
 #ifndef LOG_PRI
-#define LOG_PRI(priority, tag, ...)                                     \
-    ({                                                                  \
-       if (LOG_LOGGABLE(priority))                                      \
-          (void)android_printLog(priority, tag, __VA_ARGS__);           \
-    })
+#define LOG_PRI(priority, tag, ...) \
+    android_printLog(priority, tag, __VA_ARGS__)
 #endif
 
 /*
  * Log macro that allows you to pass in a varargs ("args" is a va_list).
  */
 #ifndef LOG_PRI_VA
-#define LOG_PRI_VA(priority, tag, fmt, args)                            \
-    ({                                                                  \
-        if (LOG_LOGGABLE(priority))                                     \
-            (void)android_vprintLog(priority, NULL, tag, fmt, args);    \
-    })
+#define LOG_PRI_VA(priority, tag, fmt, args) \
+    android_vprintLog(priority, NULL, tag, fmt, args)
 #endif
 
 /*
@@ -549,11 +532,7 @@ typedef enum {
     __android_log_btwrite(tag, type, payload, len)
 
 // TODO: remove these prototypes and their users
-#ifdef THROTTLE_LOGCAT_SPAM
-#define android_testLog(prio, tag) (1)
-#else
 #define android_testLog(prio, tag) (__android_log_loggable((prio), (tag))) /* Motorola are002 2012-08-22, IKJBREL1-2819 */
-#endif
 #define android_writevLog(vec,num) do{}while(0)
 #define android_write1Log(str,len) do{}while (0)
 #define android_setMinPriority(tag, prio) do{}while(0)
