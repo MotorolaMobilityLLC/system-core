@@ -301,10 +301,6 @@ int __android_log_buf_write(int bufID, int prio, const char *tag, const char *ms
     struct iovec vec[3];
     char tmp_tag[32];
 
-#ifdef THROTTLE_LOGCAT_SPAM
-    if (prio < ANDROID_LOG_WARN)
-        return 0;
-#endif
     if (!tag)
         tag = "";
 
@@ -339,10 +335,6 @@ int __android_log_vprint(int prio, const char *tag, const char *fmt, va_list ap)
 {
     char buf[LOG_BUF_SIZE];
 
-#ifdef THROTTLE_LOGCAT_SPAM
-    if (prio < ANDROID_LOG_WARN)
-        return 0;
-#endif
     vsnprintf(buf, LOG_BUF_SIZE, fmt, ap);
 
     return __android_log_write(prio, tag, buf);
@@ -353,10 +345,6 @@ int __android_log_print(int prio, const char *tag, const char *fmt, ...)
     va_list ap;
     char buf[LOG_BUF_SIZE];
 
-#ifdef THROTTLE_LOGCAT_SPAM
-    if (prio < ANDROID_LOG_WARN)
-        return 0;
-#endif
     va_start(ap, fmt);
     vsnprintf(buf, LOG_BUF_SIZE, fmt, ap);
     va_end(ap);
@@ -368,10 +356,6 @@ int __android_log_buf_print(int bufID, int prio, const char *tag, const char *fm
 {
     va_list ap;
     char buf[LOG_BUF_SIZE];
-#ifdef THROTTLE_LOGCAT_SPAM
-    if (prio < ANDROID_LOG_WARN)
-        return 0;
-#endif
 
     va_start(ap, fmt);
     vsnprintf(buf, LOG_BUF_SIZE, fmt, ap);
