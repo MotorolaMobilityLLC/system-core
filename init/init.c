@@ -828,6 +828,7 @@ static void export_kernel_boot_props(void)
         { "ro.boot.device", "ro.hw.device", NULL, },
         { "ro.boot.hwrev", "ro.hw.hwrev", NULL, },
         { "ro.boot.radio", "ro.hw.radio", NULL, },
+        { "ro.boot.selinux", "ro.boot.selinux", "permissive", },
         { "ro.boot.nav_keys", "ro.hw.nav_keys", NULL, },
         { "ro.boot.lcd_density", "ro.sf.lcd_density", NULL, },
         { "ro.boot.modelno", "ro.product.display", NULL, },
