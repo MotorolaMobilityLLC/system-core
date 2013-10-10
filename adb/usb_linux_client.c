@@ -62,6 +62,17 @@ static const struct {
         struct usb_endpoint_descriptor_no_audio source;
         struct usb_endpoint_descriptor_no_audio sink;
     } __attribute__((packed)) fs_descs, hs_descs;
+#ifdef FUNCTIONFS_SS_DESC_MAGIC
+    __le32 ss_magic;
+    __le32 ss_count;
+    struct {
+        struct usb_interface_descriptor intf;
+        struct usb_endpoint_descriptor_no_audio source;
+        struct usb_ss_ep_comp_descriptor source_comp;
+        struct usb_endpoint_descriptor_no_audio sink;
+        struct usb_ss_ep_comp_descriptor sink_comp;
+    } __attribute__((packed)) ss_descs;
+#endif
 } __attribute__((packed)) descriptors = {
     .header = {
         .magic = cpu_to_le32(FUNCTIONFS_DESCRIPTORS_MAGIC),
@@ -121,6 +132,44 @@ static const struct {
             .wMaxPacketSize = MAX_PACKET_SIZE_HS,
         },
     },
+#ifdef FUNCTIONFS_SS_DESC_MAGIC
+    .ss_magic = FUNCTIONFS_SS_DESC_MAGIC,
+    .ss_count = 5,
+    .ss_descs = {
+        .intf = {
+            .bLength = sizeof(descriptors.ss_descs.intf),
+            .bDescriptorType = USB_DT_INTERFACE,
+            .bInterfaceNumber = 0,
+            .bNumEndpoints = 2,
+            .bInterfaceClass = ADB_CLASS,
+            .bInterfaceSubClass = ADB_SUBCLASS,
+            .bInterfaceProtocol = ADB_PROTOCOL,
+            .iInterface = 1, /* first string from the provided table */
+        },
+        .source = {
+            .bLength = sizeof(descriptors.ss_descs.source),
+            .bDescriptorType = USB_DT_ENDPOINT,
+            .bEndpointAddress = 1 | USB_DIR_OUT,
+            .bmAttributes = USB_ENDPOINT_XFER_BULK,
+            .wMaxPacketSize = 1024,
+        },
+        .source_comp = {
+            .bLength = sizeof(descriptors.ss_descs.source_comp),
+            .bDescriptorType = USB_DT_SS_ENDPOINT_COMP,
+        },
+        .sink = {
+            .bLength = sizeof(descriptors.ss_descs.sink),
+            .bDescriptorType = USB_DT_ENDPOINT,
+            .bEndpointAddress = 2 | USB_DIR_IN,
+            .bmAttributes = USB_ENDPOINT_XFER_BULK,
+            .wMaxPacketSize = 1024,
+        },
+        .sink_comp = {
+            .bLength = sizeof(descriptors.ss_descs.sink_comp),
+            .bDescriptorType = USB_DT_SS_ENDPOINT_COMP,
+        },
+    },
+#endif
 };
 
 #define STR_INTERFACE_ "ADB Interface"
