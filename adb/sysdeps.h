@@ -516,6 +516,26 @@ static __inline__ char*  adb_strtok_r(char *str, const char *delim, char **savep
 #undef   strtok_r
 #define  strtok_r  ___xxx_strtok_r
 
+#ifndef __FD_SET
+#define __FD_SET(fd, fdsetp) \
+	(((fd_set *)(fdsetp))->fds_bits[(fd) >> 5] |= (1<<((fd) & 31)))
+#endif
+
+#ifndef __FD_CLR
+#define __FD_CLR(fd, fdsetp) \
+	(((fd_set *)(fdsetp))->fds_bits[(fd) >> 5] &= ~(1<<((fd) & 31)))
+#endif
+
+#ifndef __FD_ISSET
+#define __FD_ISSET(fd, fdsetp) \
+	((((fd_set *)(fdsetp))->fds_bits[(fd) >> 5] & (1<<((fd) & 31))) != 0)
+#endif
+
+#ifndef __FD_ZERO
+#define __FD_ZERO(fdsetp) \
+	(memset (fdsetp, 0, sizeof (*(fd_set *)(fdsetp))))
+#endif
+
 #endif /* !_WIN32 */
 
 #endif /* _ADB_SYSDEPS_H */
