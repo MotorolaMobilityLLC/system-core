@@ -15,7 +15,7 @@ on early-boot
     chown root shell /sys/kernel/debug/tracing/events/power/cpu_idle/enable
     chown root shell /sys/kernel/debug/tracing/events/power/clock_set_rate/enable
     chown root shell /sys/kernel/debug/tracing/events/cpufreq_interactive/enable
-    chown root shell /sys/kernel/debug/tracing/tracing_on
+    chown system shell /sys/kernel/debug/tracing/tracing_on
 
     chmod 0664 /sys/kernel/debug/tracing/trace_clock
     chmod 0664 /sys/kernel/debug/tracing/buffer_size_kb
@@ -28,6 +28,10 @@ on early-boot
     chmod 0664 /sys/kernel/debug/tracing/events/cpufreq_interactive/enable
     chmod 0664 /sys/kernel/debug/tracing/tracing_on
 
-# Allow only the shell group to read and truncate the kernel trace.
-    chown root shell /sys/kernel/debug/tracing/trace
+# Allow the system user and shell group to read and truncate the kernel trace.
+    chown system shell /sys/kernel/debug/tracing/trace
     chmod 0660 /sys/kernel/debug/tracing/trace
+
+# Allow the system user to enable memkill traces
+    chown system root /sys/kernel/debug/tracing/events/memkill/enable
+    chmod 0664 /sys/kernel/debug/tracing/events/memkill/enable
