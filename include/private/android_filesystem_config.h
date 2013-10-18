@@ -112,6 +112,7 @@
 #define AID_MOT_DLNA      9011  /*DLNA native */
 #define AID_SPRINT_EXTENSION 9013  /* IKASANTISPRINT-149 sprint extension service */
 
+#define AID_MOT_DBVC      9014  /* mot_dbvc - This group is used to access DataBlock feature */
 #define AID_EVERYBODY     9997  /* shared between all apps in the same profile */
 #define AID_MISC          9998  /* access to misc storage */
 #define AID_NOBODY        9999
