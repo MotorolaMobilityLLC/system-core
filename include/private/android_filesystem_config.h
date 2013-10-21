@@ -216,6 +216,7 @@ static const struct android_id_info android_ids[] = {
     { "mot_caif",	AID_MOT_CAIF, },
     { "mot_dlna",	AID_MOT_DLNA, },
     { "sprint_extension", AID_SPRINT_EXTENSION, },
+    { "mot_dbvc",      AID_MOT_DBVC, },
 };
 
 #define android_id_count \
