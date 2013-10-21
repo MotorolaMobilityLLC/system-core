@@ -316,6 +316,22 @@ static const struct android_id_info android_ids[] = {
     { "mot_mod",       AID_MOT_MOD, },
     { "mot_shared",    AID_MOT_SHARED, },
     { "mot_common",    AID_MOT_COMMON, },
+
+    { "qcom_diag", AID_QCOM_DIAG, },
+
+    { "mot_accy",	AID_MOT_ACCY, },
+    { "mot_pwric",	AID_MOT_PWRIC, },
+    { "mot_usb",	AID_MOT_USB, },
+    { "mot_drm",	AID_MOT_DRM, },
+    { "mot_tcmd",	AID_MOT_TCMD, },
+    { "mot_sec_rtc",	AID_MOT_SEC_RTC, },
+    { "mot_tombstone",	AID_MOT_TOMBSTONE, },
+    { "mot_tpapi",	AID_MOT_TPAPI, },
+    { "mot_secclkd",	AID_MOT_SECCLKD, },
+    { "mot_whisper",	AID_MOT_WHISPER, },
+    { "mot_caif",	AID_MOT_CAIF, },
+    { "mot_dlna",	AID_MOT_DLNA, },
+    { "mot_dbvc",      AID_MOT_DBVC, },
 };
 
 #define android_id_count \
