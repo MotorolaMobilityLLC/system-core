@@ -92,7 +92,7 @@ static void remount_ro(void)
 
 
     /* Now poll /proc/mounts till it's done */
-    while (!remount_ro_done() && (cnt < 50)) {
+    while (!remount_ro_done() && (cnt < 2400)) {
         usleep(100000);
         cnt++;
     }
