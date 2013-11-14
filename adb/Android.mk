@@ -117,7 +117,7 @@ LOCAL_SRC_FILES := \
 	usb_linux_client.c \
 	log_service.c
 
-ifeq ($(call is-vendor-board-platform,QCOM),true)
+ifneq (,$(filter $(QCOM_BOARD_PLATFORMS),$(TARGET_BOARD_PLATFORM)))
 LOCAL_C_INCLUDES += $(TARGET_OUT_INTERMEDIATES)/KERNEL_OBJ/usr/include
 LOCAL_ADDITIONAL_DEPENDENCIES := $(TARGET_OUT_INTERMEDIATES)/KERNEL_OBJ/usr
 endif
