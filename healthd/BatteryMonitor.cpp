@@ -210,35 +210,59 @@ bool BatteryMonitor::update(void) {
     if (readFromFile(mHealthdConfig->batteryTechnologyPath, buf, SIZE) > 0)
         props.batteryTechnology = String8(buf);
 
-    unsigned int i;
+    // reinitialize the mChargerNames vector everytime there is an update
+    String8 path;
+    DIR* dir = opendir(POWER_SUPPLY_SYSFS_PATH);
+    if (dir == NULL) {
+        KLOG_ERROR(LOG_TAG, "Could not open %s\n", POWER_SUPPLY_SYSFS_PATH);
+    } else {
+        struct dirent* entry;
+        // reconstruct the charger strings
+        mChargerNames.clear();
+        while ((entry = readdir(dir))) {
+            const char* name = entry->d_name;
 
-    for (i = 0; i < mChargerNames.size(); i++) {
-        String8 path;
-        path.appendFormat("%s/%s/online", POWER_SUPPLY_SYSFS_PATH,
-                          mChargerNames[i].string());
+            if (!strcmp(name, ".") || !strcmp(name, ".."))
+                continue;
 
-        if (readFromFile(path, buf, SIZE) > 0) {
-            if (buf[0] != '0') {
+            // Look for "type" file in each subdirectory
+            path.clear();
+            path.appendFormat("%s/%s/type", POWER_SUPPLY_SYSFS_PATH, name);
+            switch(readPowerSupplyType(path)) {
+            case ANDROID_POWER_SUPPLY_TYPE_AC:
+            case ANDROID_POWER_SUPPLY_TYPE_USB:
+            case ANDROID_POWER_SUPPLY_TYPE_WIRELESS:
                 path.clear();
-                path.appendFormat("%s/%s/type", POWER_SUPPLY_SYSFS_PATH,
-                                  mChargerNames[i].string());
-                switch(readPowerSupplyType(path)) {
-                case ANDROID_POWER_SUPPLY_TYPE_AC:
-                    props.chargerAcOnline = true;
-                    break;
-                case ANDROID_POWER_SUPPLY_TYPE_USB:
-                    props.chargerUsbOnline = true;
-                    break;
-                case ANDROID_POWER_SUPPLY_TYPE_WIRELESS:
-                    props.chargerWirelessOnline = true;
-                    break;
-                default:
-                    KLOG_WARNING(LOG_TAG, "%s: Unknown power supply type\n",
-                                 mChargerNames[i].string());
+                path.appendFormat("%s/%s/online", POWER_SUPPLY_SYSFS_PATH, name);
+                if (access(path.string(), R_OK) == 0) {
+                    mChargerNames.add(String8(name));
+                    if (readFromFile(path, buf, SIZE) > 0) {
+                        if (buf[0] != '0') {
+                            path.clear();
+                            path.appendFormat("%s/%s/type", POWER_SUPPLY_SYSFS_PATH,
+                                              name);
+                            switch(readPowerSupplyType(path)) {
+                            case ANDROID_POWER_SUPPLY_TYPE_AC:
+                                props.chargerAcOnline = true;
+                                break;
+                            case ANDROID_POWER_SUPPLY_TYPE_USB:
+                                props.chargerUsbOnline = true;
+                                break;
+                            case ANDROID_POWER_SUPPLY_TYPE_WIRELESS:
+                                props.chargerWirelessOnline = true;
+                                break;
+                            default:
+                                KLOG_WARNING(LOG_TAG, "%s: Unknown power supply type\n",
+                                             name);
+                            }
+                        }
+                    }
                 }
-            }
-        }
-    }
+                break;
+            } //switch
+        } //while
+        closedir(dir);
+    }//else
 
     logthis = !healthd_board_battery_update(&props);
 
