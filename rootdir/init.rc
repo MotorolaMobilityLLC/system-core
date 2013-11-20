@@ -547,7 +547,7 @@ service mtpd /system/bin/mtpd
 service keystore /system/bin/keystore /data/misc/keystore
     class main
     user keystore
-    group keystore drmrpc
+    group keystore drmrpc mot_tpapi
 
 service dumpstate /system/bin/dumpstate -s
     class main
