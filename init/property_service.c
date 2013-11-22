@@ -159,6 +159,8 @@ struct {
     { "bugreport", AID_LOG, 0},
     { "ril-daemon",AID_RADIO, AID_RADIO },
     { "ril-daemon1", AID_RADIO, 0 },
+    { "qmuxd", AID_RADIO, 0 },
+    { "netmgrd", AID_RADIO, 0 },
      {NULL, 0, 0 }
 };
 
