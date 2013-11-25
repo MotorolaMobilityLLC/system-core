@@ -55,10 +55,6 @@
 
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(*(a)))
 
-#define CRYPT_KEY_IN_FOOTER "footer"
-#define CRYPT_FOOTER_OFFSET 0x4000
-#define CRYPT_MAGIC         0xD0B5B1C4
-
 #define MAX_MOUNT_RETRIES 2
 
 #define IS_USERDATA(rec) (!strncmp((rec)->mount_point, "/data", 5))
@@ -93,6 +89,21 @@ static int wait_for_file(const char *filename, int timeout)
         usleep(10000);
 
     return ret;
+}
+
+int update_fallbacks(struct fstab_rec *recs, int index)
+{
+    int i;
+
+    for (i = index - 1; i >= 0; i--) {
+        if (!strcmp(recs[i].mount_point, recs[index].mount_point) &&
+            recs[i].fallback == NULL) {
+            recs[i].fallback = &recs[index];
+            return 1;
+        }
+    }
+
+    return 0;
 }
 
 static void check_fs(char *blk_device, char *fs_type, char *target)
@@ -344,59 +355,6 @@ static int mount_with_alternatives(struct fstab *fstab, int start_idx, int *end_
     return 0;
 }
 
-/* When multiple fstab records share the same mount_point, it will
- * try to mount each one in turn, and ignore any duplicates after a
- * first successful mount.
- * Returns -1 on error, and  FS_MGR_MNTALL_* otherwise.
- */
-static int partition_encrypted(struct fstab_rec *fstab_entry)
-{
-    int fd = -1;
-    struct stat statbuf;
-    unsigned int sectors;
-    off64_t offset;
-    __le32 crypt_magic = 0;
-    int ret = 0;
-
-    if (!(fstab_entry->fs_mgr_flags & MF_CRYPT))
-        return 0;
-
-    if (fstab_entry->key_loc[0] == '/') {
-        if ((fd = open(fstab_entry->key_loc, O_RDWR)) < 0) {
-            goto out;
-        }
-    } else if (!strcmp(fstab_entry->key_loc, CRYPT_KEY_IN_FOOTER)) {
-        if ((fd = open(fstab_entry->blk_device, O_RDWR)) < 0) {
-            goto out;
-        }
-        if ((ioctl(fd, BLKGETSIZE, &sectors)) == -1) {
-            goto out;
-        }
-        offset = ((off64_t)sectors * 512) - CRYPT_FOOTER_OFFSET;
-        if (lseek64(fd, offset, SEEK_SET) == -1) {
-            goto out;
-        }
-    } else {
-        goto out;
-    }
-
-    if (read(fd, &crypt_magic, sizeof(crypt_magic)) != sizeof(crypt_magic)) {
-        goto out;
-    }
-    if (crypt_magic != CRYPT_MAGIC) {
-        goto out;
-    }
-
-    /* It's probably encrypted! */
-    ret = 1;
-
-out:
-    if (fd >= 0) {
-        close(fd);
-    }
-    return ret;
-}
-
 int fs_mgr_mount_all(struct fstab *fstab)
 {
     int i = 0, retry = MAX_MOUNT_RETRIES;
@@ -413,7 +371,7 @@ int fs_mgr_mount_all(struct fstab *fstab)
 
     for (i = 0; i < fstab->num_entries; i++) {
         /* Don't mount entries that are managed by vold */
-        if (fstab->recs[i].fs_mgr_flags & (MF_VOLDMANAGED | MF_RECOVERYONLY)) {
+        if (fstab->recs[i].fs_mgr_flags & (MF_VOLDMANAGED | MF_RECOVERYONLY | MF_DISABLED)) {
             continue;
         }
 
@@ -426,6 +384,13 @@ int fs_mgr_mount_all(struct fstab *fstab)
 
         if (fstab->recs[i].fs_mgr_flags & MF_WAIT) {
             wait_for_file(fstab->recs[i].blk_device, WAIT_TIMEOUT);
+        }
+
+        /* If we have a fallback, see if our FS is there instead of wasting time
+         * trying to mount it. */
+        if (fstab->recs[i].fallback && fs_mgr_identify_fs(&fstab->recs[i]) != 0) {
+            fstab->recs[i].fs_mgr_flags |= MF_DISABLED;
+            continue;
         }
 
         if ((fstab->recs[i].fs_mgr_flags & MF_VERIFY) && device_is_secure()) {
@@ -464,6 +429,10 @@ int fs_mgr_mount_all(struct fstab *fstab)
                     continue;
                 }
             }
+            /* We have a fallback that we don't need, so disable it */
+            if (fstab->recs[attempted_idx].fallback) {
+                fstab->recs[attempted_idx].fallback->fs_mgr_flags |= MF_DISABLED;
+            }
             /* Success!  Go get the next one */
             retry = MAX_MOUNT_RETRIES;
             continue;
@@ -471,7 +440,7 @@ int fs_mgr_mount_all(struct fstab *fstab)
 
          /*mount failure:  try to format userdata/cache if they are wiped */
         if(mret && mount_errno != EBUSY && mount_errno != EACCES &&
-            partition_encrypted(&fstab->recs[attempted_idx])) {
+                fs_mgr_is_partition_encrypted(&fstab->recs[attempted_idx])) {
 
             if (IS_FORMATTABLE(&fstab->recs[attempted_idx])) {
                 int tabs = 0;
@@ -526,6 +495,12 @@ int fs_mgr_mount_all(struct fstab *fstab)
                 retry--;
                 i--;
                 continue;
+            } else if (fstab->recs[i].fallback) {
+                /* We have a fallback, so disable this scenario and try that one. */
+                fstab->recs[i].fs_mgr_flags |= MF_DISABLED;
+                ERROR("Cannot mount filesystem on %s at %s; trying fallback\n",
+                        fstab->recs[i].blk_device, fstab->recs[i].mount_point);
+                continue;
             } else {
                 ERROR("Failed to mount an un-encryptable or wiped partition on"
                        "%s at %s options: %s error: %s\n",
@@ -537,7 +512,7 @@ int fs_mgr_mount_all(struct fstab *fstab)
 
             if (!strncmp(fstab->recs[i].mount_point, "/data", 5)) {
                 int rc;
-                rc = recover_userdata(fstab->recs[i].fs_type, fstab->recs[i].blk_device, fstab->recs[i].mount_point);
+                rc = fs_mgr_do_format(&fstab->recs[i]);
                 if (!rc) {
                     /* Userdata recovery succeeded, retry this mount. */
                     i--;
@@ -580,7 +555,7 @@ int fs_mgr_do_mount(struct fstab *fstab, char *n_name, char *n_blk_device,
             continue;
         }
 
-        /* We found our match */
+        /* We found our match (we ignore MF_DISABLED) */
         /* If this swap or a raw partition, report an error */
         if (!strcmp(fstab->recs[i].fs_type, "swap") ||
             !strcmp(fstab->recs[i].fs_type, "emmc") ||
@@ -619,8 +594,17 @@ int fs_mgr_do_mount(struct fstab *fstab, char *n_name, char *n_blk_device,
         if (__mount(n_blk_device, m, &fstab->recs[i])) {
             if (!first_mount_errno) first_mount_errno = errno;
             mount_errors++;
+            if (fstab->recs[i].fallback) {
+                /* We have a fallback, so disable this one and pray */
+                fstab->recs[i].fs_mgr_flags |= MF_DISABLED;
+                ERROR("Cannot mount filesystem on %s at %s as %s; trying fallback\n",
+                        n_blk_device, m, fstab->recs[i].fs_type);
+                continue;
+            }
             continue;
         } else {
+            /* Pre-decryption pass might have set this */
+            fstab->recs[i].fs_mgr_flags &= ~MF_DISABLED;
             ret = 0;
             goto out;
         }
@@ -779,6 +763,9 @@ int fs_mgr_get_crypt_info(struct fstab *fstab, char *key_loc, char *real_blk_dev
 
     /* Look for the encryptable partition to find the data */
     for (i = 0; i < fstab->num_entries; i++) {
+        if (fstab->recs[i].fs_mgr_flags & MF_DISABLED) {
+            continue;
+        }
         /* Don't deal with vold managed enryptable partitions here */
         if (fstab->recs[i].fs_mgr_flags & MF_VOLDMANAGED) {
             continue;

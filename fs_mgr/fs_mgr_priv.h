@@ -45,7 +45,7 @@
  *
  *   <fs_mgr_options> is a comma separated list of flags that control the operation of
  *                     the fs_mgr program.  The list includes "wait", which will wait till
- *                     the <source> file exists, and "check", which requests that the fs_mgr 
+ *                     the <source> file exists, and "check", which requests that the fs_mgr
  *                     run an fscheck program on the <source> before mounting the filesystem.
  *                     If check is specifed on a read-only filesystem, it is ignored.
  *                     Also, "encryptable" means that filesystem can be encrypted.
@@ -75,6 +75,7 @@
 #define MF_FORCECRYPT   0x400
 #define MF_NOEMULATEDSD 0x800 /* no emulated sdcard daemon, sd card is the only
                                  external storage */
+#define MF_DISABLED     0x8000
 
 #define DM_BUF_SIZE 4096
 
