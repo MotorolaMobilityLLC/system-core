@@ -67,7 +67,8 @@ __BEGIN_DECLS
 #define ATRACE_TAG_RESOURCES        (1<<13)
 #define ATRACE_TAG_DALVIK           (1<<14)
 #define ATRACE_TAG_RS               (1<<15)
-#define ATRACE_TAG_LAST             ATRACE_TAG_RS
+#define ATRACE_TAG_SENSOR           (1<<16)
+#define ATRACE_TAG_LAST             ATRACE_TAG_SENSOR
 
 // Reserved for initialization.
 #define ATRACE_TAG_NOT_READY        (1LL<<63)
