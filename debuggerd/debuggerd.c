@@ -1,6 +1,7 @@
 /* system/debuggerd/debuggerd.c
 **
 ** Copyright 2006, The Android Open Source Project
+** Copyright (c) 2013, The Linux Foundation. All rights reserved.
 **
 ** Licensed under the Apache License, Version 2.0 (the "License");
 ** you may not use this file except in compliance with the License.
@@ -186,6 +187,89 @@ static int get_process_info(pid_t tid, pid_t* out_pid, uid_t* out_uid, uid_t* ou
     return fields == 7 ? 0 : -1;
 }
 
+static bool copy_file(char* src, char* dest)
+{
+   #define BUF_SIZE 64
+   ssize_t bytes;
+   int  source_fh, dest_fh;
+   int  total_size = 0;
+   char buffer[BUF_SIZE];
+
+   if ((source_fh = open(src, O_RDONLY, O_NOFOLLOW)) == -1) {
+        LOG("Unable to open source file %s\n", src);
+   } else {
+        if((dest_fh = open(dest, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW, 0640)) == -1) {
+            LOG("Unable to write destination file %s\n", dest);
+        } else {
+            while ((bytes = read(source_fh, buffer, BUF_SIZE)) > 0) {
+                total_size += bytes;
+                if (write(dest_fh, buffer, bytes) < 0) {
+                    LOG("Write failed for destination file $s\n", dest);
+                    break;
+                }
+            }
+            LOG("Copied %s to %s - size: %d\n", src, dest, total_size);
+            fsync(dest_fh);
+            close(dest_fh);
+        }
+        close(source_fh);
+        if (total_size > 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void collect_etb_map(int cr_pid)
+{
+    char value[PROPERTY_VALUE_MAX];
+    property_get("persist.debug.trace", value, "0");
+    bool wantETB = true;
+
+    if (wantETB) {
+        struct stat s;
+        char   src_buf[64];
+        char   dest_buf[64];
+
+        snprintf(dest_buf, sizeof dest_buf, "/data/core/etb.%d", cr_pid);
+        if (!copy_file("/dev/coresight-tmc-etf", dest_buf)) {
+            LOG("Unable to copy ETB buffer file /dev/coresight-tmc-etf\n");
+        } else {
+            memset(src_buf, 0, sizeof(src_buf));
+            snprintf(src_buf, sizeof(src_buf), "/proc/%d/maps", cr_pid);
+            if(stat(src_buf, &s)) {
+                LOG("map file /proc/%d/maps does not exist for pid %d\n",
+                    cr_pid, cr_pid);
+            } else {
+                snprintf(dest_buf, sizeof dest_buf, "/data/core/maps.%d", cr_pid);
+                if (!copy_file(src_buf, dest_buf)) {
+                    LOG("Unable to copy map file /proc/%d/maps", cr_pid);
+                }
+            }
+        }
+    }
+}
+
+static void enable_etb_trace(struct ucred cr) {
+    char value[PROPERTY_VALUE_MAX];
+    property_get("persist.debug.trace", value, "");
+    if ((strcmp(value,"1") == 0)) {
+        /* Allow ETB collection only once; Note: in future this behavior can be changed
+        * To allow this, use a property to indicate whether the ETB has been collected */
+        property_get("debug.etb.collected", value, "");
+        if(!(strcmp(value,"1") == 0)) {
+            LOG("Collecting ETB dumps (from pid=%d uid=%d)\n",
+                     cr.pid, cr.uid);
+            property_set("debug.etb.collected", "1");
+            collect_etb_map(cr.pid);
+        }
+        else {
+            LOG("ETB already collected once, skipping (from pid=%d uid=%d)\n",
+                     cr.pid, cr.uid);
+        }
+    }
+}
+
 static int read_request(int fd, debugger_request_t* out_request) {
     struct ucred cr;
     int len = sizeof(cr);
@@ -235,6 +319,7 @@ static int read_request(int fd, debugger_request_t* out_request) {
         /* Ensure that the tid reported by the crashing process is valid. */
         char buf[64];
         struct stat s;
+        enable_etb_trace(cr);
         snprintf(buf, sizeof buf, "/proc/%d/task/%d", out_request->pid, out_request->tid);
         if(stat(buf, &s)) {
             LOG("tid %d does not exist in pid %d. ignoring debug request\n",
