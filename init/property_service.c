@@ -142,6 +142,7 @@ struct {
     { "persist.mot.proximity.", AID_RADIO, 0 },
     { "persist.tcmd.", AID_MOT_TCMD, AID_SYSTEM },
     { "persist.camera.", AID_MEDIA, 0 }, // e13470, IKXREL1KK-397
+    { "persist.multisim.", AID_RADIO, 0 }, // amr095, IKVPREL1KK-1378
     { NULL, 0, 0 }
 };
 
