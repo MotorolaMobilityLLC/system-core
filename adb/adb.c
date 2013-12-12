@@ -1310,6 +1310,11 @@ int adb_main(int is_daemon, int server_port)
 #else
     property_get("ro.adb.secure", value, "0");
     auth_enabled = !strcmp(value, "1");
+    // Turn off adb authentication if the unit is rooted through an atvc token
+    property_get("persist.atvc.adb", value, "");
+    if (strcmp(value, "1") == 0) {
+        auth_enabled = 0;
+    }
     if (auth_enabled)
         adb_auth_init();
 
