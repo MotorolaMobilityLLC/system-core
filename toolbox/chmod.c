@@ -21,7 +21,8 @@ void recurse_chmod(char* path, int mode, unsigned int flag)
         // not a directory, carry on
         return;
     }
-    char *subpath = malloc(sizeof(char)*PATH_MAX);
+    int maxpathlen = sizeof(char)*PATH_MAX;
+    char *subpath = malloc(maxpathlen);
     int pathlen = strlen(path);
 
     while ((dp = readdir(dir)) != NULL) {
@@ -33,9 +34,9 @@ void recurse_chmod(char* path, int mode, unsigned int flag)
             exit(1);
         }
 
-        strlcpy(subpath, path, sizeof(subpath));
-        strlcat(subpath, "/", sizeof(subpath));
-        strlcat(subpath, dp->d_name, sizeof(subpath));
+        strlcpy(subpath, path, maxpathlen);
+        strlcat(subpath, "/", maxpathlen);
+        strlcat(subpath, dp->d_name, maxpathlen);
 
         if(((fd = open(subpath, flag|O_RDONLY)) != -1) || ((fd = open(subpath, flag|O_WRONLY)) != -1)) {
             if (fchmod(fd, mode) < 0){
