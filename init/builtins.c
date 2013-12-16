@@ -328,7 +328,7 @@ int do_exec(int nargs, char **args)
     }
     else
     {
-        while(wait(&status)!=pid);
+        while(waitpid(pid, &status, 0)!=pid);
     }
 
     return 0;
