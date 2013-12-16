@@ -74,6 +74,7 @@ int chmod_main(int argc, char **argv)
     int ch = 0;
     int recursive = 0;
     unsigned int flag =0;
+    int help = 0;
     static struct option long_options[] =
         {
             {"help",       no_argument,       0, 'H'},
@@ -85,21 +86,20 @@ int chmod_main(int argc, char **argv)
     while((ch = getopt_long(argc, argv, "HhR",long_options,&option_index)) != -1)
     switch(ch){
         case 'H':
-        if(argc < 3)
-            return usage();
-        break;
+            help = 1;
+            break;
         case 'R':
-        recursive = 1;
-        break;
+            recursive = 1;
+            break;
         case 'h':
-        noFollow = 1;
-        break;
+            noFollow = 1;
+            break;
         default:
-        break;
+            break;
 
     }
 
-    if (recursive && argc < 4) {
+    if (argc < 3 || help || (recursive && argc < 4)) {
         return usage();
     }
 
