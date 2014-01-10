@@ -544,8 +544,24 @@ static bool check_caller_access_to_name(struct fuse* fuse,
     /* If asking to write, verify that caller either owns the
      * parent or holds sdcard_rw. */
     if (mode & W_OK) {
-        if (parent_node && hdr->uid == parent_node->uid) {
-            return true;
+        if (parent_node) {
+            if (hdr->uid == parent_node->uid) {
+                return true;
+            }
+
+            /* Deny apps the ability to create files in the root and throughout the /Android/...
+             * tree while still allowing directory creation in /Android/data and obb so that apps
+             * can create their sandboxes.  This allows us to open the rest of the sdcard tree
+             * for applications that have sdcard_r permissions while keeping the sandboxes
+             * locked-down. */
+            if (fuse->derive == DERIVE_UNIFIED &&               /* sdcards only */
+                hdr->opcode == FUSE_OPEN &&                     /* file creation only */
+                (parent_node->perm == PERM_ROOT ||              /* / */
+                 parent_node->perm == PERM_ANDROID ||           /* /Android */
+                 parent_node->perm == PERM_ANDROID_DATA ||      /* /Android/data */
+                 parent_node->perm == PERM_ANDROID_OBB)) {      /* /Android/obb */
+                return false;
+            }
         }
 
         return has_rw;
