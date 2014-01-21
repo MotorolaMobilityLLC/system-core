@@ -795,7 +795,7 @@ int main(int argc, char** argv) {
     std::string bootmode = GetProperty("ro.bootmode", "");
     if (bootmode == "sfactory") {
         am.QueueEventTrigger("late-factory-init");
-    } else if (bootmode == "charger") {
+    } else if (bootmode == "charger" || bootmode == "mot-charger") {
         am.QueueEventTrigger("charger");
     } else {
         am.QueueEventTrigger("late-init");
