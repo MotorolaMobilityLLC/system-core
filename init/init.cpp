@@ -1174,7 +1174,7 @@ int main(int argc, char** argv) {
 
     // Don't mount filesystems or start core system services in charger mode.
     char bootmode[PROP_VALUE_MAX];
-    if (property_get("ro.bootmode", bootmode) > 0 && strcmp(bootmode, "charger") == 0) {
+    if (property_get("ro.bootmode", bootmode) > 0 && (strcmp(bootmode, "charger") == 0 || strcmp(bootmode, "mot-charger") == 0) ) {
         action_for_each_trigger("charger", action_add_queue_tail);
     } else {
         action_for_each_trigger("late-init", action_add_queue_tail);
