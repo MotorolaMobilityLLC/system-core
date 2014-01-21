@@ -1139,7 +1139,7 @@ int main(int argc, char **argv)
     restorecon("/dev/__properties__");
     restorecon_recursive("/sys");
 
-    is_charger = !strcmp(bootmode, "charger");
+    is_charger = (!strcmp(bootmode, "charger") || !strcmp(bootmode, "mot-charger"));
 
     INFO("property init\n");
     property_load_boot_defaults();
