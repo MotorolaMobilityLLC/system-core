@@ -217,11 +217,13 @@ struct fuse {
     derive_t derive;
     bool split_perms;
     gid_t write_gid;
+    gid_t write_all_gid;
     struct node root;
     char obbpath[PATH_MAX];
 
     Hashmap* package_to_appid;
     Hashmap* appid_with_rw;
+    Hashmap* appid_with_full_rw;
 };
 
 /* Private data used by a single fuse handler. */
@@ -504,7 +506,7 @@ static void derive_permissions_locked(struct fuse* fuse, struct node *parent,
     }
 }
 
-/* Return if the calling UID holds sdcard_rw. */
+/* Return if the calling UID holds sdcard_rw or media_rw. */
 static bool get_caller_has_rw_locked(struct fuse* fuse, const struct fuse_in_header *hdr) {
     /* No additional permissions enforcement */
     if (fuse->derive == DERIVE_NONE) {
@@ -512,7 +514,19 @@ static bool get_caller_has_rw_locked(struct fuse* fuse, const struct fuse_in_hea
     }
 
     appid_t appid = multiuser_get_app_id(hdr->uid);
-    return hashmapContainsKey(fuse->appid_with_rw, (void*) appid);
+    return (hashmapContainsKey(fuse->appid_with_rw, (void*) appid) ||
+            hashmapContainsKey(fuse->appid_with_full_rw, (void*) appid));
+}
+
+/* Return if the calling UID holds media_rw. */
+static bool get_caller_has_full_rw_locked(struct fuse* fuse, const struct fuse_in_header *hdr) {
+    /* No additional permissions enforcement */
+    if (fuse->derive == DERIVE_NONE) {
+        return true;
+    }
+
+    appid_t appid = multiuser_get_app_id(hdr->uid);
+    return (hashmapContainsKey(fuse->appid_with_full_rw, (void*) appid));
 }
 
 /* Kernel has already enforced everything we returned through
@@ -556,10 +570,15 @@ static bool check_caller_access_to_name(struct fuse* fuse,
              * locked-down. */
             if (fuse->derive == DERIVE_UNIFIED &&               /* sdcards only */
                 hdr->opcode == FUSE_OPEN &&                     /* file creation only */
+                !get_caller_has_full_rw_locked(fuse, hdr) &&    /* caller doesn't have media_rw */
                 (parent_node->perm == PERM_ROOT ||              /* / */
                  parent_node->perm == PERM_ANDROID ||           /* /Android */
                  parent_node->perm == PERM_ANDROID_DATA ||      /* /Android/data */
                  parent_node->perm == PERM_ANDROID_OBB)) {      /* /Android/obb */
+                TRACE("DENY access to %s/%s (%d) with %d:%d.%d as %d.%d\n",
+                      parent_node->name, name, parent_node->perm,
+                      parent_node->userid, parent_node->uid, parent_node->gid,
+                      hdr->uid, hdr->gid);
                 return false;
             }
         }
@@ -707,6 +726,7 @@ static void fuse_init(struct fuse *fuse, int fd, const char *source_path,
     fuse->derive = derive;
     fuse->split_perms = split_perms;
     fuse->write_gid = write_gid;
+    fuse->write_all_gid = 0;
 
     memset(&fuse->root, 0, sizeof(fuse->root));
     fuse->root.nid = FUSE_ROOT_ID; /* 1 */
@@ -734,6 +754,8 @@ static void fuse_init(struct fuse *fuse, int fd, const char *source_path,
         fuse->root.gid = AID_SDCARD_R;
         fuse->package_to_appid = hashmapCreate(256, str_hash, str_icase_equals);
         fuse->appid_with_rw = hashmapCreate(128, int_hash, int_equals);
+        fuse->appid_with_full_rw = hashmapCreate(128, int_hash, int_equals);
+        fuse->write_all_gid = AID_MEDIA_RW;
         snprintf(fuse->obbpath, sizeof(fuse->obbpath), "%s/obb", source_path);
         fs_prepare_dir(fuse->obbpath, 0775, getuid(), getgid());
         break;
@@ -745,6 +767,8 @@ static void fuse_init(struct fuse *fuse, int fd, const char *source_path,
         fuse->root.gid = AID_SDCARD_R;
         fuse->package_to_appid = hashmapCreate(256, str_hash, str_icase_equals);
         fuse->appid_with_rw = hashmapCreate(128, int_hash, int_equals);
+        fuse->appid_with_full_rw = hashmapCreate(128, int_hash, int_equals);
+        fuse->write_all_gid = AID_MEDIA_RW;
         snprintf(fuse->obbpath, sizeof(fuse->obbpath), "%s/Android/obb", source_path);
         break;
     }
@@ -1622,6 +1646,7 @@ static int read_package_list(struct fuse *fuse) {
 
     hashmapForEach(fuse->package_to_appid, remove_str_to_int, fuse->package_to_appid);
     hashmapForEach(fuse->appid_with_rw, remove_int_to_null, fuse->appid_with_rw);
+    hashmapForEach(fuse->appid_with_full_rw, remove_int_to_null, fuse->appid_with_full_rw);
 
     FILE* file = fopen(kPackagesListFile, "r");
     if (!file) {
@@ -1642,18 +1667,21 @@ static int read_package_list(struct fuse *fuse) {
 
             char* token = strtok(gids, ",");
             while (token != NULL) {
+                if (fuse->write_all_gid && strtoul(token, NULL, 10) == fuse->write_all_gid) {
+                    hashmapPut(fuse->appid_with_full_rw, (void*) appid, (void*) 1);
+                }
                 if (strtoul(token, NULL, 10) == fuse->write_gid) {
                     hashmapPut(fuse->appid_with_rw, (void*) appid, (void*) 1);
-                    break;
                 }
                 token = strtok(NULL, ",");
             }
         }
     }
 
-    TRACE("read_package_list: found %d packages, %d with write_gid\n",
+    TRACE("read_package_list: found %d packages, %d with write_gid, %d with full write gid\n",
             hashmapSize(fuse->package_to_appid),
-            hashmapSize(fuse->appid_with_rw));
+            hashmapSize(fuse->appid_with_rw),
+            hashmapSize(fuse->appid_with_full_rw));
     fclose(file);
     pthread_mutex_unlock(&fuse->lock);
     return 0;
