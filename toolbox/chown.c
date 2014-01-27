@@ -4,6 +4,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <dirent.h>
+#include <getopt.h>
 #include <errno.h>
 #include <pwd.h>
 #include <grp.h>
@@ -17,6 +18,7 @@ static int usage()
 {
      fprintf(stderr, "Usage: chown [OPTION] <USER>[:GROUP] <FILE1> [FILE2] ...\n");
      fprintf(stderr, "  -L,  Traverse links (default is to not traverse)\n");
+     fprintf(stderr, "  -h,  Do not traverse links (default)\n");
      return 10;
 }
 
@@ -49,23 +51,31 @@ static int safe_chown(char *path, uid_t owner, gid_t group, int traverse_links)
 int chown_main(int argc, char **argv)
 {
     int i;
+    int opt;
 
     if(argc < 3) {
 /* BEGIN Motorola, wljv10, IKSECURITY-322 */
         return usage();
     }
 
-    int traverse_links = (strcmp(argv[1], "-L") == 0 ? 1 : 0);
-
-    if (traverse_links && argc < 4) {
+    int traverse_links = 0;
+    while ((opt = getopt(argc, argv, "hL")) != -1) {
+          switch (opt) {
+          case 'L':
+              traverse_links = 1;
+              break;
+          case 'h':
+              traverse_links = 0;
+              break;
+          default:
+              return usage();
+          }
+    }
+    if (argc - optind < 2) {
         return usage();
     }
-
-    if (traverse_links) {
-        argc--;
-        argv++;
-/* END IKSECURITY-322 */
-    }
+    argc -= optind-1;
+    argv += optind-1;
 
     // Copy argv[1] to 'user' so we can truncate it at the period
     // if a group id specified.
