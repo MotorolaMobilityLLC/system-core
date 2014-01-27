@@ -18,7 +18,7 @@ enum {
   HELP_OPT
 };
 
-static const char chmod_optstr[] = "RL";
+static const char chmod_optstr[] = "hRL";
 struct option chmod_long_opt[] =
   {
     {"recursive", no_argument,	NULL, RECURSIVE_OPT},
@@ -102,6 +102,7 @@ static int usage()
     fprintf(stderr, "  -R, --recursive         change files and directories recursively\n");
 /* BEGIN Motorola, wljv10, IKSECURITY-322 */
     fprintf(stderr, "  -L,                     Traverse links (default is to not traverse)\n");
+    fprintf(stderr, "  -h,                     Do not traverse links (default)\n");
     fprintf(stderr, "  --help                  display this help and exit\n");
 /* END IKSECURITY-322 */
     return 10;
@@ -126,6 +127,10 @@ int chmod_main(int argc, char **argv)
       case 'L':
 	traverse_links = 1;
 	break;
+      case 'h':
+	traverse_links = 0;
+	break;
+
       case HELP_OPT:
         usage();
         break;
