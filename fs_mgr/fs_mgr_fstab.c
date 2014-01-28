@@ -29,6 +29,7 @@ struct fs_mgr_flag_values {
     int partnum;
     int swap_prio;
     unsigned int zram_size;
+    char *migrate_role;
 };
 
 struct flag_list {
@@ -68,6 +69,7 @@ static struct flag_list fs_mgr_flags[] = {
     { "zramsize=",   MF_ZRAMSIZE },
     { "verify",      MF_VERIFY },
     { "noemulatedsd", MF_NOEMULATEDSD },
+    { "migrate=",    MF_MIGRATE },
     { "defaults",    0 },
     { 0,             0 },
 };
@@ -146,6 +148,11 @@ static int parse_flags(char *flags, struct flag_list *fl,
                     flag_vals->swap_prio = strtoll(strchr(p, '=') + 1, NULL, 0);
                 } else if ((fl[i].flag == MF_ZRAMSIZE) && flag_vals) {
                     flag_vals->zram_size = strtoll(strchr(p, '=') + 1, NULL, 0);
+                } else if ((fl[i].flag == MF_MIGRATE) && flag_vals) {
+                    /* The migrate flag is followed by an = and its
+                     * role in the migration process.
+                     */
+                     flag_vals->migrate_role = strdup(strchr(p, '=') + 1);
                 }
                 break;
             }
@@ -296,6 +303,7 @@ struct fstab *fs_mgr_read_fstab(const char *fstab_path)
         fstab->recs[cnt].partnum = flag_vals.partnum;
         fstab->recs[cnt].swap_prio = flag_vals.swap_prio;
         fstab->recs[cnt].zram_size = flag_vals.zram_size;
+        fstab->recs[cnt].migrate_role = flag_vals.migrate_role;
         update_fallbacks(fstab->recs, cnt);
         cnt++;
     }
@@ -327,6 +335,7 @@ void fs_mgr_free_fstab(struct fstab *fstab)
         free(fstab->recs[i].fs_options);
         free(fstab->recs[i].key_loc);
         free(fstab->recs[i].label);
+        free(fstab->recs[i].migrate_role);
     }
 
     /* Free the fstab_recs array created by calloc(3) */
