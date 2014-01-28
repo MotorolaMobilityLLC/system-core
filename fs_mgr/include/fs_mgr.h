@@ -24,6 +24,9 @@
 extern "C" {
 #endif
 
+#define FS_IS_ENCRYPTED     1
+#define FS_NO_EMULATION     2
+
 struct fstab {
     int num_entries;
     struct fstab_rec *recs;
@@ -45,6 +48,7 @@ struct fstab_rec {
     int partnum;
     int swap_prio;
     unsigned int zram_size;
+    char *migrate_role;
 };
 
 struct fstab *fs_mgr_read_fstab(const char *fstab_path);
@@ -60,6 +64,7 @@ int fs_mgr_add_entry(struct fstab *fstab,
                      const char *mount_point, const char *fs_type,
                      const char *blk_device, long long length);
 struct fstab_rec *fs_mgr_get_entry_for_mount_point(struct fstab *fstab, const char *path);
+struct fstab_rec *fs_mgr_get_entry_for_migrate_role(struct fstab *fstab, const char *role);
 int fs_mgr_is_voldmanaged(struct fstab_rec *fstab);
 int fs_mgr_is_nonremovable(struct fstab_rec *fstab);
 int fs_mgr_is_encryptable(struct fstab_rec *fstab);

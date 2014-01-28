@@ -594,10 +594,25 @@ int do_mount_all(int nargs, char **args)
     }
 
     /* ret is 1 if the device is encrypted, 0 if not, and -1 on error */
-    if (ret == 1) {
+    if (ret == FS_IS_ENCRYPTED) {
         property_set("ro.crypto.state", "encrypted");
         property_set("vold.decrypt", "1");
-    } else if (ret == 0) {
+    } else if (ret >= 0) {
+        if (ret == FS_NO_EMULATION) {
+            /* If storage emulation is disabled, tweak the relevant
+             * enviroment variables to use the secondary storage as the
+             * main external storage (if any).  This has to be done here,
+             * since property triggers are started too late and the action
+             * queue is already setup.
+             */
+            add_environment("EXTERNAL_STORAGE", "${SECONDARY_STORAGE}");
+            add_environment("EMULATED_STORAGE_SOURCE", "");
+            add_environment("EMULATED_STORAGE_TARGET", "");
+            add_environment("SECONDARY_STORAGE", "");
+
+            /* This will sort out the legacy symlinks */
+            action_for_each_trigger("fs-no-emulation", action_add_queue_tail);
+        }
         property_set("ro.crypto.state", "unencrypted");
         /* If fs_mgr determined this is an unencrypted device, then trigger
          * that action.
