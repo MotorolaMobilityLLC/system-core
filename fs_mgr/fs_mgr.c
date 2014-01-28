@@ -39,6 +39,7 @@
 #include <cutils/partition_utils.h>
 #include <cutils/properties.h>
 #include <logwrap/logwrap.h>
+#include <primary_storage.h>
 
 #include "mincrypt/rsa.h"
 #include "mincrypt/sha.h"
@@ -60,6 +61,8 @@
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(*(a)))
 
 #define MAX_MOUNT_RETRIES 2
+
+#define IS_USERDATA(rec) (!strncmp((rec)->mount_point, "/data", 5))
 
 struct flag_list {
     const char *name;
@@ -97,6 +100,7 @@ static struct flag_list fs_mgr_flags[] = {
     { "zramsize=",   MF_ZRAMSIZE },
     { "verify",      MF_VERIFY },
     { "noemulatedsd", MF_NOEMULATEDSD },
+    { "migrate=",    MF_MIGRATE },
     { "defaults",    0 },
     { 0,             0 },
 };
@@ -108,6 +112,7 @@ struct fs_mgr_flag_values {
     int partnum;
     int swap_prio;
     unsigned int zram_size;
+    char *migrate_role;
 };
 
 /*
@@ -209,6 +214,11 @@ static int parse_flags(char *flags, struct flag_list *fl,
                     flag_vals->swap_prio = strtoll(strchr(p, '=') + 1, NULL, 0);
                 } else if ((fl[i].flag == MF_ZRAMSIZE) && flag_vals) {
                     flag_vals->zram_size = strtoll(strchr(p, '=') + 1, NULL, 0);
+                } else if ((fl[i].flag == MF_MIGRATE) && flag_vals) {
+                    /* The migrate flag is followed by an = and its
+                     * role in the migration process.
+                     */
+                    flag_vals->migrate_role = strdup(strchr(p, '=') + 1);
                 }
                 break;
             }
@@ -305,6 +315,8 @@ int update_fallbacks(struct fstab_rec *recs, int index)
 
     for (i = index - 1; i >= 0; i--) {
         if (!strcmp(recs[i].mount_point, recs[index].mount_point) &&
+            (!recs[i].migrate_role || !recs[index].migrate_role ||
+             !strcmp(recs[i].migrate_role, recs[index].migrate_role)) &&
             recs[i].fallback == NULL) {
             recs[i].fallback = &recs[index];
             return 1;
@@ -436,6 +448,7 @@ struct fstab *fs_mgr_read_fstab(const char *fstab_path)
         fstab->recs[cnt].partnum = flag_vals.partnum;
         fstab->recs[cnt].swap_prio = flag_vals.swap_prio;
         fstab->recs[cnt].zram_size = flag_vals.zram_size;
+        fstab->recs[cnt].migrate_role = flag_vals.migrate_role;
         update_fallbacks(fstab->recs, cnt);
         cnt++;
     }
@@ -460,6 +473,7 @@ void fs_mgr_free_fstab(struct fstab *fstab)
         free(fstab->recs[i].fs_options);
         free(fstab->recs[i].key_loc);
         free(fstab->recs[i].label);
+        free(fstab->recs[i].migrate_role);
         i++;
     }
 
@@ -550,6 +564,7 @@ static void fs_set_blk_ro(const char *blockdev)
     close(fd);
 }
 
+
 /*
  * __mount(): wrapper around the mount() system call which also
  * sets the underlying block device to read-only if the mount is read-only.
@@ -588,10 +603,35 @@ static int fs_match(char *in1, char *in2)
     return ret;
 }
 
+/*
+ * Because property triggers don't run until after the framework starts, we
+ * have to manually check this property ourselves and send the hint back to
+ * init (similar to how encryption detection is kludged).
+ */
+static int primary_storage_not_emulated(struct fstab_rec *rec)
+{
+    int fd;
+    char stamp[PROPERTY_VALUE_MAX] = { 0 };
+
+    fd = open("/data/property/"PRIMARY_STORAGE_PROPERTY, O_RDONLY, 0600);
+    if (fd >= 0) {
+        TEMP_FAILURE_RETRY(read(fd, stamp, PROPERTY_VALUE_MAX));
+        close(fd);
+        if (!strncmp(stamp, "sdcard", strlen("sdcard"))) {
+            ERROR("primary storage on SD card\n");
+            return FS_NO_EMULATION;
+        }
+    }
+
+    return 0;
+
+}
+
 int fs_mgr_mount_all(struct fstab *fstab)
 {
     int i = 0, retry = MAX_MOUNT_RETRIES;
     int encrypted = 0;
+    int no_emulation = 0;
     int ret = -1;
     int mret;
 
@@ -612,6 +652,8 @@ int fs_mgr_mount_all(struct fstab *fstab)
             continue;
         }
 
+        ERROR("mount all: %s\n", fstab->recs[i].blk_device);
+
         if (fstab->recs[i].fs_mgr_flags & MF_WAIT) {
             wait_for_file(fstab->recs[i].blk_device, WAIT_TIMEOUT);
         }
@@ -620,6 +662,8 @@ int fs_mgr_mount_all(struct fstab *fstab)
          * trying to mount it. */
         if (fstab->recs[i].fallback && fs_mgr_identify_fs(&fstab->recs[i]) != 0) {
             fstab->recs[i].fs_mgr_flags |= MF_DISABLED;
+            ERROR("Disabling: %s with %s\n",
+                    fstab->recs[i].mount_point, fstab->recs[i].blk_device);
             continue;
         }
 
@@ -643,6 +687,9 @@ int fs_mgr_mount_all(struct fstab *fstab)
             /* We have a fallback that we don't need, so disable it */
             if (fstab->recs[i].fallback) {
                 fstab->recs[i].fallback->fs_mgr_flags |= MF_DISABLED;
+            }
+            if (IS_USERDATA(&fstab->recs[i])) {
+                no_emulation = primary_storage_not_emulated(&fstab->recs[i]);
             }
             /* Success!  Go get the next one */
             retry = MAX_MOUNT_RETRIES;
@@ -687,7 +734,7 @@ int fs_mgr_mount_all(struct fstab *fstab)
             }
             retry = MAX_MOUNT_RETRIES;
 
-            if (!strncmp(fstab->recs[i].mount_point, "/data", 5)) {
+            if (IS_USERDATA(&fstab->recs[i])) {
                 int rc;
                 rc = fs_mgr_do_format(&fstab->recs[i]);
                 if (!rc) {
@@ -703,9 +750,9 @@ int fs_mgr_mount_all(struct fstab *fstab)
     }
 
     if (encrypted) {
-        ret = 1;
+        ret = FS_IS_ENCRYPTED;
     } else {
-        ret = 0;
+        ret = no_emulation;
     }
 
 out:
@@ -721,9 +768,15 @@ int fs_mgr_do_mount(struct fstab *fstab, char *n_name, char *n_blk_device,
     int i = 0;
     int ret = -1;
     char *m;
+    char *migrate_role = NULL;
 
     if (!fstab) {
         return ret;
+    }
+
+    if (!strncmp(tmp_mount_point, PRIMARY_STORAGE_MIGRATE_MOUNTS,
+                 strlen(PRIMARY_STORAGE_MIGRATE_MOUNTS))) {
+        migrate_role = tmp_mount_point + strlen(PRIMARY_STORAGE_MIGRATE_MOUNTS);
     }
 
     for (i = 0; i < fstab->num_entries; i++) {
@@ -732,6 +785,11 @@ int fs_mgr_do_mount(struct fstab *fstab, char *n_name, char *n_blk_device,
         }
 
         /* We found our match (we ignore MF_DISABLED) */
+        if (migrate_role && strcmp(fstab->recs[i].migrate_role, migrate_role) != 0) {
+            ERROR("Skipping %s at %s due to migration role\n", fstab->recs[i].mount_point, fstab->recs[i].blk_device);
+            continue;
+        }
+
         /* If this swap or a raw partition, report an error */
         if (!strcmp(fstab->recs[i].fs_type, "swap") ||
             !strcmp(fstab->recs[i].fs_type, "emmc") ||
@@ -994,6 +1052,27 @@ struct fstab_rec *fs_mgr_get_entry_for_mount_point(struct fstab *fstab, const ch
         if (strncmp(path, fstab->recs[i].mount_point, len) == 0 &&
             (path[len] == '\0' || path[len] == '/') &&
             !(fstab->recs[i].fs_mgr_flags & MF_DISABLED)) {
+            return &fstab->recs[i];
+        }
+    }
+
+    return NULL;
+}
+
+struct fstab_rec *fs_mgr_get_entry_for_migrate_role(struct fstab *fstab, const char *role)
+{
+    int i;
+
+    if (!fstab) {
+        return NULL;
+    }
+
+    for (i = 0; i < fstab->num_entries; i++) {
+        if (!fstab->recs[i].migrate_role) {
+            continue;
+        }
+        int len = strlen(fstab->recs[i].migrate_role);
+        if (strncmp(role, fstab->recs[i].migrate_role, len) == 0) {
             return &fstab->recs[i];
         }
     }
