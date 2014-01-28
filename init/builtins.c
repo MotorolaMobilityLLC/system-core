@@ -651,6 +651,21 @@ int do_mount_all(int nargs, char **args)
         ret = wipe_data_via_recovery();
         /* If reboot worked, there is no return. */
     } else if (ret > 0) {
+        if (ret == FS_NO_EMULATION) {
+            /* If storage emulation is disabled, tweak the relevant
+             * enviroment variables to use the secondary storage as the
+             * main external storage (if any).  This has to be done here,
+             * since property triggers are started too late and the action
+             * queue is already setup.
+             */
+            add_environment("EXTERNAL_STORAGE", "${SECONDARY_STORAGE}");
+            add_environment("EMULATED_STORAGE_SOURCE", "");
+            add_environment("EMULATED_STORAGE_TARGET", "");
+            add_environment("SECONDARY_STORAGE", "");
+
+            /* This will sort out the legacy symlinks */
+            action_for_each_trigger("fs-no-emulation", action_add_queue_tail);
+        }
         ERROR("fs_mgr_mount_all returned unexpected error %d\n", ret);
     }
     /* else ... < 0: error */
