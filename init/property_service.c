@@ -121,6 +121,9 @@ struct {
     // used for setting Dolby specific properties
     { "dolby.", AID_SYSTEM,   0 },
 #endif // DOLBY_END
+    { "tcmd.",            AID_MOT_TCMD, 0 },
+    { "mot.backup_restore.", AID_MOT_TCMD, 0},
+    { "persist.tcmd.", AID_MOT_TCMD, AID_SYSTEM },
     { NULL, 0, 0 }
 };
 
