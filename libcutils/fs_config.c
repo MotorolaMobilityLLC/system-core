@@ -134,6 +134,7 @@ static const struct fs_path_config android_files[] = {
     { 00640, AID_ROOT,      AID_SHELL,     0, "data/nativetest64/tests.txt" },
     { 00750, AID_ROOT,      AID_SHELL,     0, "data/nativetest/*" },
     { 00750, AID_ROOT,      AID_SHELL,     0, "data/nativetest64/*" },
+    { 00755, AID_ROOT,      AID_ROOT,      0, "init.class_main.sh" },
 
     /* the following two files are INTENTIONALLY set-uid, but they
      * are NOT included on user builds. */
