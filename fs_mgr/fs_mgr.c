@@ -774,7 +774,8 @@ int fs_mgr_do_mount(struct fstab *fstab, char *n_name, char *n_blk_device,
         return ret;
     }
 
-    if (!strncmp(tmp_mount_point, PRIMARY_STORAGE_MIGRATE_MOUNTS,
+    if (tmp_mount_point &&
+        !strncmp(tmp_mount_point, PRIMARY_STORAGE_MIGRATE_MOUNTS,
                  strlen(PRIMARY_STORAGE_MIGRATE_MOUNTS))) {
         migrate_role = tmp_mount_point + strlen(PRIMARY_STORAGE_MIGRATE_MOUNTS);
     }
