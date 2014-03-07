@@ -732,6 +732,8 @@ static void export_kernel_boot_props(void)
         { "ro.boot.baseband", "ro.baseband", "unknown", },
         { "ro.boot.bootloader", "ro.bootloader", "unknown", },
         { "ro.boot.selinux", "ro.boot.selinux", "permissive", },
+        { "ro.boot.device", "ro.hw.device", NULL, },
+        { "ro.boot.hwrev", "ro.hw.hwrev", NULL, },
     };
 
     for (i = 0; i < ARRAY_SIZE(prop_map); i++) {
