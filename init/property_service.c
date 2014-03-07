@@ -91,6 +91,7 @@ struct {
     { "ril.",             AID_RADIO,    0 },
     { "gsm.",             AID_RADIO,    0 },
     { "persist.radio",    AID_RADIO,    0 },
+    { "persist.radio.ims.audio.output",    AID_RADIO,    AID_MOT_TCMD },
     { "net.dns",          AID_RADIO,    0 },
     { "net.dns",          AID_VPN,      0 },
     { "net.vpnclient",    AID_VPN,      0 },
