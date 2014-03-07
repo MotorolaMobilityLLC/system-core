@@ -178,6 +178,7 @@ typedef enum {
     AUDIO_FORMAT_MP2                 = 0x15000000UL,
     AUDIO_FORMAT_EVRCNW              = 0x16000000UL,
     AUDIO_FORMAT_PCM_OFFLOAD         = 0x17000000UL,
+    AUDIO_FORMAT_FLAC                = 0x18000000UL,
     AUDIO_FORMAT_MAIN_MASK           = 0xFF000000UL,
     AUDIO_FORMAT_SUB_MASK            = 0x00FFFFFFUL,
 
@@ -513,6 +514,7 @@ typedef struct {
     int64_t duration_us;                // duration in microseconds, -1 if unknown
     bool has_video;                     // true if stream is tied to a video stream
     bool is_streaming;                  // true if streaming, false if local playback
+    uint16_t bit_width;                 // bits per sample
 } audio_offload_info_t;
 
 #define AUDIO_MAKE_OFFLOAD_INFO_VERSION(maj,min) \
@@ -678,6 +680,7 @@ static inline bool audio_is_valid_format(audio_format_t format)
     case AUDIO_FORMAT_AMR_WB_PLUS:
     case AUDIO_FORMAT_MP2:
     case AUDIO_FORMAT_EVRCNW:
+    case AUDIO_FORMAT_FLAC:
         return true;
     case AUDIO_FORMAT_PCM_OFFLOAD:
         if (format != AUDIO_FORMAT_PCM_16_BIT_OFFLOAD &&
