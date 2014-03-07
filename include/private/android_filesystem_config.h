@@ -110,6 +110,7 @@
 #define AID_MOT_ATVC      9012  /* mot_atvc - This is for use of the ATVC service ONLY */
 #define AID_SPRINT_EXTENSION 9013  /* IKASANTISPRINT-149 sprint extension service */
 #define AID_MOT_DBVC      9014  /* mot_dbvc - This group is used to access DataBlock feature related data */
+#define AID_FINGERP       9015  /* IKFPS-98 Add permission group for fingerprint */
 
 #define AID_QCOM_DIAG 3009 /* can read/write /dev/diag */
 #define AID_IMS 3010 /* can read/write /dev/socket/imsrtp */
@@ -206,6 +207,7 @@ static const struct android_id_info android_ids[] = {
     { "mot_atvc",      AID_MOT_ATVC, },
     { "sprint_extension", AID_SPRINT_EXTENSION, },
     { "mot_dbvc",	AID_MOT_DBVC, },
+    { "fingerp",        AID_FINGERP, },
     { "nobody",        AID_NOBODY, },
 };
 
