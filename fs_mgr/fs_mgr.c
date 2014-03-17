@@ -510,7 +510,7 @@ int fs_mgr_mount_all(struct fstab *fstab)
             }
             retry = MAX_MOUNT_RETRIES;
 
-            if (!strncmp(fstab->recs[i].mount_point, "/data", 5)) {
+            if (IS_FORMATTABLE(&fstab->recs[i])) {
                 int rc;
                 rc = fs_mgr_do_format(&fstab->recs[i]);
                 if (!rc) {
