@@ -63,6 +63,8 @@
 #define MAX_MOUNT_RETRIES 2
 
 #define IS_USERDATA(rec) (!strncmp((rec)->mount_point, "/data", 5))
+#define IS_CACHE(rec) (!strncmp((rec)->mount_point, "/cache", 6))
+#define IS_FORMATTABLE(rec) (IS_USERDATA(rec) || IS_CACHE(rec))
 
 struct flag_list {
     const char *name;
@@ -734,7 +736,7 @@ int fs_mgr_mount_all(struct fstab *fstab)
             }
             retry = MAX_MOUNT_RETRIES;
 
-            if (IS_USERDATA(&fstab->recs[i])) {
+            if (IS_FORMATTABLE(&fstab->recs[i])) {
                 int rc;
                 rc = fs_mgr_do_format(&fstab->recs[i]);
                 if (!rc) {
