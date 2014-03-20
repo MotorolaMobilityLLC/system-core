@@ -529,6 +529,7 @@ typedef struct {
     int64_t duration_us;                // duration in microseconds, -1 if unknown
     bool has_video;                     // true if stream is tied to a video stream
     bool is_streaming;                  // true if streaming, false if local playback
+    bool use_small_bufs;                // true if offloading audio track
 } audio_offload_info_t;
 
 #define AUDIO_MAKE_OFFLOAD_INFO_VERSION(maj,min) \
@@ -540,6 +541,16 @@ typedef struct {
 static const audio_offload_info_t AUDIO_INFO_INITIALIZER = {
     version: AUDIO_OFFLOAD_INFO_VERSION_CURRENT,
     size: sizeof(audio_offload_info_t),
+    sample_rate: 0,
+    channel_mask: (audio_channel_mask_t)0,
+    format: AUDIO_FORMAT_INVALID,
+    stream_type: AUDIO_STREAM_DEFAULT,
+    bit_rate: 0,
+    duration_us: 0,
+    has_video: false,
+    is_streaming: false,
+    bit_width: 16,
+    use_small_bufs: false,
 };
 
 static inline bool audio_is_output_device(audio_devices_t device)
