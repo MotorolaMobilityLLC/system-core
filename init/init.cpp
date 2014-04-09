@@ -410,6 +410,7 @@ static void export_kernel_boot_props() {
         { "ro.boot.modelno", "ro.hw.modelno", NULL, },
         { "ro.boot.nav_keys", "ro.hw.nav_keys", NULL, },
         { "ro.boot.lcd_density", "ro.sf.lcd_density", NULL, },
+        { "ro.boot.wff", "ro.wff", "recovery", },
     };
     for (size_t i = 0; i < arraysize(prop_map); i++) {
         std::string value = GetProperty(prop_map[i].src_prop, "");
