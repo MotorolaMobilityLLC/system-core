@@ -893,6 +893,7 @@ static void export_kernel_boot_props() {
         { "ro.boot.nav_keys", "ro.hw.nav_keys", NULL, },
         { "ro.boot.lcd_density", "ro.sf.lcd_density", NULL, },
         { "ro.boot.modelno", "ro.product.display", NULL, },
+        { "ro.boot.wff", "ro.wff", "recovery", },
     };
     for (size_t i = 0; i < ARRAY_SIZE(prop_map); i++) {
         char value[PROP_VALUE_MAX];
