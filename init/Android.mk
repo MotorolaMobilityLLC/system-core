@@ -45,6 +45,7 @@ endif
 
 ifneq (,$(filter userdebug eng,$(TARGET_BUILD_VARIANT)))
 LOCAL_CFLAGS += -DALLOW_LOCAL_PROP_OVERRIDE=1 -DALLOW_DISABLE_SELINUX=1
+LOCAL_CFLAGS += -DALLOW_CAMERA_DEBUG
 endif
 
 ifeq ($(strip $(TARGET_USE_MOT_NEW_COM)),true)
