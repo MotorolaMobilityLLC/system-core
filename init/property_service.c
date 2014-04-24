@@ -113,6 +113,10 @@ struct {
     { "debug.nfc.",       AID_NFC,      0 }, // rjones1, 6/25/2012, IKMAIN-46254
     { "debug.",           AID_SYSTEM,   0 },
     { "debug.",           AID_SHELL,    0 },
+#ifdef ALLOW_CAMERA_DEBUG
+    { "debug.",           AID_CAMERA,   0 }, // w16959, 4/24/2014, IKMMINTG-1746
+    { "debug.",           AID_MEDIA,    0 }, // w16959, 4/24/2014, IKMMINTG-1746
+#endif
     { "log.",             AID_SHELL,    0 },
     { "log.",             AID_LOG,      0 },
     { "persist.log.",     AID_SHELL,    0 },
