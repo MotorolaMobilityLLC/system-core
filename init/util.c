@@ -595,3 +595,11 @@ int restorecon_recursive(const char* pathname)
 {
     return selinux_android_restorecon(pathname, SELINUX_ANDROID_RESTORECON_RECURSE);
 }
+
+int restorecon_files(const char* pathname)
+{
+    if (is_selinux_enabled() <= 0 || !sehandle)
+        return 0;
+
+    return selabel_files_lookup(sehandle, pathname, restorecon, restorecon_recursive);
+}
