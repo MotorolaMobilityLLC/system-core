@@ -588,3 +588,11 @@ int restorecon_recursive(const char* pathname)
     int flags = FTW_DEPTH | FTW_MOUNT | FTW_PHYS;
     return nftw(pathname, nftw_restorecon, fd_limit, flags);
 }
+
+int restorecon_files(const char* pathname)
+{
+    if (is_selinux_enabled() <= 0 || !sehandle)
+        return 0;
+
+    return selabel_files_lookup(sehandle, pathname, restorecon, restorecon_recursive);
+}
