@@ -533,3 +533,11 @@ std::string bytes_to_hex(const uint8_t* bytes, size_t bytes_len) {
         android::base::StringAppendF(&hex, "%02x", bytes[i]);
     return hex;
 }
+
+int restorecon_files(const char* pathname)
+{
+    if (is_selinux_enabled() <= 0 || !sehandle)
+        return 0;
+
+    return selabel_files_lookup(sehandle, pathname, restorecon, restorecon_recursive);
+}
