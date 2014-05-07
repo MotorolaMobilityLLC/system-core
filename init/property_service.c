@@ -71,6 +71,14 @@
 
 #define PERSISTENT_PROPERTY_DIR  "/data/property"
 
+/* IKXREL3KK-3759 are002: define where we get overlay properties.
+ * question whether this should really be defined in all the same
+ * places that PROP_PATH_SYSTEM_BUILD is defined, or if we should
+ * just do it here. (there are many places that the PROP_PATH_SYSTEM_BUILD
+ * is defined).
+ */
+#define	PROP_PATH_OVERLAY_BUILD		"/system/overlay.prop"
+
 static int persistent_properties_loaded = 0;
 static int property_area_inited = 0;
 
@@ -654,6 +662,7 @@ void load_persist_props(void)
      * to be overwrite by default values.
      */
     persistent_properties_loaded = 0;
+    load_properties_from_file(PROP_PATH_OVERLAY_BUILD);	/* IKXREL3KK-3759 are002 */
     load_properties_from_file(PROP_PATH_SYSTEM_BUILD);
     load_properties_from_file(PROP_PATH_SYSTEM_DEFAULT);
     /* END Motorola Hong-Mei Li 2012-09-10, IKJBREL1-5477 */
@@ -743,6 +752,7 @@ void start_property_service(void)
 {
     int fd;
 
+    load_properties_from_file(PROP_PATH_OVERLAY_BUILD);	/* IKXREL3KK-3759 are002 */
     load_properties_from_file(PROP_PATH_SYSTEM_BUILD);
     load_properties_from_file(PROP_PATH_SYSTEM_DEFAULT);
     load_override_properties();
