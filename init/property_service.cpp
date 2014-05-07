@@ -79,6 +79,14 @@
 #define FSTAB_PREFIX "/fstab."
 #define RECOVERY_MOUNT_POINT "/recovery"
 
+/* IKXREL3KK-3759 are002: define where we get overlay properties.
+ * question whether this should really be defined in all the same
+ * places that PROP_PATH_SYSTEM_BUILD is defined, or if we should
+ * just do it here. (there are many places that the PROP_PATH_SYSTEM_BUILD
+ * is defined).
+ */
+#define	PROP_PATH_OVERLAY_BUILD		"/system/overlay.prop"
+
 static int persistent_properties_loaded = 0;
 static bool property_area_initialized = false;
 
@@ -559,6 +567,7 @@ void load_persist_props(void) {
      * to be overwrite by default values.
      */
     persistent_properties_loaded = 0;
+    load_properties_from_file(PROP_PATH_OVERLAY_BUILD, NULL);	/* IKXREL3KK-3759 are002 */
     load_properties_from_file(PROP_PATH_SYSTEM_BUILD, NULL);
     /* END Motorola Hong-Mei Li 2012-09-10, IKJBREL1-5477 */
 
@@ -609,6 +618,7 @@ void load_recovery_id_prop() {
 }
 
 void load_all_props() {
+    load_properties_from_file(PROP_PATH_OVERLAY_BUILD, NULL);	/* IKXREL3KK-3759 are002 */
     load_properties_from_file(PROP_PATH_SYSTEM_BUILD, NULL);
     load_properties_from_file(PROP_PATH_VENDOR_BUILD, NULL);
     load_properties_from_file(PROP_PATH_FACTORY, "ro.*");
