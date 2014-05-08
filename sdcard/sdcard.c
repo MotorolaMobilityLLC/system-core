@@ -157,6 +157,12 @@ typedef enum {
     DERIVE_UNIFIED,
 } derive_t;
 
+typedef enum {
+    RW_NONE,
+    RW_LEGACY,
+    RW_FULL,
+} rw_t;
+
 struct handle {
     int fd;
 };
@@ -541,26 +547,21 @@ static void derive_permissions_locked(struct fuse* fuse, struct node *parent,
 }
 
 /* Return if the calling UID holds sdcard_rw or media_rw. */
-static bool get_caller_has_rw_locked(struct fuse* fuse, const struct fuse_in_header *hdr) {
+static rw_t get_caller_has_rw_locked(struct fuse* fuse, const struct fuse_in_header *hdr) {
     /* No additional permissions enforcement */
     if (fuse->derive == DERIVE_NONE) {
-        return true;
+        return RW_LEGACY;
     }
 
     appid_t appid = multiuser_get_app_id(hdr->uid);
-    return (hashmapContainsKey(fuse->appid_with_rw, (void*) (uintptr_t) appid) ||
-            hashmapContainsKey(fuse->appid_with_full_rw, (void*) (uintptr_t) appid));
-}
 
-/* Return if the calling UID holds media_rw. */
-static bool get_caller_has_full_rw_locked(struct fuse* fuse, const struct fuse_in_header *hdr) {
-    /* No additional permissions enforcement */
-    if (fuse->derive == DERIVE_NONE) {
-        return true;
+    if (hashmapContainsKey(fuse->appid_with_full_rw, (void*) (uintptr_t) appid)) {
+        return RW_FULL;
+    } else if (hashmapContainsKey(fuse->appid_with_rw, (void*) (uintptr_t) appid)) {
+        return RW_LEGACY;
     }
 
-    appid_t appid = multiuser_get_app_id(hdr->uid);
-    return (hashmapContainsKey(fuse->appid_with_full_rw, (void*) appid));
+    return RW_NONE;
 }
 
 /* Kernel has already enforced everything we returned through
@@ -568,7 +569,7 @@ static bool get_caller_has_full_rw_locked(struct fuse* fuse, const struct fuse_i
  * even further, such as enforcing that apps hold sdcard_rw. */
 static bool check_caller_access_to_name(struct fuse* fuse,
         const struct fuse_in_header *hdr, const struct node* parent_node,
-        const char* name, int mode, bool has_rw) {
+        const char* name, int mode, rw_t has_rw) {
     /* Always block security-sensitive files at root */
     if (parent_node && parent_node->perm == PERM_ROOT) {
         if (!strcasecmp(name, "autorun.inf")
@@ -604,7 +605,7 @@ static bool check_caller_access_to_name(struct fuse* fuse,
              * locked-down. */
             if (fuse->derive == DERIVE_UNIFIED &&               /* sdcards only */
                 hdr->opcode == FUSE_OPEN &&                     /* file creation only */
-                !get_caller_has_full_rw_locked(fuse, hdr) &&    /* caller doesn't have media_rw */
+                has_rw == RW_LEGACY &&                          /* caller only has sdcard_rw */
                 (parent_node->perm == PERM_ROOT ||              /* / */
                  parent_node->perm == PERM_ANDROID ||           /* /Android */
                  parent_node->perm == PERM_ANDROID_DATA ||      /* /Android/data */
@@ -617,7 +618,7 @@ static bool check_caller_access_to_name(struct fuse* fuse,
             }
         }
 
-        return has_rw;
+        return (has_rw != RW_NONE);
     }
 
     /* No extra permissions to enforce */
@@ -625,7 +626,7 @@ static bool check_caller_access_to_name(struct fuse* fuse,
 }
 
 static bool check_caller_access_to_node(struct fuse* fuse,
-        const struct fuse_in_header *hdr, const struct node* node, int mode, bool has_rw) {
+        const struct fuse_in_header *hdr, const struct node* node, int mode, rw_t has_rw) {
     return check_caller_access_to_name(fuse, hdr, node->parent, node->name, mode, has_rw);
 }
 
@@ -911,7 +912,7 @@ static int handle_lookup(struct fuse* fuse, struct fuse_handler* handler,
             child_path, sizeof(child_path), 1))) {
         return -ENOENT;
     }
-    if (!check_caller_access_to_name(fuse, hdr, parent_node, name, R_OK, false)) {
+    if (!check_caller_access_to_name(fuse, hdr, parent_node, name, R_OK, RW_NONE)) {
         return -EACCES;
     }
 
@@ -952,7 +953,7 @@ static int handle_getattr(struct fuse* fuse, struct fuse_handler* handler,
     if (!node) {
         return -ENOENT;
     }
-    if (!check_caller_access_to_node(fuse, hdr, node, R_OK, false)) {
+    if (!check_caller_access_to_node(fuse, hdr, node, R_OK, RW_NONE)) {
         return -EACCES;
     }
 
@@ -962,7 +963,7 @@ static int handle_getattr(struct fuse* fuse, struct fuse_handler* handler,
 static int handle_setattr(struct fuse* fuse, struct fuse_handler* handler,
         const struct fuse_in_header *hdr, const struct fuse_setattr_in *req)
 {
-    bool has_rw;
+    rw_t has_rw;
     struct node* node;
     char path[PATH_MAX];
     struct timespec times[2];
@@ -1025,7 +1026,7 @@ static int handle_setattr(struct fuse* fuse, struct fuse_handler* handler,
 static int handle_mknod(struct fuse* fuse, struct fuse_handler* handler,
         const struct fuse_in_header* hdr, const struct fuse_mknod_in* req, const char* name)
 {
-    bool has_rw;
+    rw_t has_rw;
     struct node* parent_node;
     char parent_path[PATH_MAX];
     char child_path[PATH_MAX];
@@ -1056,7 +1057,7 @@ static int handle_mknod(struct fuse* fuse, struct fuse_handler* handler,
 static int handle_mkdir(struct fuse* fuse, struct fuse_handler* handler,
         const struct fuse_in_header* hdr, const struct fuse_mkdir_in* req, const char* name)
 {
-    bool has_rw;
+    rw_t has_rw;
     struct node* parent_node;
     char parent_path[PATH_MAX];
     char child_path[PATH_MAX];
@@ -1106,7 +1107,7 @@ static int handle_mkdir(struct fuse* fuse, struct fuse_handler* handler,
 static int handle_unlink(struct fuse* fuse, struct fuse_handler* handler,
         const struct fuse_in_header* hdr, const char* name)
 {
-    bool has_rw;
+    rw_t has_rw;
     struct node* parent_node;
     char parent_path[PATH_MAX];
     char child_path[PATH_MAX];
@@ -1135,7 +1136,7 @@ static int handle_unlink(struct fuse* fuse, struct fuse_handler* handler,
 static int handle_rmdir(struct fuse* fuse, struct fuse_handler* handler,
         const struct fuse_in_header* hdr, const char* name)
 {
-    bool has_rw;
+    rw_t has_rw;
     struct node* parent_node;
     char parent_path[PATH_MAX];
     char child_path[PATH_MAX];
@@ -1165,7 +1166,7 @@ static int handle_rename(struct fuse* fuse, struct fuse_handler* handler,
         const struct fuse_in_header* hdr, const struct fuse_rename_in* req,
         const char* old_name, const char* new_name)
 {
-    bool has_rw;
+    rw_t has_rw;
     struct node* old_parent_node;
     struct node* new_parent_node;
     struct node* child_node;
@@ -1257,7 +1258,7 @@ static int open_flags_to_access_mode(int open_flags) {
 static int handle_open(struct fuse* fuse, struct fuse_handler* handler,
         const struct fuse_in_header* hdr, const struct fuse_open_in* req)
 {
-    bool has_rw;
+    rw_t has_rw;
     struct node* node;
     char path[PATH_MAX];
     struct fuse_open_out out;
@@ -1437,7 +1438,7 @@ static int handle_opendir(struct fuse* fuse, struct fuse_handler* handler,
     if (!node) {
         return -ENOENT;
     }
-    if (!check_caller_access_to_node(fuse, hdr, node, R_OK, false)) {
+    if (!check_caller_access_to_node(fuse, hdr, node, R_OK, RW_NONE)) {
         return -EACCES;
     }
     h = malloc(sizeof(*h));
