@@ -88,6 +88,8 @@ typedef enum {
                                                 Same tuning as AUDIO_SOURCE_VOICE_RECOGNITION.
                                                 Used only internally to the framework. Not exposed
                                                 at the audio HAL. */
+    AUDIO_SOURCE_MOT_DRIVE_DETECT    = 2999, /* A low-priority, preemptible audio source for
+                                                Moto Drive Detect Engine.*/
 } audio_source_t;
 
 /* special audio session values
