@@ -245,6 +245,12 @@ typedef enum {
     AUDIO_FORMAT_VORBIS_SUB_NONE         = 0x0,
 } audio_format_vorbis_sub_fmt_t;
 
+/* DOLBY (AC3/EAC3) sub format field definition: specify dual-mono acmod... */
+typedef enum {
+     AUDIO_FORMAT_DOLBY_SUB_NONE         = 0x0,
+     AUDIO_FORMAT_DOLBY_SUB_DM           = 0x1, /* Clips with the Dual Mono content*/
+} audio_format_dolby_sub_fmt_t;
+
 /* Audio format consists of a main format field (upper 8 bits) and a sub format
  * field (lower 24 bits).
  *
@@ -282,6 +288,9 @@ typedef enum {
     AUDIO_FORMAT_AMR_WB_PLUS         = 0x16000000UL,
     AUDIO_FORMAT_MP2                 = 0x17000000UL,
     AUDIO_FORMAT_EVRCNW              = 0x18000000UL,
+    AUDIO_FORMAT_PCM_OFFLOAD         = 0x1C000000UL,
+    AUDIO_FORMAT_FLAC                = 0x1D000000UL,
+
     AUDIO_FORMAT_MAIN_MASK           = 0xFF000000UL,
     AUDIO_FORMAT_SUB_MASK            = 0x00FFFFFFUL,
 
@@ -298,6 +307,11 @@ typedef enum {
                                         AUDIO_FORMAT_PCM_SUB_8_24_BIT),
     AUDIO_FORMAT_PCM_FLOAT           = (AUDIO_FORMAT_PCM |
                                         AUDIO_FORMAT_PCM_SUB_FLOAT),
+    AUDIO_FORMAT_AC3_DM              =  (AUDIO_FORMAT_AC3 |
+                                          AUDIO_FORMAT_DOLBY_SUB_DM),
+    AUDIO_FORMAT_E_AC3_DM             =  (AUDIO_FORMAT_E_AC3 |
+                                          AUDIO_FORMAT_DOLBY_SUB_DM),
+
     AUDIO_FORMAT_PCM_24_BIT_PACKED   = (AUDIO_FORMAT_PCM |
                                         AUDIO_FORMAT_PCM_SUB_24_BIT_PACKED),
     AUDIO_FORMAT_AAC_MAIN            = (AUDIO_FORMAT_AAC |
@@ -320,6 +334,12 @@ typedef enum {
                                         AUDIO_FORMAT_AAC_SUB_HE_V2),
     AUDIO_FORMAT_AAC_ELD             = (AUDIO_FORMAT_AAC |
                                         AUDIO_FORMAT_AAC_SUB_ELD),
+    /*Offload PCM formats*/
+    AUDIO_FORMAT_PCM_16_BIT_OFFLOAD  = (AUDIO_FORMAT_PCM_OFFLOAD |
+                                        AUDIO_FORMAT_PCM_SUB_16_BIT),
+    AUDIO_FORMAT_PCM_24_BIT_OFFLOAD  = (AUDIO_FORMAT_PCM_OFFLOAD |
+                                        AUDIO_FORMAT_PCM_SUB_8_24_BIT),
+
 } audio_format_t;
 
 /* For the channel mask for position assignment representation */
@@ -373,6 +393,10 @@ enum {
                                   AUDIO_CHANNEL_OUT_FRONT_RIGHT |
                                   AUDIO_CHANNEL_OUT_SIDE_LEFT |
                                   AUDIO_CHANNEL_OUT_SIDE_RIGHT),
+    AUDIO_CHANNEL_OUT_SURROUND = (AUDIO_CHANNEL_OUT_FRONT_LEFT |
+                                  AUDIO_CHANNEL_OUT_FRONT_RIGHT |
+                                  AUDIO_CHANNEL_OUT_FRONT_CENTER |
+                                  AUDIO_CHANNEL_OUT_BACK_CENTER),
     AUDIO_CHANNEL_OUT_PENTA =    (AUDIO_CHANNEL_OUT_QUAD |
                                   AUDIO_CHANNEL_OUT_FRONT_CENTER),
     AUDIO_CHANNEL_OUT_5POINT1  = (AUDIO_CHANNEL_OUT_FRONT_LEFT |
@@ -817,6 +841,7 @@ typedef struct {
     int64_t duration_us;                // duration in microseconds, -1 if unknown
     bool has_video;                     // true if stream is tied to a video stream
     bool is_streaming;                  // true if streaming, false if local playback
+    uint16_t bit_width;                 // bits per sample
 } audio_offload_info_t;
 
 #define AUDIO_MAKE_OFFLOAD_INFO_VERSION(maj,min) \
@@ -1328,6 +1353,7 @@ static inline audio_channel_mask_t audio_channel_out_mask_from_count(uint32_t ch
  * or AUDIO_CHANNEL_INVALID if the channel count exceeds that of the
  * configurations for which a default input channel mask is defined.
  */
+/* Similar to above, but for input.  Currently handles mono, stereo and 5.1 input. */
 static inline audio_channel_mask_t audio_channel_in_mask_from_count(uint32_t channel_count)
 {
     uint32_t bits;
@@ -1407,6 +1433,13 @@ static inline bool audio_is_valid_format(audio_format_t format)
     case AUDIO_FORMAT_AMR_WB_PLUS:
     case AUDIO_FORMAT_MP2:
     case AUDIO_FORMAT_EVRCNW:
+    case AUDIO_FORMAT_FLAC:
+        return true;
+    case AUDIO_FORMAT_PCM_OFFLOAD:
+        if (format != AUDIO_FORMAT_PCM_16_BIT_OFFLOAD &&
+                format != AUDIO_FORMAT_PCM_24_BIT_OFFLOAD) {
+            return false;
+        }
         return true;
     default:
         return false;
@@ -1416,6 +1449,33 @@ static inline bool audio_is_valid_format(audio_format_t format)
 static inline bool audio_is_linear_pcm(audio_format_t format)
 {
     return ((format & AUDIO_FORMAT_MAIN_MASK) == AUDIO_FORMAT_PCM);
+}
+
+static inline bool audio_is_offload_pcm(audio_format_t format)
+{
+    return ((format & AUDIO_FORMAT_MAIN_MASK) == AUDIO_FORMAT_PCM_OFFLOAD);
+}
+
+static inline bool audio_is_compress_capture_format(audio_format_t format)
+{
+    if (format == AUDIO_FORMAT_AMR_WB)
+        return true;
+    else
+        return false;
+}
+
+static inline bool audio_is_compress_voip_format(audio_format_t format)
+{
+
+    if (format == AUDIO_FORMAT_AMR_NB ||
+        format == AUDIO_FORMAT_AMR_WB ||
+        format == AUDIO_FORMAT_EVRC ||
+        format == AUDIO_FORMAT_EVRCB ||
+        format == AUDIO_FORMAT_EVRCWB ||
+        format == AUDIO_FORMAT_EVRCNW)
+        return true;
+    else
+        return false;
 }
 
 static inline bool audio_is_supported_compressed(audio_format_t format)
@@ -1468,6 +1528,7 @@ static inline size_t audio_bytes_per_sample(audio_format_t format)
         size = 61;
         break;
     default:
+        size = sizeof(uint8_t);
         break;
     }
     return size;
