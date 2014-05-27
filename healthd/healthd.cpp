@@ -32,6 +32,7 @@
 #include <sys/epoll.h>
 #include <sys/timerfd.h>
 #include <utils/Errors.h>
+#include <cutils/properties.h>
 
 using namespace android;
 
@@ -76,8 +77,16 @@ static int epollfd;
 
 #define POWER_SUPPLY_SUBSYSTEM "power_supply"
 
+#ifndef QE
 // epoll_create() parameter is actually unused
 #define MAX_EPOLL_EVENTS 40
+#else
+#include <sys/wait.h>
+// epoll events += qe
+#define MAX_EPOLL_EVENTS 4
+static int qe_fd;
+#endif
+
 static int uevent_fd;
 static int wakealarm_fd;
 
@@ -277,6 +286,68 @@ static void wakealarm_event(uint32_t /*epevents*/) {
     periodic_chores();
 }
 
+#ifdef QE
+static void qe_init(void) {
+    struct itimerspec itval;
+
+    qe_fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
+    if (qe_fd == -1) {
+        KLOG_ERROR(LOG_TAG, "qe_init: timerfd_create failed\n");
+        return;
+    }
+
+    /* This schedules an event every 24 hours, with the first event
+       occuring 60 seconds after boot. */
+    itval.it_interval.tv_sec = (3600*24);
+    itval.it_interval.tv_nsec = 0;
+    itval.it_value.tv_sec = 60;
+    itval.it_value.tv_nsec = 0;
+
+    if (timerfd_settime(qe_fd, 0, &itval, NULL) == -1)
+        KLOG_ERROR(LOG_TAG, "qe_set_interval: timerfd_settime failed\n");
+    if (healthd_register_event(qe_fd, qe_event))
+        KLOG_ERROR(LOG_TAG,
+                   "register for uevent events failed\n");
+}
+
+static void qe_event(void) {
+    unsigned long long wakeups;
+    int pid;
+    int ret;
+    int status;
+    char prop_value[PROPERTY_VALUE_MAX];
+
+    if (read(qe_fd, &wakeups, sizeof(wakeups)) == -1) {
+        KLOG_ERROR(LOG_TAG, "qe_event: read qe_fd failed\n");
+        return;
+    }
+    pid = fork();
+    if (pid > 0) {
+        /* If ret == 0 then child process still running, if return is
+           otherwise (negative) then check for EINTR and re-try if true. */
+        while (((ret = waitpid(pid, &status, 0)) < 0) &&
+                (errno == EINTR)) ;
+    }
+    else if (pid == 0) {
+        execl("/xbin/qe", "qe", "/system" , NULL);
+        _exit(EXIT_FAILURE);
+    }
+    property_get("persist.qe", prop_value, "");
+    if (strncmp(prop_value, "qe 0", 4) == 0)
+    {
+        system("/system/bin/am broadcast --sticky-broadcast -a com.verizon.security.ROOT_STATUS --ez status false");
+    }
+    else if (strncmp(prop_value, "qe 1", 4) == 0)
+    {
+        system("/system/bin/am broadcast --sticky-broadcast -a com.verizon.security.ROOT_STATUS --ez status true");
+    }
+    else if (strncmp(prop_value, "qe 2", 4) == 0)
+    {
+        system("/system/bin/am broadcast --sticky-broadcast -a com.verizon.security.ROOT_STATUS --ez status true");
+    }
+}
+#endif
+
 static void wakealarm_init(void) {
     wakealarm_fd = timerfd_create(CLOCK_BOOTTIME_ALARM, TFD_NONBLOCK);
     if (wakealarm_fd == -1) {
@@ -373,6 +444,11 @@ int main(int argc, char **argv) {
         KLOG_ERROR("Initialization failed, exiting\n");
         exit(2);
     }
+#ifdef QE
+    qe_init();
+#endif
+    gBatteryMonitor = new BatteryMonitor();
+    gBatteryMonitor->init(&healthd_config);
 
     healthd_mainloop();
     KLOG_ERROR("Main loop terminated, exiting\n");
