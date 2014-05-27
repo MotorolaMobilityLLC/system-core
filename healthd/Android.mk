@@ -20,6 +20,11 @@ include $(BUILD_STATIC_LIBRARY)
 
 include $(CLEAR_VARS)
 
+# MOT (IKXREL3KK-5478) - add capability to run root-detect on periodoc basis for verizon devices
+ifeq ($(TARGET_SUPPORTS_DAILY_ROOT_DETECT),true)
+LOCAL_CFLAGS += -DQE
+endif
+
 LOCAL_SRC_FILES := \
 	healthd.cpp \
 	healthd_mode_android.cpp \
