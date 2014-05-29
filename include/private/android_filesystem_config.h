@@ -111,6 +111,7 @@
 #define AID_SPRINT_EXTENSION 9013  /* IKASANTISPRINT-149 sprint extension service */
 #define AID_MOT_DBVC      9014  /* mot_dbvc - This group is used to access DataBlock feature related data */
 #define AID_FINGERP       9015  /* IKFPS-98 Add permission group for fingerprint */
+#define AID_MOT_ESDFS     9016  /* mot_esdfs for ESDFS package list parsing */
 
 #define AID_MISC          9998  /* access to misc storage */
 #define AID_NOBODY        9999
@@ -205,6 +206,7 @@ static const struct android_id_info android_ids[] = {
     { "sprint_extension", AID_SPRINT_EXTENSION, },
     { "mot_dbvc",	AID_MOT_DBVC, },
     { "fingerp",        AID_FINGERP, },
+    { "mot_esdfs",     AID_MOT_ESDFS, },
     { "nobody",        AID_NOBODY, },
 };
 
