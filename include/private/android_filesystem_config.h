@@ -114,6 +114,7 @@
 #define AID_MOT_ATVC      9012  /* mot_atvc - This is for use of the ATVC service ONLY */
 #define AID_SPRINT_EXTENSION 9013  /* IKASANTISPRINT-149 sprint extension service */
 #define AID_MOT_DBVC      9014  /* mot_dbvc - This group is used to access DataBlock feature related data */
+#define AID_MOT_ESDFS     9016  /* mot_esdfs for ESDFS package list parsing */
 
 #define AID_MOT_DBVC      9014  /* mot_dbvc - This group is used to access DataBlock feature */
 #define AID_EVERYBODY     9997  /* shared between all apps in the same profile */
@@ -216,6 +217,7 @@ static const struct android_id_info android_ids[] = {
     { "mot_dbvc",      AID_MOT_DBVC, },
     { "mot_esdfs",     AID_MOT_ESDFS, },
     { "mot_atvc",      AID_MOT_ATVC, },
+    { "mot_esdfs",     AID_MOT_ESDFS, },
 };
 
 #define android_id_count \
