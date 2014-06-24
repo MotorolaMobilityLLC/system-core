@@ -116,6 +116,8 @@
 #define AID_QCOM_DIAG 3009 /* can read/write /dev/diag */
 #define AID_IMS 3010 /* can read/write /dev/socket/imsrtp */
 
+#define AID_SENSORS       3011 /* access to /dev/socket/sensor_ctl_socket & QCCI/QCSI */
+
 #define AID_MISC          9998  /* access to misc storage */
 #define AID_NOBODY        9999
 
@@ -191,6 +193,7 @@ static const struct android_id_info android_ids[] = {
     { "net_bt_stack",  AID_NET_BT_STACK, },
     { "qcom_diag", AID_QCOM_DIAG, },
     { "ims", AID_IMS, },
+    { "sensors",       AID_SENSORS, },
 
     { "misc",          AID_MISC, },
     { "mot_accy",	AID_MOT_ACCY, },
