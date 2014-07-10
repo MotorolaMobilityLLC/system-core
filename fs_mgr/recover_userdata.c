@@ -132,7 +132,7 @@ int format_fs(char *fs_type, char *fs_real_blkdev, char *fs_mnt_point, long int 
                strerror(errno));
         return -1;
     }
-    status = make_ext4fs_internal(fd, NULL, fs_mnt_point, 0, 0, 0, 0, 0, 0, 0);
+    status = make_ext4fs_internal(fd, NULL, fs_mnt_point, 0, 0, 0, 0, 0, 0, 0, 0);
     UDLOGV("make_ext4fs returned %d.\n", status);
     close(fd);
     return 0;

@@ -8,7 +8,8 @@ LOCAL_SRC_FILES += recover_userdata.c
 
 LOCAL_C_INCLUDES := $(LOCAL_PATH)/include \
     system/vold \
-    system/extras/ext4_utils
+    system/extras/ext4_utils \
+    external/openssl/include
 
 LOCAL_MODULE:= libfs_mgr
 LOCAL_STATIC_LIBRARIES := liblogwrap libmincrypt libext4_utils_static
@@ -41,7 +42,7 @@ LOCAL_FORCE_STATIC_EXECUTABLE := true
 LOCAL_MODULE_PATH := $(TARGET_ROOT_OUT)/sbin
 LOCAL_UNSTRIPPED_PATH := $(TARGET_ROOT_OUT_UNSTRIPPED)
 
-LOCAL_STATIC_LIBRARIES := libfs_mgr liblogwrap libcutils liblog libc libmincrypt libext4_utils_static
+LOCAL_STATIC_LIBRARIES := libfs_mgr liblogwrap libcutils liblog libc libmincrypt libext4_utils_static libselinux
 LOCAL_STATIC_LIBRARIES += libsparse_static libz
 
 LOCAL_CFLAGS := -Werror
