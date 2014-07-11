@@ -136,6 +136,7 @@ struct {
     { "persist.security.", AID_SYSTEM,   0 },
     { "persist.service.bdroid.", AID_BLUETOOTH,   0 },
     { "selinux."         , AID_SYSTEM,   0 },
+    { "hw.aov.",          AID_AUDIO,    0 }, // ajaysahu, IKVOICE-600
 #ifdef DOLBY_DAP
     // used for setting Dolby specific properties
     { "dolby.", AID_SYSTEM,   0 },
