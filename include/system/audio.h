@@ -677,6 +677,7 @@ enum {
                                  AUDIO_DEVICE_OUT_FM |
                                  AUDIO_DEVICE_OUT_FM_TX |
                                  AUDIO_DEVICE_OUT_EMU_DOCK |
+                                 AUDIO_DEVICE_OUT_AUX_LINE |
                                  AUDIO_DEVICE_OUT_DEFAULT),
     AUDIO_DEVICE_OUT_ALL_A2DP = (AUDIO_DEVICE_OUT_BLUETOOTH_A2DP |
                                  AUDIO_DEVICE_OUT_BLUETOOTH_A2DP_HEADPHONES |
