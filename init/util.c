@@ -398,7 +398,7 @@ void open_devnull_stdio(void)
 
 void get_hardware_name(char *hardware, unsigned int *revision)
 {
-    char data[1024];
+    char data[2048];
     int fd, n;
     char *x, *hw, *rev;
 
@@ -409,7 +409,7 @@ void get_hardware_name(char *hardware, unsigned int *revision)
     fd = open("/proc/cpuinfo", O_RDONLY);
     if (fd < 0) return;
 
-    n = read(fd, data, 1023);
+    n = read(fd, data, sizeof(data) - 1);
     close(fd);
     if (n < 0) return;
 
@@ -432,12 +432,18 @@ void get_hardware_name(char *hardware, unsigned int *revision)
         }
     }
 
+    if (!hardware[0])
+        ERROR("Hardware not found in /proc/cpuinfo\n");
+
     if (rev) {
         x = strstr(rev, ": ");
         if (x) {
             *revision = strtoul(x + 2, 0, 16);
         }
     }
+
+    if (!*revision)
+        ERROR("Revision not found in /proc/cpuinfo\n");
 }
 
 static char *skip_spaces(const char *str)
