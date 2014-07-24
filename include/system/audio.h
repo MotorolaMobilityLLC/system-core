@@ -844,6 +844,7 @@ typedef struct {
     bool has_video;                     // true if stream is tied to a video stream
     bool is_streaming;                  // true if streaming, false if local playback
     uint16_t bit_width;                 // bits per sample
+    bool use_small_bufs;                // true if offloading audio track
 } audio_offload_info_t;
 
 #define AUDIO_MAKE_OFFLOAD_INFO_VERSION(maj,min) \
