@@ -549,7 +549,6 @@ static const audio_offload_info_t AUDIO_INFO_INITIALIZER = {
     duration_us: 0,
     has_video: false,
     is_streaming: false,
-    bit_width: 16,
     use_small_bufs: false,
 };
 
