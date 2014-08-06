@@ -15,7 +15,7 @@ LOCAL_MODULE:= libfs_mgr
 LOCAL_STATIC_LIBRARIES := liblogwrap libmincrypt libext4_utils_static
 LOCAL_C_INCLUDES += system/extras/ext4_utils
 LOCAL_EXPORT_C_INCLUDE_DIRS := $(LOCAL_PATH)/include
-LOCAL_CFLAGS := -Werror
+LOCAL_CFLAGS := -Werror -Wno-implicit-function-declaration
 
 ifneq ($(BOARD_USERIMAGE_BLOCK_SIZE),)
   LOCAL_CFLAGS += -DBOARD_USERIMAGE_BLOCK_SIZE=$(BOARD_USERIMAGE_BLOCK_SIZE)
