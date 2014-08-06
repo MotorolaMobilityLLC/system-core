@@ -15,7 +15,7 @@ LOCAL_MODULE:= libfs_mgr
 LOCAL_STATIC_LIBRARIES := liblogwrap libmincrypt libext4_utils_static libsquashfs_utils
 LOCAL_C_INCLUDES += system/extras/ext4_utils system/extras/squashfs_utils
 LOCAL_EXPORT_C_INCLUDE_DIRS := $(LOCAL_PATH)/include
-LOCAL_CFLAGS := -Werror
+LOCAL_CFLAGS := -Werror -Wno-implicit-function-declaration
 
 ifneq (,$(filter userdebug,$(TARGET_BUILD_VARIANT)))
 LOCAL_CFLAGS += -DALLOW_ADBD_DISABLE_VERITY=1
