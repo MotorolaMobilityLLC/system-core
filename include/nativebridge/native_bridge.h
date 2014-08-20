@@ -61,6 +61,10 @@ bool NativeBridgeAvailable();
 // LoadNativeBridge & InitializeNativeBridge.
 bool NativeBridgeInitialized();
 
+// Check whether a native bridge is available (initialized). Requires a prior call to
+// SetupNativeBridge to make sense.
+bool NativeBridgeAvailable();
+
 // Load a shared library that is supported by the native bridge.
 void* NativeBridgeLoadLibrary(const char* libpath, int flag);
 
