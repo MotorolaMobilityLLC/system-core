@@ -30,4 +30,3 @@ class NativeBridgeTest : public testing::Test {
 };  // namespace android
 
 #endif  // NATIVE_BRIDGE_H_
-
