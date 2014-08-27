@@ -11,7 +11,12 @@ else
 ifeq ($(strip $(MTK_BUILD_ROOT)),yes)
 init_options += -DALLOW_LOCAL_PROP_OVERRIDE=1 -DALLOW_PERMISSIVE_SELINUX=1 -DBOOT_TRACE
 else
-init_options += -DALLOW_LOCAL_PROP_OVERRIDE=0 -DALLOW_PERMISSIVE_SELINUX=0
+init_options += -DALLOW_LOCAL_PROP_OVERRIDE=0
+ifeq ($(RADIO_SECURE),1)
+init_options += -DALLOW_PERMISSIVE_SELINUX=0
+else
+init_options += -DALLOW_PERMISSIVE_SELINUX=1
+endif
 endif
 endif
 
