@@ -7,10 +7,15 @@ LOCAL_PATH:= $(call my-dir)
 ifneq (,$(filter userdebug eng,$(TARGET_BUILD_VARIANT)))
 init_options += \
     -DALLOW_LOCAL_PROP_OVERRIDE=1 \
-    -DALLOW_PERMISSIVE_SELINUX=1 \
     -DREBOOT_BOOTLOADER_ON_PANIC=1 \
     -DWORLD_WRITABLE_KMSG=1 \
     -DDUMP_ON_UMOUNT_FAILURE=1
+
+ifeq ($(RADIO_SECURE),1)
+init_options += -DALLOW_PERMISSIVE_SELINUX=0
+else
+init_options += -DALLOW_PERMISSIVE_SELINUX=1
+endif
 else
 init_options += \
     -DALLOW_LOCAL_PROP_OVERRIDE=0 \
