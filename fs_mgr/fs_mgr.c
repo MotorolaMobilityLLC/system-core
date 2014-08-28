@@ -61,6 +61,11 @@
 #define IS_CACHE(rec) (!strncmp((rec)->mount_point, "/cache", 6))
 #define IS_FORMATTABLE(rec) (IS_USERDATA(rec) || IS_CACHE(rec))
 
+/* from bootinfo.h */
+#define PU_REASON_WDOG_AP_RESET		0x00008000 /* Bit 15 */
+#define PU_REASON_AP_KERNEL_PANIC	0x00020000 /* Bit 17 */
+#define PU_REASON_HARDWARE_RESET    0x00100000 /* bit 20  */
+
 /*
  * gettime() - returns the time in seconds of the system's monotonic clock or
  * zero on error.
@@ -110,16 +115,25 @@ static void check_fs(char *blk_device, char *fs_type, char *target)
 {
     int status;
     int ret;
-    long tmpmnt_flags = MS_NOATIME | MS_NOEXEC | MS_NOSUID;
-    char *tmpmnt_opts = "nomblk_io_submit,errors=remount-ro";
-    char *e2fsck_argv[] = {
-        E2FSCK_BIN,
-        "-y",
-        blk_device
-    };
+    char tmp[PROP_VALUE_MAX];
+    int force = 0;
+
+    ret = __system_property_get("ro.boot.powerup_reason", tmp);
+    if (ret) {
+        force = strtoul(tmp, 0, 16) & (PU_REASON_WDOG_AP_RESET |
+                                       PU_REASON_AP_KERNEL_PANIC |
+                                       PU_REASON_HARDWARE_RESET);
+    }
 
     /* Check for the types of filesystems we know how to check */
     if (!strcmp(fs_type, "ext2") || !strcmp(fs_type, "ext3") || !strcmp(fs_type, "ext4")) {
+        long tmpmnt_flags = MS_NOATIME | MS_NOEXEC | MS_NOSUID;
+        char *tmpmnt_opts = "nomblk_io_submit,errors=remount-ro";
+        char *e2fsck_argv[] = {
+            E2FSCK_BIN,
+            "-y",
+            blk_device
+        };
         /*
          * First try to mount and unmount the filesystem.  We do this because
          * the kernel is more efficient than e2fsck in running the journal and
@@ -133,10 +147,14 @@ static void check_fs(char *blk_device, char *fs_type, char *target)
          * filesytsem due to an error, e2fsck is still run to do a full check
          * fix the filesystem.
          */
-        ret = mount(blk_device, target, fs_type, tmpmnt_flags, tmpmnt_opts);
-        INFO("%s(): mount(%s,%s,%s)=%d\n", __func__, blk_device, target, fs_type, ret);
-        if (!ret) {
-            umount(target);
+        if (force) {
+            INFO("Forcing full file sysyem check...\n");
+            e2fsck_argv[1] = "-yf";
+        } else {
+            ret = mount(blk_device, target, fs_type, tmpmnt_flags, tmpmnt_opts);
+            if (!ret) {
+                umount(target);
+            }
         }
 
         /*
@@ -165,6 +183,10 @@ static void check_fs(char *blk_device, char *fs_type, char *target)
                     "-a",
                     blk_device
             };
+        if (force) {
+            INFO("Forcing full file sysyem check...\n");
+            f2fs_fsck_argv[1] = "-f";
+        }
         INFO("Running %s -f %s\n", F2FS_FSCK_BIN, blk_device);
 
         ret = android_fork_execvp_ext(ARRAY_SIZE(f2fs_fsck_argv), f2fs_fsck_argv,
