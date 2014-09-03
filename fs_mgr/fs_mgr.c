@@ -348,6 +348,7 @@ int fs_mgr_mount_all(struct fstab *fstab)
     int mret = -1;
     int mount_errno = 0;
     int attempted_idx = -1;
+    int formatted_userdata = 0;
 
     if (!fstab) {
         return -1;
@@ -380,6 +381,7 @@ int fs_mgr_mount_all(struct fstab *fstab)
             }
         }
         int last_idx_inspected;
+        int original_i = i;
         mret = mount_with_alternatives(fstab, i, &last_idx_inspected, &attempted_idx);
         i = last_idx_inspected;
         mount_errno = errno;
@@ -406,6 +408,25 @@ int fs_mgr_mount_all(struct fstab *fstab)
                 }
             }
             /* Success!  Go get the next one */
+            continue;
+        }
+
+        /* mount(2) returned an error, check if it's userdata and deal with it */
+        if (!formatted_userdata && !strncmp(
+                    fstab->recs[last_idx_inspected].mount_point, "/data", 6)) {
+            int rc;
+
+            formatted_userdata++;
+
+            rc = recover_userdata(fstab->recs[last_idx_inspected].fs_type,
+                    fstab->recs[last_idx_inspected].blk_device,
+                    fstab->recs[last_idx_inspected].mount_point);
+            if (rc) {
+                ERROR("userdata format failed.\n");
+                ++error_count;
+            } else {
+                i = original_i - 1; /* try, try again */
+            }
             continue;
         }
 
@@ -436,13 +457,6 @@ int fs_mgr_mount_all(struct fstab *fstab)
                    "%s at %s options: %s error: %s\n",
                    fstab->recs[attempted_idx].blk_device, fstab->recs[attempted_idx].mount_point,
                    fstab->recs[attempted_idx].fs_options, strerror(mount_errno));
-            if (!strncmp(fstab->recs[attempted_idx].mount_point, "/data", 5)) {
-                int rc;
-                rc = recover_userdata(fstab->recs[attempted_idx].fs_type, fstab->recs[attempted_idx].blk_device, fstab->recs[attempted_idx].mount_point);
-                if (rc) {
-                    ERROR("userdata format failed.\n");
-                }
-            }
             ++error_count;
             continue;
         }
