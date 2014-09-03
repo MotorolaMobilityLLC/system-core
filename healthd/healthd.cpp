@@ -324,32 +324,13 @@ static void qe_event(void) {
            KLOG_ERROR(LOG_TAG, "qe_event: read qe_fd failed\n");
            return;
        }
-       pid = fork();
-       if (pid > 0) {
-           /* If ret == 0 then child process still running, if return is
-              otherwise (negative) then check for EINTR and re-try if true. */
-           while (((ret = waitpid(pid, &status, 0)) < 0) &&
-                   (errno == EINTR)) ;
-       }
-       else if (pid == 0) {
-           execl("/xbin/qe", "qe", "/system" , NULL);
-           _exit(EXIT_FAILURE);
-       }
-       property_get("persist.qe", prop_value, "");
-       if (strncmp(prop_value, "qe 0", 4) == 0)
-       {
-           system("/system/bin/am broadcast --sticky-broadcast -a com.verizon.security.ROOT_STATUS --ez status false");
-       }
-       else if (strncmp(prop_value, "qe 1", 4) == 0)
-       {
-           system("/system/bin/am broadcast --sticky-broadcast -a com.verizon.security.ROOT_STATUS --ez status true");
-       }
-       else if (strncmp(prop_value, "qe 2", 4) == 0)
-       {
-           system("/system/bin/am broadcast --sticky-broadcast -a com.verizon.security.ROOT_STATUS --ez status true");
-       }
-       /* Once broadcast is sent, repeat every 24 hours.  When timerfd_settime() is called, the timer
-          is rearmed with the existing timeout value.  Thus, if value.tv_sec is not also changed, when
+
+       /* Trigger root-detect in 'init' via property. After root-detect via trigger
+          completes, broadcast will have been sent. */
+       property_set("persist.qe.trigger", "1");
+
+       /* Repeat every 24 hours.  When timerfd_settime() is called, the timer is rearmed
+          with the existing timeout value.  Thus, if value.tv_sec is not also changed, when
           timerfd_settime() is called, this event will keep repeating every minute */
        qe_itval.it_interval.tv_sec = (3600*24);
        qe_itval.it_value.tv_sec = (3600*24);
