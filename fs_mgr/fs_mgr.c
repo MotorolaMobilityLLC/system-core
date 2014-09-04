@@ -52,6 +52,7 @@
 #define KEY_IN_FOOTER  "footer"
 
 #define E2FSCK_BIN      "/system/bin/e2fsck"
+#define F2FSCK_BIN      "/system/bin/fsck.f2fs"
 #define MKSWAP_BIN      "/system/bin/mkswap"
 
 #define FSCK_LOG_FILE   "/dev/fscklogs/log"
@@ -507,6 +508,11 @@ static void check_fs(char *blk_device, char *fs_type, char *target)
         "-y",
         blk_device
     };
+    char *f2fsck_argv[] = {
+        F2FSCK_BIN,
+        "-a",
+        blk_device
+    };
 
     ret = __system_property_get("ro.boot.powerup_reason", tmp);
     if (ret) {
@@ -549,6 +555,19 @@ static void check_fs(char *blk_device, char *fs_type, char *target)
         if (ret < 0) {
             /* No need to check for error in fork, we can't really handle it now */
             ERROR("Failed trying to run %s\n", E2FSCK_BIN);
+        }
+    } else if (!strcmp(fs_type, "f2fs")) {
+        if (force) {
+            INFO("Forcing full file sysyem check...\n");
+            f2fsck_argv[1] = "-f";
+        }
+        INFO("Running %s on %s\n", F2FSCK_BIN, blk_device);
+        ret = android_fork_execvp_ext(ARRAY_SIZE(f2fsck_argv), f2fsck_argv,
+                                      &status, true, LOG_KLOG | LOG_FILE,
+                                      true, FSCK_LOG_FILE);
+        if (ret < 0) {
+            /* No need to check for error in fork, we can't really handle it now */
+            ERROR("Failed trying to run %s\n", F2FSCK_BIN);
         }
     }
 
