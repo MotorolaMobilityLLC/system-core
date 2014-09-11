@@ -750,6 +750,7 @@ static void export_kernel_boot_props(void)
         { "ro.boot.nav_keys", "ro.hw.nav_keys", NULL, },
         { "ro.boot.lcd_density", "ro.sf.lcd_density", NULL, },
         { "ro.boot.modelno", "ro.product.display", NULL, },
+        { "ro.boot.fsg-id", "ro.fsg-id", NULL, },
     };
 
     for (i = 0; i < ARRAY_SIZE(prop_map); i++) {
