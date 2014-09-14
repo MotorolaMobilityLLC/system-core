@@ -35,7 +35,6 @@
 #include <cutils/partition_utils.h>
 #include <cutils/properties.h>
 #include <logwrap/logwrap.h>
-#include "recover_userdata.h"
 #include "mincrypt/rsa.h"
 #include "mincrypt/sha.h"
 #include "mincrypt/sha256.h"
@@ -55,6 +54,13 @@
 #define ZRAM_CONF_DEV   "/sys/block/zram0/disksize"
 
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(*(a)))
+
+#define MAX_MOUNT_RETRIES 2
+
+#define IS_USERDATA(rec) (!strncmp((rec)->mount_point, "/data", 5))
+#define IS_CACHE(rec) (!strncmp((rec)->mount_point, "/cache", 6))
+#define IS_FORMATTABLE(rec) (IS_USERDATA(rec) || IS_CACHE(rec))
+
 
 /*
  * gettime() - returns the time in seconds of the system's monotonic clock or
@@ -411,23 +417,27 @@ int fs_mgr_mount_all(struct fstab *fstab)
             continue;
         }
 
-        /* mount(2) returned an error, check if it's userdata and deal with it */
-        if (!formatted_userdata && !strncmp(
-                    fstab->recs[last_idx_inspected].mount_point, "/data", 6)) {
-            int rc;
 
-            formatted_userdata++;
+         /*mount failure:  try to format userdata/cache if they are wiped */
+        if(mret && mount_errno != EBUSY && mount_errno != EACCES &&
+            partition_wiped(fstab->recs[attempted_idx].blk_device)) {
 
-            rc = recover_userdata(fstab->recs[last_idx_inspected].fs_type,
-                    fstab->recs[last_idx_inspected].blk_device,
-                    fstab->recs[last_idx_inspected].mount_point);
-            if (rc) {
-                ERROR("userdata format failed.\n");
-                ++error_count;
-            } else {
-                i = original_i - 1; /* try, try again */
+            if (IS_FORMATTABLE(&fstab->recs[attempted_idx])) {
+                int tabs = 0;
+                int rc = -1;
+
+                /* try format with each fstype listed in fstab with same mount point */
+                for ( tabs = attempted_idx; tabs <= last_idx_inspected; tabs ++) {
+                    ERROR("tabe= %d try to format it as %s", tabs, fstab->recs[tabs].fs_type);
+                    rc = fs_mgr_do_format(&fstab->recs[tabs]);
+                    if(!rc) {
+                        i = tabs - 1;
+                        break;
+                    }
+	        }
+                if(!rc)
+                    continue; /* if none of format is succeed, fall though to let recovery mode handle it */
             }
-            continue;
         }
 
         /* mount(2) returned an error, check if it's encryptable and deal with it */
