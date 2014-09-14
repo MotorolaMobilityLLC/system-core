@@ -49,6 +49,7 @@ struct fstab_rec {
     unsigned long flags;
     char *fs_options;
     int fs_mgr_flags;
+    struct fstab_rec *fallback;
     char *key_loc;
     char *verity_loc;
     long long length;
@@ -85,6 +86,11 @@ int fs_mgr_is_verified(struct fstab_rec *fstab);
 int fs_mgr_is_encryptable(struct fstab_rec *fstab);
 int fs_mgr_is_noemulatedsd(struct fstab_rec *fstab);
 int fs_mgr_swapon_all(struct fstab *fstab);
+
+int fs_mgr_is_partition_encrypted(struct fstab_rec *fstab);
+int fs_mgr_identify_fs(struct fstab_rec *fstab);
+int fs_mgr_do_format(struct fstab_rec *fstab);
+
 #ifdef __cplusplus
 }
 #endif

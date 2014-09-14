@@ -56,6 +56,12 @@
 
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(*(a)))
 
+#define MAX_MOUNT_RETRIES 2
+
+#define IS_USERDATA(rec) (!strncmp((rec)->mount_point, "/data", 5))
+#define IS_CACHE(rec) (!strncmp((rec)->mount_point, "/cache", 6))
+#define IS_FORMATTABLE(rec) (IS_USERDATA(rec) || IS_CACHE(rec))
+
 /*
  * gettime() - returns the time in seconds of the system's monotonic clock or
  * zero on error.
@@ -141,7 +147,7 @@ static void check_fs(char *blk_device, char *fs_type, char *target)
     } else if (!strcmp(fs_type, "f2fs")) {
             char *f2fs_fsck_argv[] = {
                     F2FS_FSCK_BIN,
-                    "-f",
+                    "-a",
                     blk_device
             };
         INFO("Running %s -f %s\n", F2FS_FSCK_BIN, blk_device);
@@ -187,6 +193,7 @@ static void fs_set_blk_ro(const char *blockdev)
     ioctl(fd, BLKROSET, &ON);
     close(fd);
 }
+
 
 /*
  * __mount(): wrapper around the mount() system call which also
@@ -343,6 +350,7 @@ static int mount_with_alternatives(struct fstab *fstab, int start_idx, int *end_
 int fs_mgr_mount_all(struct fstab *fstab)
 {
     int i = 0;
+    int retry = MAX_MOUNT_RETRIES;
     int encryptable = FS_MGR_MNTALL_DEV_NOT_ENCRYPTED;
     int error_count = 0;
     int mret = -1;
@@ -406,38 +414,66 @@ int fs_mgr_mount_all(struct fstab *fstab)
                 }
             }
             /* Success!  Go get the next one */
+            retry = MAX_MOUNT_RETRIES;
             continue;
         }
 
-        /* mount(2) returned an error, check if it's encryptable and deal with it */
+        /*
+         * Mount failed, which is expected in some circumstances for some
+         * partitions (userdata and cache).
+         */
         if (mret && mount_errno != EBUSY && mount_errno != EACCES &&
-            fs_mgr_is_encryptable(&fstab->recs[attempted_idx])) {
-            if(partition_wiped(fstab->recs[attempted_idx].blk_device)) {
-                ERROR("%s(): %s is wiped and %s %s is encryptable. Suggest recovery...\n", __func__,
-                      fstab->recs[attempted_idx].blk_device, fstab->recs[attempted_idx].mount_point,
-                      fstab->recs[attempted_idx].fs_type);
-                encryptable = FS_MGR_MNTALL_DEV_NEEDS_RECOVERY;
-                continue;
-            } else {
-                /* Need to mount a tmpfs at this mountpoint for now, and set
-                 * properties that vold will query later for decrypting
+                IS_FORMATTABLE(&fstab->recs[attempted_idx])) {
+            if (fs_mgr_is_partition_encrypted(&fstab->recs[attempted_idx])) {
+                INFO("%s appears to be encrypted\n", fstab->recs[attempted_idx].blk_device);
+                /*
+                 * Need to mount a tmpfs at this mountpoint for now, and set
+                 * properties that Vold will query later for decrypting.
                  */
-                ERROR("%s(): possibly an encryptable blkdev %s for mount %s type %s )\n", __func__,
-                      fstab->recs[attempted_idx].blk_device, fstab->recs[attempted_idx].mount_point,
-                      fstab->recs[attempted_idx].fs_type);
                 if (fs_mgr_do_tmpfs_mount(fstab->recs[attempted_idx].mount_point) < 0) {
                     ++error_count;
                     continue;
                 }
+                encryptable = FS_MGR_MNTALL_DEV_MIGHT_BE_ENCRYPTED;
+                continue;
+            } else if (partition_wiped(fstab->recs[attempted_idx].blk_device)) {
+                INFO("%s appears to be blank\n", fstab->recs[attempted_idx].blk_device);
+                if (fs_mgr_do_format(&fstab->recs[attempted_idx]) == 0) {
+                    INFO("Format complete; retrying mount.\n");
+                    i--;
+                    continue;
+                }
+                ERROR("Format failed; suggest recovery.\n");
+            } else {
+                /*
+                 * Handle a transient error.  These can occur if the device had
+                 * a momentary lapse in sanity or the journal replay or roll-
+                 * forward recovery mechanism failed.  It's worth trying again,
+                 * since fsck may be able to recover things now that an error
+                 * bit is set in the superblock.
+                 */
+                if (--retry > 0) {
+                    ERROR("Mount failed, retrying...\n");
+                    i--;
+                    continue;
+                }
+                /*
+                 * The file system has become irrevocably corrupted.  Since the
+                 * partition is formattable, drop into recovery mode to allow
+                 * the user to decide what to do.
+                 */
+                 ERROR("Mount failed; suggest recovery.\n");
             }
-            encryptable = FS_MGR_MNTALL_DEV_MIGHT_BE_ENCRYPTED;
-        } else {
-            ERROR("Failed to mount an un-encryptable or wiped partition on"
-                   "%s at %s options: %s error: %s\n",
+            encryptable = FS_MGR_MNTALL_DEV_NEEDS_RECOVERY;
+            continue;
+        }
+
+        /* Mount failed and there is nothing we can do. */
+        if (mret) {
+            ERROR("Failed to mount partition on %s at %s options: %s error: %s\n",
                    fstab->recs[attempted_idx].blk_device, fstab->recs[attempted_idx].mount_point,
                    fstab->recs[attempted_idx].fs_options, strerror(mount_errno));
             ++error_count;
-            continue;
         }
     }
 
