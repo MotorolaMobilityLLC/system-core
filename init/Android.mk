@@ -28,6 +28,10 @@ ifneq (,$(filter userdebug eng,$(TARGET_BUILD_VARIANT)))
 LOCAL_CFLAGS += -DALLOW_LOCAL_PROP_OVERRIDE=1 -DALLOW_DISABLE_SELINUX=1
 endif
 
+ifeq ($(strip $(TARGET_USE_MOT_NEW_COM)),true)
+LOCAL_CFLAGS    += -DMOTO_NEW_CHARGE_ONLY_MODE
+endif
+
 # Enable ueventd logging
 #LOCAL_CFLAGS += -DLOG_UEVENTS=1
 
