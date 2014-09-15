@@ -845,11 +845,14 @@ int main(int argc, char** argv) {
     // wasn't ready immediately after wait_for_coldboot_done
     am.QueueBuiltinAction(mix_hwrng_into_linux_rng_action, "mix_hwrng_into_linux_rng");
 
+#ifndef MOTO_NEW_CHARGE_ONLY_MODE
     // Don't mount filesystems or start core system services in charger mode.
     std::string bootmode = property_get("ro.bootmode");
     if (bootmode == "charger" || bootmode == "mot-charger") {
         am.QueueEventTrigger("charger");
-    } else {
+    } else
+#endif
+    {
         am.QueueEventTrigger("late-init");
     }
 

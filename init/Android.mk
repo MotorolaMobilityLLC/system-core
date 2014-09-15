@@ -40,6 +40,9 @@ ifeq ($(BOARD_HAS_GREYBUS_INTERFACE),true)
 init_options += -DMOTO_GREYBUS_FIRMWARE
 endif
 
+ifeq ($(strip $(TARGET_USE_MOT_NEW_COM)),true)
+init_options += -DMOTO_NEW_CHARGE_ONLY_MODE
+endif
 
 init_cflags += \
     $(init_options) \
