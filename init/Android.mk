@@ -28,6 +28,10 @@ endif
 
 init_options += -DLOG_UEVENTS=0
 
+ifeq ($(strip $(TARGET_USE_MOT_NEW_COM)),true)
+init_options += -DMOTO_NEW_CHARGE_ONLY_MODE
+endif
+
 ifeq ($(TARGET_USER_MODE_LINUX), true)
     init_cflags += -DUSER_MODE_LINUX
 endif
