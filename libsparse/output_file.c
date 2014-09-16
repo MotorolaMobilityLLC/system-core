@@ -528,6 +528,7 @@ static int write_normal_fill_chunk(struct output_file *out, int64_t len,
 
 static int write_normal_skip_chunk(struct output_file *out, int64_t len, bool last_block)
 {
+	bool tmp = last_block;
 	return out->ops->skip(out, len);
 }
 
