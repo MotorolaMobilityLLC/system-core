@@ -692,6 +692,7 @@ ifc_configure(const char *ifname,
         in_addr_t dns2) {
 
     char dns_prop_name[PROPERTY_KEY_MAX];
+    in_addr_t tmp = gateway;
 
     ifc_init();
 
