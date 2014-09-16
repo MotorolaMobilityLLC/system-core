@@ -71,15 +71,15 @@ static void dump_kernel_stack(log_t* log, pid_t tid) {
     char buf[64];
 
     snprintf(buf, sizeof(buf), "/proc/%d/stack", tid);
-    _LOG(log, false, "%s:\n", buf);
+    _LOG(log, logtype::ERROR, "%s:\n", buf);
 
     FILE* fp = fopen(buf, "r");
     if (fp) {
         while (fgets(buf, sizeof(buf), fp) != NULL)
-            _LOG(log, false, "  %s", buf);
+            _LOG(log, logtype::ERROR, "  %s", buf);
         fclose(fp);
     } else {
-        _LOG(log, false, "  ERROR %d (%s)", errno, strerror(errno));
+        _LOG(log, logtype::ERROR, "  ERROR %d (%s)", errno, strerror(errno));
     }
 }
 
