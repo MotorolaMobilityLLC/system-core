@@ -477,7 +477,7 @@ int fs_mgr_mount_all(struct fstab *fstab)
 
          /*mount failure:  try to format userdata/cache if they are wiped */
         if(mret && mount_errno != EBUSY && mount_errno != EACCES &&
-                fs_mgr_is_partition_encrypted(&fstab->recs[attempted_idx])) {
+                partition_wiped(fstab->recs[attempted_idx].blk_device)) {
 
             if (IS_FORMATTABLE(&fstab->recs[attempted_idx])) {
                 int tabs = 0;
@@ -520,44 +520,11 @@ int fs_mgr_mount_all(struct fstab *fstab)
             }
             encryptable = FS_MGR_MNTALL_DEV_MIGHT_BE_ENCRYPTED;
         } else {
-            if (partition_wiped(fstab->recs[attempted_idx].blk_device)) {
-                ERROR("Blank partition on %s for %s\n",
-                        fstab->recs[attempted_idx].blk_device, fstab->recs[attempted_idx].mount_point);
-            } else if (retry > 0) {
-                /* Mount failed, but the device does not appear to be erased
-                 * and encryption is not enabled.  Try again.
-                 */
-                ERROR("Cannot mount filesystem on %s at %s; retrying...\n",
-                        fstab->recs[attempted_idx].blk_device, fstab->recs[attempted_idx].mount_point);
-                retry--;
-                i--;
-                continue;
-            } else if (fstab->recs[i].fallback) {
-                /* We have a fallback, so disable this scenario and try that one. */
-                fstab->recs[i].fs_mgr_flags |= MF_DISABLED;
-                ERROR("Cannot mount filesystem on %s at %s; trying fallback\n",
-                        fstab->recs[i].blk_device, fstab->recs[i].mount_point);
-                continue;
-            } else {
-                ERROR("Failed to mount an un-encryptable or wiped partition on"
-                       "%s at %s options: %s error: %s\n",
-                       fstab->recs[attempted_idx].blk_device, fstab->recs[attempted_idx].mount_point,
-                       fstab->recs[attempted_idx].fs_options, strerror(mount_errno));
-                       ++error_count;
-            }
-            retry = MAX_MOUNT_RETRIES;
-
-            if (IS_FORMATTABLE(&fstab->recs[i])) {
-                int rc;
-                rc = fs_mgr_do_format(&fstab->recs[i]);
-                if (!rc) {
-                    /* Userdata recovery succeeded, retry this mount. */
-                    i--;
-                    continue;
-                } else {
-                    ERROR("userdata format failed.\n");
-                }
-           }
+            ERROR("Failed to mount an un-encryptable or wiped partition on"
+                   "%s at %s options: %s error: %s\n",
+                   fstab->recs[attempted_idx].blk_device, fstab->recs[attempted_idx].mount_point,
+                   fstab->recs[attempted_idx].fs_options, strerror(mount_errno));
+            ++error_count;
             continue;
         }
     }
