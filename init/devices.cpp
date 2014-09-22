@@ -378,6 +378,15 @@ static int find_vbd_device_prefix(const char *path, char *buf, ssize_t buf_sz)
     return 0;
 }
 
+static int find_bootdevice_prefix(const char *path, char *buf, ssize_t buf_sz)
+{
+    if (strstr(path, bootdevice)) {
+       strlcpy(buf, bootdevice, buf_sz);
+       return 0;
+    }
+    return -1;
+}
+
 static void parse_event(const char *msg, struct uevent *uevent)
 {
     uevent->action = "";
@@ -525,6 +534,9 @@ char** get_block_device_symlinks(struct uevent* uevent) {
     } else if (!find_vbd_device_prefix(uevent->path, buf, sizeof(buf))) {
         device = buf;
         type = "vbd";
+    } else if (!find_bootdevice_prefix(uevent->path, buf, sizeof(buf))) {
+        device = buf;
+        type = "platform";
     } else {
         return NULL;
     }
