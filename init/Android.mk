@@ -28,9 +28,10 @@ ifneq (,$(filter userdebug eng,$(TARGET_BUILD_VARIANT)))
 LOCAL_CFLAGS += -DALLOW_LOCAL_PROP_OVERRIDE=1 -DALLOW_DISABLE_SELINUX=1
 else
 # Allow disabling SELinux for not signed user buids
-ifneq ($(RADIO_SECURE),1)
+# IKGPEL-101 - wljv10 - STOPSHIP! Temporarily allow SELinux to be in permissive mode for user builds
+# ifneq ($(RADIO_SECURE),1)
 LOCAL_CFLAGS += -DALLOW_DISABLE_SELINUX=1
-endif
+# endif
 endif
 
 # Enable ueventd logging
