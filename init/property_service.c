@@ -175,6 +175,7 @@ struct {
     { "ril-daemon1", AID_RADIO, 0 },
     { "qmuxd", AID_RADIO, 0 },
     { "netmgrd", AID_RADIO, 0 },
+    { "msp430restart", AID_AUDIO, 0 },
      {NULL, 0, 0 }
 };
 
