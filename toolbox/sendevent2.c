@@ -43,9 +43,8 @@ struct input_event {
 
 int sendevent2_main(int argc, char *argv[])
 {
-     int i;
      int fd;
-     int ret;
+     ssize_t ret;
      int version;
      struct input_event event;
 
@@ -66,7 +65,8 @@ int sendevent2_main(int argc, char *argv[])
 
      for (;argc;argv += 5, argc -= 5) {
          if (!device || strcmp(argv[1], device)) {
-             close(fd);
+             if (fd > 0)
+                 close(fd);
              device = argv[1];
              fd = open(argv[1], O_RDWR);
              if(fd < 0) {
@@ -86,7 +86,7 @@ int sendevent2_main(int argc, char *argv[])
          event.code = atoi(argv[3]);
          event.value = atoi(argv[4]);
          ret = write(fd, &event, sizeof(event));
-         if(ret < sizeof(event)) {
+         if (ret < (ssize_t)sizeof(event)) {
              fprintf(stderr, "write event failed, %s\n", strerror(errno));
              close(fd);
              return -1;
@@ -96,7 +96,8 @@ int sendevent2_main(int argc, char *argv[])
              usleep(1000*atoi(argv[5]));
          }
      }
-     close(fd);
+     if (fd > 0)
+         close(fd);
      return 0;
      // Motorola - END - IKAPP-606 - wqnt78 - 3/10/2010 - PTF enabler
 }
