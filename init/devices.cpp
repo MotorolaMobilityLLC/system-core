@@ -511,10 +511,10 @@ static char **get_block_device_symlinks(struct uevent *uevent)
         return NULL;
     }
 
-    char **links = (char**) malloc(sizeof(char *) * 4);
+    char **links = (char**) malloc(sizeof(char *) * 6);
     if (!links)
         return NULL;
-    memset(links, 0, sizeof(char *) * 4);
+    memset(links, 0, sizeof(char *) * 6);
 
     INFO("found %s device %s\n", type, device);
 
@@ -529,11 +529,21 @@ static char **get_block_device_symlinks(struct uevent *uevent)
             link_num++;
         else
             links[link_num] = NULL;
+        if (asprintf(&links[link_num], "/dev/block/bootdevice/by-name/%s", p) > 0)
+            link_num++;
+        else
+            links[link_num] = NULL;
+
         free(p);
     }
 
     if (uevent->partition_num >= 0) {
         if (asprintf(&links[link_num], "%s/by-num/p%d", link_path, uevent->partition_num) > 0)
+            link_num++;
+        else
+            links[link_num] = NULL;
+
+        if (asprintf(&links[link_num], "/dev/block/bootdevice/by-num/p%d", uevent->partition_num) > 0)
             link_num++;
         else
             links[link_num] = NULL;
