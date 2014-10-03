@@ -1652,10 +1652,10 @@ static int read_package_list(struct fuse_global* global) {
     char buf[512];
     while (fgets(buf, sizeof(buf), file) != NULL) {
         char package_name[512];
-        int appid;
+        intptr_t appid;
         char gids[512];
 
-        if (sscanf(buf, "%s %d %*d %*s %*s %s", package_name, &appid, gids) == 3) {
+        if (sscanf(buf, "%s %" SCNdPTR " %*d %*s %*s %s", package_name, &appid, gids) == 3) {
             char* package_name_dup = strdup(package_name);
             hashmapPut(global->package_to_appid, package_name_dup, (void*) (uintptr_t) appid);
         }
