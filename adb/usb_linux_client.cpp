@@ -218,7 +218,7 @@ static int usb_adb_read(usb_handle *h, void *data, int len)
     D("about to read (fd=%d, len=%d)\n", h->fd, len);
     n = adb_read(h->fd, data, len);
     if(n != len) {
-        LOGE("ERROR: fd = %d, n = %d, errno = %d (%s)\n",
+        D("ERROR: fd = %d, n = %d, errno = %d (%s)\n",
             h->fd, n, errno, strerror(errno));
         return -1;
     }

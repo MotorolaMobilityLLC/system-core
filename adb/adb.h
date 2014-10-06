@@ -23,14 +23,6 @@
 #include "adb_trace.h"
 #include "fdevent.h"
 
-#if !ADB_HOST
-#include <cutils/klog.h>
-
-#define LOGE(x...) do { KLOG_ERROR("adb", x); } while (0)
-#else
-#define LOGE(x...) do {} while (0)
-#endif
-
 #define MAX_PAYLOAD 4096
 
 #define A_SYNC 0x434e5953
