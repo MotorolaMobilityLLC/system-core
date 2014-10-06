@@ -41,7 +41,6 @@
 #include <sys/prctl.h>
 #include <getopt.h>
 #include <selinux/selinux.h>
-#include <cutils/klog.h>
 #else
 #include "usb_vendors.h"
 #endif
@@ -67,7 +66,6 @@ void fatal(const char *fmt, ...)
     fprintf(stderr, "error: ");
     vfprintf(stderr, fmt, ap);
     fprintf(stderr, "\n");
-    LOGE("fatal %s\n", fmt);
     va_end(ap);
     exit(-1);
 }
@@ -79,7 +77,6 @@ void fatal_errno(const char *fmt, ...)
     fprintf(stderr, "error: %s: ", strerror(errno));
     vfprintf(stderr, fmt, ap);
     fprintf(stderr, "\n");
-    LOGE("fatal_errno %s\n", fmt);
     va_end(ap);
     exit(-1);
 }
@@ -1009,8 +1006,6 @@ void start_device_log(void)
     struct tm now;
     time_t t;
     char value[PROPERTY_VALUE_MAX];
-
-    klog_init();
 
     // read the trace mask from persistent property persist.adb.trace_mask
     // give up if the property is not set or cannot be parsed
