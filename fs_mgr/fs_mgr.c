@@ -164,6 +164,7 @@ static void check_fs(char *blk_device, char *fs_type, char *target)
     } else if (!strcmp(fs_type, "f2fs")) {
             char *f2fs_fsck_argv[] = {
                     F2FS_FSCK_BIN,
+                    "-a",
                     blk_device
             };
         INFO("Running %s on %s\n", F2FS_FSCK_BIN, blk_device);
