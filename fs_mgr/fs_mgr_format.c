@@ -89,7 +89,11 @@ out:
     return ret;
 }
 
-#define TOTAL_SECTORS 4         /* search the first 4 sectors */
+/*
+ * Search the first 16 sectors, or 4*4k blocks.  This covers the EXT4 alignment
+ * requirement and will also find the F2FS backup SB.
+ */
+#define TOTAL_SECTORS 16
 static int is_f2fs(char *block)
 {
     __le32 *sb;
@@ -143,7 +147,7 @@ int fs_mgr_identify_fs(struct fstab_rec *fstab)
         (!strncmp(fstab->fs_type, "ext4", 4) && is_ext4(block))) {
         rc = 0;
     } else {
-        ERROR("Did not recognize file system type %s on %s\n", fstab->fs_type, fstab->blk_device);
+        ERROR("Did not recognize file system type '%s' on %s\n", fstab->fs_type, fstab->blk_device);
     }
 
 out:
@@ -162,7 +166,6 @@ extern void reset_ext4fs_info();
 static int format_ext4(char *fs_blkdev, char *fs_mnt_point, int needs_footer)
 {
     long int fs_blksize = INVALID_BLOCK_SIZE;
-    struct crypt_mnt_ftr crypt_ftr;
     unsigned int nr_sec;
     off64_t off;
     int fd, rc = 0;
@@ -180,8 +183,6 @@ static int format_ext4(char *fs_blkdev, char *fs_mnt_point, int needs_footer)
         fs_blksize = INVALID_BLOCK_SIZE;
     }
 
-    memset (&crypt_ftr, 0, sizeof(crypt_ftr));
-
     /* Need to calculate the size to format. (Partition size - CRYPT_FOOTER_OFFSET) */
     if ((fd = open(fs_blkdev, O_RDWR)) < 0) {
         ERROR("Cannot open block device.  %s\n", strerror(errno));
@@ -193,17 +194,20 @@ static int format_ext4(char *fs_blkdev, char *fs_mnt_point, int needs_footer)
         return -1;
     }
     off = ((off64_t)nr_sec * 512);
-    if (needs_footer) {
-        off -= CRYPT_FOOTER_OFFSET;
-    }
 
-    INFO("Wipe the old crypto info\n");
-    if (lseek64(fd, off, SEEK_SET) == -1) {
-        ERROR("Cannot seek to real block device footer.  %s\n", strerror(errno));
-        close(fd);
-        return -1;
+    if (needs_footer) {
+        struct crypt_mnt_ftr crypt_ftr;
+
+        INFO("Wiping old crypto info.\n");
+        off -= CRYPT_FOOTER_OFFSET;
+        memset (&crypt_ftr, 0, sizeof(crypt_ftr));
+        if (lseek64(fd, off, SEEK_SET) == -1) {
+            ERROR("Cannot seek to real block device footer.  %s\n", strerror(errno));
+            close(fd);
+            return -1;
+        }
+        write(fd, &crypt_ftr, sizeof(struct crypt_mnt_ftr));
     }
-    write(fd, &crypt_ftr, sizeof(struct crypt_mnt_ftr));
     close(fd);
 
     /* Format the partition using the calculated length */
@@ -233,14 +237,14 @@ static int format_f2fs(char *fs_blkdev, int needs_footer)
     int footer = needs_footer ? CRYPT_FOOTER_OFFSET : 0;
 
     snprintf(footer_size, sizeof(footer_size), "%d", footer);
-    args[0] = (char *)"/system/bin/mkfs.f2fs_arm";
+    args[0] = (char *)"/sbin/mkfs.f2fs";
     args[1] = (char *)"-r";
     args[2] = footer_size;
     args[3] = fs_blkdev;
     args[4] = (char *)0;
     if (!(pid = fork())) {
         /* This doesn't return */
-        execv("/system/bin/mkfs.f2fs_arm", args);
+        execv("/sbin/mkfs.f2fs", args);
         exit(1);
     }
     for(;;) {
@@ -252,13 +256,13 @@ static int format_f2fs(char *fs_blkdev, int needs_footer)
         }
         if (WIFEXITED(rc)) {
             rc = WEXITSTATUS(rc);
-            INFO("mkfs done, status %d", rc);
+            INFO("%s done, status %d", args[0], rc);
             if (rc) {
                 rc = -1;
             }
             break;
         }
-        ERROR("Still waiting for mkfs.f2fs...\n");
+        ERROR("Still waiting for %s...\n", args[0]);
     }
 
     return rc;
@@ -270,8 +274,8 @@ int fs_mgr_do_format(struct fstab_rec *fstab)
 
     int needs_footer = fstab->key_loc && !strcmp(fstab->key_loc, CRYPT_KEY_IN_FOOTER);
 
-    ERROR("Formatting %s as %s%s\n", fstab->blk_device, fstab->fs_type,
-        needs_footer ? ", with footer." : "");
+    ERROR("Formatting %s as '%s'%s.\n", fstab->blk_device, fstab->fs_type,
+        needs_footer ? ", with footer" : "");
 
     if (!strncmp(fstab->fs_type, "f2fs", 4)) {
         rc = format_f2fs(fstab->blk_device, needs_footer);
