@@ -50,7 +50,7 @@ int fs_mgr_is_partition_encrypted(struct fstab_rec *fstab)
     __le32 crypt_magic = 0;
     int ret = 0;
 
-    if (!(fstab->fs_mgr_flags & MF_CRYPT))
+    if (!fs_mgr_is_encryptable(fstab))
         return 0;
 
     if (fstab->key_loc[0] == '/') {
