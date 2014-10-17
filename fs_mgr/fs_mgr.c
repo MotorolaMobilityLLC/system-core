@@ -406,8 +406,7 @@ int fs_mgr_mount_all(struct fstab *fstab)
          */
         if (mret && mount_errno != EBUSY && mount_errno != EACCES &&
                 IS_FORMATTABLE(&fstab->recs[i])) {
-            if (fs_mgr_is_partition_encrypted(&fstab->recs[i]) &&
-                       fs_mgr_is_encryptable(&fstab->recs[i])) {
+            if (fs_mgr_is_partition_encrypted(&fstab->recs[i])) {
                 INFO("%s appears to be encrypted\n", fstab->recs[i].blk_device);
                 /*
                  * Need to mount a tmpfs at this mountpoint for now, and set
