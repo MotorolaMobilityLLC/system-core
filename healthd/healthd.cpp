@@ -288,6 +288,7 @@ static void wakealarm_event(uint32_t /*epevents*/) {
 }
 
 #ifdef QE
+static void qe_event(uint32_t /*epevents*/);
 static void qe_init(void) {
 
     qe_fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
@@ -310,7 +311,7 @@ static void qe_init(void) {
                    "register for uevent events failed\n");
 }
 
-static void qe_event(void) {
+static void qe_event(uint32_t /*epevents*/) {
     unsigned long long wakeups;
     int pid;
     int ret;
