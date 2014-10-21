@@ -44,19 +44,11 @@ static int settime_alarm_timeval(struct timeval *tv) {
 
 static int settime_rtc_tm(struct tm *tm) {
     int fd, ret;
-    struct timeval tv;
     struct rtc_time rtc;
 
     fd = open("/dev/rtc0", O_RDWR);
     if (fd < 0)
         return fd;
-
-    tv.tv_sec = mktime(tm);
-    tv.tv_usec = 0;
-
-    ret = settimeofday(&tv, NULL);
-    if (ret < 0)
-        goto done;
 
     memset(&rtc, 0, sizeof(rtc));
     rtc.tm_sec = tm->tm_sec;
