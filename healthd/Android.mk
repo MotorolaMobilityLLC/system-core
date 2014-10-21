@@ -40,10 +40,6 @@ endif
 ifeq ($(strip $(BOARD_CHARGER_ENABLE_SUSPEND)),true)
 LOCAL_CFLAGS += -DCHARGER_ENABLE_SUSPEND
 endif
-# MOT (IKXREL3KK-5478) - add capability to run root-detect on periodoc basis for verizon devices
-ifeq ($(TARGET_SUPPORTS_DAILY_ROOT_DETECT),true)
-LOCAL_CFLAGS += -DQE
-endif
 
 LOCAL_SRC_FILES := \
     healthd_mode_charger.cpp \
@@ -95,6 +91,12 @@ LOCAL_C_INCLUDES := $(LOCAL_PATH)/include
 LOCAL_CFLAGS := -Werror
 ifeq ($(strip $(LOCAL_CHARGER_NO_UI)),true)
 LOCAL_CFLAGS += -DCHARGER_NO_UI
+
+# MOT (IKXREL3KK-5478) - add capability to run root-detect on periodoc basis for verizon devices
+ifeq ($(TARGET_SUPPORTS_DAILY_ROOT_DETECT),true)
+LOCAL_CFLAGS += -DQE
+endif
+
 endif
 ifneq ($(BOARD_PERIODIC_CHORES_INTERVAL_FAST),)
 LOCAL_CFLAGS += -DBOARD_PERIODIC_CHORES_INTERVAL_FAST=$(BOARD_PERIODIC_CHORES_INTERVAL_FAST)
