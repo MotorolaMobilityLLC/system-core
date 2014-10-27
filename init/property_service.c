@@ -152,6 +152,7 @@ struct {
     { "slate.penevent",   AID_SYSTEM,   0 }, // fsk050, IKASANTISPRINT-207,slate suport
     { "persist.atvc.",    AID_MOT_ATVC,  0 },
     { "persist.mot.proximity.", AID_RADIO, 0 },
+    { "persist.mot.demo_mode_charging", AID_SYSTEM, 0 },
     { "persist.tcmd.", AID_MOT_TCMD, AID_SYSTEM },
     { "persist.camera.", AID_MEDIA, 0 }, // e13470, IKXREL1KK-397
     { "presence.", AID_RADIO,    0 },// w20090, IKDREL2KK-4341
