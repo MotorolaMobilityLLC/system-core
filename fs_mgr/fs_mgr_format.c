@@ -146,8 +146,6 @@ int fs_mgr_identify_fs(struct fstab_rec *fstab)
     if ((!strncmp(fstab->fs_type, "f2fs", 4) && is_f2fs(block)) ||
         (!strncmp(fstab->fs_type, "ext4", 4) && is_ext4(block))) {
         rc = 0;
-    } else {
-        ERROR("Did not recognize file system type '%s' on %s\n", fstab->fs_type, fstab->blk_device);
     }
 
 out:
@@ -156,6 +154,9 @@ out:
     }
     if (block) {
         free(block);
+    }
+    if (rc) {
+        ERROR("Did not recognize file system type '%s' on %s\n", fstab->fs_type, fstab->blk_device);
     }
     return rc;
 }

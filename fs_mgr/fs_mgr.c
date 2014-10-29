@@ -89,11 +89,14 @@ static int wait_for_file(const char *filename, int timeout)
     struct stat info;
     time_t timeout_time = gettime() + timeout;
     int ret = -1;
+    int stat_errno = 0;
 
-    while (gettime() < timeout_time && ((ret = stat(filename, &info)) < 0))
+    while (gettime() < timeout_time && ((ret = stat(filename, &info)) < 0)) {
+        stat_errno = errno;
         usleep(10000);
+    }
 
-    return ret;
+    return ret ? -stat_errno : 0;
 }
 
 int update_fallbacks(struct fstab_rec *recs, int index)
@@ -313,7 +316,7 @@ int fs_mgr_mount_all(struct fstab *fstab)
     int i = 0, retry = MAX_MOUNT_RETRIES;
     int encryptable = FS_MGR_MNTALL_DEV_NOT_ENCRYPTED;
     int error_count = 0;
-    int mret = -1;
+    int ret = -1;
     int mount_errno = 0;
     int formatted_userdata = 0;
 
@@ -337,7 +340,11 @@ int fs_mgr_mount_all(struct fstab *fstab)
         INFO("Mounting %s\n", fstab->recs[i].blk_device);
 
         if (fstab->recs[i].fs_mgr_flags & MF_WAIT) {
-            wait_for_file(fstab->recs[i].blk_device, WAIT_TIMEOUT);
+            ret = wait_for_file(fstab->recs[i].blk_device, WAIT_TIMEOUT);
+            if (ret) {
+                ERROR("Gave up waiting for %s: %s\n",
+                      fstab->recs[i].blk_device, strerror(-ret));
+            }
         }
 
         if ((fstab->recs[i].fs_mgr_flags & MF_VERIFY) && device_is_secure()) {
@@ -348,7 +355,7 @@ int fs_mgr_mount_all(struct fstab *fstab)
                 ERROR("Could not set up verified partition, skipping!\n");
                 continue;
             }
-            mret = -1;
+            ret = -1;
         } else {
             /* Check and mount the detected file system */
             if (fstab->recs[i].fs_mgr_flags & MF_CHECK) {
@@ -364,12 +371,12 @@ int fs_mgr_mount_all(struct fstab *fstab)
                 }
             }
 
-            mret = __mount(fstab->recs[i].blk_device, fstab->recs[i].mount_point, &fstab->recs[i]);
-            mount_errno = errno;
+            ret = __mount(fstab->recs[i].blk_device, fstab->recs[i].mount_point, &fstab->recs[i]);
         }
+        mount_errno = errno;
 
         /* Deal with encryptability. */
-        if (!mret) {
+        if (!ret) {
             /* If this is encryptable, need to trigger encryption */
             if (   (fstab->recs[i].fs_mgr_flags & MF_FORCECRYPT)
                 || (device_is_force_encrypted()
@@ -404,7 +411,7 @@ int fs_mgr_mount_all(struct fstab *fstab)
          * Mount failed, which is expected in some circumstances for some
          * partitions (userdata and cache).
          */
-        if (mret && mount_errno != EBUSY && mount_errno != EACCES &&
+        if (ret && mount_errno != EBUSY && mount_errno != EACCES &&
                 IS_FORMATTABLE(&fstab->recs[i])) {
             if (fs_mgr_is_partition_encrypted(&fstab->recs[i])) {
                 INFO("%s appears to be encrypted\n", fstab->recs[i].blk_device);
@@ -450,8 +457,13 @@ int fs_mgr_mount_all(struct fstab *fstab)
             continue;
         }
 
-        /* Mount failed and there is nothing we can do. */
-        if (mret) {
+        if (ret) {
+            if (--retry > 0) {
+                ERROR("Failed to mount %s; retrying...\n", fstab->recs[i].mount_point);
+                i--;
+                continue;
+            }
+            /* Mount failed and there is nothing we can do. */
             ERROR("Failed to mount partition on %s at %s options: %s error: %s\n",
                    fstab->recs[i].blk_device, fstab->recs[i].mount_point,
                    fstab->recs[i].fs_options, strerror(mount_errno));
