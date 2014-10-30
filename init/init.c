@@ -1095,7 +1095,7 @@ int main(int argc, char **argv)
     restorecon("/dev");
     restorecon("/dev/socket");
     restorecon("/dev/__properties__");
-    restorecon_files("/sys");
+    restorecon_recursive("/sys");
 #ifndef MOTO_NEW_CHARGE_ONLY_MODE
 
     is_ffbm = !strncmp(bootmode, "ffbm", 4);
