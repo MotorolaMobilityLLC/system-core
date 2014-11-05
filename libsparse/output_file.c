@@ -63,14 +63,14 @@ struct output_file_ops {
 	int (*open)(struct output_file *, int fd);
 	int (*skip)(struct output_file *, int64_t);
 	int (*pad)(struct output_file *, int64_t);
-	int (*write)(struct output_file *, void *, size_t);
+	int (*write)(struct output_file *, void *, int64_t);
 	void (*close)(struct output_file *);
 };
 
 struct sparse_file_ops {
-	int (*write_data_chunk)(struct output_file *out, unsigned int len,
+	int (*write_data_chunk)(struct output_file *out, int64_t len,
 			void *data);
-	int (*write_fill_chunk)(struct output_file *out, unsigned int len,
+	int (*write_fill_chunk)(struct output_file *out, int64_t len,
 			uint32_t fill_val);
 	int (*write_skip_chunk)(struct output_file *out, int64_t len);
 	int (*write_end_chunk)(struct output_file *out);
@@ -109,7 +109,7 @@ struct output_file_normal {
 struct output_file_callback {
 	struct output_file out;
 	void *priv;
-	int (*write)(void *priv, const void *buf, int len);
+	int (*write)(void *priv, const void *buf, int64_t len);
 };
 
 #define to_output_file_callback(_o) \
@@ -149,7 +149,7 @@ static int file_pad(struct output_file *out, int64_t len)
 	return 0;
 }
 
-static int file_write(struct output_file *out, void *data, size_t len)
+static int file_write(struct output_file *out, void *data, int64_t len)
 {
 	ssize_t ret;
 	struct output_file_normal *outn = to_output_file_normal(out);
@@ -237,7 +237,7 @@ static int gz_file_pad(struct output_file *out, int64_t len)
 	return 0;
 }
 
-static int gz_file_write(struct output_file *out, void *data, size_t len)
+static int gz_file_write(struct output_file *out, void *data, int64_t len)
 {
 	int ret;
 	struct output_file_gz *outgz = to_output_file_gz(out);
@@ -300,7 +300,7 @@ static int callback_file_pad(struct output_file *out __unused, int64_t len __unu
 	return -1;
 }
 
-static int callback_file_write(struct output_file *out, void *data, size_t len)
+static int callback_file_write(struct output_file *out, void *data, int64_t len)
 {
 	struct output_file_callback *outc = to_output_file_callback(out);
 
@@ -370,7 +370,7 @@ static int write_sparse_skip_chunk(struct output_file *out, int64_t skip_len)
 	return 0;
 }
 
-static int write_sparse_fill_chunk(struct output_file *out, unsigned int len,
+static int write_sparse_fill_chunk(struct output_file *out, int64_t len,
 		uint32_t fill_val)
 {
 	chunk_header_t chunk_header;
@@ -405,7 +405,7 @@ static int write_sparse_fill_chunk(struct output_file *out, unsigned int len,
 	return 0;
 }
 
-static int write_sparse_data_chunk(struct output_file *out, unsigned int len,
+static int write_sparse_data_chunk(struct output_file *out, int64_t len,
 		void *data)
 {
 	chunk_header_t chunk_header;
@@ -479,7 +479,7 @@ static struct sparse_file_ops sparse_file_ops = {
 		.write_end_chunk = write_sparse_end_chunk,
 };
 
-static int write_normal_data_chunk(struct output_file *out, unsigned int len,
+static int write_normal_data_chunk(struct output_file *out, int64_t len,
 		void *data)
 {
 	int ret;
@@ -497,7 +497,7 @@ static int write_normal_data_chunk(struct output_file *out, unsigned int len,
 	return ret;
 }
 
-static int write_normal_fill_chunk(struct output_file *out, unsigned int len,
+static int write_normal_fill_chunk(struct output_file *out, int64_t len,
 		uint32_t fill_val)
 {
 	int ret;
@@ -634,7 +634,7 @@ static struct output_file *output_file_new_normal(void)
 	return &outn->out;
 }
 
-struct output_file *output_file_open_callback(int (*write)(void *, const void *, int),
+struct output_file *output_file_open_callback(int (*write)(void *, const void *, int64_t),
 		void *priv, unsigned int block_size, int64_t len,
 		int gz __unused, int sparse, int chunks, int crc)
 {
@@ -687,24 +687,24 @@ struct output_file *output_file_open_fd(int fd, unsigned int block_size, int64_t
 }
 
 /* Write a contiguous region of data blocks from a memory buffer */
-int write_data_chunk(struct output_file *out, unsigned int len, void *data)
+int write_data_chunk(struct output_file *out, int64_t len, void *data)
 {
 	return out->sparse_ops->write_data_chunk(out, len, data);
 }
 
 /* Write a contiguous region of data blocks with a fill value */
-int write_fill_chunk(struct output_file *out, unsigned int len,
+int write_fill_chunk(struct output_file *out, int64_t len,
 		uint32_t fill_val)
 {
 	return out->sparse_ops->write_fill_chunk(out, len, fill_val);
 }
 
-int write_fd_chunk(struct output_file *out, unsigned int len,
+int write_fd_chunk(struct output_file *out, int64_t len,
 		int fd, int64_t offset)
 {
 	int ret;
-	int64_t aligned_offset;
-	int aligned_diff;
+	off64_t aligned_offset;
+	int64_t aligned_diff;
 	uint64_t buffer_size;
 	char *ptr;
 
@@ -752,7 +752,7 @@ int write_fd_chunk(struct output_file *out, unsigned int len,
 }
 
 /* Write a contiguous region of data blocks from a file */
-int write_file_chunk(struct output_file *out, unsigned int len,
+int write_file_chunk(struct output_file *out, int64_t len,
 		const char *file, int64_t offset)
 {
 	int ret;
