@@ -25,7 +25,7 @@
 
 struct backed_block {
 	unsigned int block;
-	unsigned int len;
+	int64_t len;
 	enum backed_block_type type;
 	union {
 		struct {
@@ -62,7 +62,7 @@ struct backed_block *backed_block_iter_next(struct backed_block *bb)
 	return bb->next;
 }
 
-unsigned int backed_block_len(struct backed_block *bb)
+int64_t backed_block_len(struct backed_block *bb)
 {
 	return bb->len;
 }
@@ -290,7 +290,7 @@ static int queue_bb(struct backed_block_list *bbl, struct backed_block *new_bb)
 
 /* Queues a fill block of memory to be written to the specified data blocks */
 int backed_block_add_fill(struct backed_block_list *bbl, unsigned int fill_val,
-		unsigned int len, unsigned int block)
+		int64_t len, unsigned int block)
 {
 	struct backed_block *bb = calloc(1, sizeof(struct backed_block));
 	if (bb == NULL) {
@@ -308,7 +308,7 @@ int backed_block_add_fill(struct backed_block_list *bbl, unsigned int fill_val,
 
 /* Queues a block of memory to be written to the specified data blocks */
 int backed_block_add_data(struct backed_block_list *bbl, void *data,
-		unsigned int len, unsigned int block)
+		int64_t len, unsigned int block)
 {
 	struct backed_block *bb = calloc(1, sizeof(struct backed_block));
 	if (bb == NULL) {
@@ -326,7 +326,7 @@ int backed_block_add_data(struct backed_block_list *bbl, void *data,
 
 /* Queues a chunk of a file on disk to be written to the specified data blocks */
 int backed_block_add_file(struct backed_block_list *bbl, const char *filename,
-		int64_t offset, unsigned int len, unsigned int block)
+		int64_t offset, int64_t len, unsigned int block)
 {
 	struct backed_block *bb = calloc(1, sizeof(struct backed_block));
 	if (bb == NULL) {
@@ -345,7 +345,7 @@ int backed_block_add_file(struct backed_block_list *bbl, const char *filename,
 
 /* Queues a chunk of a fd to be written to the specified data blocks */
 int backed_block_add_fd(struct backed_block_list *bbl, int fd, int64_t offset,
-		unsigned int len, unsigned int block)
+		int64_t len, unsigned int block)
 {
 	struct backed_block *bb = calloc(1, sizeof(struct backed_block));
 	if (bb == NULL) {
