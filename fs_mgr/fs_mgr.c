@@ -413,7 +413,15 @@ int fs_mgr_mount_all(struct fstab *fstab)
          */
         if (ret && mount_errno != EBUSY && mount_errno != EACCES &&
                 IS_FORMATTABLE(&fstab->recs[i])) {
-            if (fs_mgr_is_partition_encrypted(&fstab->recs[i])) {
+            if (partition_wiped(fstab->recs[i].blk_device)) {
+                INFO("%s appears to be blank\n", fstab->recs[i].blk_device);
+                if (fs_mgr_do_format(&fstab->recs[i]) == 0) {
+                    INFO("Format complete; retrying mount.\n");
+                    i--;
+                    continue;
+                }
+                ERROR("Format failed; suggest recovery.\n");
+            } else if (fs_mgr_is_partition_encrypted(&fstab->recs[i])) {
                 INFO("%s appears to be encrypted\n", fstab->recs[i].blk_device);
                 /*
                  * Need to mount a tmpfs at this mountpoint for now, and set
@@ -425,14 +433,6 @@ int fs_mgr_mount_all(struct fstab *fstab)
                 }
                 encryptable = FS_MGR_MNTALL_DEV_MIGHT_BE_ENCRYPTED;
                 continue;
-            } else if (partition_wiped(fstab->recs[i].blk_device)) {
-                INFO("%s appears to be blank\n", fstab->recs[i].blk_device);
-                if (fs_mgr_do_format(&fstab->recs[i]) == 0) {
-                    INFO("Format complete; retrying mount.\n");
-                    i--;
-                    continue;
-                }
-                ERROR("Format failed; suggest recovery.\n");
             } else {
                 /*
                  * Handle a transient error.  These can occur if the device had
