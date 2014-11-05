@@ -53,19 +53,19 @@ void sparse_file_destroy(struct sparse_file *s)
 }
 
 int sparse_file_add_data(struct sparse_file *s,
-		void *data, unsigned int len, unsigned int block)
+		void *data, int64_t len, unsigned int block)
 {
 	return backed_block_add_data(s->backed_block_list, data, len, block);
 }
 
 int sparse_file_add_fill(struct sparse_file *s,
-		uint32_t fill_val, unsigned int len, unsigned int block)
+		uint32_t fill_val, int64_t len, unsigned int block)
 {
 	return backed_block_add_fill(s->backed_block_list, fill_val, len, block);
 }
 
 int sparse_file_add_file(struct sparse_file *s,
-		const char *filename, int64_t file_offset, unsigned int len,
+		const char *filename, int64_t file_offset, int64_t len,
 		unsigned int block)
 {
 	return backed_block_add_file(s->backed_block_list, filename, file_offset,
@@ -73,7 +73,7 @@ int sparse_file_add_file(struct sparse_file *s,
 }
 
 int sparse_file_add_fd(struct sparse_file *s,
-		int fd, int64_t file_offset, unsigned int len, unsigned int block)
+		int fd, int64_t file_offset, int64_t len, unsigned int block)
 {
 	return backed_block_add_fd(s->backed_block_list, fd, file_offset,
 			len, block);
@@ -179,7 +179,7 @@ int sparse_file_write(struct sparse_file *s, int fd, bool gz, bool sparse,
 }
 
 int sparse_file_callback(struct sparse_file *s, bool sparse, bool crc,
-		int (*write)(void *priv, const void *data, int len), void *priv)
+		int (*write)(void *priv, const void *data, int64_t len), void *priv)
 {
 	int ret;
 	int chunks;
@@ -207,7 +207,7 @@ struct chunk_data {
 		     unsigned int nr_blocks);
 };
 
-static int foreach_chunk_write(void *priv, const void *data, int len)
+static int foreach_chunk_write(void *priv, const void *data, int64_t len)
 {
 	struct chunk_data *chk = priv;
 
@@ -250,7 +250,7 @@ int sparse_file_foreach_chunk(struct sparse_file *s, bool sparse, bool crc,
 	return ret;
 }
 
-static int out_counter_write(void *priv, const void *data __unused, int len)
+static int out_counter_write(void *priv, const void *data __unused, int64_t len)
 {
 	int64_t *count = priv;
 	*count += len;
@@ -287,7 +287,7 @@ unsigned int sparse_file_block_size(struct sparse_file *s)
 }
 
 static struct backed_block *move_chunks_up_to_len(struct sparse_file *from,
-		struct sparse_file *to, unsigned int len)
+		struct sparse_file *to, int64_t len)
 {
 	int64_t count = 0;
 	struct output_file *out_counter;
