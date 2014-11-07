@@ -7,6 +7,7 @@ LOCAL_PATH:= $(call my-dir)
 ifneq (,$(filter userdebug eng,$(TARGET_BUILD_VARIANT)))
 init_options += -DALLOW_LOCAL_PROP_OVERRIDE=1 -DALLOW_PERMISSIVE_SELINUX=1
 init_options += -DINIT_ENG_BUILD
+init_options += -DLOAD_INIT_RC_FROM_PROP
 else
 ifeq ($(strip $(MTK_BUILD_ROOT)),yes)
 init_options += -DALLOW_LOCAL_PROP_OVERRIDE=1 -DALLOW_PERMISSIVE_SELINUX=1 -DBOOT_TRACE
