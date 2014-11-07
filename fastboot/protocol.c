@@ -220,7 +220,7 @@ int fb_download_data(usb_handle *usb, const void *data, unsigned size)
 static char usb_buf[USB_BUF_SIZE];
 static int usb_buf_len;
 
-static int fb_download_data_sparse_write(void *priv, const void *data, int len)
+static int fb_download_data_sparse_write(void *priv, const void *data, int64_t len)
 {
     int r;
     usb_handle *usb = priv;
