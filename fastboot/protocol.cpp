@@ -269,9 +269,9 @@ int64_t fb_upload_data(Transport* transport, const char* outfile) {
 
 #define TRANSPORT_BUF_SIZE 1024
 static char transport_buf[TRANSPORT_BUF_SIZE];
-static int transport_buf_len;
+static int64_t transport_buf_len;
 
-static int fb_download_data_sparse_write(void *priv, const void *data, int len)
+static int fb_download_data_sparse_write(void *priv, const void *data, int64_t len)
 {
     int r;
     Transport* transport = reinterpret_cast<Transport*>(priv);
