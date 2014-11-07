@@ -579,7 +579,9 @@ static void export_kernel_boot_props() {
         { "ro.boot.nav_keys", "ro.hw.nav_keys", NULL, },
         { "ro.boot.lcd_density", "ro.sf.lcd_density", NULL, },
         { "ro.boot.modelno", "ro.product.display", NULL, },
-        { "ro.boot.wff", "ro.wff", "recovery", },
+#ifdef LOAD_INIT_RC_FROM_PROP
+        { "ro.boot.init_rc", "ro.init_rc", "/init.rc", },
+#endif
     };
     for (size_t i = 0; i < ARRAY_SIZE(prop_map); i++) {
         std::string value = property_get(prop_map[i].src_prop);
@@ -950,7 +952,12 @@ int main(int argc, char** argv) {
     parser.AddSectionParser("service",std::make_unique<ServiceParser>());
     parser.AddSectionParser("on", std::make_unique<ActionParser>());
     parser.AddSectionParser("import", std::make_unique<ImportParser>());
+#ifdef LOAD_INIT_RC_FROM_PROP
+    std::string init_rc_name = property_get("ro.init_rc");
+    parser.ParseConfig(init_rc_name);
+#else
     parser.ParseConfig("/init.rc");
+#endif
 
     ActionManager& am = ActionManager::GetInstance();
 
