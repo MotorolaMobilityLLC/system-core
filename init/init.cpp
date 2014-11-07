@@ -912,7 +912,9 @@ static void export_kernel_boot_props() {
         { "ro.boot.nav_keys", "ro.hw.nav_keys", NULL, },
         { "ro.boot.lcd_density", "ro.sf.lcd_density", NULL, },
         { "ro.boot.modelno", "ro.product.display", NULL, },
-        { "ro.boot.wff", "ro.wff", "recovery", },
+#ifdef LOAD_INIT_RC_FROM_PROP
+        { "ro.boot.init_rc", "ro.init_rc", "/init.rc", },
+#endif
     };
     for (size_t i = 0; i < ARRAY_SIZE(prop_map); i++) {
         char value[PROP_VALUE_MAX];
@@ -1189,7 +1191,13 @@ int main(int argc, char** argv) {
     property_load_boot_defaults();
     start_property_service();
 
+#ifdef LOAD_INIT_RC_FROM_PROP
+    char init_rc_name[PROP_VALUE_MAX];
+    property_get("ro.init_rc", init_rc_name);
+    init_parse_config_file(init_rc_name);
+#else
     init_parse_config_file("/init.rc");
+#endif
 
     /* BEGIN IKKRNBSP-1013, 3/13/2012, jcarlyle, Add more init.rc layers. */
     char path[PROP_VALUE_MAX*2], bootprop[PROP_VALUE_MAX];
