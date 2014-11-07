@@ -46,6 +46,7 @@ endif
 ifneq (,$(filter userdebug eng,$(TARGET_BUILD_VARIANT)))
 LOCAL_CFLAGS += -DALLOW_LOCAL_PROP_OVERRIDE=1 -DALLOW_DISABLE_SELINUX=1
 LOCAL_CFLAGS += -DALLOW_CAMERA_DEBUG
+LOCAL_CFLAGS += -DLOAD_INIT_RC_FROM_PROP
 else
 # Allow disabling SELinux for not signed user buids
 # IKGPEL-101 - wljv10 - STOPSHIP! Temporarily allow SELinux to be in permissive mode for user builds
