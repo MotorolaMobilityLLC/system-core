@@ -26,6 +26,7 @@ LOCAL_PATH:= $(call my-dir)
 ifneq (,$(filter userdebug eng,$(TARGET_BUILD_VARIANT)))
 init_options += -DALLOW_LOCAL_PROP_OVERRIDE=1 -DALLOW_DISABLE_SELINUX=1
 init_options += -DALLOW_CAMERA_DEBUG
+LOCAL_CFLAGS += -DLOAD_INIT_RC_FROM_PROP
 else
 init_options += -DALLOW_LOCAL_PROP_OVERRIDE=0
 ifeq ($(RADIO_SECURE),1)
