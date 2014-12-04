@@ -225,6 +225,143 @@ static int create_service_thread(void (*func)(int, void *), void *cookie)
 
 #if !ADB_HOST
 
+#if CTA
+#define SAFE_SERVER "adb.safecenter.server"
+
+#include <arpa/inet.h>
+static int send_safe(int fd,void *data) {
+    if (data == NULL) {
+        return -1;
+    }
+
+    uint32_t uid = 2000;
+    int type = 3000;
+    char *d = malloc(strlen(data) +  2*sizeof(int) + 1);
+    memset(d,0,strlen(data) + 2*sizeof(int) + 1);
+    memcpy(d,&uid,sizeof(int));
+    memcpy(d+sizeof(int),&type,sizeof(int));
+    memcpy(d+2*sizeof(int),data,strlen(data));
+    adb_write(fd,d,strlen(data)+2*sizeof(int));
+    free(d);
+    return 0;
+}
+
+static int init_safe_sock() {
+    return socket_local_client(SAFE_SERVER,ANDROID_SOCKET_NAMESPACE_ABSTRACT,SOCK_STREAM);
+}
+
+static int read_safe(int fd) {
+    int d = 0;
+    int ret = -1;
+    ret = adb_read(fd,&d,4);
+    if (ret == 0) {
+        return -1;
+    }
+    if (ret < 0) {
+        return ret;
+    }
+    return d;
+}
+
+static int send_safe_timeout(void *data,int timeout) {
+    int ret = -1;
+    int fd = init_safe_sock();
+    if (fd < 0) {
+        ret = -1;
+        goto out;
+    }
+    ret = send_safe(fd,data);
+    if (ret < 0) {
+        goto out;
+    }
+    fd_set readfds;
+    FD_ZERO(&readfds);
+    FD_SET(fd,&readfds);
+    struct timeval t;
+    t.tv_sec = timeout;
+    t.tv_usec = 0;
+    ret = select(fd+1,&readfds,NULL,NULL,&t);
+    if (ret < 0) {
+        ret = -1;
+        goto out;
+    }
+    if (ret == 0) {
+        ret = -2;
+        goto out;
+    }
+    ret = read_safe(fd);
+out:
+    if (fd > 0) {
+        adb_close(fd);
+    }
+    return ret;
+}
+
+static int need_safe(const char *arg,char **path) {
+    if (arg == NULL) {
+        return 0;
+    }
+    int ret = 0;
+    if (strstr(arg,"uninstall")) {
+        ret = 0;
+    } else if (strstr(arg,"pm") && strstr(arg,"install")) {
+        ret = 1;
+    } else {
+        ret = 0;
+    }
+    if (ret == 0) {
+        return ret;
+    }
+    char *s = (char *)arg;
+    s++;
+    while (*s) {
+        if (*s == ' ' && *(s-1) != '\\') {
+            *s = '\n';
+        }
+        s++;
+    }
+    s = (char *)arg;
+    char c[] = "\n";
+    char *p = strtok((char *)arg,c);
+    p = strtok(NULL,c);
+    while (p) {
+        *path = p;
+        p = strtok(NULL,c);
+    }
+    return ret;
+}
+
+static void send_safe_cmd(const char *arg1){
+    char *path = NULL;
+    char *tmp = NULL;
+    //arg1 will be NULL like "adb shell"
+    if (arg1) {
+        tmp = malloc(strlen(arg1)+1);
+        memset(tmp,0,strlen(arg1)+1);
+        memcpy(tmp,arg1,strlen(arg1));
+    }
+
+    if (need_safe(tmp,&path)) {
+        int ret = send_safe_timeout(path,30);
+        if (ret == -2) {
+            //time out
+            printf("Failure [INSTALL_FAILED_VERIFICATION_TIMEOUT]\n");
+            exit(-1);
+        } else if (ret == -1) {
+            // here no lesafe   we need continue
+        } else if (ret == 0) {
+            //safe refuse ,can't install
+            printf("Failure [INSTALL_FAILED_VERIFICATION_FAILURE]\n");
+            exit(-1);
+        }
+    }
+    if (tmp) {
+        free(tmp);
+    }
+}
+
+#endif
+
 static void init_subproc_child()
 {
     setsid();
@@ -284,6 +421,9 @@ static int create_subproc_pty(const char *cmd, const char *arg0, const char *arg
         adb_close(pts);
         adb_close(ptm);
 
+#if CTA
+        send_safe_cmd(arg1);
+#endif
         execl(cmd, cmd, arg0, arg1, NULL);
         fprintf(stderr, "- exec '%s' failed: %s (%d) -\n",
                 cmd, strerror(errno), errno);
