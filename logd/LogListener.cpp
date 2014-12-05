@@ -35,8 +35,9 @@ LogListener::LogListener(LogBuffer *buf, LogReader *reader)
 bool LogListener::onDataAvailable(SocketClient *cli) {
     prctl(PR_SET_NAME, "logd.writer");
 
-    char buffer[sizeof_log_id_t + sizeof(uint16_t) + sizeof(log_time)
-        + LOGGER_ENTRY_MAX_PAYLOAD];
+    const size_t header_size = sizeof_log_id_t + sizeof(uint16_t) +
+        sizeof(log_time) + sizeof(uint8_t);
+    char buffer[header_size + LOGGER_ENTRY_MAX_PAYLOAD];
     struct iovec iov = { buffer, sizeof(buffer) };
     memset(buffer, 0, sizeof(buffer));
 
@@ -54,7 +55,7 @@ bool LogListener::onDataAvailable(SocketClient *cli) {
     int socket = cli->getSocket();
 
     ssize_t n = recvmsg(socket, &hdr, 0);
-    if (n <= (ssize_t)(sizeof_log_id_t + sizeof(uint16_t) + sizeof(log_time))) {
+    if (n <= (ssize_t)header_size) {
         return false;
     }
 
@@ -99,10 +100,16 @@ bool LogListener::onDataAvailable(SocketClient *cli) {
     msg += sizeof(log_time);
     n -= sizeof(log_time);
 
+    // fourth element is the number of drops prior to this message getting
+    // through
+    uint8_t drops = (uint8_t) *((uint8_t *) msg);
+    msg += sizeof(uint8_t);
+    n -= sizeof(uint8_t);
+
     // NB: hdr.msg_flags & MSG_TRUNC is not tested, silently passing a
     // truncated message to the logs.
 
-    logbuf->log(log_id, realtime, cred->uid, cred->pid, tid, msg,
+    logbuf->log(log_id, realtime, cred->uid, cred->pid, tid, drops, msg,
         ((size_t) n <= USHRT_MAX) ? (unsigned short) n : USHRT_MAX);
     reader->notifyNewLog();
 
