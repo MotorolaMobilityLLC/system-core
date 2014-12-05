@@ -22,6 +22,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <inttypes.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #if (FAKE_LOG_DEVICE == 0)
@@ -261,13 +262,16 @@ static int __write_to_log_kernel(log_id_t log_id, struct iovec *vec, size_t nr)
         }
     } while (ret == -EINTR);
 #else
-    static const unsigned header_length = 3;
+    static const unsigned header_length = 4;
     struct iovec newVec[nr + header_length];
     typeof_log_id_t log_id_buf;
     uint16_t tid;
     struct timespec ts;
     log_time realtime_ts;
+    static __thread uint8_t drops = 0;
     size_t i, payload_size;
+    static const size_t header_size = sizeof_log_id_t + sizeof(tid) +
+                                      sizeof(log_time) + sizeof(drops);
     static uid_t last_uid = AID_ROOT; /* logd *always* starts up as AID_ROOT */
 
     if (last_uid == AID_ROOT) { /* have we called to get the UID yet? */
@@ -292,6 +296,7 @@ static int __write_to_log_kernel(log_id_t log_id, struct iovec *vec, size_t nr)
      *      typeof_log_id_t  log_id;
      *      u16              tid;
      *      log_time         realtime;
+     *      u8               drops;
      *      // caller provides
      *      union {
      *          struct {
@@ -319,6 +324,8 @@ static int __write_to_log_kernel(log_id_t log_id, struct iovec *vec, size_t nr)
     newVec[1].iov_len    = sizeof(tid);
     newVec[2].iov_base   = (unsigned char *) &realtime_ts;
     newVec[2].iov_len    = sizeof(log_time);
+    newVec[3].iov_base   = (unsigned char *) &drops;
+    newVec[3].iov_len    = sizeof(drops);
 
     for (payload_size = 0, i = header_length; i < nr + header_length; i++) {
         newVec[i].iov_base = vec[i - header_length].iov_base;
@@ -352,6 +359,7 @@ static int __write_to_log_kernel(log_id_t log_id, struct iovec *vec, size_t nr)
 #endif
 
             if (ret < 0) {
+                if (drops < UINT8_MAX) drops++;
                 return ret;
             }
 
@@ -362,8 +370,14 @@ static int __write_to_log_kernel(log_id_t log_id, struct iovec *vec, size_t nr)
         }
     }
 
-    if (ret > (ssize_t)(sizeof_log_id_t + sizeof(tid) + sizeof(log_time))) {
-        ret -= sizeof_log_id_t + sizeof(tid) + sizeof(log_time);
+    if (ret < 0) {
+        if (drops < UINT8_MAX) drops++;
+    } else {
+        drops = 0;
+    }
+
+    if (ret > (ssize_t)header_size) {
+        ret -= header_size;
     }
 #endif
 

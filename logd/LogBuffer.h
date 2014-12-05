@@ -49,7 +49,7 @@ public:
     LogBuffer(LastLogTimes *times);
 
     void log(log_id_t log_id, log_time realtime,
-             uid_t uid, pid_t pid, pid_t tid,
+             uid_t uid, pid_t pid, pid_t tid, uint8_t drops,
              const char *msg, unsigned short len);
     log_time flushTo(SocketClient *writer, const log_time start,
                      bool privileged,
