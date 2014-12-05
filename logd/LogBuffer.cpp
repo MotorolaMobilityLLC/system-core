@@ -21,6 +21,7 @@
 #include <sys/user.h>
 #include <time.h>
 #include <unistd.h>
+#include <inttypes.h>
 
 #include <cutils/properties.h>
 #include <log/logger.h>
@@ -135,9 +136,45 @@ LogBuffer::LogBuffer(LastLogTimes *times)
 void LogBuffer::log(log_id_t log_id, log_time realtime,
                     uid_t uid, pid_t pid, pid_t tid,
                     const char *msg, unsigned short len) {
+    log(log_id, realtime, uid, pid, tid, 0, msg, len);
+}
+
+void LogBuffer::log(log_id_t log_id, log_time realtime,
+                    uid_t uid, pid_t pid, pid_t tid, uint8_t drops,
+                    const char *msg, unsigned short len) {
     if ((log_id >= LOG_ID_MAX) || (log_id < 0)) {
         return;
     }
+
+    LogBufferElement *drops_elem = NULL;
+    size_t drops_msg_len = 0;
+    if (drops > 0) {
+        // Generate an extra message to indicate that there were drops.
+        static char drops_msg[64];
+
+
+        // The payload needs to be in wire format, which is as follows:
+        //      format: <priority:1><tag:N>\0<message:N>\0
+        drops_msg[0] = ANDROID_LOG_WARN;
+        drops_msg_len++;
+
+        drops_msg_len += sprintf(&drops_msg[drops_msg_len], "logd");
+        drops_msg_len++;
+
+        if (drops < UINT8_MAX) {
+            drops_msg_len += sprintf(&drops_msg[drops_msg_len],
+                                     "Dropped %" PRIu8, drops);
+        } else {
+            drops_msg_len += sprintf(&drops_msg[drops_msg_len],
+                                     "Dropped >= %" PRIu8, UINT8_MAX);
+        }
+        drops_msg_len++;
+
+        drops_elem = new LogBufferElement(log_id, realtime,
+                                          uid, pid, tid,
+                                          drops_msg, drops_msg_len);
+    }
+
     LogBufferElement *elem = new LogBufferElement(log_id, realtime,
                                                   uid, pid, tid, msg, len);
 
@@ -172,6 +209,9 @@ void LogBuffer::log(log_id_t log_id, log_time realtime,
     }
 
     if (last == mLogElements.end()) {
+        if (drops_elem) {
+            mLogElements.push_back(drops_elem);
+        }
         mLogElements.push_back(elem);
     } else {
         log_time end = log_time::EPOCH;
@@ -198,8 +238,14 @@ void LogBuffer::log(log_id_t log_id, log_time realtime,
 
         if (end_always
                 || (end_set && (end >= (*last)->getMonotonicTime()))) {
+            if (drops_elem) {
+                mLogElements.push_back(drops_elem);
+            }
             mLogElements.push_back(elem);
         } else {
+            if (drops_elem) {
+                mLogElements.insert(last, drops_elem);
+            }
             mLogElements.insert(last,elem);
         }
 
@@ -207,6 +253,9 @@ void LogBuffer::log(log_id_t log_id, log_time realtime,
     }
 
     stats.add(len, log_id, uid, pid);
+    if (drops_elem) {
+        stats.add(drops_msg_len, log_id, uid, pid);
+    }
     maybePrune(log_id);
     pthread_mutex_unlock(&mLogElementsLock);
 }
