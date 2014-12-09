@@ -156,7 +156,7 @@ int LogAudit::logPrint(const char *fmt, ...) {
         *cp++ = (l >> 24) & 0xFF;
         memcpy(cp, str, l);
 
-        logbuf->log(LOG_ID_EVENTS, now, uid, pid, tid, 0, newstr,
+        logbuf->log(LOG_ID_EVENTS, now, uid, pid, tid, newstr,
                     (n <= USHRT_MAX) ? (unsigned short) n : USHRT_MAX);
         free(newstr);
 
@@ -197,7 +197,7 @@ int LogAudit::logPrint(const char *fmt, ...) {
         strncpy(newstr + 1 + l, str, estr - str);
         strcpy(newstr + 1 + l + (estr - str), ecomm);
 
-        logbuf->log(LOG_ID_MAIN, now, uid, pid, tid, 0, newstr,
+        logbuf->log(LOG_ID_MAIN, now, uid, pid, tid, newstr,
                     (n <= USHRT_MAX) ? (unsigned short) n : USHRT_MAX);
         free(newstr);
 
