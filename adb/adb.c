@@ -1262,7 +1262,17 @@ static void drop_capabilities_bounding_set_if_needed() {
 
 static int should_drop_privileges() {
 #ifndef ALLOW_ADBD_ROOT
-    return 1;
+    /* BEGIN Motorola, Darren Shu - w36016, July 31,2012, IKSECURITY-199 */
+    /* Observe Motorola Access Token properties */
+    int secure = 1;
+    char value[PROPERTY_VALUE_MAX];
+    value[0] = 0x00;
+    property_get("persist.atvc.adb", value, "");
+    if (strcmp(value, "1") == 0) {
+        secure = 0;
+    }
+    return secure;
+    /* END IKSECURITY-199 */
 #else /* ALLOW_ADBD_ROOT */
     int secure = 0;
     char value[PROPERTY_VALUE_MAX];
@@ -1288,6 +1298,14 @@ static int should_drop_privileges() {
             }
         }
     }
+
+    /* BEGIN Motorola, Darren Shu - w36016, July 31,2012, IKSECURITY-199 */
+    /* Observe Motorola Access Token properties */
+    property_get("persist.atvc.adb", value, "");
+    if (strcmp(value, "1") == 0) {
+        secure = 0;
+    }
+    /* END IKSECURITY-199 */
 
     return secure;
 #endif /* ALLOW_ADBD_ROOT */
@@ -1387,7 +1405,18 @@ int adb_main(int is_daemon, int server_port)
         if ((root_seclabel != NULL) && (is_selinux_enabled() > 0)) {
             // b/12587913: fix setcon to allow const pointers
             if (setcon((char *)root_seclabel) < 0) {
-                exit(1);
+                //Mot change CR: IKSECURITY-567
+                //if adb can't transition to su domain, drop capabilities
+                //and drop to shell uid/gid code is taken from corresponding if condition
+                drop_capabilities_bounding_set_if_needed();
+                /* then switch user and group to "shell" */
+                if (setgid(AID_SHELL) != 0) {
+                    exit(1);
+                }
+                if (setuid(AID_SHELL) != 0) {
+                    exit(1);
+                }
+                D("Local port disabled\n");
             }
         }
         build_local_name(local_name, sizeof(local_name), server_port);
