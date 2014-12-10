@@ -607,6 +607,9 @@ void load_persist_props(void) {
 
     load_override_properties();
 
+    /* IKVPREL1L-4680 - update usb properties after decryption */
+    update_persistent_usb_property();
+
     /* Read persistent properties after all default values have been loaded. */
     load_persistent_properties();
     /* read efuse to check die condition */
