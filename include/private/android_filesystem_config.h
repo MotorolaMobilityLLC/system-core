@@ -113,6 +113,8 @@
 #define AID_WAKELOCK      3010  /* Allow system wakelock read/write access */
 #define AID_QCOM_DIAG     3011  /* can read/write /dev/diag */
 #define AID_IMS           3012  /* can read/write /dev/socket/imsrtp */
+#define AID_RFS           3013  /* Remote Filesystem for peripheral processors */
+#define AID_RFS_SHARED    3014  /* Shared files for Remote Filesystem for peripheral processors  */
 
 /* The range 5000-5999 is also reserved for OEM, and must never be used here. */
 #define AID_OEM_RESERVED_2_START 5000
@@ -230,6 +232,8 @@ static const struct android_id_info android_ids[] = {
     { "readproc",      AID_READPROC, },
     { "wakelock",      AID_WAKELOCK, },
 
+    { "rfs",           AID_RFS, },
+    { "rfs_shared",    AID_RFS_SHARED, },
     { "everybody",     AID_EVERYBODY, },
     { "misc",          AID_MISC, },
     { "nobody",        AID_NOBODY, },
