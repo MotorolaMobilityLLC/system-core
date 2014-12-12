@@ -29,6 +29,7 @@ on early-init
 
     # Mount cgroup mount point for cpu accounting
     mount cgroup none /acct cpuacct
+    chown system system /acct
     mkdir /acct/uid
 
     # root memory control cgroup, used by lmkd
