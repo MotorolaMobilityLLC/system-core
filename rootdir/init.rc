@@ -44,6 +44,7 @@ on init
 
     # Mount cgroup mount point for cpu accounting
     mount cgroup none /acct cpuacct
+    chown system system /acct
     mkdir /acct/uid
 
     # Create energy-aware scheduler tuning nodes
