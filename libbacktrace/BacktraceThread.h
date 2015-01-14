@@ -42,7 +42,7 @@ public:
 
   void Wake();
 
-  void Wait(int);
+  bool Wait(int);
 
   void CopyUcontextFromSigcontext(void*);
 
