@@ -101,15 +101,22 @@ ThreadEntry::~ThreadEntry() {
   prev_ = NULL;
 }
 
-void ThreadEntry::Wait(int value) {
+bool ThreadEntry::Wait(int value) {
   timespec ts;
   ts.tv_sec = 10;
   ts.tv_nsec = 0;
   errno = 0;
   futex(&futex_, FUTEX_WAIT, value, &ts, NULL, 0);
   if (errno != 0 && errno != EWOULDBLOCK) {
+    // BEGIN Motorola, a5111c, 01/13/2015, IKXLUPGRD-9799
+    if (errno == ETIMEDOUT) {
+        return true;
+    }
+    // END IKXLUPGRD-9799
     BACK_LOGW("futex wait failed, futex = %d: %s", futex_, strerror(errno));
   }
+
+  return false; // Motorola, a5111c, 01/13/2015, IKXLUPGRD-9799
 }
 
 void ThreadEntry::Wake() {
@@ -127,8 +134,21 @@ void ThreadEntry::CopyUcontextFromSigcontext(void* sigcontext) {
 // BacktraceThread functions.
 //-------------------------------------------------------------------------
 static pthread_mutex_t g_sigaction_mutex = PTHREAD_MUTEX_INITIALIZER;
+// BEGIN Motorola, a5111c, 01/13/2015, IKXLUPGRD-9799
+static bool g_signal_timeout = false;
+static struct sigaction g_oldact;
+// END IKXLUPGRD-9799
 
 static void SignalHandler(int, siginfo_t*, void* sigcontext) {
+  // BEGIN Motorola, a5111c, 01/13/2015, IKXLUPGRD-9799
+  if (g_signal_timeout == true) {
+      sigaction(THREAD_SIGNAL, &g_oldact, NULL);
+      g_signal_timeout = false;
+      BACK_LOGW("Pending signal 33 received in SignalHandler!");
+      return;
+  }
+  // END IKXLUPGRD-9799
+
   ThreadEntry* entry = ThreadEntry::Get(getpid(), gettid(), false);
   if (!entry) {
     BACK_LOGW("Unable to find pid %d tid %d information", getpid(), gettid());
@@ -143,6 +163,15 @@ static void SignalHandler(int, siginfo_t*, void* sigcontext) {
   // Pause the thread until the unwind is complete. This avoids having
   // the thread run ahead causing problems.
   entry->Wait(1);
+
+  // BEGIN Motorola, a5111c, 01/13/2015, IKXLUPGRD-9799
+  // Check again to handle timeout scenario.
+  if (g_signal_timeout == true) {
+      sigaction(THREAD_SIGNAL, &g_oldact, NULL);
+      g_signal_timeout = false;
+      BACK_LOGW("Pending signal 33 received in SignalHandler after timeout!");
+  }
+  // END IKXLUPGRD-9799
 
   ThreadEntry::Remove(entry);
 }
@@ -167,6 +196,14 @@ bool BacktraceThread::Unwind(size_t num_ignore_frames, ucontext_t* ucontext) {
     BACK_LOGW("sigaction failed: %s", strerror(errno));
     return false;
   }
+
+  // BEGIN Motorola, a5111c, 01/13/2015, IKXLUPGRD-9799
+  if (g_signal_timeout == true) {
+    BACK_LOGW("ignore unwind for pid %d tid %d as pending signal", Pid(), Tid());
+    pthread_mutex_unlock(&g_sigaction_mutex);
+    return false;
+  }
+  // END IKXLUPGRD-9799
 
   ThreadEntry* entry = ThreadEntry::Get(Pid(), Tid());
   entry->Lock();
@@ -194,7 +231,15 @@ bool BacktraceThread::Unwind(size_t num_ignore_frames, ucontext_t* ucontext) {
   }
 
   // Wait for the thread to get the ucontext.
-  entry->Wait(0);
+  // BEGIN Motorola, a5111c, 01/13/2015, IKXLUPGRD-9799
+  if (entry->Wait(0) == true) {
+    g_oldact = oldact;
+    g_signal_timeout = true;
+    entry->Unlock();
+    pthread_mutex_unlock(&g_sigaction_mutex);
+    return false;
+  }
+  // END IKXLUPGRD-9799
 
   // After the thread has received the signal, allow other unwinders to
   // continue.
