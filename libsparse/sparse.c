@@ -230,13 +230,14 @@ static struct backed_block *move_chunks_up_to_len(struct sparse_file *from,
 	struct backed_block *bb;
 	struct backed_block *start;
 	int64_t file_len = 0;
+	unsigned int last_block = 0;
 
 	/*
-	 * overhead is sparse file header, initial skip chunk, split chunk, end
-	 * skip chunk, and crc chunk.
+	 * Known overhead are sparse file header and end skip chunk.
+	 * The crc chunk in source file if any is dropped during import.
+	 * And no crc chunk will write back in write_all_blocks() function.
 	 */
-	int overhead = sizeof(sparse_header_t) + 4 * sizeof(chunk_header_t) +
-			sizeof(uint32_t);
+	int overhead = sizeof(sparse_header_t) + sizeof(chunk_header_t);
 	len -= overhead;
 
 	start = backed_block_iter_new(from->backed_block_list);
@@ -247,6 +248,11 @@ static struct backed_block *move_chunks_up_to_len(struct sparse_file *from,
 	}
 
 	for (bb = start; bb; bb = backed_block_iter_next(bb)) {
+		if (backed_block_block(bb) > last_block) {
+			len -= sizeof(chunk_header_t);
+		}
+		last_block = backed_block_block(bb) + DIV_ROUND_UP(backed_block_len(bb), from->block_size);
+
 		count = 0;
 		/* will call out_counter_write to update count */
 		sparse_file_write_block(out_counter, bb);
