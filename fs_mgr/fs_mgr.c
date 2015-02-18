@@ -347,12 +347,13 @@ int fs_mgr_mount_all(struct fstab *fstab)
             }
         }
 
-        if ((fstab->recs[i].fs_mgr_flags & MF_VERIFY) && device_is_secure()) {
-            int rc = fs_mgr_setup_verity(&fstab->recs[i]);
-            if (device_is_debuggable() && rc == FS_MGR_SETUP_VERITY_DISABLED) {
-                INFO("Verity disabled");
-            } else if (rc != FS_MGR_SETUP_VERITY_SUCCESS) {
-                ERROR("Could not set up verified partition, skipping!\n");
+        /* Is a superblock there? */
+        if (fs_mgr_identify_fs(&fstab->recs[i]) != 0) {
+            /* If we have a fallback, disable and skip this rule. */
+            if (fstab->recs[i].fallback) {
+                fstab->recs[i].fs_mgr_flags |= MF_DISABLED;
+                ERROR("Disabling: %s for file system type '%s'\n",
+                        fstab->recs[i].mount_point, fstab->recs[i].fs_type);
                 continue;
             }
             ret = -1;
@@ -363,9 +364,11 @@ int fs_mgr_mount_all(struct fstab *fstab)
                          fstab->recs[i].mount_point);
             }
 
-            if ((fstab->recs[i].fs_mgr_flags & MF_VERIFY) &&
-                !device_is_debuggable()) {
-                if (fs_mgr_setup_verity(&fstab->recs[i]) < 0) {
+            if ((fstab->recs[i].fs_mgr_flags & MF_VERIFY) && device_is_secure()) {
+                int rc = fs_mgr_setup_verity(&fstab->recs[i]);
+                if (device_is_debuggable() && rc == FS_MGR_SETUP_VERITY_DISABLED) {
+                    INFO("Verity disabled");
+                } else if (rc != FS_MGR_SETUP_VERITY_SUCCESS) {
                     ERROR("Could not set up verified partition, skipping!\n");
                     continue;
                 }
