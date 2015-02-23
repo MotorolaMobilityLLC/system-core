@@ -22,6 +22,7 @@
 #include <sys/mount.h>
 #include <unistd.h>
 #include <cutils/properties.h>
+#include <asm/setup.h>
 
 #include "sysdeps.h"
 
@@ -116,7 +117,7 @@ static void write_string(int fd, const char* str)
 /* BEGIN Motorola, eMMC write protect feature */
 int MOT_check_system_is_write_protected(int out)
 {
-    char buf[512];
+    char buf[COMMAND_LINE_SIZE];
     int size;
     int fd = unix_open("/proc/cmdline", O_RDONLY);
 
