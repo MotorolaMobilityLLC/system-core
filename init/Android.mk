@@ -59,6 +59,11 @@ ifeq ($(strip $(TARGET_USE_MOT_NEW_COM)),true)
 LOCAL_CFLAGS    += -DMOTO_NEW_CHARGE_ONLY_MODE
 endif
 
+# IKVOICE-4341 - Extend firmware loading folder list if XMCS codec is used for AOV
+ifeq ($(BOARD_HAS_AUDIO_DSP_XMCS),true)
+LOCAL_CFLAGS    += -DMOTO_AOV_WITH_XMCS
+endif
+
 # Enable ueventd logging
 #LOCAL_CFLAGS += -DLOG_UEVENTS=1
 ifdef DOLBY_UDC_MULTICHANNEL
