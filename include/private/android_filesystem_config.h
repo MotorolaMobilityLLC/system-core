@@ -120,6 +120,7 @@
 #define AID_FINGERP       9015  /* IKFPS-98 Add permission group for fingerprint */
 #define AID_MOT_ESDFS     9016  /* mot_esdfs for ESDFS package list parsing */
 #define AID_POWER         9017 /* power management */
+#define AID_MOT_DTV       9018 /* dtv */
 
 #define AID_EVERYBODY     9997  /* shared between all apps in the same profile */
 #define AID_MISC          9998  /* access to misc storage */
@@ -233,6 +234,7 @@ static const struct android_id_info android_ids[] = {
     { "mot_esdfs",     AID_MOT_ESDFS, },
     { "mot_esdfs",     AID_MOT_ESDFS, },
     { "power",         AID_POWER, },
+    { "mot_dtv",       AID_MOT_DTV, },
 };
 
 #define android_id_count \
