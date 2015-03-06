@@ -828,6 +828,73 @@ static int is_booting(void)
     return access("/dev/.booting", F_OK) == 0;
 }
 
+/*
+   BEGIN IKVOICE-4341
+   Special firmware look-up function intended for AoV feature with Cirrus XMCS codec.
+   The foloder is intended to be used for speech model downloading and firmware upgrade.
+   Folder is specifically protected for AoV use via SELinux policy.
+
+   The function returns the following values:
+   -1 - Firmware loading was either success or failure. No need to look for further folders.
+    0 - Firmware was not loaded. Further folders need to be looked up.
+*/
+#ifdef MOTO_AOV_WITH_XMCS
+static int is_hard_link(const char *path)
+{
+    int rv = 1;
+    struct stat sb;
+
+    if(stat(path, &sb) == 0) {
+        if((S_ISDIR(sb.st_mode)) || (sb.st_nlink == 1))
+            rv = 0;
+        else
+            ERROR("Invalid hard link (%s), nlink=%ld ignoring!\n", path,
+                  (long)sb.st_nlink);
+    } else if (errno == ENOENT)
+        rv = 0;
+    return(rv);
+}
+
+static int load_from_extended(const char *firmware, int loading_fd, int data_fd)
+{
+    int l, fw_fd;
+    char *file = NULL;
+    int ret = 0;
+
+    /* look for naming convention for aov firmware */
+    if (strstr(firmware, "-aov-") == NULL) {
+        return 0;
+    }
+
+    l = asprintf(&file, "/data/adspd/%s", firmware);
+    if (l == -1)
+        return 0;
+
+    if (is_hard_link(file)) {
+        goto out_extended;
+    }
+
+    /* Do not consider the case /data folder is still encrypted.
+       It is assumed adspd is started only after data partition is decrypted
+       so firmware request for XMCS would happen on decripted fs */
+    fw_fd = open(file, O_RDONLY | O_NOFOLLOW);
+    if(fw_fd < 0) {
+        goto out_extended;
+    }
+
+    if (load_firmware(fw_fd, loading_fd, data_fd) != 0) {
+        ERROR("firmware: could not load '%s'\n", firmware);
+    }
+    close(fw_fd);
+    ret = -1;
+
+out_extended:
+    free(file);
+    return ret;
+}
+#endif
+/* END IKVOICE-4341 */
+
 static void process_firmware_event(struct uevent *uevent)
 {
     char *root, *loading, *data;
@@ -857,6 +924,14 @@ static void process_firmware_event(struct uevent *uevent)
     data_fd = open(data, O_WRONLY|O_CLOEXEC);
     if(data_fd < 0)
         goto loading_close_out;
+
+/* BEGIN IKVOICE-4341 */
+#ifdef MOTO_AOV_WITH_XMCS
+    if (load_from_extended(uevent->firmware, loading_fd, data_fd) < 0) {
+        goto data_close_out;
+    }
+#endif
+/* END IKVOICE-4341 */
 
 try_loading_again:
     for (i = 0; i < ARRAY_SIZE(firmware_dirs); i++) {
