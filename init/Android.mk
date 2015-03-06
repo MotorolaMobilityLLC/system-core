@@ -44,6 +44,11 @@ endif
 
 init_options += -DLOG_UEVENTS=0
 
+# IKVOICE-4341 - Extend firmware loading folder list if XMCS codec is used for AOV
+ifeq ($(BOARD_HAS_AUDIO_DSP_XMCS),true)
+init_options    += -DMOTO_AOV_WITH_XMCS
+endif
+
 init_cflags += \
     $(init_options) \
     -Wall -Wextra \
