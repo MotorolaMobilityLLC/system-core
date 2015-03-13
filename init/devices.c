@@ -47,6 +47,7 @@
 #include "ueventd_parser.h"
 #include "util.h"
 #include "log.h"
+#include <zlib.h>
 
 #define UNUSED __attribute__((__unused__))
 
@@ -879,23 +880,20 @@ static void handle_device_event(struct uevent *uevent)
     }
 }
 
-static int load_firmware(int fw_fd, int loading_fd, int data_fd)
+static int load_firmware(int fw_fd, gzFile gz_fd, int loading_fd, int data_fd)
 {
-    struct stat st;
-    long len_to_copy;
     int ret = 0;
-
-    if(fstat(fw_fd, &st) < 0)
-        return -1;
-    len_to_copy = st.st_size;
 
     write(loading_fd, "1", 1);  /* start transfer */
 
-    while (len_to_copy > 0) {
+    while (1) {
         char buf[PAGE_SIZE];
         ssize_t nr;
 
-        nr = read(fw_fd, buf, sizeof(buf));
+        if (gz_fd)
+            nr = gzread(gz_fd, buf, sizeof(buf));
+        else
+            nr = read(fw_fd, buf, sizeof(buf));
         if(!nr)
             break;
         if(nr < 0) {
@@ -903,7 +901,6 @@ static int load_firmware(int fw_fd, int loading_fd, int data_fd)
             break;
         }
 
-        len_to_copy -= nr;
         while (nr > 0) {
             ssize_t nw = 0;
 
@@ -919,8 +916,10 @@ static int load_firmware(int fw_fd, int loading_fd, int data_fd)
 out:
     if(!ret)
         write(loading_fd, "0", 1);  /* successful end of transfer */
-    else
+    else {
+        ERROR("%s: aborted transfer\n", __func__);
         write(loading_fd, "-1", 2); /* abort transfer */
+    }
 
     return ret;
 }
@@ -984,7 +983,7 @@ static int load_from_extended(const char *firmware, int loading_fd, int data_fd)
         goto out_extended;
     }
 
-    if (load_firmware(fw_fd, loading_fd, data_fd) != 0) {
+    if (load_firmware(fw_fd, NULL, loading_fd, data_fd) != 0) {
         ERROR("firmware: could not load '%s'\n", firmware);
     }
     close(fw_fd);
@@ -997,11 +996,47 @@ out_extended:
 #endif
 /* END IKVOICE-4341 */
 
+gzFile fw_gzopen(const char *fname, const char *mode)
+{
+    char *file1 = NULL, *file2 = NULL, *file3 = NULL;
+    int l;
+    gzFile gz_fd = NULL;
+
+    l = asprintf(&file1, FIRMWARE_DIR1"/%s.gz", fname);
+    if (l == -1)
+        goto out;
+
+    l = asprintf(&file2, FIRMWARE_DIR2"/%s.gz", fname);
+    if (l == -1)
+        goto file1_free_out;
+
+    l = asprintf(&file3, FIRMWARE_DIR3"/%s.gz", fname);
+    if (l == -1)
+        goto file2_free_out;
+
+    gz_fd = gzopen(file1, mode);
+    if(!gz_fd) {
+        gz_fd = gzopen(file2, mode);
+        if (!gz_fd) {
+            gz_fd = gzopen(file3, mode);
+        }
+    }
+
+    free(file3);
+file2_free_out:
+    free(file2);
+file1_free_out:
+    free(file1);
+out:
+    return gz_fd;
+}
+
 static void process_firmware_event(struct uevent *uevent)
 {
     char *root, *loading, *data, *file1 = NULL, *file2 = NULL, *file3 = NULL;
     int l, loading_fd, data_fd, fw_fd;
     int booting = is_booting();
+    gzFile gz_fd = NULL;
 
     INFO("firmware: loading '%s' for '%s'\n",
          uevent->firmware, uevent->path);
@@ -1053,27 +1088,33 @@ try_loading_again:
         if (fw_fd < 0) {
             fw_fd = open(file3, O_RDONLY);
             if (fw_fd < 0) {
-                if (booting || (access("/system/etc/firmware", F_OK) != 0)) {
-                        /* If we're not fully booted, we may be missing
-                         * filesystems needed for firmware, wait and retry.
-                         */
-                    usleep(100000);
-                    booting = is_booting();
-                    goto try_loading_again;
+                gz_fd = fw_gzopen(uevent->firmware, "rb");
+                if (!gz_fd) {
+                    if (booting || (access("/system/etc/firmware", F_OK) != 0)) {
+                            /* If we're not fully booted, we may be missing
+                             * filesystems needed for firmware, wait and retry.
+                             */
+                        usleep(100000);
+                        booting = is_booting();
+                        goto try_loading_again;
+                    }
+                    INFO("firmware: could not open '%s' %d\n", uevent->firmware, errno);
+                    write(loading_fd, "-1", 2);
+                    goto data_close_out;
                 }
-                INFO("firmware: could not open '%s' %d\n", uevent->firmware, errno);
-                write(loading_fd, "-1", 2);
-                goto data_close_out;
             }
         }
     }
 
-    if(!load_firmware(fw_fd, loading_fd, data_fd))
+    if(!load_firmware(fw_fd, gz_fd, loading_fd, data_fd))
         INFO("firmware: copy success { '%s', '%s' }\n", root, uevent->firmware);
     else
         INFO("firmware: copy failure { '%s', '%s' }\n", root, uevent->firmware);
 
-    close(fw_fd);
+    if (gz_fd)
+        gzclose(gz_fd);
+    else
+        close(fw_fd);
 data_close_out:
     close(data_fd);
 loading_close_out:

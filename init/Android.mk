@@ -99,6 +99,8 @@ ifneq ($(strip $(TARGET_PLATFORM_DEVICE_BASE)),)
 LOCAL_CFLAGS += -D_PLATFORM_BASE="\"$(TARGET_PLATFORM_DEVICE_BASE)\""
 endif
 
+LOCAL_C_INCLUDES += external/zlib
+
 include $(BUILD_EXECUTABLE)
 
 # Make a symlink from /sbin/ueventd and /sbin/watchdogd to /init
