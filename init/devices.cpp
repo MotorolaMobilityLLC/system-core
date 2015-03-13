@@ -56,6 +56,7 @@
 #include "ueventd_parser.h"
 #include "util.h"
 #include "log.h"
+#include <zlib.h>
 
 #define SYSFS_PREFIX    "/sys"
 static const char *firmware_dirs[] = { "/etc/firmware",
@@ -780,19 +781,45 @@ static void handle_device_event(struct uevent *uevent)
 
 static void load_firmware(uevent* uevent, const std::string& root,
                           int fw_fd, size_t fw_size,
-                          int loading_fd, int data_fd) {
+                          int loading_fd, int data_fd, gzFile gz_fd) {
     // Start transfer.
     android::base::WriteFully(loading_fd, "1", 1);
 
-    // Copy the firmware.
-    int rc = sendfile(data_fd, fw_fd, nullptr, fw_size);
-    if (rc == -1) {
-        PLOG(ERROR) << "firmware: sendfile failed { '" << root << "', '" << uevent->firmware << "' }";
-    }
+    if (gz_fd != Z_NULL) {
+        int ret = 0;
+        while (1) {
+           char buf[PAGE_SIZE];
+           ssize_t nr;
+           nr = gzread(gz_fd, buf, sizeof(buf));
+           if(!nr)
+               break;
+	   if(nr < 0) {
+	       ret = -1;
+	       break;
+	   }
+	   if (!android::base::WriteFully(data_fd, buf, nr)) {
+	       ret = -1;
+	       break;
+	   }
+        }
+        if(!ret)
+            write(loading_fd, "0", 1);  /* successful end of transfer */
+        else {
+            PLOG(ERROR) << "firmware:  aborted transfer";
+            write(loading_fd, "-1", 2); /* abort transfer */
+        }
+    } else {
 
-    // Tell the firmware whether to abort or commit.
-    const char* response = (rc != -1) ? "0" : "-1";
-    android::base::WriteFully(loading_fd, response, strlen(response));
+	    // Copy the firmware.
+	    int rc = sendfile(data_fd, fw_fd, nullptr, fw_size);
+	    if (rc == -1) {
+		PLOG(ERROR) << "firmware: sendfile failed { '" << root << "', '" << uevent->firmware << "' }";
+	    }
+
+	    // Tell the firmware whether to abort or commit.
+	    const char* response = (rc != -1) ? "0" : "-1";
+	    android::base::WriteFully(loading_fd, response, strlen(response));
+    }
 }
 
 static int is_booting() {
@@ -848,17 +875,15 @@ static int load_from_extended(const char *firmware, int loading_fd, int data_fd)
     /* Do not consider the case /data folder is still encrypted.
        It is assumed adspd is started only after data partition is decrypted
        so firmware request for XMCS would happen on decripted fs */
-    fw_fd = open(file, O_RDONLY | O_NOFOLLOW);
-    if(fw_fd < 0) {
+    android::base::unique_fd fw_fd(open(file, O_RDONLY|O_CLOEXEC));
+    struct stat sb;
+    if (fw_fd != -1 && fstat(fw_fd, &sb) != -1) {
+        load_firmware(uevent, root, fw_fd, sb.st_size, loading_fd, data_fd, Z_NULL);
+    } else {
         goto out_extended;
     }
-
-    if (load_firmware(fw_fd, loading_fd, data_fd) != 0) {
-        ERROR("firmware: could not load '%s'\n", firmware);
-    }
-    close(fw_fd);
+    
     ret = -1;
-
 out_extended:
     free(file);
     return ret;
@@ -866,9 +891,26 @@ out_extended:
 #endif
 /* END IKVOICE-4341 */
 
+gzFile fw_gzopen(const char *fname, const char *mode)
+{
+    char *gzfile = NULL;
+    int l;
+    gzFile gz_fd = Z_NULL;
+
+    l = asprintf(&gzfile, "%s.gz", fname);
+    if (l == -1)
+        goto out;
+
+    gz_fd = gzopen(gzfile, mode);
+    free(gzfile);
+out:
+    return gz_fd;
+}
+
 static void process_firmware_event(struct uevent *uevent)
 {
     int booting = is_booting();
+    gzFile gz_fd = Z_NULL;
 
     LOG(INFO) << "firmware: loading '" << uevent->firmware << "' for '" << uevent->path << "'";
 
@@ -902,8 +944,15 @@ try_loading_again:
         android::base::unique_fd fw_fd(open(file.c_str(), O_RDONLY|O_CLOEXEC));
         struct stat sb;
         if (fw_fd != -1 && fstat(fw_fd, &sb) != -1) {
-            load_firmware(uevent, root, fw_fd, sb.st_size, loading_fd, data_fd);
+            load_firmware(uevent, root, fw_fd, sb.st_size, loading_fd, data_fd, Z_NULL);
             return;
+        } else {
+            gz_fd = fw_gzopen(file.c_str(), "rb");
+            if (gz_fd != Z_NULL) {
+                load_firmware(uevent, root, fw_fd, sb.st_size, loading_fd, data_fd, gz_fd);
+                gzclose(gz_fd);
+                return;
+            }
         }
     }
 
