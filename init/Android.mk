@@ -112,7 +112,8 @@ LOCAL_SRC_FILES:= \
 LOCAL_MODULE:= init
 LOCAL_C_INCLUDES += \
     system/extras/ext4_utils \
-    system/core/mkbootimg
+    system/core/mkbootimg \
+    external/zlib
 
 LOCAL_FORCE_STATIC_EXECUTABLE := true
 LOCAL_MODULE_PATH := $(TARGET_ROOT_OUT)
