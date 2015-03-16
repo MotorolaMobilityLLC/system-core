@@ -49,10 +49,9 @@ LOCAL_CFLAGS += -DALLOW_CAMERA_DEBUG
 LOCAL_CFLAGS += -DLOAD_INIT_RC_FROM_PROP
 else
 # Allow disabling SELinux for not signed user buids
-# IKGPEL-101 - wljv10 - STOPSHIP! Temporarily allow SELinux to be in permissive mode for user builds
-# ifneq ($(RADIO_SECURE),1)
+ifneq ($(RADIO_SECURE),1)
 LOCAL_CFLAGS += -DALLOW_DISABLE_SELINUX=1
-# endif
+endif
 endif
 
 ifeq ($(strip $(TARGET_USE_MOT_NEW_COM)),true)
