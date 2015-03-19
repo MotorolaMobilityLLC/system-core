@@ -7,6 +7,7 @@
 #include <cutils/atomic.h>
 #include <sys/types.h>
 #include <sys/uio.h>
+#include <sys/socket.h>
 
 class SocketClient {
     int             mSocket;
@@ -36,6 +37,18 @@ public:
     virtual ~SocketClient();
 
     int getSocket() { return mSocket; }
+
+    // Shuts down the socket, provided it's owned by the client.
+    // This will unblock any reads/writes blocked on the file
+    // descriptor, and cause any future reads/writes to fail.
+    // Returns 0 on success, -1 on error.
+    int shutdown(int how=SHUT_RDWR) {
+        if (mSocketOwned && mSocket >= 0) {
+            return ::shutdown(mSocket, how);
+        }
+        return -1;
+    }
+
     pid_t getPid() const { return mPid; }
     uid_t getUid() const { return mUid; }
     gid_t getGid() const { return mGid; }

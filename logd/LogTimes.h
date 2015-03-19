@@ -74,6 +74,22 @@ public:
     // Called after LogTimeEntry removed from list, lock implicitly held
     void release_Locked(void) {
         mRelease = true;
+        if (threadRunning && mClient) {
+            // Shutdown the client socket. Most of the time this is
+            // unnecessary but harmless, since at the point when this
+            // method is called, the log reader client thread should
+            // be all done with its work anyway. However, in one
+            // scenario this shutdown is *really* needed: if log
+            // reader client thread is blocked trying to write to the
+            // socket, and its peer on the other end of the socket has
+            // stopped reading from it, yet did not exit. (Synthetic
+            // way to reproduce this: logcat | sleep 3600.) In this
+            // scenario shutting down the socket will cause the
+            // write() call to error out, waking up the log reader
+            // client thread and allowing the normal thread shutdown
+            // process to unfold.
+            mClient->shutdown();
+        }
         pthread_cond_signal(&threadTriggeredCondition);
         if (mRefCount || threadRunning) {
             return;
