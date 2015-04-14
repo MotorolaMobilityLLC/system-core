@@ -37,6 +37,8 @@ static struct label syn_labels[] = {
         LABEL(SYN_CONFIG),
         LABEL(SYN_MT_REPORT),
         LABEL(SYN_DROPPED),
+        LABEL(SYN_TIME_SEC),
+        LABEL(SYN_TIME_NSEC),
         LABEL_END,
 };
 
