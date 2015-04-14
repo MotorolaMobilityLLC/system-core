@@ -326,6 +326,7 @@ static const struct fs_path_config android_files[] = {
     { 00755, AID_ROOT,      AID_ROOT,      0, "system/lib64/valgrind/*" },
     { 00755, AID_ROOT,      AID_SHELL,     0, "system/xbin/*" },
     { 00755, AID_ROOT,      AID_SHELL,     0, "system/vendor/bin/*" },
+    { 00755, AID_ROOT,      AID_SHELL,     0, "system/vendor/itson/*" },
     { 00755, AID_ROOT,      AID_SHELL,     0, "vendor/bin/*" },
     { 00750, AID_ROOT,      AID_SHELL,     0, "sbin/*" },
     { 00755, AID_ROOT,      AID_ROOT,      0, "bin/*" },
