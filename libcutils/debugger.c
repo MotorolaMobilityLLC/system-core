@@ -40,7 +40,27 @@ static bool is32bit(pid_t tid) {
   int fd = open(exeline, O_RDONLY | O_CLOEXEC);
   free(exeline);
   if (fd == -1) {
-    return false;
+    // BEGIN Motorola, a5705c, 04/21/2015, IKSWL-9649
+    // try to get the cmdline
+    if (asprintf(&exeline, "/proc/%d/cmdline", tid) == -1) {
+      return false;
+    }
+    fd = open(exeline, O_RDONLY | O_CLOEXEC);
+    free(exeline);
+    if (fd == -1) {
+      return false;
+    }
+    char cmdline[PATH_MAX];
+    ssize_t n = read(fd, &cmdline, sizeof(cmdline));
+    close(fd);
+    if (n <= 0) {
+      return false;
+    }
+    fd = open(cmdline, O_RDONLY | O_CLOEXEC);
+    if (fd == -1) {
+      return false;
+    }
+    // END IKSWL-9649
   }
 
   char ehdr[EI_NIDENT];
