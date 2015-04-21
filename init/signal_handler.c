@@ -69,7 +69,11 @@ static int wait_for_one_process(int block)
         return 0;
     }
 
-    NOTICE("process '%s', pid %d exited\n", svc->name, pid);
+    if (svc->flags & SVC_CRITICAL) {
+        ERROR("process '%s', pid '%d' exited with status %d\n", svc->name, pid, status);
+    } else {
+        NOTICE("process '%s', pid %d exited\n", svc->name, pid);
+    }
 
     if (!(svc->flags & SVC_ONESHOT) || (svc->flags & SVC_RESTART)) {
         kill(-pid, SIGKILL);
