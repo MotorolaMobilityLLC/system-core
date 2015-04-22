@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <cutils/properties.h>
-
+#include <signal.h> // Motorola, a5705c, 2013-05-03, IKJB42MAIN-6672
 #include "dynarray.h"
 
 //BEGIN MOTOROLA, kgh864, IKASANTISPRINT-1896 port IKSUNFIRE-4142
@@ -74,8 +74,27 @@ static void list_properties(void)
     strlist_done(list);
 }
 
+// BEGIN Motorola, a5705c, 2013-05-03, IKJB42MAIN-6672
+static void sigpipe_handler(int n)
+{
+    (void)n;
+    exit(EXIT_FAILURE);
+}
+
+static void install_sigpipe_handler()
+{
+    struct sigaction act;
+    memset(&act, 0, sizeof(act));
+    act.sa_handler = sigpipe_handler;
+    sigaction(SIGPIPE, &act, NULL);
+}
+// END IKJB42MAIN-6672
+
+
 int getprop_main(int argc, char *argv[])
 {
+    install_sigpipe_handler(); // Motorola, a5705c, 2013-05-03, IKJB42MAIN-6672
+
     if (argc == 1) {
         list_properties();
     } else {
