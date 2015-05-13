@@ -416,6 +416,8 @@ int main(int argc, char **argv) {
     klog_set_level(KLOG_LEVEL);
     healthd_mode_ops = &android_ops;
 
+    signal(SIGPIPE, SIG_IGN);
+
     if (!strcmp(basename(argv[0]), "charger")) {
         healthd_mode_ops = &charger_ops;
     } else {
