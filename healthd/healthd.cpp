@@ -119,5 +119,7 @@ int main(int /*argc*/, char ** /*argv*/) {
 
     healthd_mode_ops = &android_ops;
 
+    signal(SIGPIPE, SIG_IGN);
+
     return healthd_main();
 }
