@@ -123,6 +123,11 @@ LOCAL_STATIC_LIBRARIES += \
 
 endif
 
+# MOT (IKHALFMWK-1422) - support app permission controll
+ifeq ($(ENABLE_LENOVO_SECUREIT),true)
+LOCAL_STATIC_LIBRARIES += libapppc
+endif
+
 ifeq ($(strip $(BOARD_CHARGER_ENABLE_SUSPEND)),true)
 LOCAL_STATIC_LIBRARIES += libsuspend
 endif
