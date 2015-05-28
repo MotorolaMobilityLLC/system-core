@@ -468,6 +468,24 @@ static void export_oem_lock_status() {
         property_set("ro.boot.flash.locked", value == "orange" ? "0" : "1");
     }
 }
+/*
+ * Adding ro.bootreason, which be used to indicate kpanic/wdt boot status.
+ * When ro.boot.last_powerup_reason is set, it denotes this is a 2nd reboot
+ * after kpanic/wdt, we set ro.bootreason as coldboot to copy logs.
+ * Otherwise,we would set ro.bootreason the same as ro.boot.bootreason.
+ */
+static void export_kernel_boot_reason(void)
+{
+    std::string tmpprop;
+    tmpprop = property_get("ro.boot.last_powerup_reason");
+    if (!tmpprop.empty()) {
+        property_set("ro.bootreason", "coldboot");
+    } else {
+        tmpprop = property_get("ro.boot.bootreason");
+        if (!tmpprop.empty())
+            property_set("ro.bootreason", tmpprop.c_str());
+    }
+}
 
 static void export_kernel_boot_props() {
     struct {
@@ -575,6 +593,7 @@ static void export_kernel_boot_props() {
         property_set("ro.boot.nfc", "false");
         property_set("ro.hw.nfc", "false");
     }
+    export_kernel_boot_reason();
 }
 
 static void process_kernel_dt() {
