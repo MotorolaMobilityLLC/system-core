@@ -70,6 +70,7 @@
 #include "util.h"
 #include "watchdogd.h"
 
+using android::base::SetProperty;
 using android::base::GetProperty;
 using android::base::StringPrintf;
 
@@ -502,6 +503,24 @@ static void export_oem_lock_status() {
         property_set("ro.boot.flash.locked", value == "orange" ? "0" : "1");
     }
 }
+/*
+ * Adding ro.bootreason, which be used to indicate kpanic/wdt boot status.
+ * When ro.boot.last_powerup_reason is set, it denotes this is a 2nd reboot
+ * after kpanic/wdt, we set ro.bootreason as coldboot to copy logs.
+ * Otherwise,we would set ro.bootreason the same as ro.boot.bootreason.
+ */
+static void export_kernel_boot_reason(void)
+{
+    std::string tmpprop;
+    tmpprop = GetProperty("ro.boot.last_powerup_reason", "");
+    if (!tmpprop.empty()) {
+        SetProperty("ro.bootreason", "coldboot");
+    } else {
+        tmpprop = GetProperty("ro.boot.bootreason", "");
+        if (!tmpprop.empty())
+            SetProperty("ro.bootreason", tmpprop.c_str());
+    }
+}
 
 static void export_kernel_boot_props() {
     struct {
@@ -609,6 +628,7 @@ static void export_kernel_boot_props() {
         property_set("ro.boot.nfc", "false");
         property_set("ro.hw.nfc", "false");
     }
+    export_kernel_boot_reason();
 }
 
 static void process_kernel_dt() {
