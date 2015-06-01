@@ -612,7 +612,7 @@ service ril-daemon /system/bin/rild
     socket cutback stream 660 media radio
     socket wpa_wlan0 dgram 660 wifi wifi
     user root
-    group radio cache inet misc audio log qcom_diag net_raw diag wifi
+    group radio cache inet misc audio log qcom_diag net_raw diag wifi compass
 
 service surfaceflinger /system/bin/surfaceflinger
     class core
