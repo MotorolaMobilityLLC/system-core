@@ -886,7 +886,10 @@ static void export_kernel_boot_props() {
     for (size_t i = 0; i < ARRAY_SIZE(prop_map); i++) {
         char value[PROP_VALUE_MAX];
         int rc = property_get(prop_map[i].src_prop, value);
-        property_set(prop_map[i].dst_prop, (rc > 0) ? value : prop_map[i].default_value);
+        if (rc > 0)
+            property_set(prop_map[i].dst_prop, value);
+        else if (prop_map[i].default_value != NULL)
+            property_set(prop_map[i].dst_prop, prop_map[i].default_value);
     }
 }
 
