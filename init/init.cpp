@@ -388,7 +388,10 @@ static void export_kernel_boot_props() {
     };
     for (size_t i = 0; i < arraysize(prop_map); i++) {
         std::string value = GetProperty(prop_map[i].src_prop, "");
-        property_set(prop_map[i].dst_prop, (!value.empty()) ? value : prop_map[i].default_value);
+        if (!value.empty())
+            property_set(prop_map[i].dst_prop, value.c_str());
+        else if (prop_map[i].default_value != NULL)
+            property_set(prop_map[i].dst_prop, prop_map[i].default_value);
     }
 }
 
