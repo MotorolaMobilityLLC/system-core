@@ -598,23 +598,26 @@ int ifc_disable(const char *ifname)
 int ifc_reset_connections(const char *ifname, const int reset_mask)
 {
 #ifdef HAVE_ANDROID_OS
-    int result, success;
+    int result = 0, success;
     in_addr_t myaddr = 0;
     struct ifreq ifr;
     struct in6_ifreq ifr6;
+    int ctl_sock = -1;
 
     if (reset_mask & RESET_IPV4_ADDRESSES) {
         /* IPv4. Clear connections on the IP address. */
-        ifc_init();
-        if (!(reset_mask & RESET_IGNORE_INTERFACE_ADDRESS)) {
-            ifc_get_info(ifname, &myaddr, NULL, NULL);
+        ctl_sock = socket(AF_INET, SOCK_DGRAM, 0);
+        if (ctl_sock >= 0) {
+            if (!(reset_mask & RESET_IGNORE_INTERFACE_ADDRESS)) {
+                ifc_get_info(ifname, &myaddr, NULL, NULL);
+            }
+            ifc_init_ifr(ifname, &ifr);
+            init_sockaddr_in(&ifr.ifr_addr, myaddr);
+            result = ioctl(ctl_sock, SIOCKILLADDR,  &ifr);
+            close(ctl_sock);
+        } else {
+            result = -1;
         }
-        ifc_init_ifr(ifname, &ifr);
-        init_sockaddr_in(&ifr.ifr_addr, myaddr);
-        result = ioctl(ifc_ctl_sock, SIOCKILLADDR,  &ifr);
-        ifc_close();
-    } else {
-        result = 0;
     }
 
     if (reset_mask & RESET_IPV6_ADDRESSES) {
@@ -624,14 +627,18 @@ int ifc_reset_connections(const char *ifname, const int reset_mask)
          * So we clear all unused IPv6 connections on the device by specifying an
          * empty IPv6 address.
          */
-        ifc_init6();
+        ctl_sock = socket(AF_INET6, SOCK_DGRAM, 0);
         // This implicitly specifies an address of ::, i.e., kill all IPv6 sockets.
         memset(&ifr6, 0, sizeof(ifr6));
-        success = ioctl(ifc_ctl_sock6, SIOCKILLADDR,  &ifr6);
-        if (result == 0) {
-            result = success;
+        if (ctl_sock >= 0) {
+            success = ioctl(ctl_sock, SIOCKILLADDR,  &ifr6);
+            if (result == 0) {
+                result = success;
+            }
+            close(ctl_sock);
+        } else {
+            result = -1;
         }
-        ifc_close6();
     }
 
     return result;
