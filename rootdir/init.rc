@@ -461,6 +461,11 @@ on boot
 	#add by youhongtao for tp test 20151223
 	chown system system /proc/ftxxxx-debug
 
+    #lenovo zhangsx10 add begin
+    chown system system /sys/devices/platform/battery/thermal_limit_current
+    chmod 0664  /sys/devices/platform/battery/thermal_limit_current
+    #lenovo zhangsx10 add end
+
     # Define default initial receive window size in segments.
     setprop net.tcp.default_init_rwnd 60
 
