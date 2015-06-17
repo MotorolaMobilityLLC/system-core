@@ -271,7 +271,7 @@ static void uevent_init(void) {
     }
 
     fcntl(uevent_fd, F_SETFL, O_NONBLOCK);
-    if (healthd_register_event(uevent_fd, uevent_event, EVENT_WAKEUP_FD))
+    if (healthd_register_event(uevent_fd, uevent_event, (EventWakeup)0))
         KLOG_ERROR(LOG_TAG,
                    "register for uevent events failed\n");
 }
@@ -305,7 +305,7 @@ static void qe_init(void) {
 
     if (timerfd_settime(qe_fd, 0, &qe_itval, NULL) == -1)
         KLOG_ERROR(LOG_TAG, "qe_set_interval: timerfd_settime failed\n");
-    if (healthd_register_event(qe_fd, qe_event))
+    if (healthd_register_event(qe_fd, qe_event, (EventWakeup)0))
         KLOG_ERROR(LOG_TAG,
                    "register for uevent events failed\n");
 }
