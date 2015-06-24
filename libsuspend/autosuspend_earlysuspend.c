@@ -106,8 +106,10 @@ static int autosuspend_earlysuspend_enable(void)
 
     ret = write(sPowerStatefd, pwr_state_mem, strlen(pwr_state_mem));
     if (ret < 0) {
-        strerror_r(errno, buf, sizeof(buf));
-        ALOGE("Error writing to %s: %s\n", EARLYSUSPEND_SYS_POWER_STATE, buf);
+        if (errno != EBUSY) {
+            strerror_r(errno, buf, sizeof(buf));
+            ALOGE("%s: Error writing to %s: %s\n", __func__, EARLYSUSPEND_SYS_POWER_STATE, buf);
+        }
         goto err;
     }
 
@@ -136,8 +138,10 @@ static int autosuspend_earlysuspend_disable(void)
 
     ret = write(sPowerStatefd, pwr_state_on, strlen(pwr_state_on));
     if (ret < 0) {
-        strerror_r(errno, buf, sizeof(buf));
-        ALOGE("Error writing to %s: %s\n", EARLYSUSPEND_SYS_POWER_STATE, buf);
+        if (errno != EBUSY) {
+            strerror_r(errno, buf, sizeof(buf));
+            ALOGE("%s: Error writing to %s: %s\n", __func__, EARLYSUSPEND_SYS_POWER_STATE, buf);
+        }
         goto err;
     }
 
