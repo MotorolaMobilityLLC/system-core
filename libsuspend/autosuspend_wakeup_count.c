@@ -80,8 +80,10 @@ static void *suspend_thread_func(void *arg __attribute__((unused)))
             ALOGV("%s: write %s to %s\n", __func__, sleep_state, SYS_POWER_STATE);
             ret = write(state_fd, sleep_state, strlen(sleep_state));
             if (ret < 0) {
-                strerror_r(errno, buf, sizeof(buf));
-                ALOGE("Error writing to %s: %s\n", SYS_POWER_STATE, buf);
+                if (errno != EBUSY) {
+                    strerror_r(errno, buf, sizeof(buf));
+                    ALOGE("%s: Error writing to %s: %s\n", __func__, SYS_POWER_STATE, buf);
+                }
             } else {
                 void (*func)(void) = wakeup_func;
                 if (func != NULL) {
