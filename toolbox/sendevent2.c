@@ -11,6 +11,8 @@
 #include <sys/ioctl.h>
 //#include <linux/input.h> // this does not compile
 #include <errno.h>
+#include <time.h>
+#include <unistd.h>
 
 // from <linux/input.h>
 struct input_event {
