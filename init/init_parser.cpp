@@ -666,6 +666,44 @@ int action_queue_empty()
     return list_empty(&action_queue);
 }
 
+// BEGIN MOTOROLA, a21834, IKKRNBSP-3273
+// To support property expansion operation in exec
+int make_exec_expand_prop(int nargs, char** args)
+{
+    int i, j;
+    char prop_val[PROP_VALUE_MAX];
+    unsigned int len;
+
+    if (nargs > INIT_PARSER_MAXARGS)
+    {
+        return -1;
+    }
+
+    for(i=0, j=1; i<(nargs-1) ; i++,j++)
+    {
+        if ((args[j])
+            &&
+            (!expand_props(prop_val, args[j], sizeof(prop_val))))
+
+        {
+            len = strlen(args[j]);
+            if (strlen(prop_val) <= len) {
+                /* Overwrite arg with expansion.
+                 *
+                 * For now, only allow an expansion length that
+                 * can fit within the original arg length to
+                 * avoid extra allocations.
+                 * On failure, use original argument.
+                 */
+                strncpy(args[j], prop_val, len + 1);
+            }
+        }
+    }
+
+    return 0;
+}
+// END IKKRNBSP-3273
+
 service* make_exec_oneshot_service(int nargs, char** args) {
     // Parse the arguments: exec [SECLABEL [UID [GID]*] --] COMMAND ARGS...
     // SECLABEL can be a - to denote default
@@ -720,6 +758,13 @@ service* make_exec_oneshot_service(int nargs, char** args) {
     svc->classname = "default";
     svc->flags = SVC_EXEC | SVC_ONESHOT;
     svc->nargs = argc;
+    // BEGIN MOTOROLA, a21834, IKKRNBSP-3273
+    /*
+     * expand props from the parameters of exec
+     * would overwrite some filed of argv when expansion.
+     */
+    make_exec_expand_prop(argc, argv);
+    // END IKKRNBSP-3273
     memcpy(svc->args, argv, sizeof(char*) * svc->nargs);
     svc->args[argc] = NULL;
     list_add_tail(&service_list, &svc->slist);
