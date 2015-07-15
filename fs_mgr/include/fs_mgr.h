@@ -110,6 +110,8 @@ struct fstab_rec *fs_mgr_get_entry_for_mount_point_after(struct fstab_rec *start
 int fs_mgr_swapon_all(struct fstab *fstab);
 
 int fs_mgr_do_format(struct fstab_rec *fstab);
+int fs_mgr_is_partition_encrypted(struct fstab_rec *fstab);
+int fs_mgr_identify_fs(struct fstab_rec *fstab);
 
 #ifdef __cplusplus
 }
