@@ -520,6 +520,11 @@ static int mount_with_alternatives(struct fstab *fstab, int start_idx, int *end_
                 resize_fs(fstab->recs[i].blk_device, fstab->recs[i].key_loc);
             }
 #endif
+            if (fs_mgr_identify_fs(&fstab->recs[i]) == 0) {
+                ERROR("%s(): skipping unidentified mountpoint=%s rec[%d].fs_type=%s.\n", __func__,
+                     fstab->recs[i].mount_point, i, fstab->recs[i].fs_type);
+                continue;
+            }
 
             if (fstab->recs[i].fs_mgr_flags & MF_CHECK) {
                 check_fs(fstab->recs[i].blk_device, fstab->recs[i].fs_type,
@@ -900,17 +905,24 @@ int fs_mgr_mount_all(struct fstab *fstab, int mount_mode)
                       fstab->recs[attempted_idx].fs_type);
                 encryptable = FS_MGR_MNTALL_DEV_NEEDS_RECOVERY;
                 continue;
-            } else {
+            } else if (fs_mgr_is_partition_encrypted(&fstab->recs[top_idx])) {
                 /* Need to mount a tmpfs at this mountpoint for now, and set
                  * properties that vold will query later for decrypting
                  */
-                ERROR("%s(): possibly an encryptable blkdev %s for mount %s type %s )\n", __func__,
+                ERROR("%s(): encrypted blkdev %s for mount %s type %s )\n", __func__,
                       fstab->recs[attempted_idx].blk_device, fstab->recs[attempted_idx].mount_point,
                       fstab->recs[attempted_idx].fs_type);
                 if (fs_mgr_do_tmpfs_mount(fstab->recs[attempted_idx].mount_point) < 0) {
                     ++error_count;
                     continue;
                 }
+            } else {
+                ERROR("Failed to mount an encryptable partition on"
+                       "%s at %s options: %s error: %s. Suggest recovery...\n",
+                       fstab->recs[attempted_idx].blk_device, fstab->recs[attempted_idx].mount_point,
+                       fstab->recs[attempted_idx].fs_options, strerror(mount_errno));
+                encryptable = FS_MGR_MNTALL_DEV_NEEDS_RECOVERY;
+                continue;
             }
             encryptable = FS_MGR_MNTALL_DEV_MIGHT_BE_ENCRYPTED;
         } else if(mret && mount_errno != EBUSY && mount_errno != EACCES &&
