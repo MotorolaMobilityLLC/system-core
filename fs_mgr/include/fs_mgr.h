@@ -84,6 +84,8 @@ bool fs_mgr_update_logical_partition(android::fs_mgr::FstabEntry* entry);
 bool fs_mgr_verity_is_check_at_most_once(const android::fs_mgr::FstabEntry& entry);
 
 int fs_mgr_do_format(const android::fs_mgr::FstabEntry& entry, bool reserve_footer);
+int fs_mgr_is_partition_encrypted(const android::fs_mgr::FstabEntry& entry);
+int fs_mgr_identify_fs(const android::fs_mgr::FstabEntry& entry);
 
 #define FS_MGR_SETUP_VERITY_SKIPPED  (-3)
 #define FS_MGR_SETUP_VERITY_DISABLED (-2)
