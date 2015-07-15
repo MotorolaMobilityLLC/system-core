@@ -110,6 +110,8 @@ int fs_mgr_is_nofail(struct fstab_rec *fstab);
 int fs_mgr_swapon_all(struct fstab *fstab);
 
 int fs_mgr_do_format(struct fstab_rec *fstab);
+int fs_mgr_is_partition_encrypted(struct fstab_rec *fstab);
+int fs_mgr_identify_fs(struct fstab_rec *fstab);
 
 #ifdef __cplusplus
 }
