@@ -78,6 +78,8 @@ bool fs_mgr_update_verity_state(fs_mgr_verity_state_callback callback);
 int fs_mgr_swapon_all(struct fstab *fstab);
 
 int fs_mgr_do_format(struct fstab_rec *fstab, bool reserve_footer);
+int fs_mgr_is_partition_encrypted(struct fstab_rec *fstab);
+int fs_mgr_identify_fs(struct fstab_rec *fstab);
 
 #define FS_MGR_SETUP_VERITY_SKIPPED  (-3)
 #define FS_MGR_SETUP_VERITY_DISABLED (-2)

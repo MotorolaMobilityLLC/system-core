@@ -58,6 +58,7 @@
 #include <log/log_properties.h>
 #include <logwrap/logwrap.h>
 
+#include "cryptfs.h"
 #include "fs_mgr.h"
 #include "fs_mgr_avb.h"
 #include "fs_mgr_priv.h"
@@ -65,6 +66,8 @@
 
 #define KEY_LOC_PROP   "ro.crypto.keyfile.userdata"
 #define KEY_IN_FOOTER  "footer"
+#define CRYPT_MAGIC         0xD0B5B1C4
+
 
 #define E2FSCK_BIN      "/system/bin/e2fsck"
 #define F2FS_FSCK_BIN   "/system/bin/fsck.f2fs"
@@ -626,6 +629,15 @@ static int mount_with_alternatives(struct fstab *fstab, int start_idx, int *end_
                 continue;
             }
 
+            if (fs_mgr_identify_fs(&fstab->recs[i]) == 0) {
+                LERROR << __FUNCTION__
+                       << "(): skipping unidentified mountpoint="
+                       << fstab->recs[i].mount_point << " rec[" << i << "].fs_type="
+                       << fstab->recs[i].fs_type << ".";
+                continue;
+            }
+
+
             int retry_count = 2;
             while (retry_count-- > 0) {
                 if (!__mount(fstab->recs[i].blk_device, fstab->recs[i].mount_point,
@@ -820,6 +832,142 @@ static bool call_vdc(const std::vector<std::string>& args) {
     return true;
 }
 
+int fs_mgr_is_partition_encrypted(struct fstab_rec *fstab)
+{
+    int fd = -1;
+    struct stat statbuf;
+    unsigned int sectors;
+    off64_t offset;
+    __le32 crypt_magic = 0;
+    int ret = 0;
+
+    if (!fs_mgr_is_encryptable(fstab))
+        return 0;
+
+    if (fstab->key_loc[0] == '/') {
+        if ((fd = open(fstab->key_loc, O_RDWR)) < 0) {
+            goto out;
+        }
+    } else if (!strcmp(fstab->key_loc, KEY_IN_FOOTER)) {
+        if ((fd = open(fstab->blk_device, O_RDWR)) < 0) {
+            goto out;
+        }
+        if ((ioctl(fd, BLKGETSIZE, &sectors)) == -1) {
+            goto out;
+        }
+        offset = ((off64_t)sectors * 512) - CRYPT_FOOTER_OFFSET;
+        if (lseek64(fd, offset, SEEK_SET) == -1) {
+            goto out;
+        }
+    } else {
+        goto out;
+    }
+
+    if (read(fd, &crypt_magic, sizeof(crypt_magic)) != sizeof(crypt_magic)) {
+        goto out;
+    }
+    if (crypt_magic != CRYPT_MAGIC) {
+        goto out;
+    }
+
+    /* It's probably encrypted! */
+    ret = 1;
+
+out:
+    if (fd >= 0) {
+        close(fd);
+    }
+    return ret;
+}
+
+/*
+ * Search the first 16 sectors, or 4*4k blocks.  This covers the EXT4 alignment
+ * requirement and will also find the F2FS backup SB.
+ */
+#define TOTAL_SECTORS 16
+#define F2FS_SUPER_MAGIC 0xF2F52010
+#define EXT4_SUPER_MAGIC 0xEF53
+
+static int is_f2fs(char *block)
+{
+    __le32 *sb;
+    int i;
+
+    for (i = 0; i < TOTAL_SECTORS; i++) {
+        sb = (__le32 *)(block + (i * 512));     /* magic is in the first word */
+        if (le32_to_cpu(sb[0]) == F2FS_SUPER_MAGIC) {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+static int is_ext4(char *block)
+{
+    struct ext4_super_block *sb = (struct ext4_super_block *)block;
+    int i;
+
+    for (i = 0; i < TOTAL_SECTORS * 512; i += sizeof(struct ext4_super_block), sb++) {
+        if (le32_to_cpu(sb->s_magic) == EXT4_SUPER_MAGIC) {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+/* Examine the superblock of a block device to see if the type matches what is
+ * in the fstab entry.
+ * Returns
+ *   -1 when the file system type is not supported by this function
+ *   0 when the file system does not match the fstab entry
+ *   1 when the file system does match the fstab entry
+ */
+int fs_mgr_identify_fs(struct fstab_rec *fstab)
+{
+    char *block = NULL;
+    int fd = -1;
+    int identified = -1;
+
+    if (strncmp(fstab->fs_type, "f2fs", 4) && strncmp(fstab->fs_type, "ext4", 4)) {
+        LERROR << "Not identifying unsupported file system type '"
+               << fstab->fs_type << "' on " << fstab->blk_device;
+        return identified;
+    }
+
+    block = (char *)calloc(1, TOTAL_SECTORS * 512);
+    if (!block) {
+        goto out;
+    }
+    if ((fd = open(fstab->blk_device, O_RDONLY)) < 0) {
+        goto out;
+    }
+    if (read(fd, block, TOTAL_SECTORS * 512) != TOTAL_SECTORS * 512) {
+        goto out;
+    }
+
+    identified = 0;
+    if ((!strncmp(fstab->fs_type, "f2fs", 4) && is_f2fs(block)) ||
+        (!strncmp(fstab->fs_type, "ext4", 4) && is_ext4(block))) {
+        identified = 1;
+    }
+
+out:
+    if (fd >= 0) {
+        close(fd);
+    }
+    if (block) {
+        free(block);
+    }
+    if (identified == 0) {
+        LERROR << "Did not recognize file system type '"
+               << fstab->fs_type << "' on " << fstab->blk_device;
+    }
+    return identified;
+}
+
+
 /* When multiple fstab records share the same mount_point, it will
  * try to mount each one in turn, and ignore any duplicates after a
  * first successful mount.
@@ -991,11 +1139,11 @@ int fs_mgr_mount_all(struct fstab *fstab, int mount_mode)
                        << " is encryptable. Suggest recovery...";
                 encryptable = FS_MGR_MNTALL_DEV_NEEDS_RECOVERY;
                 continue;
-            } else {
+	    } else if (fs_mgr_is_partition_encrypted(&fstab->recs[top_idx])) {
                 /* Need to mount a tmpfs at this mountpoint for now, and set
                  * properties that vold will query later for decrypting
                  */
-                LERROR << __FUNCTION__ << "(): possibly an encryptable blkdev "
+                LERROR << __FUNCTION__ << "(): encrypted blkdev "
                        << fstab->recs[attempted_idx].blk_device
                        << " for mount " << fstab->recs[attempted_idx].mount_point
                        << " type " << fstab->recs[attempted_idx].fs_type;
@@ -1003,6 +1151,14 @@ int fs_mgr_mount_all(struct fstab *fstab, int mount_mode)
                     ++error_count;
                     continue;
                 }
+            } else {
+                PERROR << "Failed to mount an encryptable partition on"
+                       << fstab->recs[attempted_idx].blk_device << " at "
+                       << fstab->recs[attempted_idx].mount_point << " options: "
+		       << fstab->recs[attempted_idx].fs_options << " error: "
+                       << ". Suggest recovery...";
+                encryptable = FS_MGR_MNTALL_DEV_NEEDS_RECOVERY;
+                continue;
             }
             encryptable = FS_MGR_MNTALL_DEV_MIGHT_BE_ENCRYPTED;
         } else if (mret && mount_errno != EBUSY && mount_errno != EACCES &&
