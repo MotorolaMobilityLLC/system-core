@@ -65,6 +65,11 @@
 
 #define MAX_MOUNT_RETRIES 2
 
+/* from bootinfo.h */
+#define PU_REASON_WDOG_AP_RESET     0x00008000 /* Bit 15 */
+#define PU_REASON_AP_KERNEL_PANIC   0x00020000 /* Bit 17 */
+#define PU_REASON_HARDWARE_RESET    0x00100000 /* bit 20  */
+
 /*
  * gettime() - returns the time in seconds of the system's monotonic clock or
  * zero on error.
@@ -104,14 +109,23 @@ static void check_fs(char *blk_device, char *fs_type, char *target)
     int ret;
     long tmpmnt_flags = MS_NOATIME | MS_NOEXEC | MS_NOSUID;
     char *tmpmnt_opts = "nomblk_io_submit,errors=remount-ro";
-    char *e2fsck_argv[] = {
-        E2FSCK_BIN,
-        "-y",
-        blk_device
-    };
+    char tmp[PROP_VALUE_MAX];
+    int force = 0;
+
+    ret = __system_property_get("ro.boot.powerup_reason", tmp);
+    if (ret) {
+        force = strtoul(tmp, 0, 16) & (PU_REASON_WDOG_AP_RESET |
+                                       PU_REASON_AP_KERNEL_PANIC |
+                                       PU_REASON_HARDWARE_RESET);
+    }
 
     /* Check for the types of filesystems we know how to check */
     if (!strcmp(fs_type, "ext2") || !strcmp(fs_type, "ext3") || !strcmp(fs_type, "ext4")) {
+        char *e2fsck_argv[] = {
+            E2FSCK_BIN,
+            "-y",
+            blk_device
+        };
         /*
          * First try to mount and unmount the filesystem.  We do this because
          * the kernel is more efficient than e2fsck in running the journal and
@@ -126,21 +140,26 @@ static void check_fs(char *blk_device, char *fs_type, char *target)
          * fix the filesystem.
          */
         errno = 0;
-        ret = mount(blk_device, target, fs_type, tmpmnt_flags, tmpmnt_opts);
-        INFO("%s(): mount(%s,%s,%s)=%d: %s\n",
-             __func__, blk_device, target, fs_type, ret, strerror(errno));
-        if (!ret) {
-            int i;
-            for (i = 0; i < 5; i++) {
-                // Try to umount 5 times before continuing on.
-                // Should we try rebooting if all attempts fail?
-                int result = umount(target);
-                if (result == 0) {
-                    INFO("%s(): unmount(%s) succeeded\n", __func__, target);
-                    break;
+        if (force) {
+            INFO("Forcing full file sysyem check...\n");
+            e2fsck_argv[1] = "-yf";
+        } else {
+            ret = mount(blk_device, target, fs_type, tmpmnt_flags, tmpmnt_opts);
+            INFO("%s(): mount(%s,%s,%s)=%d: %s\n",
+                __func__, blk_device, target, fs_type, ret, strerror(errno));
+            if (!ret) {
+                int i;
+                for (i = 0; i < 5; i++) {
+                    // Try to umount 5 times before continuing on.
+                    // Should we try rebooting if all attempts fail?
+                    int result = umount(target);
+                    if (result == 0) {
+                        INFO("%s(): unmount(%s) succeeded\n", __func__, target);
+                        break;
+                    }
+                    ERROR("%s(): umount(%s)=%d: %s\n", __func__, target, result, strerror(errno));
+                    sleep(1);
                 }
-                ERROR("%s(): umount(%s)=%d: %s\n", __func__, target, result, strerror(errno));
-                sleep(1);
             }
         }
 
@@ -164,13 +183,16 @@ static void check_fs(char *blk_device, char *fs_type, char *target)
             }
         }
     } else if (!strcmp(fs_type, "f2fs")) {
-            char *f2fs_fsck_argv[] = {
-                    F2FS_FSCK_BIN,
-                    "-f",
-                    "-a",
-                    blk_device
-            };
-        INFO("Running %s -f %s\n", F2FS_FSCK_BIN, blk_device);
+        char *f2fs_fsck_argv[] = {
+            F2FS_FSCK_BIN,
+            "-a",
+            blk_device
+        };
+        if (force) {
+            INFO("Forcing full file sysyem check...\n");
+            f2fs_fsck_argv[1] = "-f";
+        }
+        INFO("Running %s on %s\n", F2FS_FSCK_BIN, blk_device);
 
         ret = android_fork_execvp_ext(ARRAY_SIZE(f2fs_fsck_argv), f2fs_fsck_argv,
                                       &status, true, LOG_KLOG | LOG_FILE,
