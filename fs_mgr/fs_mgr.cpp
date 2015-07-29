@@ -88,6 +88,8 @@
 #define PU_REASON_AP_KERNEL_PANIC   0x00020000 /* Bit 17 */
 #define PU_REASON_HARDWARE_RESET    0x00100000 /* bit 20  */
 
+#define MAX_MOUNT_RETRIES 2
+
 // record fs stat
 enum FsStatFlags {
     FS_STAT_IS_EXT4 = 0x0001,
@@ -982,6 +984,7 @@ int fs_mgr_mount_all(struct fstab *fstab, int mount_mode)
     int mount_errno = 0;
     int attempted_idx = -1;
     FsManagerAvbUniquePtr avb_handle(nullptr);
+    int retry = MAX_MOUNT_RETRIES;
 
     if (!fstab) {
         return FS_MGR_MNTALL_FAIL;
@@ -1084,6 +1087,10 @@ int fs_mgr_mount_all(struct fstab *fstab, int mount_mode)
             }
 
             /* Success!  Go get the next one */
+            PINFO << "Successfully mounted "
+                  << fstab->recs[attempted_idx].mount_point << " with file system type '"
+                  << fstab->recs[attempted_idx].fs_type << ".";
+            retry = MAX_MOUNT_RETRIES;
             continue;
         }
 
@@ -1152,6 +1159,12 @@ int fs_mgr_mount_all(struct fstab *fstab, int mount_mode)
                     continue;
                 }
             } else {
+		if (--retry > 0) {
+                    LERROR << "Failed to mount "
+                           << fstab->recs[attempted_idx].mount_point << "; retrying...";
+                    i = top_idx - 1;
+                    continue;
+                }
                 PERROR << "Failed to mount an encryptable partition on"
                        << fstab->recs[attempted_idx].blk_device << " at "
                        << fstab->recs[attempted_idx].mount_point << " options: "
@@ -1171,6 +1184,12 @@ int fs_mgr_mount_all(struct fstab *fstab, int mount_mode)
         } else {
             // fs_options might be null so we cannot use PERROR << directly.
             // Use StringPrintf to output "(null)" instead.
+            if (--retry > 0) {
+                PERROR << "Failed to mount " << fstab->recs[attempted_idx].mount_point
+                       << "; retrying...";
+                i = top_idx - 1;
+                continue;
+            }
             if (fs_mgr_is_nofail(&fstab->recs[attempted_idx])) {
                 PERROR << android::base::StringPrintf(
                     "Ignoring failure to mount an un-encryptable or wiped "
