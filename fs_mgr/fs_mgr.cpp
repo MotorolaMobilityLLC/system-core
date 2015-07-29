@@ -118,6 +118,11 @@ using namespace std::literals;
 
 #define MAX_MOUNT_RETRIES 2
 
+/* from bootinfo.h */
+#define PU_REASON_WDOG_AP_RESET     0x00008000 /* Bit 15 */
+#define PU_REASON_AP_KERNEL_PANIC   0x00020000 /* Bit 17 */
+#define PU_REASON_HARDWARE_RESET    0x00100000 /* bit 20  */
+
 // record fs stat
 enum FsStatFlags {
     FS_STAT_IS_EXT4 = 0x0001,
@@ -180,16 +185,25 @@ static void check_fs(const std::string& blk_device, const std::string& fs_type,
     int ret;
     long tmpmnt_flags = MS_NOATIME | MS_NOEXEC | MS_NOSUID;
     auto tmpmnt_opts = "errors=remount-ro"s;
-    const char* e2fsck_argv[] = {E2FSCK_BIN, "-y", blk_device.c_str()};
-    const char* e2fsck_forced_argv[] = {E2FSCK_BIN, "-f", "-y", blk_device.c_str()};
+    char tmp[PROP_VALUE_MAX];
+    int force = 0;
 
     if (*fs_stat & FS_STAT_INVALID_MAGIC) {  // will fail, so do not try
         return;
     }
 
     Timer t;
+    ret = __system_property_get("ro.boot.powerup_reason", tmp);
+    if (ret) {
+        force = strtoul(tmp, 0, 16) & (PU_REASON_WDOG_AP_RESET |
+                                       PU_REASON_AP_KERNEL_PANIC |
+                                       PU_REASON_HARDWARE_RESET);
+    }
+
     /* Check for the types of filesystems we know how to check */
     if (is_extfs(fs_type)) {
+        const char* e2fsck_argv[] = {E2FSCK_BIN, "-y", blk_device.c_str()};
+        const char* e2fsck_forced_argv[] = {E2FSCK_BIN, "-f", "-y", blk_device.c_str()};
         /*
          * First try to mount and unmount the filesystem.  We do this because
          * the kernel is more efficient than e2fsck in running the journal and
@@ -209,29 +223,33 @@ static void check_fs(const std::string& blk_device, const std::string& fs_type,
                 // This option is only valid with ext4
                 tmpmnt_opts += ",nomblk_io_submit";
             }
-            ret = mount(blk_device.c_str(), target.c_str(), fs_type.c_str(), tmpmnt_flags,
-                        tmpmnt_opts.c_str());
-            PINFO << __FUNCTION__ << "(): mount(" << blk_device << "," << target << "," << fs_type
-                  << ")=" << ret;
-            if (!ret) {
-                bool umounted = false;
-                int retry_count = 5;
-                while (retry_count-- > 0) {
-                    umounted = umount(target.c_str()) == 0;
-                    if (umounted) {
-                        LINFO << __FUNCTION__ << "(): unmount(" << target << ") succeeded";
-                        break;
-                    }
-                    PERROR << __FUNCTION__ << "(): umount(" << target << ") failed";
-                    if (retry_count) sleep(1);
-                }
-                if (!umounted) {
-                    // boot may fail but continue and leave it to later stage for now.
-                    PERROR << __FUNCTION__ << "(): umount(" << target << ") timed out";
-                    *fs_stat |= FS_STAT_RO_UNMOUNT_FAILED;
-                }
+            if (force) {
+                PINFO << "Forcing full file sysyem check...";
+                e2fsck_argv[1] = "-yf";
             } else {
-                *fs_stat |= FS_STAT_RO_MOUNT_FAILED;
+                ret = mount(blk_device.c_str(), target.c_str(), fs_type.c_str(), tmpmnt_flags,
+                            tmpmnt_opts.c_str());
+                PINFO << __FUNCTION__ << "(): mount(" << blk_device << "," << target << "," << fs_type
+                      << ")=" << ret;
+                if (!ret) {
+                    bool umounted = false;
+                    int retry_count = 5;
+                    while (retry_count-- > 0) {
+                        umounted = umount(target.c_str()) == 0;
+                        if (umounted) {
+                            LINFO << __FUNCTION__ << "(): unmount(" << target << ") succeeded";
+                            break;
+                        }
+                        PERROR << __FUNCTION__ << "(): umount(" << target << ") failed";
+                        if (retry_count) sleep(1);}
+                    if (!umounted) {
+                        // boot may fail but continue and leave it to later stage for now.
+                        PERROR << __FUNCTION__ << "(): umount(" << target << ") timed out";
+                        *fs_stat |= FS_STAT_RO_UNMOUNT_FAILED;
+                    }
+                } else {
+                    *fs_stat |= FS_STAT_RO_MOUNT_FAILED;
+                }
             }
         }
 
@@ -267,6 +285,11 @@ static void check_fs(const std::string& blk_device, const std::string& fs_type,
                                         blk_device.c_str()};
         const char* f2fs_fsck_forced_argv[] = {
                 F2FS_FSCK_BIN, "-f", "-c", "10000", "--debug-cache", blk_device.c_str()};
+
+        if (force) {
+            PINFO << "Forcing full file sysyem check...";
+            f2fs_fsck_argv[1] = "-f";
+        }
 
         if (should_force_check(*fs_stat)) {
             LINFO << "Running " << F2FS_FSCK_BIN << " -f -c 10000 --debug-cache"
