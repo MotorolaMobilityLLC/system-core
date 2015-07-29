@@ -80,6 +80,11 @@
 
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(*(a)))
 
+/* from bootinfo.h */
+#define PU_REASON_WDOG_AP_RESET     0x00008000 /* Bit 15 */
+#define PU_REASON_AP_KERNEL_PANIC   0x00020000 /* Bit 17 */
+#define PU_REASON_HARDWARE_RESET    0x00100000 /* bit 20  */
+
 // record fs stat
 enum FsStatFlags {
     FS_STAT_IS_EXT4 = 0x0001,
@@ -145,14 +150,23 @@ static void check_fs(const char *blk_device, char *fs_type, char *target, int *f
     int ret;
     long tmpmnt_flags = MS_NOATIME | MS_NOEXEC | MS_NOSUID;
     char tmpmnt_opts[64] = "errors=remount-ro";
-    const char* e2fsck_argv[] = {E2FSCK_BIN, "-y", blk_device};
-    const char* e2fsck_forced_argv[] = {E2FSCK_BIN, "-f", "-y", blk_device};
+    char tmp[PROP_VALUE_MAX];
+    int force = 0;
+
+    ret = __system_property_get("ro.boot.powerup_reason", tmp);
+    if (ret) {
+        force = strtoul(tmp, 0, 16) & (PU_REASON_WDOG_AP_RESET |
+                                       PU_REASON_AP_KERNEL_PANIC |
+                                       PU_REASON_HARDWARE_RESET);
+    }
 
     /* Check for the types of filesystems we know how to check */
     if (is_extfs(fs_type)) {
         if (*fs_stat & FS_STAT_EXT4_INVALID_MAGIC) {  // will fail, so do not try
             return;
         }
+        const char* e2fsck_argv[] = {E2FSCK_BIN, "-y", blk_device};
+        const char* e2fsck_forced_argv[] = {E2FSCK_BIN, "-f", "-y", blk_device};
         /*
          * First try to mount and unmount the filesystem.  We do this because
          * the kernel is more efficient than e2fsck in running the journal and
@@ -172,30 +186,34 @@ static void check_fs(const char *blk_device, char *fs_type, char *target, int *f
                 // This option is only valid with ext4
                 strlcat(tmpmnt_opts, ",nomblk_io_submit", sizeof(tmpmnt_opts));
             }
-            ret = mount(blk_device, target, fs_type, tmpmnt_flags, tmpmnt_opts);
-            PINFO << __FUNCTION__ << "(): mount(" << blk_device << "," << target << "," << fs_type
-                  << ")=" << ret;
-            if (!ret) {
-                bool umounted = false;
-                int retry_count = 5;
-                while (retry_count-- > 0) {
-                    umounted = umount(target) == 0;
-                    if (umounted) {
-                        LINFO << __FUNCTION__ << "(): unmount(" << target << ") succeeded";
-                        break;
-                    }
-                    PERROR << __FUNCTION__ << "(): umount(" << target << ") failed";
-                    if (retry_count) sleep(1);
-                }
-                if (!umounted) {
-                    // boot may fail but continue and leave it to later stage for now.
-                    PERROR << __FUNCTION__ << "(): umount(" << target << ") timed out";
-                    *fs_stat |= FS_STAT_RO_UNMOUNT_FAILED;
-                }
+            if (force) {
+                PINFO << "Forcing full file sysyem check...";
+                e2fsck_argv[1] = "-yf";
             } else {
-                *fs_stat |= FS_STAT_RO_MOUNT_FAILED;
-            }
-        }
+                ret = mount(blk_device, target, fs_type, tmpmnt_flags, tmpmnt_opts);
+                PINFO << __FUNCTION__ << "(): mount(" << blk_device << "," << target << "," << fs_type
+                      << ")=" << ret;
+                if (!ret) {
+                    bool umounted = false;
+                    int retry_count = 5;
+                    while (retry_count-- > 0) {
+                        umounted = umount(target) == 0;
+                        if (umounted) {
+                            LINFO << __FUNCTION__ << "(): unmount(" << target << ") succeeded";
+                            break;
+                        }
+                        PERROR << __FUNCTION__ << "(): umount(" << target << ") failed";
+                        if (retry_count) sleep(1);}
+                    if (!umounted) {
+                        // boot may fail but continue and leave it to later stage for now.
+                        PERROR << __FUNCTION__ << "(): umount(" << target << ") timed out";
+                        *fs_stat |= FS_STAT_RO_UNMOUNT_FAILED;
+                    }
+                } else {
+                    *fs_stat |= FS_STAT_RO_MOUNT_FAILED;
+                }
+	    }
+	}
 
         /*
          * Some system images do not have e2fsck for licensing reasons
@@ -226,12 +244,16 @@ static void check_fs(const char *blk_device, char *fs_type, char *target, int *f
             }
         }
     } else if (!strcmp(fs_type, "f2fs")) {
-            const char *f2fs_fsck_argv[] = {
-                    F2FS_FSCK_BIN,
-                    "-a",
-                    blk_device
-            };
-        LINFO << "Running " << F2FS_FSCK_BIN << " -a " << blk_device;
+        const char *f2fs_fsck_argv[] = {
+                F2FS_FSCK_BIN,
+                "-a",
+                blk_device
+        };
+        if (force) {
+            PINFO << "Forcing full file sysyem check...";
+            f2fs_fsck_argv[1] = "-f";
+        }
+        LINFO << "Running " << F2FS_FSCK_BIN << " on " << blk_device;
 
         ret = android_fork_execvp_ext(ARRAY_SIZE(f2fs_fsck_argv),
                                       const_cast<char **>(f2fs_fsck_argv),
