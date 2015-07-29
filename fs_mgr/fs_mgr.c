@@ -63,6 +63,8 @@
 
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(*(a)))
 
+#define MAX_MOUNT_RETRIES 2
+
 /*
  * gettime() - returns the time in seconds of the system's monotonic clock or
  * zero on error.
@@ -86,11 +88,14 @@ static int wait_for_file(const char *filename, int timeout)
     struct stat info;
     time_t timeout_time = gettime() + timeout;
     int ret = -1;
+    int stat_errno = 0;
 
-    while (gettime() < timeout_time && ((ret = stat(filename, &info)) < 0))
+    while (gettime() < timeout_time && ((ret = stat(filename, &info)) < 0)) {
+        stat_errno = errno;
         usleep(10000);
+    }
 
-    return ret;
+    return ret ? -stat_errno : 0;
 }
 
 static void check_fs(char *blk_device, char *fs_type, char *target)
@@ -511,6 +516,7 @@ int fs_mgr_mount_all(struct fstab *fstab)
     int mret = -1;
     int mount_errno = 0;
     int attempted_idx = -1;
+    int retry = MAX_MOUNT_RETRIES;
 
     if (!fstab) {
         return -1;
@@ -541,7 +547,10 @@ int fs_mgr_mount_all(struct fstab *fstab)
         }
 
         if (fstab->recs[i].fs_mgr_flags & MF_WAIT) {
-            wait_for_file(fstab->recs[i].blk_device, WAIT_TIMEOUT);
+            mret = wait_for_file(fstab->recs[i].blk_device, WAIT_TIMEOUT);
+            if (mret)
+                ERROR("Gave up waiting for %s: %s\n",
+                      fstab->recs[i].blk_device, strerror(-mret));
         }
 
         if ((fstab->recs[i].fs_mgr_flags & MF_VERIFY) && device_is_secure()) {
@@ -578,6 +587,9 @@ int fs_mgr_mount_all(struct fstab *fstab)
             }
 
             /* Success!  Go get the next one */
+            INFO("Successfully mounted %s with file system type '%s'.\n",
+                 fstab->recs[attempted_idx].mount_point, fstab->recs[attempted_idx].fs_type);
+            retry = MAX_MOUNT_RETRIES;
             continue;
         }
 
@@ -630,6 +642,12 @@ int fs_mgr_mount_all(struct fstab *fstab)
                     continue;
                 }
             } else {
+                if (--retry > 0) {
+                    ERROR("Failed to mount %s; retrying...\n",
+                            fstab->recs[attempted_idx].mount_point);
+                    i = top_idx - 1;
+                    continue;
+                }
                 ERROR("Failed to mount an encryptable partition on"
                        "%s at %s options: %s error: %s. Suggest recovery...\n",
                        fstab->recs[attempted_idx].blk_device, fstab->recs[attempted_idx].mount_point,
@@ -639,6 +657,11 @@ int fs_mgr_mount_all(struct fstab *fstab)
             }
             encryptable = FS_MGR_MNTALL_DEV_MIGHT_BE_ENCRYPTED;
         } else {
+            if (--retry > 0) {
+                ERROR("Failed to mount %s; retrying...\n", fstab->recs[attempted_idx].mount_point);
+                i = top_idx - 1;
+                continue;
+            }
             ERROR("Failed to mount an un-encryptable or wiped partition on"
                    "%s at %s options: %s error: %s\n",
                    fstab->recs[attempted_idx].blk_device, fstab->recs[attempted_idx].mount_point,
