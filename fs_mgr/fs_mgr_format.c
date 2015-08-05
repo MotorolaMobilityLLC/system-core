@@ -23,6 +23,7 @@
 #include <errno.h>
 #include <cutils/partition_utils.h>
 #include <sys/mount.h>
+#include <selinux/selinux.h>
 #include "ext4_utils.h"
 #include "ext4.h"
 #include "make_ext4fs.h"
