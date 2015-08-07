@@ -455,7 +455,7 @@ int main(int argc, char *argv[]) {
         kl = new LogKlog(logBuf, reader, fdDmesg, fdPmesg, al != NULL);
     }
 
-    readDmesg(al, kl);
+    readDmesg(al, NULL);
 
     // failure is an option ... messages are in dmesg (required by standard)
 
