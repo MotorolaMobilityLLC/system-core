@@ -191,7 +191,7 @@ bool LogKlog::onDataAvailable(SocketClient *cli) {
     if (!initialized) {
         prctl(PR_SET_NAME, "logd.klogd");
         initialized = true;
-        enableLogging = false;
+        enableLogging = true;
     }
 
     char buffer[LOGGER_ENTRY_MAX_PAYLOAD];
