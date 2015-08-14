@@ -296,6 +296,7 @@ enum {
     NATIVE_WINDOW_SET_SIDEBAND_STREAM       = 18,
     NATIVE_WINDOW_SET_BUFFERS_SIZE          = 19,   /* private */
     NATIVE_WINDOW_UPDATE_BUFFERS_GEOMETRY   = 20,   /* private */
+    NATIVE_WINDOW_SET_DIRTY_RECT            = 21,   /* private */
 };
 
 /* parameter for NATIVE_WINDOW_[API_][DIS]CONNECT */
