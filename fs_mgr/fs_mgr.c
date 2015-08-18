@@ -63,7 +63,7 @@
 #define F2FS_FSCK_BIN  "/system/bin/fsck.f2fs"
 #define MKSWAP_BIN      "/system/bin/mkswap"
 
-#define MKSWAP_SECURITY_CONTEXT "u:r:motobox:s0"
+#define MKSWAP_SECURITY_CONTEXT "u:r:toolbox:s0"
 
 #define FSCK_LOG_FILE   "/dev/fscklogs/log"
 
