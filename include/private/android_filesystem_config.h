@@ -179,6 +179,9 @@
 #define AID_MOT_DTV       9019 /* dtv */
 
 #define AID_MOT_DBVC      9014  /* mot_dbvc - This group is used to access DataBlock feature */
+#define AID_MOT_SHARED    9323 /* motorola shared uid, IKSWM-342 */
+#define AID_MOT_COMMON    9341 /* motorola common uid, IKSWM-342 */
+
 #define AID_EVERYBODY     9997  /* shared between all apps in the same profile */
 #define AID_MISC          9998  /* access to misc storage */
 #define AID_NOBODY        9999
