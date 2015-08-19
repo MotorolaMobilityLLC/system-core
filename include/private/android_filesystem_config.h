@@ -128,6 +128,9 @@
 #define AID_OEM_RESERVED_2_END   5999
 
 #define AID_MOT_MOD       9020  /* can interact with motorola mod HW */
+#define AID_MOT_SHARED    9323 /* motorola shared uid, IKSWM-342 */
+#define AID_MOT_COMMON    9341 /* motorola common uid, IKSWM-342 */
+
 #define AID_EVERYBODY     9997  /* shared between all apps in the same profile */
 #define AID_MISC          9998  /* access to misc storage */
 #define AID_NOBODY        9999
