@@ -48,6 +48,7 @@
 #include "ueventd_parser.h"
 #include "util.h"
 #include "log.h"
+#include "property_service.h"
 #include <zlib.h>
 
 #define SYSFS_PREFIX    "/sys"
@@ -56,6 +57,7 @@ static const char *firmware_dirs[] = { "/custom/etc/firmware",
                                        "/vendor/firmware",
                                        "/firmware/image" };
 
+static char *bootdevice;
 extern struct selabel_handle *sehandle;
 
 static int device_fd = -1;
@@ -555,6 +557,14 @@ static char **get_block_device_symlinks(struct uevent *uevent)
         link_num++;
     else
         links[link_num] = NULL;
+
+    if (!bootdevice) {
+        std::string property = property_get("ro.boot.bootdevice");
+        if (!property.empty())
+            bootdevice = strdup(property.c_str());
+    }
+    if (bootdevice && !strcmp(device, bootdevice))
+        make_link_init(link_path, "/dev/block/bootdevice");
 
     return links;
 }
