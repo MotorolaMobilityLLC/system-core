@@ -306,6 +306,8 @@ static const struct android_id_info android_ids[] = {
     { "mot_shared",    AID_MOT_SHARED, },
     { "mot_common",    AID_MOT_COMMON, },
     { "mot_mod",       AID_MOT_MOD, },
+    { "mot_shared",    AID_MOT_SHARED, },
+    { "mot_common",    AID_MOT_COMMON, },
 };
 
 #define android_id_count \
