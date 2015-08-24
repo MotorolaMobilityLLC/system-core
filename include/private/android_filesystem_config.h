@@ -240,6 +240,8 @@ static const struct android_id_info android_ids[] = {
     { "power",         AID_POWER, },
     { "itson",         AID_ITSON, },
     { "mot_dtv",       AID_MOT_DTV, },
+    { "mot_shared",    AID_MOT_SHARED, },
+    { "mot_common",    AID_MOT_COMMON, },
 };
 
 #define android_id_count \
