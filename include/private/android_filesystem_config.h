@@ -293,6 +293,8 @@ static const struct android_id_info android_ids[] = {
     { "mot_esdfs",     AID_MOT_ESDFS, },
     { "itson",         AID_ITSON, },
     { "mot_dtv",       AID_MOT_DTV, },
+    { "mot_shared",    AID_MOT_SHARED, },
+    { "mot_common",    AID_MOT_COMMON, },
 };
 
 #define android_id_count \
