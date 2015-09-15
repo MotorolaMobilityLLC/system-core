@@ -903,7 +903,6 @@ static void export_kernel_boot_props() {
         { "ro.boot.baseband",   "ro.baseband",   "unknown", },
         { "ro.boot.bootloader", "ro.bootloader", "unknown", },
         { "ro.boot.hardware",   "ro.hardware",   "unknown", },
-        { "ro.boot.revision",   "ro.revision",   "0", },
         { "ro.boot.radio", "ro.hw.radio", NULL, },
         { "ro.boot.carrier", "ro.carrier", NULL, },
         { "ro.boot.device", "ro.hw.device", NULL, },
@@ -924,6 +923,26 @@ static void export_kernel_boot_props() {
         else if (prop_map[i].default_value != NULL)
             property_set(prop_map[i].dst_prop, prop_map[i].default_value);
     }
+
+    char tmp[PROP_VALUE_MAX];
+    unsigned revision = 0;
+    int ret = property_get("ro.boot.revision", tmp);
+    if (!ret)
+	ret = property_get("ro.hw.hwrev", tmp);
+    if (ret > 0) {
+	if (strstr(tmp, "0x")) {
+            revision = strtoul(tmp+2, 0, 16);
+	    snprintf(tmp, PROP_VALUE_MAX, "%x", revision);
+        }
+        switch(tmp[0]){
+            case '1': tmp[0] = 's'; break;
+            case '2': tmp[0] = 'm'; break;
+            case '8': tmp[0] = 'p'; break;
+            case '9': tmp[0] = 'd'; break;
+        }
+        property_set("ro.revision", tmp);
+    }
+
     export_kernel_boot_reason();
 }
 
