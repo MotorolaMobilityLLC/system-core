@@ -103,9 +103,27 @@ static bool should_drop_privileges() {
         drop = true;
     }
 
+    // BEGIN Motorola, Darren Shu - w36016, July 31,2012, IKSECURITY-199 */
+    // Observe Motorola Access Token properties */
+    if (drop) {
+        property_get("persist.atvc.adb", value, "");
+        if (strcmp(value, "1") == 0) {
+            drop = false;
+        }
+    }
+    /* END IKSECURITY-199 */
     return drop;
 #else
-    return true; // "adb root" not allowed, always drop privileges.
+    // BEGIN Motorola, Darren Shu - w36016, July 31,2012, IKSECURITY-199
+    // Observe Motorola Access Token properties
+    bool drop = true;
+    char value[PROPERTY_VALUE_MAX];
+    value[0] = 0x00;
+    property_get("persist.atvc.adb", value, "");
+    if (strcmp(value, "1") == 0) {
+        drop = false;
+    }
+    return drop; // "adb root" not allowed, always drop privileges.
 #endif // ALLOW_ADBD_ROOT
 }
 
@@ -151,6 +169,11 @@ static void drop_privileges(int server_port) {
 #else
         if (root_seclabel != nullptr) {
             if (selinux_android_setcon(root_seclabel) < 0) {
+                drop_capabilities_bounding_set_if_needed();
+
+                minijail_change_gid(jail.get(), AID_SHELL);
+                minijail_change_uid(jail.get(), AID_SHELL);
+                D("Local port disabled\n");
                 LOG(FATAL) << "Could not set SELinux context";
             }
         }
