@@ -152,9 +152,27 @@ static bool should_drop_privileges() {
         drop = true;
     }
 
+    // BEGIN Motorola, Darren Shu - w36016, July 31,2012, IKSECURITY-199 */
+    // Observe Motorola Access Token properties */
+    if (drop) {
+        property_get("persist.atvc.adb", value, "");
+        if (strcmp(value, "1") == 0) {
+            drop = false;
+        }
+    }
+    /* END IKSECURITY-199 */
     return drop;
 #else
-    return true; // "adb root" not allowed, always drop privileges.
+    // BEGIN Motorola, Darren Shu - w36016, July 31,2012, IKSECURITY-199
+    // Observe Motorola Access Token properties
+    bool drop = true;
+    char value[PROPERTY_VALUE_MAX];
+    value[0] = 0x00;
+    property_get("persist.atvc.adb", value, "");
+    if (strcmp(value, "1") == 0) {
+        drop = false;
+    }
+    return drop; // "adb root" not allowed, always drop privileges.
 #endif /* ALLOW_ADBD_ROOT */
 }
 #endif /* ADB_HOST */
@@ -290,7 +308,18 @@ int adb_main(int is_daemon, int server_port)
         if ((root_seclabel != NULL) && (is_selinux_enabled() > 0)) {
             // b/12587913: fix setcon to allow const pointers
             if (setcon((char *)root_seclabel) < 0) {
-                exit(1);
+                //Mot change CR: IKSECURITY-567
+                //if adb can't transition to su domain, drop capabilities
+                //and drop to shell uid/gid code is taken from corresponding if condition
+                drop_capabilities_bounding_set_if_needed();
+                /* then switch user and group to "shell" */
+                if (setgid(AID_SHELL) != 0) {
+                    exit(1);
+                }
+                if (setuid(AID_SHELL) != 0) {
+                    exit(1);
+                }
+                D("Local port disabled\n");
             }
         }
         std::string local_name = android::base::StringPrintf("tcp:%d", server_port);
