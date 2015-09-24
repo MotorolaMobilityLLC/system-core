@@ -837,16 +837,23 @@ static int is_booting() {
 }
 
 /*
-   BEGIN IKVOICE-4341
-   Special firmware look-up function intended for AoV feature with Cirrus XMCS codec.
-   The foloder is intended to be used for speech model downloading and firmware upgrade.
-   Folder is specifically protected for AoV use via SELinux policy.
-
-   The function returns the following values:
-   -1 - Firmware loading was either success or failure. No need to look for further folders.
-    0 - Firmware was not loaded. Further folders need to be looked up.
+   Special firmware look-up functionality intended for non-system media firmware (ie.
+   downloaded firmware). The folders provided must be protected via SELinux policy.
 */
+struct extended_fw_path {
+    const char *fw_substring;
+    const char *fw_path;
+};
+
+const struct extended_fw_path extended_paths[] = {
 #ifdef MOTO_AOV_WITH_XMCS
+    {
+        .fw_substring = "-aov-",
+        .fw_path = "/data/adspd",
+    },
+#endif
+};
+
 static int is_hard_link(const char *path)
 {
     int rv = 1;
@@ -863,18 +870,18 @@ static int is_hard_link(const char *path)
     return(rv);
 }
 
-static int load_from_extended(const char *firmware, int loading_fd, int data_fd)
+static int load_one_extended(const char *firmware, int loading_fd, int data_fd, size_t index)
 {
     int l, fw_fd;
     char *file = NULL;
     int ret = 0;
 
-    /* look for naming convention for aov firmware */
-    if (strstr(firmware, "-aov-") == NULL) {
+    /* look for naming convention for the target firmware */
+    if (strstr(firmware, extended_paths[index].fw_substring) == NULL) {
         return 0;
     }
 
-    l = asprintf(&file, "/data/adspd/%s", firmware);
+    l = asprintf(&file, "%s/%s", extended_paths[index].fw_path, firmware);
     if (l == -1)
         return 0;
 
@@ -882,9 +889,10 @@ static int load_from_extended(const char *firmware, int loading_fd, int data_fd)
         goto out_extended;
     }
 
-    /* Do not consider the case /data folder is still encrypted.
-       It is assumed adspd is started only after data partition is decrypted
-       so firmware request for XMCS would happen on decripted fs */
+
+    /* Do not consider the case /data folder is still encrypted. It is assumed
+       userspace apps needing these files are started only after data partition
+       is decrypted. */
     android::base::unique_fd fw_fd(open(file, O_RDONLY|O_CLOEXEC));
     struct stat sb;
     if (fw_fd != -1 && fstat(fw_fd, &sb) != -1) {
@@ -898,8 +906,23 @@ out_extended:
     free(file);
     return ret;
 }
-#endif
-/* END IKVOICE-4341 */
+
+/*
+    -   The function returns the following values:
+    -   -1 - Firmware loading was either success or failure. No need to look for further folders.
+    -    0 - Firmware was not loaded. Further folders need to be looked up.
+*/
+static int load_from_extended(const char *firmware, int loading_fd, int data_fd)
+{
+    size_t i;
+
+    /* Loop through all possible extended folders unless we find a firmware */
+    for (i = 0; i < ARRAY_SIZE(extended_paths); i++)
+        if (load_one_extended(firmware, loading_fd, data_fd, i) == -1)
+            return -1;
+
+    return 0;
+}
 
 gzFile fw_gzopen(const char *fname, const char *mode)
 {
@@ -940,13 +963,9 @@ static void process_firmware_event(struct uevent *uevent)
         return;
     }
 
-/* BEGIN IKVOICE-4341 */
-#ifdef MOTO_AOV_WITH_XMCS
     if (load_from_extended(uevent->firmware, loading_fd, data_fd) < 0) {
         goto data_close_out;
     }
-#endif
-/* END IKVOICE-4341 */
 
 try_loading_again:
     for (size_t i = 0; i < arraysize(firmware_dirs); i++) {
