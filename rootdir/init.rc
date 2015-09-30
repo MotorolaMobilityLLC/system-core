@@ -732,6 +732,7 @@ service pre-recovery /system/bin/uncrypt --reboot
 service perfprofd /system/xbin/perfprofd
     class late_start
     user root
+    disabled
     oneshot
 
 on property:persist.logd.logpersistd=logcatd
