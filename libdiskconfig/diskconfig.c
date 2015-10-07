@@ -363,7 +363,8 @@ validate(struct disk_info *dinfo)
         }
 
         if ((part->type != PC_PART_TYPE_LINUX) &&
-            (part->type != PC_PART_TYPE_FAT32)) {
+            (part->type != PC_PART_TYPE_FAT32) &&
+            (part->type != PC_PART_TYPE_EXFAT)) {
             ALOGE("Unknown partition type (0x%x) encountered for partition "
                  "'%s'\n", part->type, part->name);
             goto fail;
