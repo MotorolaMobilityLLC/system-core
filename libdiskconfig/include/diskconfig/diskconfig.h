@@ -40,6 +40,7 @@ extern "C" {
 #define PC_PART_TYPE_LINUX           0x83
 #define PC_PART_TYPE_EXTENDED        0x05
 #define PC_PART_TYPE_FAT32           0x0c
+#define PC_PART_TYPE_EXFAT           0x07
 
 #define PC_NUM_BOOT_RECORD_PARTS     4
 
