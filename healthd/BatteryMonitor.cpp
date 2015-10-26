@@ -35,6 +35,7 @@
 #include <utils/Vector.h>
 #include <cutils/properties.h>
 #include <cutils/sockets.h>
+#include <sys/system_properties.h> // MOT, a18273, IKMODS-149
 
 #define POWER_SUPPLY_SUBSYSTEM "power_supply"
 #define POWER_SUPPLY_SYSFS_PATH "/sys/class/" POWER_SUPPLY_SUBSYSTEM
@@ -46,6 +47,27 @@ static int previous_adjust_power = -1;
 #define ALWAYS_PLUGGED_CAPACITY 100
 #define MILLION 1.0e6
 #define DEFAULT_VBUS_VOLTAGE 5000000
+
+// BEGIN MOT, a18273, IKMODS-149
+#define POWER_SUPPLY_MOD "gb_battery"
+
+#define POWER_SUPPLY_MOD_BATTERY_MODE_PROP "sys.mod.batterymode"
+
+#define POWER_SUPPLY_MOD_TYPE_PATH "/sys/devices/platform/mods_ap/greybus1/1-3/power_supply/gb_ptp/internal_send"
+#define POWER_SUPPLY_MOD_RECHRG_START_SOC "/sys/module/qpnp_smbcharger_mmi/parameters/eb_rechrg_start_soc"
+#define POWER_SUPPLY_MOD_RECHRG_STOP_SOC "/sys/module/qpnp_smbcharger_mmi/parameters/eb_rechrg_stop_soc"
+
+#define POWER_SUPPLY_MOD_TYPE_UNKNOWN      0
+#define POWER_SUPPLY_MOD_TYPE_REMOTE       1
+#define POWER_SUPPLY_MOD_TYPE_SUPPLEMENTAL 2
+#define POWER_SUPPLY_MOD_TYPE_EMERGENCY    3
+
+// the following defines should be consistent with those defined in:
+// motorola/frameworks/base/motomods/service/core/src/com/motorola/modservice/
+//   ui/Constants.java
+#define POWER_SUPPLY_MOD_BATTERY_MODE_TOPOFF       0
+#define POWER_SUPPLY_MOD_BATTERY_MODE_EFFICIENCY   1
+// END IKMODS-149
 
 namespace android {
 
@@ -320,6 +342,73 @@ bool BatteryMonitor::update(void) {
         }
     }
 
+    // BEGIN MOT, a18273, IKMODS-149
+    props.modLevel = -1;
+    props.modStatus = BATTERY_STATUS_UNKNOWN;
+    props.modType = POWER_SUPPLY_MOD_TYPE_UNKNOWN;
+    props.modFlag = 0;
+
+    // get mod battery status
+    if (access(mHealthdConfig->modStatusPath.string(), R_OK) == 0) {
+        if (readFromFile(mHealthdConfig->modStatusPath, buf, SIZE) > 0) {
+            props.modStatus = getBatteryStatus(buf);
+        }
+    }
+
+    // don't bother to read other mod values when it not attached
+    if (props.modStatus != BATTERY_STATUS_UNKNOWN) {
+        // get mod battery level
+        if (access(mHealthdConfig->modCapacityPath.string(), R_OK) == 0) {
+            props.modLevel = getIntField(mHealthdConfig->modCapacityPath);
+        }
+        // get mod type
+        if (access(mHealthdConfig->modTypePath.string(), R_OK) == 0) {
+            props.modType = getIntField(mHealthdConfig->modTypePath);
+        }
+
+        // attempt to hack battery level for non-empty supplemental mod
+        if ((props.modType == POWER_SUPPLY_MOD_TYPE_SUPPLEMENTAL) &&
+            (props.modLevel > 0)) {
+
+            // get battery mode from system properties
+            char value[PROP_VALUE_MAX];
+            property_get(POWER_SUPPLY_MOD_BATTERY_MODE_PROP, value, "0");
+            int batteryMode = atoi(value);
+
+            if (batteryMode == POWER_SUPPLY_MOD_BATTERY_MODE_TOPOFF) {
+                if (props.batteryLevel == 99) {
+                    props.batteryLevel = 100;
+                    props.modFlag = 1;
+                }
+            } else if (batteryMode == POWER_SUPPLY_MOD_BATTERY_MODE_EFFICIENCY) {
+                int startLevel = -1, stopLevel = -1;
+                if (access(mHealthdConfig->modRechargeStartLevelPath.string(), R_OK) == 0) {
+                    startLevel = getIntField(mHealthdConfig->modRechargeStartLevelPath);
+                }
+                if (access(mHealthdConfig->modRechargeStopLevelPath.string(), R_OK) == 0) {
+                    stopLevel = getIntField(mHealthdConfig->modRechargeStopLevelPath);
+                }
+                if ((startLevel >= 0) && (stopLevel > 0) && (startLevel < stopLevel)) {
+                    if (props.batteryLevel == startLevel) {
+                        props.batteryLevel = stopLevel;
+                        props.modFlag = stopLevel - startLevel;
+                    }
+                }
+            }
+        }
+    }
+    // mod attach/detach can cause mod sys file ready/destory in different time. Make sure
+    // mod value reported consistent
+    if (props.modLevel < 0 ||
+            props.modStatus == BATTERY_STATUS_UNKNOWN ||
+            props.modType == POWER_SUPPLY_MOD_TYPE_UNKNOWN) {
+        props.modLevel = -1;
+        props.modStatus == BATTERY_STATUS_UNKNOWN;
+        props.modType = POWER_SUPPLY_MOD_TYPE_UNKNOWN;
+        props.modFlag = 0;
+    }
+    // END IKMODS-149
+
     logthis = !healthd_board_battery_update(&props);
 
     if (logthis) {
@@ -358,6 +447,21 @@ bool BatteryMonitor::update(void) {
                 len += snprintf(dmesgline + len, sizeof(dmesgline) - len,
                                 " cc=%d", props.batteryCycleCount);
             }
+
+            // BEGIN MOT, a18273, IKMODS-149
+            char b[20];
+            snprintf(b, sizeof(b), " ml=%d", props.modLevel);
+            strlcat(dmesgline, b, sizeof(dmesgline));
+
+            snprintf(b, sizeof(b), " mst=%d", props.modStatus);
+            strlcat(dmesgline, b, sizeof(dmesgline));
+
+            snprintf(b, sizeof(b), " mf=%d", props.modFlag);
+            strlcat(dmesgline, b, sizeof(dmesgline));
+
+            snprintf(b, sizeof(b), " mt=%d", props.modType);
+            strlcat(dmesgline, b, sizeof(dmesgline));
+            // END IKMODS-149
         } else {
             snprintf(dmesgline, sizeof(dmesgline),
                  "battery none");
@@ -447,6 +551,17 @@ status_t BatteryMonitor::getProperty(int id, struct BatteryProperty *val) {
             ret = NAME_NOT_FOUND;
         }
         break;
+        // BEGIN MOT, a18273, IKMODS-149
+    case BATTERY_PROP_MOD_CHARGE_FULL:
+        if (!mHealthdConfig->modChargeFullPath.isEmpty() &&
+            (access(mHealthdConfig->modChargeFullPath.string(), R_OK) == 0)) {
+            val->valueInt64 = getIntField(mHealthdConfig->modChargeFullPath);
+            ret = NO_ERROR;
+        } else {
+            ret = NAME_NOT_FOUND;
+        }
+        break;
+        // END IKMODS-149
 
     default:
         break;
@@ -522,6 +637,10 @@ void BatteryMonitor::init(struct healthd_config *hc) {
 
             if (!strcmp(name, ".") || !strcmp(name, ".."))
                 continue;
+
+            // MOT, a18273, IKMODS-149
+            // ignore gb_battery as we will hardcode path for mod
+            if (!strcmp(name, POWER_SUPPLY_MOD)) continue;
 
             // Look for "type" file in each subdirectory
             path.clear();
@@ -688,6 +807,32 @@ void BatteryMonitor::init(struct healthd_config *hc) {
         }
         closedir(dir);
     }
+
+    // BEGIN MOT, a18273, IKMODS-149
+    // mod battery level path
+    path.clear();
+    path.appendFormat("%s/%s/capacity", POWER_SUPPLY_SYSFS_PATH, POWER_SUPPLY_MOD);
+    mHealthdConfig->modCapacityPath = path;
+
+    // mod battery status path
+    path.clear();
+    path.appendFormat("%s/%s/status", POWER_SUPPLY_SYSFS_PATH, POWER_SUPPLY_MOD);
+    mHealthdConfig->modStatusPath = path;
+
+    // mod battery full capacity path
+    path.clear();
+    path.appendFormat("%s/%s/charge_full_design", POWER_SUPPLY_SYSFS_PATH, POWER_SUPPLY_MOD);
+    mHealthdConfig->modChargeFullPath = path;
+
+    // mod type path
+    mHealthdConfig->modTypePath = POWER_SUPPLY_MOD_TYPE_PATH;
+
+    // efficiency mode recharge start path
+    mHealthdConfig->modRechargeStartLevelPath = POWER_SUPPLY_MOD_RECHRG_START_SOC;
+
+    // efficiency mode recharge stop path
+    mHealthdConfig->modRechargeStopLevelPath = POWER_SUPPLY_MOD_RECHRG_STOP_SOC;
+    // END IKMODS-149
 
     // Typically the case for devices which do not have a battery and
     // and are always plugged into AC mains.
