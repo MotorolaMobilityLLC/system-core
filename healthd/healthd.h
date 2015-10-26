@@ -65,6 +65,12 @@ struct healthd_config {
     android::String8 batteryCurrentNowPath;
     android::String8 batteryCurrentAvgPath;
     android::String8 batteryChargeCounterPath;
+    // BEGIN MOT, a18273, IKMODS-149
+    android::String8 modChargeFullPath;
+    android::String8 modCapacityPath;
+    android::String8 bmsCapacityPath;
+    android::String8 bmsStatusPath;
+    // END IKMODS-149
 
     int (*energyCounter)(int64_t *);
     int boot_min_cap;
