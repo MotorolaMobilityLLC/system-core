@@ -64,6 +64,14 @@ static struct healthd_config healthd_config = {
     .batteryChargeCounterPath = String8(String8::kEmptyString),
     .batteryFullChargePath = String8(String8::kEmptyString),
     .batteryCycleCountPath = String8(String8::kEmptyString),
+    // BEGIN MOT, a18273, IKMODS-149
+    .modChargeFullPath = String8(String8::kEmptyString),
+    .modCapacityPath = String8(String8::kEmptyString),
+    .modStatusPath = String8(String8::kEmptyString),
+    .modTypePath = String8(String8::kEmptyString),
+    .modRechargeStartLevelPath = String8(String8::kEmptyString),
+    .modRechargeStopLevelPath = String8(String8::kEmptyString),
+    // END IKMODS-149
     .energyCounter = NULL,
     .boot_min_cap = 0,
     .screen_on = NULL,
