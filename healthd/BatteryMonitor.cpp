@@ -41,6 +41,11 @@
 #define FAKE_BATTERY_TEMPERATURE 424
 #define ALWAYS_PLUGGED_CAPACITY 100
 
+// BEGIN MOT, a18273, IKMODS-149
+#define POWER_SUPPLY_MOD "gb_battery"
+#define POWER_SUPPLY_BMS "bms"
+// END IKMODS-149
+
 namespace android {
 
 struct sysfsStringEnumMap {
@@ -262,6 +267,32 @@ bool BatteryMonitor::update(void) {
         }
     }
 
+    // BEGIN MOT, a18273, IKMODS-149
+    // get mod battery level
+    props.modLevel = -1;
+    if (!mHealthdConfig->modCapacityPath.isEmpty()) {
+        if (access(mHealthdConfig->modCapacityPath.string(), R_OK) == 0) {
+            props.modLevel = getIntField(mHealthdConfig->modCapacityPath);
+        }
+    }
+    // get core battery level
+    props.bmsLevel = -1;
+    if (!mHealthdConfig->bmsCapacityPath.isEmpty()) {
+        if (access(mHealthdConfig->bmsCapacityPath.string(), R_OK) == 0) {
+            props.bmsLevel = getIntField(mHealthdConfig->bmsCapacityPath);
+        }
+    }
+    // get core battery status
+    props.bmsStatus = -1;
+    if (!mHealthdConfig->bmsStatusPath.isEmpty()) {
+        if (access(mHealthdConfig->bmsStatusPath.string(), R_OK) == 0) {
+            if (readFromFile(mHealthdConfig->bmsStatusPath, buf, SIZE) > 0) {
+                props.bmsStatus = getBatteryStatus(buf);
+            }
+        }
+    }
+    // END IKMODs-149
+
     logthis = !healthd_board_battery_update(&props);
 
     if (logthis) {
@@ -283,6 +314,24 @@ bool BatteryMonitor::update(void) {
                 snprintf(b, sizeof(b), " c=%d", c / 1000);
                 strlcat(dmesgline, b, sizeof(dmesgline));
             }
+
+            // BEGIN MOT, a18273, IKMODS-149
+            if (!mHealthdConfig->modCapacityPath.isEmpty()) {
+                char b[20];
+                snprintf(b, sizeof(b), " ml=%d", props.modLevel);
+                strlcat(dmesgline, b, sizeof(dmesgline));
+            }
+            if (!mHealthdConfig->bmsCapacityPath.isEmpty()) {
+                char b[20];
+                snprintf(b, sizeof(b), " cl=%d", props.bmsLevel);
+                strlcat(dmesgline, b, sizeof(dmesgline));
+            }
+            if (!mHealthdConfig->bmsStatusPath.isEmpty()) {
+                char b[20];
+                snprintf(b, sizeof(b), " cst=%d", props.bmsStatus);
+                strlcat(dmesgline, b, sizeof(dmesgline));
+            }
+            // END IKMODS-149
         } else {
             snprintf(dmesgline, sizeof(dmesgline),
                  "battery none");
@@ -317,8 +366,10 @@ bool BatteryMonitor::update(void) {
     }
 
     healthd_mode_ops->battery_update(&props);
-    return props.chargerAcOnline | props.chargerUsbOnline |
-            props.chargerWirelessOnline;
+    // MOT, a18273, IKMODS-149
+    // use fast query if mod attached as no uevent for mod capacity change
+    return props.chargerAcOnline || props.chargerUsbOnline ||
+            props.chargerWirelessOnline || (props.modLevel != -1);
 }
 
 status_t BatteryMonitor::getProperty(int id, struct BatteryProperty *val) {
@@ -374,6 +425,17 @@ status_t BatteryMonitor::getProperty(int id, struct BatteryProperty *val) {
             ret = NAME_NOT_FOUND;
         }
         break;
+        // BEGIN MOT, a18273, IKMODS-149
+    case BATTERY_PROP_MOD_CHARGE_FULL:
+        if (!mHealthdConfig->modChargeFullPath.isEmpty() &&
+            (access(mHealthdConfig->modChargeFullPath.string(), R_OK) == 0)) {
+            val->valueInt64 = getIntField(mHealthdConfig->modChargeFullPath);
+            ret = NO_ERROR;
+        } else {
+            ret = NAME_NOT_FOUND;
+        }
+        break;
+        // END IKMODS-149
 
     default:
         break;
@@ -433,6 +495,10 @@ void BatteryMonitor::init(struct healthd_config *hc) {
 
             if (!strcmp(name, ".") || !strcmp(name, ".."))
                 continue;
+
+            // MOT, a18273, IKMODS-149
+            // ignore gb_battery as we will hardcode path for mod
+            if (!strcmp(name, POWER_SUPPLY_MOD)) continue;
 
             // Look for "type" file in each subdirectory
             path.clear();
@@ -544,6 +610,15 @@ void BatteryMonitor::init(struct healthd_config *hc) {
                         mHealthdConfig->batteryTechnologyPath = path;
                 }
 
+                // BEGIN MOT, a18273, IKMODS-149
+                if (mHealthdConfig->bmsStatusPath.isEmpty()) {
+                    path.clear();
+                    path.appendFormat("%s/%s/main_status",
+                                      POWER_SUPPLY_SYSFS_PATH, name);
+                    if (access(path, R_OK) == 0)
+                        mHealthdConfig->bmsStatusPath = path;
+                }
+                // END IKMODS-149
                 break;
 
             case ANDROID_POWER_SUPPLY_TYPE_UNKNOWN:
@@ -552,6 +627,23 @@ void BatteryMonitor::init(struct healthd_config *hc) {
         }
         closedir(dir);
     }
+
+    // BEGIN MOT, a18273, IKMODS-149
+    // core battery level path
+    path.clear();
+    path.appendFormat("%s/%s/capacity", POWER_SUPPLY_SYSFS_PATH, POWER_SUPPLY_BMS);
+    mHealthdConfig->bmsCapacityPath = path;
+
+    // mod battery level path
+    path.clear();
+    path.appendFormat("%s/%s/capacity", POWER_SUPPLY_SYSFS_PATH, POWER_SUPPLY_MOD);
+    mHealthdConfig->modCapacityPath = path;
+
+    // mod battery full capacity path
+    path.clear();
+    path.appendFormat("%s/%s/charge_full_design", POWER_SUPPLY_SYSFS_PATH, POWER_SUPPLY_MOD);
+    mHealthdConfig->modChargeFullPath = path;
+    // END IKMODS-149
 
     // This indicates that there is no charger driver registered.
     // Typically the case for devices which do not have a battery and
