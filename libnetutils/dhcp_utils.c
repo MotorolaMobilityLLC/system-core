@@ -144,6 +144,10 @@ static int fill_ip_info(const char *interface,
             mask = mask << 1;
         }
         *prefixLength = p;
+    //Begin Motorola w20079 IKTABLETMAIN-3679 Force close on wifi browser test
+    } else {
+        *prefixLength = 0;
+    //END MOT JB UPMERGE
     }
 
     for (x=0; dns[x] != NULL; x++) {
