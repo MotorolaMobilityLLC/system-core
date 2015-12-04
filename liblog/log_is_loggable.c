@@ -103,6 +103,8 @@ static int __android_log_level(const char *tag, int def)
             free(last_tag);
             last_tag = NULL;
             current_global_serial = -1;
+            // Motorola, a22327, 12/4/2015, IKSWM-13377
+            global_serial = -1;
         }
         if (!last_tag) {
             last_tag = strdup(tag);
