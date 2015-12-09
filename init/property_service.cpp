@@ -387,6 +387,35 @@ void get_property_workspace(int *fd, int *sz)
 
 static void load_properties_from_file(const char *, const char *);
 
+/* BEGIN IKSWM-13565 */
+
+static const char *oem_overrides[] = {
+    "ro.product.device",
+    "ro.product.name"
+};
+
+static int property_hw_variant(const char* name, const char* value)
+{
+    struct stat info;
+    int cnt = sizeof(oem_overrides)/sizeof(oem_overrides[0]);
+
+    /* Check if validation script is there */
+    if (0 > stat("/init.oem.hw.sh", &info)){
+        NOTICE("no hw variant script found\n");
+	return 0;
+    }
+
+    while (cnt) {
+        if (strcmp(oem_overrides[cnt-1], name) == 0) {
+            NOTICE("skip loading [%s]\n", oem_overrides[cnt-1]);
+	    return 1;
+        };
+	cnt--;
+    }
+    return 0;
+}
+/* END IKSWM-13565 */
+
 /*
  * Filter is used to decide which properties to load: NULL loads all keys,
  * "ro.foo.*" is a prefix match, and "ro.foo.bar" is an exact match.
@@ -441,7 +470,10 @@ static void load_properties(char *data, const char *filter)
                     if (strcmp(key, filter)) continue;
                 }
             }
-
+            /* BEGIN IKSWM-13565 */
+	    if (property_hw_variant(key, value))
+		continue;
+            /* END IKSWM-13565 */
             property_set(key, value);
         }
     }
