@@ -387,22 +387,32 @@ void get_property_workspace(int *fd, int *sz)
 
 static void load_properties_from_file(const char *, const char *);
 
-/* BEGIN IKSWM-13565 */
+/* BEGIN IKKRNBSP-3559 */
 
 static const char *oem_overrides[] = {
     "ro.product.device",
     "ro.product.name"
 };
 
+static bool found = true;
+static bool init = false;
+
 static int property_hw_variant(const char* name, const char* value)
 {
     struct stat info;
     int cnt = sizeof(oem_overrides)/sizeof(oem_overrides[0]);
 
+    if (!found)
+       return 0;
+
     /* Check if validation script is there */
-    if (0 > stat("/init.oem.hw.sh", &info)){
-        NOTICE("no hw variant script found\n");
-	return 0;
+    if (!init) {
+        init = true;
+        if (0 > stat("/init.oem.hw.sh", &info)) {
+            NOTICE("no hw variant script found\n");
+            found = false;
+            return 0;
+        }
     }
 
     while (cnt) {
@@ -414,7 +424,7 @@ static int property_hw_variant(const char* name, const char* value)
     }
     return 0;
 }
-/* END IKSWM-13565 */
+/* END IKKRNBSP-3559 */
 
 /*
  * Filter is used to decide which properties to load: NULL loads all keys,
