@@ -405,9 +405,17 @@ static int property_hw_variant(const char* name, const char* value)
     if (!found)
        return 0;
 
-    /* Check if validation script is there */
     if (!init) {
         init = true;
+
+    /* Recovery image rootfs does not have init.mmi.rc */
+        if (0 > stat("/init.mmi.rc", &info)) {
+            NOTICE("running from recovery image rootfs\n");
+            found = false;
+            return 0;
+        }
+
+    /* Check if validation script is there */
         if (0 > stat("/init.oem.hw.sh", &info)) {
             NOTICE("no hw variant script found\n");
             found = false;
