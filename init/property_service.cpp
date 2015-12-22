@@ -716,6 +716,18 @@ void load_persist_props(void) {
         if (++num_calls == 1) return;
     }
 
+    /* BEGIN Motorola Hong-Mei Li 2012-09-10, IKJBREL1-5477 */
+    /* To load all default properties for encrypted system. This is mandatory
+     * for re-launch the main class service to be triggered on property, and
+     * that property has no backup on /data (user never changes it at runtime).
+     * Also, we reset persistent_properties_loaded flag to avoid persist props
+     * to be overwrite by default values.
+     */
+    persistent_properties_loaded = false;
+    load_properties_from_file("/system/build.prop", "persist.*");
+    load_properties_from_file("/vendor/build.prop", "persist.*");
+    /* END Motorola Hong-Mei Li 2012-09-10, IKJBREL1-5477 */
+
     load_override_properties();
 
     /* IKVPREL1L-4680 - update usb properties after decryption */
