@@ -619,7 +619,7 @@ void load_persist_props(void) {
      */
     persistent_properties_loaded = 0;
     load_properties_from_file(PROP_PATH_OVERLAY_BUILD, NULL);	/* IKXREL3KK-3759 are002 */
-    load_properties_from_file(PROP_PATH_SYSTEM_BUILD, NULL);
+    load_properties_from_file(PROP_PATH_SYSTEM_BUILD, "persist.*");
     /* END Motorola Hong-Mei Li 2012-09-10, IKJBREL1-5477 */
 
     load_override_properties();
