@@ -372,7 +372,8 @@ static int write_sparse_fill_chunk(struct output_file *out, int64_t len,
 		uint32_t fill_val)
 {
 	chunk_header_t chunk_header;
-	int rnd_up_len, count;
+	int64_t rnd_up_len;
+	int count;
 	int ret;
 
 	/* Round up the fill length to a multiple of the block size */
@@ -407,7 +408,7 @@ static int write_sparse_data_chunk(struct output_file *out, int64_t len,
 		void *data)
 {
 	chunk_header_t chunk_header;
-	int rnd_up_len, zero_len;
+	int64_t rnd_up_len, zero_len;
 	int ret;
 
 	/* Round up the data length to a multiple of the block size */
@@ -481,7 +482,7 @@ static int write_normal_data_chunk(struct output_file *out, int64_t len,
 		void *data)
 {
 	int ret;
-	unsigned int rnd_up_len = ALIGN(len, out->block_size);
+	int64_t rnd_up_len = ALIGN(len, out->block_size);
 
 	ret = out->ops->write(out, data, len);
 	if (ret < 0) {
