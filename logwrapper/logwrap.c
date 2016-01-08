@@ -290,6 +290,22 @@ static void print_abbr_buf(struct log_info *log_info) {
     }
 }
 
+// BEGIN MOTO IKSWM-15534 system serer watchdog reset due to netd blocked
+static bool is_netd() {
+    bool retVal = false;
+    char buff[128];
+    FILE* f = fopen("/proc/self/cmdline","r");
+    if (f) {
+        size_t size = fread(buff, sizeof(char), 127, f);
+        if (size > 0) {
+            if (strncmp(buff, "/system/bin/netd", size) == 0) retVal = true;
+        }
+        fclose(f);
+    }
+    return retVal;
+}
+// END MOTO
+
 static int parent(const char *tag, int parent_read, pid_t pid,
         int *chld_sts, int log_target, bool abbreviated, char *file_path,
         const struct AndroidForkExecvpOption* opts, size_t opts_len) {
@@ -349,13 +365,39 @@ static int parent(const char *tag, int parent_read, pid_t pid,
     log_info.log_target = log_target;
     log_info.abbreviated = abbreviated;
 
+    // BEGIN MOTO IKSWM-15534 system serer watchdog reset due to netd blocked
+    bool needTimeout = is_netd(); // only do timed poll in netd
+    struct timeval now, deadline;
+    int timeout_in_msecond = -1;
+    int retVal;
+    if (needTimeout) {
+        gettimeofday(&deadline, NULL);
+        deadline.tv_sec += 55; // Align with Java space 1 min timeout value
+    }
+
     while (!found_child) {
-        ret = TEMP_FAILURE_RETRY(poll(poll_fds, ARRAY_SIZE(poll_fds), 5000));
-        if (ret < 0) {
+        if (needTimeout) {
+            gettimeofday(&now, NULL);
+            if (deadline.tv_sec > now.tv_sec ||
+                    (deadline.tv_sec == now.tv_sec && deadline.tv_usec > now.tv_usec)) {
+                timeout_in_msecond = 1000 * (deadline.tv_sec - now.tv_sec)
+                                       + (deadline.tv_usec - now.tv_usec) / 1000;
+            } else {
+                timeout_in_msecond = 0;
+            }
+        }
+        retVal = TEMP_FAILURE_RETRY(poll(poll_fds, ARRAY_SIZE(poll_fds), timeout_in_msecond));
+        if (retVal < 0) {
             ERROR("poll failed\n");
             rc = -1;
             goto err_poll;
+        } else if (retVal == 0) {
+            ALOG(LOG_ERROR, "logwrap", "child process(%d) timed out\n", pid);
+            kill(pid, SIGABRT); // Generate stack trace for child process
+            rc = -1;
+            goto err_poll;
         }
+    // END MOTO
 
 
         if (ret == 0) {
