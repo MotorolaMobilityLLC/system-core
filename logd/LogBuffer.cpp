@@ -102,6 +102,9 @@ void LogBuffer::init() {
     }
 
     log_id_for_each(i) {
+        mLastSet[i] = false;
+        mLast[i] = mLogElements.begin();
+
         char key[PROP_NAME_MAX];
 
         snprintf(key, sizeof(key), "%s.%s",
@@ -247,7 +250,16 @@ LogBufferElementCollection::iterator LogBuffer::erase(
     if ((f != mLastWorstUid[id].end()) && (it == f->second)) {
         mLastWorstUid[id].erase(f);
     }
+
+    bool setLast = mLastSet[id] && (it == mLast[id]);
     it = mLogElements.erase(it);
+    if (setLast) {
+        if (it == mLogElements.end()) { // unlikely
+            mLastSet[id] = false;
+        } else {
+            mLast[id] = it;
+        }
+    }
     if (engageStats) {
         stats.subtract(e);
     } else {
@@ -393,7 +405,8 @@ void LogBuffer::prune(log_id_t id, unsigned long pruneRows, uid_t caller_uid) {
     LogBufferElementCollection::iterator it;
 
     if (caller_uid != AID_ROOT) {
-        for(it = mLogElements.begin(); it != mLogElements.end();) {
+        it = mLastSet[id] ? mLast[id] : mLogElements.begin();
+        while (it != mLogElements.end()) {
             LogBufferElement *e = *it;
 
             if (oldest && (oldest->mStart <= e->getSequence())) {
@@ -403,6 +416,11 @@ void LogBuffer::prune(log_id_t id, unsigned long pruneRows, uid_t caller_uid) {
             if (e->getLogId() != id) {
                 ++it;
                 continue;
+            }
+
+            if (!mLastSet[id] || ((*mLast[id])->getLogId() != id)) {
+                mLast[id] = it;
+                mLastSet[id] = true;
             }
 
             if (e->getUid() == caller_uid) {
@@ -456,7 +474,7 @@ void LogBuffer::prune(log_id_t id, unsigned long pruneRows, uid_t caller_uid) {
 
         bool kick = false;
         bool leading = true;
-        it = mLogElements.begin();
+        it = mLastSet[id] ? mLast[id] : mLogElements.begin();
         // Perform at least one mandatory garbage collection cycle in following
         // - clear leading chatty tags
         // - merge chatty tags
@@ -487,6 +505,11 @@ void LogBuffer::prune(log_id_t id, unsigned long pruneRows, uid_t caller_uid) {
             if (e->getLogId() != id) {
                 ++it;
                 continue;
+            }
+
+            if (leading && (!mLastSet[id] || ((*mLast[id])->getLogId() != id))) {
+                mLast[id] = it;
+                mLastSet[id] = true;
             }
 
             unsigned short dropped = e->getDropped();
@@ -589,7 +612,7 @@ void LogBuffer::prune(log_id_t id, unsigned long pruneRows, uid_t caller_uid) {
 
     bool whitelist = false;
     bool hasWhitelist = mPrune.nice();
-    it = mLogElements.begin();
+    it = mLastSet[id] ? mLast[id] : mLogElements.begin();
     while((pruneRows > 0) && (it != mLogElements.end())) {
         LogBufferElement *e = *it;
 
@@ -597,6 +620,10 @@ void LogBuffer::prune(log_id_t id, unsigned long pruneRows, uid_t caller_uid) {
             it++;
             continue;
         }
+        if (!mLastSet[id] || ((*mLast[id])->getLogId() != id)) {
+             mLast[id] = it;
+             mLastSet[id] = true;
+         }
 
         if (oldest && (oldest->mStart <= e->getSequence())) {
             if (whitelist) {
@@ -624,13 +651,18 @@ void LogBuffer::prune(log_id_t id, unsigned long pruneRows, uid_t caller_uid) {
 
     // Do not save the whitelist if we are reader range limited
     if (whitelist && (pruneRows > 0)) {
-        it = mLogElements.begin();
+        it = mLastSet[id] ? mLast[id] : mLogElements.begin();
         while((it != mLogElements.end()) && (pruneRows > 0)) {
             LogBufferElement *e = *it;
 
             if (e->getLogId() != id) {
                 ++it;
                 continue;
+            }
+
+            if (!mLastSet[id] || ((*mLast[id])->getLogId() != id)) {
+                mLast[id] = it;
+                mLastSet[id] = true;
             }
 
             if (oldest && (oldest->mStart <= e->getSequence())) {
