@@ -364,21 +364,21 @@ static int parent(const char *tag, int parent_read, pid_t pid,
 
     // BEGIN MOTO IKSWM-15534 system serer watchdog reset due to netd blocked
     bool needTimeout = is_netd(); // only do timed poll in netd
-    struct timeval now, deadline;
+    struct timespec now, deadline;
     int timeout_in_msecond = -1;
     int retVal;
     if (needTimeout) {
-        gettimeofday(&deadline, NULL);
+        clock_gettime(CLOCK_MONOTONIC_RAW, &deadline);
         deadline.tv_sec += 55; // Align with Java space 1 min timeout value
     }
 
     while (!found_child) {
         if (needTimeout) {
-            gettimeofday(&now, NULL);
+            clock_gettime(CLOCK_MONOTONIC_RAW, &now);
             if (deadline.tv_sec > now.tv_sec ||
-                    (deadline.tv_sec == now.tv_sec && deadline.tv_usec > now.tv_usec)) {
+                    (deadline.tv_sec == now.tv_sec && deadline.tv_nsec > now.tv_nsec)) {
                 timeout_in_msecond = 1000 * (deadline.tv_sec - now.tv_sec)
-                                       + (deadline.tv_usec - now.tv_usec) / 1000;
+                                       + (deadline.tv_nsec - now.tv_nsec) / (1000*1000);
             } else {
                 timeout_in_msecond = 0;
             }
