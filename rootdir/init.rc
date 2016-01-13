@@ -249,6 +249,7 @@ on property:sys.boot_from_charger_mode=1
 # Load properties from /system/ + /factory after fs mount.
 on load_system_props_action
     load_system_props
+    start logd
 
 on load_persist_props_action
     load_persist_props
@@ -297,7 +298,6 @@ on late-init
 
 
 on post-fs
-    start logd
     # once everything is setup, no need to modify /
     mount rootfs rootfs / ro remount
     # Mount shared so changes propagate into child namespaces
