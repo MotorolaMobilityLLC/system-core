@@ -455,6 +455,9 @@ on boot
     chown system system /sys/kernel/ipv4/tcp_rmem_def
     chown system system /sys/kernel/ipv4/tcp_rmem_max
     chown root radio /proc/cmdline
+	
+	#add by youhongtao for tp test 20151223
+	chown system system /proc/ftxxxx-debug
 
     # Define default initial receive window size in segments.
     setprop net.tcp.default_init_rwnd 60
@@ -718,3 +721,17 @@ service logcatd /system/bin/logcat -b all -v threadtime -v usec -v printable -D 
     # logd for write to /data/misc/logd, log group for read from log daemon
     user logd
     group log
+
+#lishunbo add for factoryreset
+service boot-check /system/bin/init.lct.bootcheck.sh
+    class main
+    chmod 755 /system/bin/init.lct.bootcheck.sh
+    user root
+    oneshot
+
+#add for runin
+on property:persist.sys.runin=enable
+    write /sys/class/power_supply/battery/device/BatteryTestStatus 1
+
+on property:persist.sys.runin=disable
+    write /sys/class/power_supply/battery/device/BatteryTestStatus 0
