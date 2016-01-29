@@ -40,6 +40,9 @@ extern "C" {
 #define PC_PART_TYPE_LINUX           0x83
 #define PC_PART_TYPE_EXTENDED        0x05
 #define PC_PART_TYPE_FAT32           0x0c
+#ifdef SUPPORT_LENOVO_EXFAT_FS
+#define PC_PART_TYPE_EXFAT           0x07 //Lenovo, wangxf14, Nov 05,2015, ARIESM-20
+#endif
 
 #define PC_NUM_BOOT_RECORD_PARTS     4
 
