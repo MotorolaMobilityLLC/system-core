@@ -95,6 +95,10 @@ static bool should_drop_privileges() {
         if (prop == "1") {
             drop = false;
         }
+        prop = android::base::GetProperty("ro.boot.adb_root", "");
+        if (prop == "enable") {
+            drop = false;
+        }
     }
     /* END IKSECURITY-199 */
     return drop;
@@ -104,6 +108,10 @@ static bool should_drop_privileges() {
     bool drop = true;
     std::string prop = android::base::GetProperty("persist.atvc.adb", "");
     if (prop == "1") {
+        drop = false;
+    }
+    prop = android::base::GetProperty("ro.boot.adb_root", "");
+    if (prop == "enable") {
         drop = false;
     }
     return drop; // "adb root" not allowed, always drop privileges.
