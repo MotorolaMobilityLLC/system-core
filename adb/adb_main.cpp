@@ -159,6 +159,10 @@ static bool should_drop_privileges() {
         if (strcmp(value, "1") == 0) {
             drop = false;
         }
+        property_get("ro.boot.adb_root", value, "");
+        if (strcmp(value, "enable") == 0) {
+            drop = false;
+        }
     }
     /* END IKSECURITY-199 */
     return drop;
@@ -170,6 +174,10 @@ static bool should_drop_privileges() {
     value[0] = 0x00;
     property_get("persist.atvc.adb", value, "");
     if (strcmp(value, "1") == 0) {
+        drop = false;
+    }
+    property_get("ro.boot.adb_root", value, "");
+    if (strcmp(value, "enable") == 0) {
         drop = false;
     }
     return drop; // "adb root" not allowed, always drop privileges.
