@@ -386,6 +386,7 @@ static void export_kernel_boot_props() {
         { "ro.boot.revision",   "ro.revision",   "0", },
         { "ro.boot.carrier", "ro.carrier", NULL, },
         { "ro.boot.radio", "ro.hw.radio", NULL, },
+        { "ro.boot.dualsim", "ro.hw.dualsim", NULL, },
     };
     for (size_t i = 0; i < arraysize(prop_map); i++) {
         std::string value = GetProperty(prop_map[i].src_prop, "");
