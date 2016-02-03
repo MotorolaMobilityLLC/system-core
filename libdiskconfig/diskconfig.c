@@ -363,7 +363,12 @@ validate(struct disk_info *dinfo)
         }
 
         if ((part->type != PC_PART_TYPE_LINUX) &&
-            (part->type != PC_PART_TYPE_FAT32)) {
+            (part->type != PC_PART_TYPE_FAT32)
+#ifndef SUPPORT_LENOVO_EXFAT_FS
+            ) {
+#else
+            && (part->type != PC_PART_TYPE_EXFAT)) { //Lenovo, wangxf14, Nov 05,2015, ARIESM-20
+#endif
             ALOGE("Unknown partition type (0x%x) encountered for partition "
                  "'%s'\n", part->type, part->name);
             goto fail;
