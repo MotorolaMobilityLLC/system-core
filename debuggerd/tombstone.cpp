@@ -790,25 +790,8 @@ char* engrave_tombstone(pid_t pid, pid_t tid, int signal, int original_si_code,
   log.current_tid = tid;
   log.crashed_tid = tid;
 
-  /* BEGIN Motorola, wcg763, 02/01/10, JIRA IKMAP-4768; qa6317, 02/10/10, IKMAP-5931 */
-  if ((mkdir(TOMBSTONE_DIR, 02755) == -1) && (errno != EEXIST)) {
-    _LOG(&log, logtype::ERROR, "failed to create %s: %s\n", TOMBSTONE_DIR, strerror(errno));
-  }
-  /* 02775 instead of 0775 forces all created files in this dir to have gid of dir's gid */
-  if (chmod(TOMBSTONE_DIR, 02775) == -1) {
-    _LOG(&log, logtype::ERROR, "failed to change mode of %s: %s\n", TOMBSTONE_DIR, strerror(errno));
-  }
-  if (chown(TOMBSTONE_DIR, AID_SYSTEM, AID_MOT_TOMBSTONE) == -1) {
-    _LOG(&log, logtype::ERROR, "failed to change ownership of %s: %s\n", TOMBSTONE_DIR, strerror(errno));
-  }
-  /* END IKMAP-4768; IKMAP-5931 */
   int fd = -1;
-  char* path = NULL;
-  if (selinux_android_restorecon(TOMBSTONE_DIR, 0) == 0) {
-    path = find_and_open_tombstone(&fd);
-  } else {
-    _LOG(&log, logtype::ERROR, "Failed to restore security context, not writing tombstone.\n");
-  }
+  char* path = find_and_open_tombstone(&fd);
 
   if (fd < 0) {
     _LOG(&log, logtype::ERROR, "Skipping tombstone write, nothing to do.\n");
