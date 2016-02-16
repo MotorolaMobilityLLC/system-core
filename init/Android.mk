@@ -49,9 +49,13 @@ ifeq ($(strip $(MTK_NAND_UBIFS_SUPPORT)),yes)
 LOCAL_CFLAGS += -DMTK_UBIFS_SUPPORT
 endif
 
+
 LOCAL_STATIC_LIBRARIES := libbase
 LOCAL_MODULE := libinit
 LOCAL_CLANG := $(init_clang)
+ifeq ($(LENOVO_EASYIMAGE_ON),yes)
+LOCAL_CFLAGS    += -DLENOVO_EASYIMAGE_SUPPORT
+endif
 include $(BUILD_STATIC_LIBRARY)
 
 include $(CLEAR_VARS)
@@ -71,6 +75,7 @@ LOCAL_SRC_FILES:= \
 ifeq ($(strip $(MTK_NAND_UBIFS_SUPPORT)),yes)
 LOCAL_CFLAGS += -DMTK_UBIFS_SUPPORT
 endif
+
 
 LOCAL_MODULE:= init
 LOCAL_C_INCLUDES += \
@@ -105,6 +110,11 @@ LOCAL_POST_INSTALL_CMD := $(hide) mkdir -p $(TARGET_ROOT_OUT)/sbin; \
     ln -sf ../init $(TARGET_ROOT_OUT)/sbin/watchdogd
 
 LOCAL_CLANG := $(init_clang)
+
+ifeq ($(LENOVO_EASYIMAGE_ON),yes)
+LOCAL_CFLAGS    += -DLENOVO_EASYIMAGE_SUPPORT
+endif
+
 include $(BUILD_EXECUTABLE)
 
 
@@ -122,4 +132,10 @@ LOCAL_SHARED_LIBRARIES += \
 
 LOCAL_STATIC_LIBRARIES := libinit
 LOCAL_CLANG := $(init_clang)
+
+
+ifeq ($(LENOVO_EASYIMAGE_ON),yes)
+LOCAL_CFLAGS    += -DLENOVO_EASYIMAGE_SUPPORT
+endif
+
 include $(BUILD_NATIVE_TEST)

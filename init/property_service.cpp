@@ -615,12 +615,39 @@ void load_recovery_id_prop() {
 }
 
 void load_all_props() {
+
+#ifdef LENOVO_EASYIMAGE_SUPPORT
+//Lenovo [EasyImage] Start
+//First time to load easyimage prop to take place of ro prop
+#define EASYIMAGE_OVERLAY_PROP_1 "/preload/prop.overlay"
+	if( access(EASYIMAGE_OVERLAY_PROP_1,R_OK) !=-1 )
+	{
+		load_properties_from_file(EASYIMAGE_OVERLAY_PROP_1,"ro.*"); 
+	}
+
+
+
+#endif
+//Lenovo [EasyImage] End
+
+
     load_properties_from_file(PROP_PATH_SYSTEM_BUILD, NULL);
     load_properties_from_file(PROP_PATH_VENDOR_BUILD, NULL);
     load_properties_from_file(PROP_PATH_FACTORY, "ro.*");
 
     load_override_properties();
 
+#ifdef LENOVO_EASYIMAGE_SUPPORT
+
+//Lenovo [EasyImage] Start
+//Load again to overwrite non ro prop
+	if( access(EASYIMAGE_OVERLAY_PROP_1,R_OK) !=-1 )
+	{
+		load_properties_from_file(EASYIMAGE_OVERLAY_PROP_1,NULL); 
+	}
+
+#endif
+//Lenovo [EasyImage] End
     /* Read persistent properties after all default values have been loaded. */
     load_persistent_properties();
 
