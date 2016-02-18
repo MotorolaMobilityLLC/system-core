@@ -627,10 +627,14 @@ static void load_easyimage_props( const char* filter) {
         //Easyimage have been set
         INFO("Loading %s\n", EASYIMAGE_OVERLAY_PROP);
         load_properties_from_file(EASYIMAGE_OVERLAY_PROP,filter); 
-    }else if (access(EASYIMAGE_FILE,R_OK) == 0 && access(EASYIMAGE_OVERLAY_DEFAULT,R_OK) == 0){
-        ///Easyimage is not set,try read default overlay
-        INFO("Loading %s\n", EASYIMAGE_OVERLAY_DEFAULT);
-        load_properties_from_file(EASYIMAGE_OVERLAY_DEFAULT,filter);
+    } 
+
+    if (access(EASYIMAGE_FILE,R_OK) == 0){
+        ///If found easyimage.zip, keep usb on
+        ///also see system/core/adb/adb_main.cpp changes
+        property_set("sys.usb.config","mtp,adb");
+        property_set("sys.usb.stat","mtp,adb");
+        property_set("persist.sys.usb.config","mtp,adb");
     }
 }
 #endif
