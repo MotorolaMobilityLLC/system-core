@@ -18,6 +18,11 @@ ADB_COMMON_CFLAGS := \
     -Wno-unused-parameter \
     -DADB_REVISION='"$(adb_version)"' \
 
+ 
+ifeq ($(LENOVO_EASYIMAGE_ON),yes)
+ADB_COMMON_CFLAGS    += -DLENOVO_EASYIMAGE_ON
+endif
+
 # libadb
 # =========================================================
 
