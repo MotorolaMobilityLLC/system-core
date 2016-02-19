@@ -68,8 +68,7 @@ struct healthd_config {
     // BEGIN MOT, a18273, IKMODS-149
     android::String8 modChargeFullPath;
     android::String8 modCapacityPath;
-    android::String8 bmsCapacityPath;
-    android::String8 bmsStatusPath;
+    android::String8 modStatusPath;
     // END IKMODS-149
 
     int (*energyCounter)(int64_t *);

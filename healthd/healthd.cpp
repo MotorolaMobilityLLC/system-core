@@ -56,8 +56,7 @@ static struct healthd_config healthd_config = {
     // BEGIN MOT, a18273, IKMODS-149
     .modChargeFullPath = String8(String8::kEmptyString),
     .modCapacityPath = String8(String8::kEmptyString),
-    .bmsCapacityPath = String8(String8::kEmptyString),
-    .bmsStatusPath = String8(String8::kEmptyString),
+    .modStatusPath = String8(String8::kEmptyString),
     // END IKMODS-149
     .energyCounter = NULL,
     .boot_min_cap = 0,
