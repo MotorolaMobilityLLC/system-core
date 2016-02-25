@@ -21,6 +21,7 @@
 #include <stdlib.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <fts.h>
 
 #include <fcntl.h>
 #include <dirent.h>
@@ -160,13 +161,45 @@ void fixup_sys_perms(const char *upath)
                 continue;
         }
 
-        if ((strlen(upath) + strlen(dp->attr) + 6) > sizeof(buf))
-            break;
+        if (strchr(dp->attr, '*') || strchr(dp->attr, '?')) {
+            FTS *ftsp;
+            FTSENT *entp;
 
-        snprintf(buf, sizeof(buf), "/sys%s/%s", upath, dp->attr);
-        INFO("fixup %s %d %d 0%o\n", buf, dp->uid, dp->gid, dp->perm);
-        chown(buf, dp->uid, dp->gid);
-        chmod(buf, dp->perm);
+            int root_len = snprintf(buf, sizeof(buf), "/sys%s", upath);
+            if ((root_len < 0) || ((size_t)root_len >= sizeof(buf)))
+                break;
+            char * const dirs[] = { buf, NULL };
+
+            int fts_options = FTS_COMFOLLOW | FTS_LOGICAL | FTS_NOCHDIR | FTS_NOSTAT;
+            if ((ftsp = fts_open(dirs, fts_options, NULL)) == NULL) {
+                continue;
+            }
+
+            while ((entp = fts_read(ftsp)) != NULL) {
+                switch (entp->fts_info) {
+                case FTS_D:
+                case FTS_F:
+                    if (fnmatch(dp->attr, entp->fts_path + root_len + 1, FNM_PATHNAME) == 0) {
+                        INFO("fixup %s %d %d 0%o\n", entp->fts_path, dp->uid, dp->gid, dp->perm);
+                        chown(entp->fts_path, dp->uid, dp->gid);
+                        chmod(entp->fts_path, dp->perm);
+                    }
+                    break;
+                default:
+                    break;
+                }
+            }
+            fts_close(ftsp);
+
+        } else {
+            if ((strlen(upath) + strlen(dp->attr) + 6) > sizeof(buf))
+                break;
+
+            snprintf(buf, sizeof(buf), "/sys%s/%s", upath, dp->attr);
+            INFO("fixup %s %d %d 0%o\n", buf, dp->uid, dp->gid, dp->perm);
+            chown(buf, dp->uid, dp->gid);
+            chmod(buf, dp->perm);
+        }
     }
 
     // Now fixup SELinux file labels
