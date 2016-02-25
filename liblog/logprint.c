@@ -995,8 +995,10 @@ char *android_log_formatLogLine (
      * possibly causing heap corruption.  To avoid this we double check and
      * set the length at the maximum (size minus null byte)
      */
-    prefixLen += MIN(len, sizeof(prefixBuf) - prefixLen);
-    suffixLen = MIN(suffixLen, sizeof(suffixBuf));
+    // BEGIN Motorola, a5111c, 02/25/2016, IKSWM-18644
+    prefixLen += MIN(len, sizeof(prefixBuf) - prefixLen - 1);
+    suffixLen = MIN(suffixLen, sizeof(suffixBuf) - 1);
+    // END IKSWM-18644
 
     /* the following code is tragically unreadable */
 
