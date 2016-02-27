@@ -41,8 +41,12 @@ LOCAL_CFLAGS := -Werror $(event_flag)
 
 ifeq ($(HAVE_AEE_FEATURE), yes)
     LOCAL_SHARED_LIBRARIES += libaed
-    LOCAL_CFALGS += -DHAVE_AEE_FEATURE
+    LOCAL_CFLAGS += -DHAVE_AEE_FEATURE
     LOCAL_C_INCLUDES += $(MTK_ROOT)/external/aee/binary/inc
+endif
+
+ifeq ($(TARGET_BUILD_VARIANT),eng)
+LOCAL_CFLAGS += -DMTK_LOGD_DEBUG
 endif
 
 include $(BUILD_EXECUTABLE)

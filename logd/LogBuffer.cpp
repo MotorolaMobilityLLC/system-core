@@ -21,7 +21,12 @@
 #include <sys/user.h>
 #include <time.h>
 #include <unistd.h>
-
+#include <sys/prctl.h>
+#include <cutils/sched_policy.h>
+#include <utils/threads.h>
+#ifdef HAVE_AEE_FEATURE
+#include "aee.h"
+#endif
 #include <unordered_map>
 
 #include <cutils/properties.h>
@@ -29,12 +34,15 @@
 
 #include "LogBuffer.h"
 #include "LogReader.h"
+#include "logutils.h"
 
 // Default
 #define LOG_BUFFER_SIZE (256 * 1024) // Tuned on a per-platform basis here?
 #define log_buffer_size(id) mMaxSize[id]
 #define LOG_BUFFER_MIN_SIZE (64 * 1024UL)
 #define LOG_BUFFER_MAX_SIZE (256 * 1024 * 1024UL)
+
+#define DEBUG_DETECT_LOG_COUNT  5000
 
 static bool valid_size(unsigned long value) {
     if ((value < LOG_BUFFER_MIN_SIZE) || (LOG_BUFFER_MAX_SIZE < value)) {
@@ -61,6 +69,26 @@ static bool valid_size(unsigned long value) {
 
     return value <= maximum;
 }
+
+#if defined(HAVE_AEE_FEATURE) && defined(MTK_LOGD_DEBUG)
+static void *logd_memory_leak_thread_start(void * /*obj*/) {
+    prctl(PR_SET_NAME, "logd.memoryleak");
+    set_sched_policy(0, SP_FOREGROUND);
+    aee_system_warning("Logd memory leak", NULL, DB_OPT_DEFAULT, "Logd memory leak");
+    return NULL;
+}
+#endif
+
+#if defined(HAVE_AEE_FEATURE) && defined(MTK_LOGD_DEBUG)
+static void *logd_performance_issue_thread_start(void * /*obj*/) {
+    prctl(PR_SET_NAME, "logd.performance");
+    set_sched_policy(0, SP_FOREGROUND);
+    aee_system_warning("Logd cpu usage high", NULL, DB_OPT_DEFAULT, "Logd cpu usage high");
+    return NULL;
+}
+#endif
+
+
 
 static unsigned long property_get_size(const char *key) {
     char property[PROPERTY_VALUE_MAX];
@@ -145,6 +173,16 @@ int LogBuffer::log(log_id_t log_id, log_time realtime,
                                                   uid, pid, tid, msg, len);
     int prio = ANDROID_LOG_INFO;
     const char *tag = NULL;
+    struct timespec ts_0, ts_1, ts_2, ts_3, ts_4;
+    static struct timespec ts_diff;
+    static uint64_t diff_time[4] = {0};
+    static uint64_t total_time;
+    static uint32_t diff_count = 0;
+    static uint32_t filter_count = 0;
+    int time_find_count = 0;
+
+    ts_0 = ts_1 = ts_2 = ts_3 = ts_4 = {0, 0};
+    clock_gettime(CLOCK_MONOTONIC, &ts_0);
     if (log_id == LOG_ID_EVENTS) {
         tag = android::tagToName(elem->getTag());
     } else {
@@ -154,12 +192,15 @@ int LogBuffer::log(log_id_t log_id, log_time realtime,
     if (!__android_log_is_loggable(prio, tag, ANDROID_LOG_VERBOSE)) {
         // Log traffic received to total
         pthread_mutex_lock(&mLogElementsLock);
-        stats.add(elem);
-        stats.subtract(elem);
+            stats.add_total_size(elem);
         pthread_mutex_unlock(&mLogElementsLock);
         delete elem;
+        clock_gettime(CLOCK_MONOTONIC, &ts_1);
+        diff_time[0] += (ts_1.tv_sec - ts_0.tv_sec)*1000000000-ts_0.tv_nsec+ts_1.tv_nsec;
+            filter_count++;
         return -EACCES;
     }
+        clock_gettime(CLOCK_MONOTONIC, &ts_1);
 
     pthread_mutex_lock(&mLogElementsLock);
 
@@ -173,9 +214,11 @@ int LogBuffer::log(log_id_t log_id, log_time realtime,
             break;
         }
         last = it;
+        time_find_count++;
     }
+    clock_gettime(CLOCK_MONOTONIC, &ts_2);
 
-    if (last == mLogElements.end()) {
+    if (last == mLogElements.end() || time_find_count > 20) {
         mLogElements.push_back(elem);
     } else {
         uint64_t end = 1;
@@ -211,8 +254,48 @@ int LogBuffer::log(log_id_t log_id, log_time realtime,
     }
 
     stats.add(elem);
+    clock_gettime(CLOCK_MONOTONIC, &ts_3);
     maybePrune(log_id);
     pthread_mutex_unlock(&mLogElementsLock);
+
+    clock_gettime(CLOCK_MONOTONIC, &ts_4);
+    diff_time[0] += (ts_1.tv_sec - ts_0.tv_sec)*1000000000-ts_0.tv_nsec+ts_1.tv_nsec;
+    diff_time[1] += (ts_2.tv_sec - ts_1.tv_sec)*1000000000-ts_1.tv_nsec+ts_2.tv_nsec;
+    diff_time[2] += (ts_3.tv_sec - ts_2.tv_sec)*1000000000-ts_2.tv_nsec+ts_3.tv_nsec;
+    diff_time[3] += (ts_4.tv_sec - ts_3.tv_sec)*1000000000-ts_3.tv_nsec+ts_4.tv_nsec;
+    total_time += (ts_4.tv_sec - ts_0.tv_sec)*1000000000-ts_0.tv_nsec+ts_4.tv_nsec;
+    diff_count++;
+
+    if (diff_count >= DEBUG_DETECT_LOG_COUNT) {
+         kernel_log_print("logd:diff time %ld, run time  %ld, count %d,step 1 %d,2 %d,3 %d,4 %d. filter count %d.\n",
+             (ts_4.tv_sec-ts_diff.tv_sec)*1000000000-ts_diff.tv_nsec+ts_4.tv_nsec, total_time, diff_count,
+             diff_time[0]/diff_count, diff_time[1]/diff_count, diff_time[2]/diff_count, diff_time[3]/diff_count,
+             filter_count);
+#if defined(HAVE_AEE_FEATURE) && defined(MTK_LOGD_DEBUG)
+        static bool performance_issue;
+        if ((performance_issue == false)  && (total_time / DEBUG_DETECT_LOG_COUNT > 1000000)) {
+            pthread_attr_t attr_p;
+
+            if (!pthread_attr_init(&attr_p)) {
+                struct sched_param param_p;
+                performance_issue = true;
+                memset(&param_p, 0, sizeof(param_p));
+                pthread_attr_setschedparam(&attr_p, &param_p);
+                pthread_attr_setschedpolicy(&attr_p, SCHED_BATCH);
+                if (!pthread_attr_setdetachstate(&attr_p, PTHREAD_CREATE_DETACHED)) {
+                    pthread_t thread;
+                    pthread_create(&thread, &attr_p, logd_performance_issue_thread_start, NULL);
+                }
+                pthread_attr_destroy(&attr_p);
+            }
+        }
+#endif
+
+        diff_time[1] = diff_time[2] = diff_time[3] = diff_time[0] = diff_count = filter_count = 0;
+        total_time = 0;
+         ts_diff.tv_sec = ts_4.tv_sec;
+         ts_diff.tv_nsec = ts_4.tv_nsec;
+    }
 
     return len;
 }
@@ -319,6 +402,7 @@ public:
 // mLogElementsLock must be held when this function is called.
 void LogBuffer::prune(log_id_t id, unsigned long pruneRows, uid_t caller_uid) {
     LogTimeEntry *oldest = NULL;
+    int Times_count = 0;
 
     LogTimeEntry::lock();
 
@@ -331,6 +415,55 @@ void LogBuffer::prune(log_id_t id, unsigned long pruneRows, uid_t caller_uid) {
             oldest = entry;
         }
         t++;
+        Times_count++;
+    }
+
+    LogBufferElementCollection::iterator it;
+
+    if (stats.sizes(id) > (10 * log_buffer_size(id))) {
+        if (oldest) {
+            oldest->release_Locked();
+        }
+
+        kernel_log_print("logd: have %d read thread, the %d log size is %d.\n",
+            Times_count, id, stats.sizes(id));
+
+        it = mLogElements.begin();
+        while ((it != mLogElements.end()) && (pruneRows > 0)) {
+            LogBufferElement *e = *it;
+
+            if (e->getLogId() != id) {
+                ++it;
+                continue;
+            }
+
+            it = erase(it);
+            pruneRows--;
+            }
+
+        LogTimeEntry::unlock();
+#if defined(HAVE_AEE_FEATURE) && defined(MTK_LOGD_DEBUG)
+        pthread_attr_t attr_m;
+        static bool memory_issue;
+
+        if (memory_issue == true)
+            return;
+
+        if (!pthread_attr_init(&attr_m)) {
+            struct sched_param param_m;
+
+            memory_issue = true;
+            memset(&param_m, 0, sizeof(param_m));
+            pthread_attr_setschedparam(&attr_m, &param_m);
+            pthread_attr_setschedpolicy(&attr_m, SCHED_BATCH);
+            if (!pthread_attr_setdetachstate(&attr_m, PTHREAD_CREATE_DETACHED)) {
+                pthread_t thread;
+                pthread_create(&thread, &attr_m, logd_memory_leak_thread_start, NULL);
+            }
+            pthread_attr_destroy(&attr_m);
+       }
+#endif
+        return;
     }
 
     if (oldest && (oldest->getSkipAhead(id) != 0)) {
@@ -339,7 +472,7 @@ void LogBuffer::prune(log_id_t id, unsigned long pruneRows, uid_t caller_uid) {
         return;
     }
 
-    LogBufferElementCollection::iterator it;
+
 
     if (caller_uid != AID_ROOT) {
         for(it = mLogElements.begin(); it != mLogElements.end();) {

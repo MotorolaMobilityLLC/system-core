@@ -53,6 +53,7 @@
 
 #define LOG_BUF_SIZE 1024
 
+#define SOCKET_TIME_OUT 5
 #if FAKE_LOG_DEVICE
 /* This will be defined when building for the host. */
 #include "fake_log_device.h"
@@ -121,6 +122,12 @@ static int __write_to_log_initialize()
             close(i);*/
         } else {
             struct sockaddr_un un;
+            struct timeval tm;
+
+            tm.tv_sec = SOCKET_TIME_OUT;
+            tm.tv_usec = 0;
+            setsockopt(i, SOL_SOCKET, SO_RCVTIMEO, &tm, sizeof(tm));
+            setsockopt(i, SOL_SOCKET, SO_SNDTIMEO, &tm, sizeof(tm));
             memset(&un, 0, sizeof(struct sockaddr_un));
             un.sun_family = AF_UNIX;
             strcpy(un.sun_path, "/dev/socket/logdw");

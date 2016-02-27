@@ -709,7 +709,7 @@ int fs_mgr_mount_all(struct fstab *fstab)
         }
        ERROR("blk device name %s\n", fstab->recs[i].blk_device);
 #ifdef MTK_UBIFS_SUPPORT
-	if (!strcmp(fstab->recs[i].fs_type, "ubifs")) {
+        if (strcmp(fstab->recs[i].fs_type, "ubifs") == 0 && strncmp("ubi@", fstab->recs[i].blk_device, 4) == 0) {
 		char tmp[25];
 		int n = ubi_attach_mtd(fstab->recs[i].blk_device + 4);
 		if (n < 0) {
@@ -1308,7 +1308,7 @@ static int ubi_attach_mtd(const char *name)
     memset(&attach_req, 0, sizeof(struct ubi_attach_req));
     attach_req.ubi_num = UBI_DEV_NUM_AUTO;
     attach_req.mtd_num = mtd_num;
-    attach_req.vid_hdr_offset = UBI_VID_OFFSET_AUTO;  
+    attach_req.vid_hdr_offset = UBI_VID_OFFSET_AUTO;
 
     ret = ioctl(ubi_ctrl, UBI_IOCATT, &attach_req);
     if (ret == -1) {
@@ -1321,24 +1321,25 @@ static int ubi_attach_mtd(const char *name)
    vid_off = attach_req.vid_hdr_offset;
     vols = ubi_dev_read_int(ubi_num, "volumes_count", -1);
     if (vols == 0) {
-	long long data_vol_size = 0;
+        long long data_vol_size = 0;
         sprintf(path, "/dev/ubi%d", ubi_num);
-	ret = wait_for_file(path, 50);
+        ret = wait_for_file(path, 50);
         ubi_dev = open(path, O_RDONLY);
         if (ubi_dev == -1) {
             close(ubi_ctrl);
             return ubi_num;
         }
-	avail_lebs = ubi_dev_read_int(ubi_num, "avail_eraseblocks", 0);
+        avail_lebs = ubi_dev_read_int(ubi_num, "avail_eraseblocks", 0);
         leb_size = ubi_dev_read_int(ubi_num, "eraseblock_size", 0);
-	data_vol_size = (long long)avail_lebs * leb_size;
-#if defined(MTK_MLC_NAND_SUPPORT)
+        data_vol_size = (long long)avail_lebs * leb_size;
+#if defined(MTK_SLC_BUFFER_SUPPORT)
+        if (!strcmp(name, "userdata")) {
+            data_vol_size -= BOARD_UBIFS_CACHE_VOLUME_SIZE;
 #if defined(MTK_IPOH_SUPPORT)
-	if (!strcmp(name, "userdata")) {
-		data_vol_size -= BOARD_UBIFS_IPOH_VOLUME_SIZE;
-	}
+            data_vol_size -= BOARD_UBIFS_IPOH_VOLUME_SIZE;
 #endif
-#endif 
+        }
+#endif
         memset(&mkvol_req, 0, sizeof(struct ubi_mkvol_req));
         mkvol_req.vol_id = UBI_VOL_NUM_AUTO;
         mkvol_req.alignment = 1;
@@ -1346,20 +1347,28 @@ static int ubi_attach_mtd(const char *name)
         mkvol_req.vol_type = UBI_DYNAMIC_VOLUME;
         ret = snprintf(mkvol_req.name, UBI_MAX_VOLUME_NAME + 1, "%s", name);
         mkvol_req.name_len = ret;
-        ioctl(ubi_dev, UBI_IOCMKVOL, &mkvol_req);	
-#if defined(MTK_MLC_NAND_SUPPORT)
+        ioctl(ubi_dev, UBI_IOCMKVOL, &mkvol_req);
+#if defined(MTK_SLC_BUFFER_SUPPORT)
+        if (!strcmp(name, "userdata")) {
+                memset(&mkvol_req, 0, sizeof(struct ubi_mkvol_req));
+                mkvol_req.vol_id = 1;
+                mkvol_req.alignment = 1;
+                mkvol_req.bytes = (long long)BOARD_UBIFS_CACHE_VOLUME_SIZE;
+                mkvol_req.vol_type = UBI_DYNAMIC_VOLUME;
+                ret = snprintf(mkvol_req.name, UBI_MAX_VOLUME_NAME + 1, "%s", "cache");
+                mkvol_req.name_len = ret;
+                ioctl(ubi_dev, UBI_IOCMKVOL, &mkvol_req);
 #if defined(MTK_IPOH_SUPPORT)
-	if (!strcmp(name, "userdata")) {
-		memset(&mkvol_req, 0, sizeof(struct ubi_mkvol_req));
-		mkvol_req.vol_id = UBI_VOL_NUM_AUTO;
-		mkvol_req.alignment = 1;
-		mkvol_req.bytes = (long long)BOARD_UBIFS_IPOH_VOLUME_SIZE;
-		mkvol_req.vol_type = UBI_DYNAMIC_VOLUME;
-		ret = snprintf(mkvol_req.name, UBI_MAX_VOLUME_NAME + 1, "%s", "ipoh");
-		mkvol_req.name_len = ret;
-		ioctl(ubi_dev, UBI_IOCMKVOL, &mkvol_req);
-	}
+                memset(&mkvol_req, 0, sizeof(struct ubi_mkvol_req));
+                mkvol_req.vol_id = UBI_VOL_NUM_AUTO;
+                mkvol_req.alignment = 1;
+                mkvol_req.bytes = (long long)BOARD_UBIFS_IPOH_VOLUME_SIZE;
+                mkvol_req.vol_type = UBI_DYNAMIC_VOLUME;
+                ret = snprintf(mkvol_req.name, UBI_MAX_VOLUME_NAME + 1, "%s", "ipoh");
+                mkvol_req.name_len = ret;
+                ioctl(ubi_dev, UBI_IOCMKVOL, &mkvol_req);
 #endif
+        }
 #endif
         close(ubi_dev);
     }
