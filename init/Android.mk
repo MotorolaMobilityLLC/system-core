@@ -25,6 +25,10 @@ init_options += -DMTK_INIT
 endif
 # end
 
+ifeq ($(strip $(MTK_NAND_UBIFS_SUPPORT)),yes)
+init_options += -DMTK_UBIFS_SUPPORT
+endif
+
 init_options += -DLOG_UEVENTS=0
 
 init_cflags += \
@@ -45,9 +49,6 @@ LOCAL_SRC_FILES:= \
     parser.cpp \
     util.cpp \
 
-ifeq ($(strip $(MTK_NAND_UBIFS_SUPPORT)),yes)
-LOCAL_CFLAGS += -DMTK_UBIFS_SUPPORT
-endif
 
 
 LOCAL_STATIC_LIBRARIES := libbase

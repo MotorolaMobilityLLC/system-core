@@ -63,6 +63,14 @@ char *pidToName(pid_t pid) {
 
 }
 
+void LogStatistics::add_total_size(LogBufferElement *e) {
+    log_id_t log_id = e->getLogId();
+    unsigned short size = e->getMsgLen();
+
+    mSizesTotal[log_id] += size;
+    ++mElementsTotal[log_id];
+}
+
 void LogStatistics::add(LogBufferElement *e) {
     log_id_t log_id = e->getLogId();
     unsigned short size = e->getMsgLen();

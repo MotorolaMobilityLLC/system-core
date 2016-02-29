@@ -472,10 +472,6 @@ keymaster_error_t TrustyKeymasterDevice::Send(uint32_t command, const Serializab
     return rsp->error;
 }
 
-struct Malloc_Delete {
-    void operator()(void* p) { free(p); }
-};
-
 keymaster_error_t TrustyKeymasterDevice::StoreSigningParams(const void* signing_params,
                                                             const uint8_t* key_blob,
                                                             size_t key_blob_length,

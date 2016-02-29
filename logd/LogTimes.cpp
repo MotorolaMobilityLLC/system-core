@@ -20,6 +20,7 @@
 #include "LogBuffer.h"
 #include "LogTimes.h"
 #include "LogReader.h"
+#include "logutils.h"
 
 pthread_mutex_t LogTimeEntry::timesLock = PTHREAD_MUTEX_INITIALIZER;
 
@@ -125,6 +126,7 @@ void *LogTimeEntry::threadStart(void *obj) {
     bool privileged = FlushCommand::hasReadLogs(client);
 
     me->leadingDropped = true;
+    kernel_log_print("logd: logd.reader.per thread start.\n");
 
     lock();
 
@@ -157,6 +159,7 @@ void *LogTimeEntry::threadStart(void *obj) {
     unlock();
 
     pthread_cleanup_pop(true);
+    kernel_log_print("logd: logd.reader.per thread stop.\n");
 
     return NULL;
 }

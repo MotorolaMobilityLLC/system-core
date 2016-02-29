@@ -166,6 +166,30 @@ static sem_t reinit;
 static bool reinit_running = false;
 static LogBuffer *logBuf = NULL;
 
+void kernel_log_print(const char *fmt, ...) {
+    if (kernelLogFd < 0)
+        return;
+    if (fmt == NULL) {
+        return;
+    }
+
+    va_list args;
+
+    char *str = NULL;
+    va_start(args, fmt);
+    int rc = vasprintf(&str, fmt, args);
+    va_end(args);
+
+    if (rc < 0) {
+        return;
+    }
+
+    if (kernelLogFd >= 0) {
+     write(kernelLogFd, str, strlen(str)+1);
+    }
+    free(str);
+}
+
 static void *reinit_thread_start(void * /*obj*/) {
     prctl(PR_SET_NAME, "logd.daemon");
     set_sched_policy(0, SP_FOREGROUND);
@@ -328,11 +352,13 @@ static void readDmesg(LogAudit *al, LogKlog *kl) {
 // transitory per-client threads are created for each reader.
 int main(int argc, char *argv[]) {
     int fdPmesg = -1;
-    bool klogd = property_get_bool_svelte("logd.klogd");
+//  bool klogd = property_get_bool_svelte("logd.klogd");
+    bool klogd = property_get_bool("logd.klogd", false);
     if (klogd) {
         fdPmesg = open("/proc/kmsg", O_RDONLY | O_NDELAY);
     }
     fdDmesg = open("/dev/kmsg", O_WRONLY);
+    kernelLogFd = fdDmesg;
 
     // issue reinit command. KISS argument parsing.
     if ((argc > 1) && argv[1] && !strcmp(argv[1], "--reinit")) {
