@@ -551,6 +551,17 @@ status_t BatteryMonitor::getProperty(int id, struct BatteryProperty *val) {
             ret = NAME_NOT_FOUND;
         }
         break;
+    // BEGIN MOT, a18273, IKSWM-23739
+    case BATTERY_PROP_CHARGE_FULL:
+        if (!mHealthdConfig->batteryFullChargePath.isEmpty() &&
+            (access(mHealthdConfig->batteryFullChargePath.string(), R_OK) == 0)) {
+            val->valueInt64 = getIntField(mHealthdConfig->batteryFullChargePath);
+            ret = NO_ERROR;
+        } else {
+            ret = NAME_NOT_FOUND;
+        }
+        break;
+    // END IKSWM-23739
         // BEGIN MOT, a18273, IKMODS-149
     case BATTERY_PROP_MOD_CHARGE_FULL:
         if (!mHealthdConfig->modChargeFullPath.isEmpty() &&
