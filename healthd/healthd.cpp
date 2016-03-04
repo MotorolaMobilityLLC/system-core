@@ -53,6 +53,8 @@ static struct healthd_config healthd_config = {
     .batteryCurrentNowPath = String8(String8::kEmptyString),
     .batteryCurrentAvgPath = String8(String8::kEmptyString),
     .batteryChargeCounterPath = String8(String8::kEmptyString),
+    // MOT, a18273, IKSWM-23739
+    .batteryChargeFullPath = String8(String8::kEmptyString),
     // BEGIN MOT, a18273, IKMODS-149
     .modChargeFullPath = String8(String8::kEmptyString),
     .modCapacityPath = String8(String8::kEmptyString),

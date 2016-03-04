@@ -65,6 +65,8 @@ struct healthd_config {
     android::String8 batteryCurrentNowPath;
     android::String8 batteryCurrentAvgPath;
     android::String8 batteryChargeCounterPath;
+    // MOT, a18273, IKSWM-23739
+    android::String8 batteryChargeFullPath;
     // BEGIN MOT, a18273, IKMODS-149
     android::String8 modChargeFullPath;
     android::String8 modCapacityPath;

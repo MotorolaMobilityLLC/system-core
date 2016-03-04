@@ -411,6 +411,17 @@ status_t BatteryMonitor::getProperty(int id, struct BatteryProperty *val) {
             ret = NAME_NOT_FOUND;
         }
         break;
+    // BEGIN MOT, a18273, IKSWM-23739
+    case BATTERY_PROP_CHARGE_FULL:
+        if (!mHealthdConfig->batteryChargeFullPath.isEmpty() &&
+            (access(mHealthdConfig->batteryChargeFullPath.string(), R_OK) == 0)) {
+            val->valueInt64 = getIntField(mHealthdConfig->batteryChargeFullPath);
+            ret = NO_ERROR;
+        } else {
+            ret = NAME_NOT_FOUND;
+        }
+        break;
+    // END IKSWM-23739
         // BEGIN MOT, a18273, IKMODS-149
     case BATTERY_PROP_MOD_CHARGE_FULL:
         if (!mHealthdConfig->modChargeFullPath.isEmpty() &&
@@ -595,7 +606,16 @@ void BatteryMonitor::init(struct healthd_config *hc) {
                     if (access(path, R_OK) == 0)
                         mHealthdConfig->batteryTechnologyPath = path;
                 }
+                // MOT, a18273, IKSWM-23739
+                if (mHealthdConfig->batteryChargeFullPath.isEmpty()) {
+                    path.clear();
+                    path.appendFormat("%s/%s/charge_full_design",
+                                      POWER_SUPPLY_SYSFS_PATH, name);
+                    if (access(path, R_OK) == 0)
+                        mHealthdConfig->batteryChargeFullPath = path;
+                }
                 break;
+                // END IKSWM-23739
 
             case ANDROID_POWER_SUPPLY_TYPE_UNKNOWN:
                 break;
