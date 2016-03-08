@@ -57,7 +57,7 @@ def write_header(args):
         args.base + args.second_offset,                 # physical load addr
         args.base + args.tags_offset,                   # physical addr for kernel tags
         args.pagesize,                                  # flash page size we assume
-        0,                                              # future expansion: MUST be 0
+        filesize(args.dt),                              # size in bytes
         (args.os_version << 11) | args.os_patch_level)) # os version and patch level
     args.output.write(pack('16s', args.board.encode())) # asciiz product name
     args.output.write(pack('512s', args.cmdline[:512].encode()))
@@ -66,6 +66,7 @@ def write_header(args):
     update_sha(sha, args.kernel)
     update_sha(sha, args.ramdisk)
     update_sha(sha, args.second)
+    update_sha(sha, args.dt)
     img_id = pack('32s', sha.digest())
 
     args.output.write(img_id)
@@ -150,6 +151,7 @@ def parse_cmdline():
                         choices=[2**i for i in range(11,15)], default=2048)
     parser.add_argument('--id', help='print the image ID on standard output',
                         action='store_true')
+    parser.add_argument('--dt', help='path to the dt', type=FileType('rb'))
     parser.add_argument('-o', '--output', help='output file name', type=FileType('wb'),
                         required=True)
     return parser.parse_args()
@@ -159,6 +161,7 @@ def write_data(args):
     write_padded_file(args.output, args.kernel, args.pagesize)
     write_padded_file(args.output, args.ramdisk, args.pagesize)
     write_padded_file(args.output, args.second, args.pagesize)
+    write_padded_file(args.output, args.dt, args.pagesize)
 
 
 def main():
