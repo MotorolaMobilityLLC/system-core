@@ -639,9 +639,10 @@ bool Service::Start() {
     } else {
         LOG(INFO) << "computing context for service '" << name_ << "'";
         scon = ComputeContextFromExecutable(name_, args_[0]);
-        if (scon == "") {
-            return false;
-        }
+        //MMI_STOPSHIP Keep starting process even Context is not defined for O bringup.
+        //if (scon == "") {
+        //    return false;
+        //}
     }
 
     LOG(INFO) << "starting service '" << name_ << "'...";
