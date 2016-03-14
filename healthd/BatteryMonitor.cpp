@@ -352,10 +352,8 @@ bool BatteryMonitor::update(void) {
     }
 
     healthd_mode_ops->battery_update(&props);
-    // MOT, a18273, IKMODS-149
-    // use fast query if mod attached as no uevent for mod capacity change
     return props.chargerAcOnline || props.chargerUsbOnline ||
-            props.chargerWirelessOnline || (props.modLevel != -1);
+            props.chargerWirelessOnline;
 }
 
 status_t BatteryMonitor::getProperty(int id, struct BatteryProperty *val) {
