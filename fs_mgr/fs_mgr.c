@@ -310,6 +310,14 @@ static int device_is_secure() {
     return strcmp(value, "0") ? 1 : 0;
 }
 
+static int enable_verity() {
+#ifdef ENGINEERING_BUILD
+	return 0;
+#else
+	return 1;
+#endif
+}
+
 static int device_is_force_encrypted() {
     int ret = -1;
     char value[PROP_VALUE_MAX];
@@ -578,7 +586,7 @@ int fs_mgr_mount_all(struct fstab *fstab)
                       fstab->recs[i].blk_device, strerror(-mret));
         }
 
-        if ((fstab->recs[i].fs_mgr_flags & MF_VERIFY) && device_is_secure()) {
+        if ((fstab->recs[i].fs_mgr_flags & MF_VERIFY) && enable_verity()) {
             int rc = fs_mgr_setup_verity(&fstab->recs[i]);
             if (device_is_debuggable() && rc == FS_MGR_SETUP_VERITY_DISABLED) {
                 INFO("Verity disabled");
@@ -746,7 +754,7 @@ int fs_mgr_do_mount(struct fstab *fstab, char *n_name, char *n_blk_device,
                      fstab->recs[i].mount_point);
         }
 
-        if ((fstab->recs[i].fs_mgr_flags & MF_VERIFY) && device_is_secure()) {
+        if ((fstab->recs[i].fs_mgr_flags & MF_VERIFY) && enable_verity()) {
             int rc = fs_mgr_setup_verity(&fstab->recs[i]);
             if (device_is_debuggable() && rc == FS_MGR_SETUP_VERITY_DISABLED) {
                 INFO("Verity disabled");
