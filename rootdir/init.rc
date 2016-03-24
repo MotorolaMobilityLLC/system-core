@@ -44,10 +44,12 @@ on init
     chown root system /sys/fs/cgroup/memory/tasks
     chmod 0660 /sys/fs/cgroup/memory/tasks
     mkdir /sys/fs/cgroup/memory/sw 0750 root system
-    write /sys/fs/cgroup/memory/sw/memory.swappiness 100
+    write /sys/fs/cgroup/memory/sw/memory.swappiness 200
     write /sys/fs/cgroup/memory/sw/memory.move_charge_at_immigrate 1
     chown root system /sys/fs/cgroup/memory/sw/tasks
     chmod 0660 /sys/fs/cgroup/memory/sw/tasks
+
+    write /proc/sys/vm/swappiness 200
 
     mkdir /system
     mkdir /data 0771 system system
