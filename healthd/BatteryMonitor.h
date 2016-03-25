@@ -50,6 +50,11 @@ class BatteryMonitor {
     int mBatteryFixedCapacity;
     int mBatteryFixedTemperature;
     struct BatteryProperties props;
+    // BEGIN MOT, wlll01, IKMODSXP-514
+    int mModType;
+    int mModRechargeStartLevel;
+    int mModRechargeStopLevel;
+    // END MOT, wlll01, IKMODSXP-514
 
     int getBatteryStatus(const char* status);
     int getBatteryHealth(const char* status);
