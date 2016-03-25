@@ -34,6 +34,9 @@
 #include <utils/Errors.h>
 #include <utils/String8.h>
 #include <utils/Vector.h>
+// BEGIN MOT, wlll01, IKMODSXP-514
+#include <sys/system_properties.h>
+// END MOT, wlll01, IKMODSXP-514
 
 #define POWER_SUPPLY_SUBSYSTEM "power_supply"
 #define POWER_SUPPLY_SYSFS_PATH "/sys/class/" POWER_SUPPLY_SUBSYSTEM
@@ -43,6 +46,24 @@
 
 // MOT, a18273, IKMODS-149
 #define POWER_SUPPLY_MOD "gb_battery"
+
+// BEGIN MOT, wlll01, IKMODSXP-514
+#define POWER_SUPPLY_MOD_SUPP_CHARGING_MODE_PROP "sys.mod.batterymode"
+#define POWER_SUPPLY_MOD_TYPE_PATH "/sys/devices/platform/mods_ap/greybus1/1-3/power_supply/gb_ptp/internal_send"
+#define POWER_SUPPLY_MOD_RECHRG_START_SOC "/sys/module/qpnp_smbcharger_mmi/parameters/eb_rechrg_start_soc"
+#define POWER_SUPPLY_MOD_RECHRG_STOP_SOC "/sys/module/qpnp_smbcharger_mmi/parameters/eb_rechrg_stop_soc"
+#define POWER_SUPPLY_MOD_TYPE_UNKNOWN      0
+#define POWER_SUPPLY_MOD_TYPE_REMOTE       1
+#define POWER_SUPPLY_MOD_TYPE_SUPPLEMENTAL 2
+#define POWER_SUPPLY_MOD_TYPE_EMERGENCY    3
+#define POWER_SUPPLY_MOD_CHARGING_MODE_UNKNOWN    0
+// the following defines should be consistent with those defined in:
+// motorola/frameworks/base/motomods/service/core/src/com/motorola/modservice/
+//   ui/Constants.java
+#define POWER_SUPPLY_MOD_CHARGING_MODE_TOPOFF       0
+#define POWER_SUPPLY_MOD_CHARGING_MODE_EFFICIENCY   1
+#define POWER_SUPPLY_MOD_CHARGING_MODE_TOPOFF_FULL  100
+// END IKMODSXP-514
 
 namespace android {
 
@@ -181,6 +202,37 @@ int BatteryMonitor::getIntField(const String8& path) {
 }
 
 bool BatteryMonitor::update(void) {
+    // BEGIN MOT, wlll01, IKMODSXP-514
+    char prop_value[PROP_VALUE_MAX];
+    bool chargingMode = POWER_SUPPLY_MOD_CHARGING_MODE_UNKNOWN;
+    int modFlag = 0;
+
+    // always read these parameters from the files to accomodate the
+    // use cases where users detach and attach a new battery mod:
+    mModType = POWER_SUPPLY_MOD_TYPE_UNKNOWN;
+    if (!mHealthdConfig->modTypePath.isEmpty() &&
+        (access(mHealthdConfig->modTypePath.string(), R_OK) == 0)) {
+            mModType = getIntField(mHealthdConfig->modTypePath);
+    }
+
+    if ( (mModType == POWER_SUPPLY_MOD_TYPE_SUPPLEMENTAL) &&
+         property_get(POWER_SUPPLY_MOD_SUPP_CHARGING_MODE_PROP, prop_value,"0")) {
+         chargingMode = atoi(prop_value);
+         if (chargingMode == POWER_SUPPLY_MOD_CHARGING_MODE_TOPOFF) {
+             mModRechargeStopLevel = POWER_SUPPLY_MOD_CHARGING_MODE_TOPOFF_FULL;
+             mModRechargeStartLevel = mModRechargeStopLevel - 1;
+         } else if (chargingMode == POWER_SUPPLY_MOD_CHARGING_MODE_EFFICIENCY) {
+               if (!mHealthdConfig->modRechargeStartLevelPath.isEmpty() &&
+                   (access(mHealthdConfig->modRechargeStartLevelPath.string(), R_OK) == 0)) {
+                   mModRechargeStartLevel = getIntField(mHealthdConfig->modRechargeStartLevelPath);
+                }
+                if (!mHealthdConfig->modRechargeStopLevelPath.isEmpty() &&
+                    (access(mHealthdConfig->modRechargeStopLevelPath.string(), R_OK) == 0)) {
+                     mModRechargeStopLevel = getIntField(mHealthdConfig->modRechargeStopLevelPath);
+                }
+         }
+    }
+    // END IKMODSXP-514
     bool logthis;
 
     props.chargerAcOnline = false;
@@ -198,6 +250,25 @@ bool BatteryMonitor::update(void) {
     props.batteryLevel = mBatteryFixedCapacity ?
         mBatteryFixedCapacity :
         getIntField(mHealthdConfig->batteryCapacityPath);
+
+    // BEGIN MOT, wlll01, IKMODSXP-514
+    if (mModType == POWER_SUPPLY_MOD_TYPE_SUPPLEMENTAL) {
+         if (chargingMode == POWER_SUPPLY_MOD_CHARGING_MODE_TOPOFF) {
+             if (props.batteryLevel == POWER_SUPPLY_MOD_CHARGING_MODE_TOPOFF_FULL - 1) {
+                 props.batteryLevel = POWER_SUPPLY_MOD_CHARGING_MODE_TOPOFF_FULL;
+                 modFlag = 1;
+             }
+         } else if (chargingMode == POWER_SUPPLY_MOD_CHARGING_MODE_EFFICIENCY) {
+             if (props.batteryLevel == mModRechargeStartLevel) {
+                 props.batteryLevel += 1;
+                 modFlag = 1;
+             }
+         } else {
+             KLOG_INFO(LOG_TAG, "Hmmm, Neither top-off mode, nor efficiency mode.");
+         }
+    }
+    // END MOT, wlll01, IKMODSXP-514
+
     props.batteryVoltage = getIntField(mHealthdConfig->batteryVoltagePath) / 1000;
 
     props.batteryTemperature = mBatteryFixedTemperature ?
@@ -282,6 +353,11 @@ bool BatteryMonitor::update(void) {
             }
         }
     }
+
+    // BEGIN MOT, wlll01, IKMODSXP-514
+    props.modFlag = modFlag;
+    // END MOT, wlll01, IKMODSXP-514
+
     // END IKMODS-149
 
     logthis = !healthd_board_battery_update(&props);
@@ -316,6 +392,11 @@ bool BatteryMonitor::update(void) {
                 char b[20];
                 snprintf(b, sizeof(b), " mst=%d", props.modStatus);
                 strlcat(dmesgline, b, sizeof(dmesgline));
+
+                // BEGIN MOT, wlll01, IKMODSSP-514
+                snprintf(b, sizeof(b), " mst=%d", props.modFlag);
+                strlcat(dmesgline, b, sizeof(dmesgline));
+                // END MOT, wlll01, IKMODSXP-514
             }
             // END IKMODS-149
         } else {
@@ -638,6 +719,36 @@ void BatteryMonitor::init(struct healthd_config *hc) {
     path.appendFormat("%s/%s/charge_full_design", POWER_SUPPLY_SYSFS_PATH, POWER_SUPPLY_MOD);
     mHealthdConfig->modChargeFullPath = path;
     // END IKMODS-149
+
+    // BEGIN MOT, wlll01, IKMODSXP-514
+    path.clear();
+    path.appendFormat("%s", POWER_SUPPLY_MOD_TYPE_PATH);
+    mHealthdConfig->modTypePath = path;
+
+    path.clear();
+    path.appendFormat("%s", POWER_SUPPLY_MOD_RECHRG_START_SOC);
+    mHealthdConfig->modRechargeStartLevelPath = path;
+
+    path.clear();
+    path.appendFormat("%s", POWER_SUPPLY_MOD_RECHRG_STOP_SOC);
+    mHealthdConfig->modRechargeStopLevelPath = path;
+
+    mModType = -1;
+    if (!mHealthdConfig->modTypePath.isEmpty() &&
+        (access(mHealthdConfig->modTypePath.string(), R_OK) == 0)) {
+        mModType = getIntField(mHealthdConfig->modTypePath);
+    }
+    mModRechargeStartLevel = -1;
+    if (!mHealthdConfig->modRechargeStartLevelPath.isEmpty() &&
+        (access(mHealthdConfig->modRechargeStartLevelPath.string(), R_OK) == 0)) {
+        mModRechargeStartLevel = getIntField(mHealthdConfig->modRechargeStartLevelPath);
+    }
+    mModRechargeStopLevel = -1;
+    if (!mHealthdConfig->modRechargeStopLevelPath.isEmpty() &&
+        (access(mHealthdConfig->modRechargeStopLevelPath.string(), R_OK) == 0)) {
+        mModRechargeStopLevel = getIntField(mHealthdConfig->modRechargeStopLevelPath);
+    }
+    // END IKMODSXP-514
 
     // This indicates that there is no charger driver registered.
     // Typically the case for devices which do not have a battery and
