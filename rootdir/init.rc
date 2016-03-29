@@ -49,7 +49,7 @@ on init
     chown root system /sys/fs/cgroup/memory/sw/tasks
     chmod 0660 /sys/fs/cgroup/memory/sw/tasks
 
-    write /proc/sys/vm/swappiness 200
+    write /proc/sys/vm/swappiness 160
 
     mkdir /system
     mkdir /data 0771 system system
