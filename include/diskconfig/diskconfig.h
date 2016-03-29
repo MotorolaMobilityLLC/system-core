@@ -41,6 +41,8 @@ extern "C" {
 #define PC_PART_TYPE_EXTENDED        0x05
 #define PC_PART_TYPE_FAT32           0x0c
 
+#define PC_PART_TYPE_EXFAT           0x07 //Lenovo, zhucc2, 2016-03-28, ARIESM-20
+
 #define PC_NUM_BOOT_RECORD_PARTS     4
 
 #define PC_EBR_LOGICAL_PART          0
