@@ -393,10 +393,10 @@ bool BatteryMonitor::update(void) {
                 snprintf(b, sizeof(b), " mst=%d", props.modStatus);
                 strlcat(dmesgline, b, sizeof(dmesgline));
 
-                // BEGIN MOT, wlll01, IKMODSSP-514
-                snprintf(b, sizeof(b), " mst=%d", props.modFlag);
+                // BEGIN MOT, wlll01, IKMODSSP-514, IKSWM-29097
+                snprintf(b, sizeof(b), " mf=%d", props.modFlag);
                 strlcat(dmesgline, b, sizeof(dmesgline));
-                // END MOT, wlll01, IKMODSXP-514
+                // END MOT, wlll01, IKMODSXP-514, IKSWM-29097
             }
             // END IKMODS-149
         } else {
