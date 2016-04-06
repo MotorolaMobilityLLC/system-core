@@ -46,6 +46,7 @@ LOCAL_CPPFLAGS := $(init_cflags)
 LOCAL_SRC_FILES:= \
     bootchart.cpp \
     builtins.cpp \
+    hw_mappings.cpp \
     init.cpp \
     init_first_stage.cpp \
     keychords.cpp \
@@ -57,7 +58,8 @@ LOCAL_SRC_FILES:= \
 
 LOCAL_MODULE:= init
 LOCAL_C_INCLUDES += \
-    system/core/mkbootimg
+    system/core/mkbootimg \
+    external/expat/lib
 
 LOCAL_FORCE_STATIC_EXECUTABLE := true
 LOCAL_MODULE_PATH := $(TARGET_ROOT_OUT)
@@ -81,6 +83,7 @@ LOCAL_STATIC_LIBRARIES := \
     libcrypto \
     libc++_static \
     libdl \
+    libexpat \
     libsparse \
     libz \
     libprocessgroup \
