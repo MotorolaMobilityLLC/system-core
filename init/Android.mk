@@ -107,6 +107,7 @@ LOCAL_SRC_FILES:= \
     bootchart.cpp \
     builtins.cpp \
     devices.cpp \
+    hw_mappings.cpp \
     init.cpp \
     init_first_stage.cpp \
     keychords.cpp \
@@ -120,7 +121,8 @@ LOCAL_SRC_FILES:= \
 LOCAL_MODULE:= init
 LOCAL_C_INCLUDES += \
     system/core/mkbootimg \
-    external/zlib
+    external/zlib \
+    external/expat/lib
 
 LOCAL_FORCE_STATIC_EXECUTABLE := true
 LOCAL_MODULE_PATH := $(TARGET_ROOT_OUT)
@@ -147,7 +149,8 @@ LOCAL_STATIC_LIBRARIES := \
     libsparse \
     libz \
     libprocessgroup \
-    libavb
+    libavb \
+    libexpat_static
 
 # Create symlinks.
 LOCAL_POST_INSTALL_CMD := $(hide) mkdir -p $(TARGET_ROOT_OUT)/sbin; \
