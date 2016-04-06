@@ -96,6 +96,7 @@ LOCAL_SRC_FILES:= \
     bootchart.cpp \
     builtins.cpp \
     devices.cpp \
+    hw_mappings.cpp \
     init.cpp \
     keychords.cpp \
     property_service.cpp \
@@ -108,7 +109,8 @@ LOCAL_MODULE:= init
 LOCAL_C_INCLUDES += \
     system/extras/ext4_utils \
     system/core/mkbootimg \
-    external/zlib
+    external/zlib \
+    external/expat/lib
 
 LOCAL_FORCE_STATIC_EXECUTABLE := true
 LOCAL_MODULE_PATH := $(TARGET_ROOT_OUT)
@@ -134,6 +136,7 @@ LOCAL_STATIC_LIBRARIES := \
     libc++_static \
     libdl \
     libsparse_static \
+    libexpat_static \
     libz
 
 # Create symlinks
