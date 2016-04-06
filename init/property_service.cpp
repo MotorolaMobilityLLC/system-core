@@ -74,6 +74,7 @@
 #include "init.h"
 #include "util.h"
 #include "log.h"
+#include "hw_tags.h"
 
 #define PERSISTENT_PROPERTY_DIR  "/data/property"
 #define FSTAB_PREFIX "/fstab."
@@ -387,53 +388,6 @@ void get_property_workspace(int *fd, int *sz)
 
 static void load_properties_from_file(const char *, const char *);
 
-/* BEGIN IKKRNBSP-3559 */
-
-static const char *oem_overrides[] = {
-    "ro.product.device",
-    "ro.product.name"
-};
-
-static bool found = true;
-static bool init = false;
-
-static int property_hw_variant(const char* name, const char* value)
-{
-    struct stat info;
-    int cnt = sizeof(oem_overrides)/sizeof(oem_overrides[0]);
-
-    if (!found)
-       return 0;
-
-    if (!init) {
-        init = true;
-
-    /* Recovery image rootfs does not have init.mmi.rc */
-        if (0 > stat("/init.mmi.rc", &info)) {
-            NOTICE("running from recovery image rootfs\n");
-            found = false;
-            return 0;
-        }
-
-    /* Check if validation script is there */
-        if (0 > stat("/init.oem.hw.sh", &info)) {
-            NOTICE("no hw variant script found\n");
-            found = false;
-            return 0;
-        }
-    }
-
-    while (cnt) {
-        if (strcmp(oem_overrides[cnt-1], name) == 0) {
-            NOTICE("skip loading [%s]\n", oem_overrides[cnt-1]);
-	    return 1;
-        };
-	cnt--;
-    }
-    return 0;
-}
-/* END IKKRNBSP-3559 */
-
 /*
  * Filter is used to decide which properties to load: NULL loads all keys,
  * "ro.foo.*" is a prefix match, and "ro.foo.bar" is an exact match.
@@ -488,10 +442,6 @@ static void load_properties(char *data, const char *filter)
                     if (strcmp(key, filter)) continue;
                 }
             }
-            /* BEGIN IKSWM-13565 */
-	    if (property_hw_variant(key, value))
-		continue;
-            /* END IKSWM-13565 */
             property_set(key, value);
         }
     }
@@ -672,6 +622,9 @@ void load_recovery_id_prop() {
 }
 
 void load_system_props() {
+    /* needs to be called prior loading the rest of properties */
+    process_hw_mappings("/system/etc/vhw.xml");
+
     load_properties_from_file(PROP_PATH_OVERLAY_BUILD, NULL);	/* IKXREL3KK-3759 are002 */
     load_properties_from_file(PROP_PATH_SYSTEM_BUILD, NULL);
     load_properties_from_file(PROP_PATH_VENDOR_BUILD, NULL);
