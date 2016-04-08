@@ -18,6 +18,11 @@ LOCAL_PATH := $(call my-dir)
 
 include $(CLEAR_VARS)
 LOCAL_CFLAGS := -Wall -Wextra -Werror -Wunused
+
+ifeq ($(call is-board-platform,msm8952),true)
+LOCAL_CFLAGS += -DHAL_THROTTLE
+endif
+
 LOCAL_SRC_FILES := \
 	SoftGateKeeperDevice.cpp \
 	IGateKeeperService.cpp \
