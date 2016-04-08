@@ -184,6 +184,19 @@ public:
         return ret;
     }
 
+    virtual int brokenThrottleFix(int ret) {
+        static unsigned int num_fail = 0;
+
+        if (ret == 0 )
+            num_fail = 0;
+        else if (num_fail > 4)
+            ret = 30000;
+        else
+            num_fail++;
+
+        return ret;
+    }
+
     virtual int verify(uint32_t uid,
             const uint8_t *enrolled_password_handle, uint32_t enrolled_password_handle_length,
             const uint8_t *provided_password, uint32_t provided_password_length, bool *request_reenroll) {
@@ -220,6 +233,11 @@ public:
                     enrolled_password_handle, enrolled_password_handle_length,
                     provided_password, provided_password_length, auth_token, auth_token_length,
                     request_reenroll);
+
+                // MOT workaround for broken HAL throttle
+                #ifdef HAL_THROTTLE
+                ret = brokenThrottleFix(ret);
+                #endif
             } else {
                 // upgrade scenario, a HAL has been added to this device where there was none before
                 SoftGateKeeperDevice soft_dev;
