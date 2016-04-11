@@ -37,6 +37,11 @@ build_host := true
 endif
 endif
 
+# IKARCH-2258: DEMANGLE macro introduce to make backtrace readable for non release-key builds
+ifneq ($(RADIO_SECURE),1)
+LOCAL_CPPFLAGS += -DDEMANGLE
+endif
+
 #-------------------------------------------------------------------------
 # The libbacktrace library.
 #-------------------------------------------------------------------------
