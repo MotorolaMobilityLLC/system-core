@@ -54,11 +54,14 @@ Backtrace::~Backtrace() {
   }
 }
 
+#ifdef DEMANGLE
 extern "C" char* __cxa_demangle(const char* mangled, char* buf, size_t* len,
                                 int* status);
+#endif
 
 std::string Backtrace::GetFunctionName(uintptr_t pc, uintptr_t* offset) {
   std::string func_name = GetFunctionNameRaw(pc, offset);
+#ifdef DEMANGLE
   if (!func_name.empty()) {
 #if defined(__APPLE__)
     // Mac OS' __cxa_demangle demangles "f" as "float"; last tested on 10.7.
@@ -72,6 +75,7 @@ std::string Backtrace::GetFunctionName(uintptr_t pc, uintptr_t* offset) {
       free(name);
     }
   }
+#endif
   return func_name;
 }
 
