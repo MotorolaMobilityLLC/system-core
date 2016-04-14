@@ -147,13 +147,14 @@ void remount_service(int fd, void* cookie) {
 
     bool success = true;
 
-    if (MOT_check_system_is_write_protected(fd) == 0)
+    if (MOT_check_system_is_write_protected(fd) == 0) {
         success &= remount_partition(fd, "/system");
+        success &= remount_partition(fd, "/vendor");
+        success &= remount_partition(fd, "/oem");
+    }
     else
         success = false;
 
-    success &= remount_partition(fd, "/vendor");
-    success &= remount_partition(fd, "/oem");
 
     WriteFdExactly(fd, success ? "remount succeeded\n" : "remount failed\n");
 
