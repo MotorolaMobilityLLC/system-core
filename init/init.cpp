@@ -305,7 +305,9 @@ static bool __attribute__((unused)) set_mmap_rnd_bits_min(int start, int min, bo
  */
 static int set_mmap_rnd_bits_action(const std::vector<std::string>& args)
 {
-    int ret = -1;
+    // MMI_STOP: Set back to -1 till kernel import patch above
+    int ret = 0;
+    return ret;
 
     /* values are arch-dependent */
 #if defined(__aarch64__)
