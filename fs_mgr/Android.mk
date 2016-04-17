@@ -31,9 +31,7 @@ LOCAL_C_INCLUDES := \
     system/vold \
     system/extras/ext4_utils \
     external/openssl/include \
-    bootable/recovery \
-    external/libselinux/include
-
+    bootable/recovery
 LOCAL_MODULE:= libfs_mgr
 LOCAL_STATIC_LIBRARIES := $(common_static_libraries)
 LOCAL_EXPORT_C_INCLUDE_DIRS := $(LOCAL_PATH)/include
