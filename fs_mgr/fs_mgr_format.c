@@ -23,7 +23,6 @@
 #include <errno.h>
 #include <cutils/partition_utils.h>
 #include <sys/mount.h>
-#include <selinux/selinux.h>
 #include "ext4_utils.h"
 #include "ext4.h"
 #include "make_ext4fs.h"
@@ -222,8 +221,6 @@ static int format_ext4(char *fs_blkdev, char *fs_mnt_point, int needs_footer)
     return rc;
 }
 
-#define MKFS_F2FS_PATH "/system/bin/mkfs.f2fs"
-#define MKFS_SECURITY_CONTEXT "u:r:mkfs:s0"
 static int format_f2fs(char *fs_blkdev, int needs_footer)
 {
     char * args[5];
@@ -233,7 +230,7 @@ static int format_f2fs(char *fs_blkdev, int needs_footer)
     int footer = needs_footer ? CRYPT_FOOTER_OFFSET : 0;
 
     snprintf(footer_size, sizeof(footer_size), "%d", footer);
-    args[0] = (char *)MKFS_F2FS_PATH;
+    args[0] = (char *)"/sbin/mkfs.f2fs";
     args[1] = (char *)"-r";
     args[2] = footer_size;
     args[3] = fs_blkdev;
@@ -245,10 +242,7 @@ static int format_f2fs(char *fs_blkdev, int needs_footer)
     }
     if (!pid) {
         /* This doesn't return */
-        if (setexeccon(MKFS_SECURITY_CONTEXT)) {
-            ERROR("Failed to set security context for mkfs\n");
-        }
-        execv(MKFS_F2FS_PATH, args);
+        execv("/sbin/mkfs.f2fs", args);
         exit(1);
     }
     for(;;) {
