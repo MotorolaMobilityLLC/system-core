@@ -47,6 +47,8 @@ namespace android {
 static const String16 KEYGUARD_PERMISSION("android.permission.ACCESS_KEYGUARD_SECURE_STORAGE");
 static const String16 DUMP_PERMISSION("android.permission.DUMP");
 
+#define MTK_PLATFORM "mt6755"
+
 class GateKeeperProxy : public BnGateKeeperService {
 public:
     GateKeeperProxy() {
