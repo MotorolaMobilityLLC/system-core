@@ -771,10 +771,19 @@ static int console_init_action(int nargs, char **args)
     return 0;
 }
 
+#ifdef BOOT_TRACE
+static bool boot_trace = false;
+#endif
 static void import_kernel_nv(char *name, bool for_emulator)
 {
     char *value = strchr(name, '=');
     int name_len = strlen(name);
+
+#ifdef BOOT_TRACE
+    /* enable systrace if boot_trace cmdline available */
+    if (!strcmp(name, "boot_trace"))
+        boot_trace = true;
+#endif
 
     if (value == 0) return;
     *value++ = 0;
@@ -1087,6 +1096,12 @@ int main(int argc, char** argv) {
 
     property_load_boot_defaults();
     start_property_service();
+#ifdef BOOT_TRACE
+    if (boot_trace) {
+        ERROR("enable boot systrace...");
+        property_set("debug.atrace.tags.enableflags", "0x1ffffe");
+    }
+#endif
 
     init_parse_config_file("/init.rc");
 
