@@ -1096,6 +1096,16 @@ int main(int argc, char** argv) {
 
     property_load_boot_defaults();
     start_property_service();
+
+    mt_boot_mode = get_boot_mode();
+/* Begin,lenovo-sw wuwl9 add sh_static as recovery sh for recovery adb shell in 20150401 */
+#ifdef LENOVO_RECOVERY_SHELL_ENABLE
+    if(mt_boot_mode == MT_RECOVERY_BOOT)
+        property_set("ro.boot.bootupmode", "recovery");   // for adb service.c
+#endif
+/* End,lenovo-sw wuwl9 add sh_static as recovery sh for recovery adb shell in 20150401*/
+
+
 #ifdef BOOT_TRACE
     if (boot_trace) {
         ERROR("enable boot systrace...");
