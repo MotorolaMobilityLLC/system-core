@@ -461,7 +461,11 @@ on boot
     chown system system /sys/class/power_supply/battery/charging_led_flag
     restorecon /sys/class/power_supply/battery/charging_led_flag
 #lenovo-sw limm3 added for led sys node
-
+#lenovo.sw START huangsh4 add for leds sys node
+on boot
+	restorecon /sys/class/leds/torch/bightness
+	restorecon /sys/devices/platform/kd_camera_flashlight.0/leds/torch/brightness
+#lenovo.sw END huangsh4 add for leds sys node
 #lenovo-sw wuwl10 20160331 add begin
     chown system system /sys/class/leds/test-led/brightness
 #lenovo-sw wuwl10 20160331 add end
