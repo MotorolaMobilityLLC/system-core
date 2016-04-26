@@ -245,14 +245,17 @@ int adb_main(int is_daemon, int server_port)
     if (ALLOW_ADBD_NO_AUTH && property_get_bool("ro.adb.secure", 0) == 0) {
         auth_required = false;
     }
-
+    /*lenovo_sw liuyc7 add for factory mode can open adb 2016-04-26 ---begin*/
+    property_get("persist.sys.usb.factorymode", value, "false");
+    if (strcmp(value, "true") == 0) 
+       auth_required = false;
+    /*lenovo_sw liuyc7 add for factory mode can open adb 2016-04.26---end*/
     //customize
     property_get("debug.adb_syncsize", value, "0");
     syc_size_enabled = !strcmp(value, "1");
     D("adb syc_size_enabled=%d\n", syc_size_enabled);
 
     adbd_auth_init();
-
     // Our external storage path may be different than apps, since
     // we aren't able to bind mount after dropping root.
     const char* adb_external_storage = getenv("ADB_EXTERNAL_STORAGE");
