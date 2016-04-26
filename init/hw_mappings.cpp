@@ -26,6 +26,7 @@ static bool debug_on;
 #endif
 
 #define PROCFS_HW_RELOAD "/proc/hw/reload"
+#define PROP_PATH_OEM_OVERRIDE "/oem/oem.prop"
 
 #define BUFFSIZE 8192
 
@@ -531,9 +532,11 @@ xml_handle_mappings(parse_ctrl_t *info)
 		if (found && export_prop) {
 			property_set(export_prop_name, export_prop);
 			NOTICE("Match found; exporting '%s'->'%s'\n", export_prop, export_prop_name);
-			/* if mathed result needs to be appended */
+			/* if matched result needs to be appended */
 			if (append_cnt) {
 				xml_preload_set_appendix(export_prop);
+				if (access(PROP_PATH_OEM_OVERRIDE, R_OK) == 0)
+					xml_load_properties_from_file(PROP_PATH_OEM_OVERRIDE, xml_preload_get_filter());
 				xml_load_properties_from_file(PROP_PATH_SYSTEM_BUILD, xml_preload_get_filter());
 				xml_preload_clear_all();
 			}
