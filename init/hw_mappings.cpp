@@ -320,9 +320,11 @@ xml_preload_apply(char *key, char *value)
     for (int i = 0; i < append->count; i++)
 	if (!strncmp(key, append->props[i], strlen(append->props[i]))) {
 		char new_value[PROP_VALUE_MAX];
+		int rc;
 		snprintf(new_value, PROP_VALUE_MAX-1, "%s%s", value, append->appendix);
-		property_set(append->props[i], new_value);
-		NOTICE("added hw variant: '%s'=>'%s'\n", append->props[i], new_value);
+		rc = property_set(append->props[i], new_value);
+		if (rc != -1)
+			NOTICE("added hw variant: '%s'=>'%s'\n", append->props[i], new_value);
 	}
 }
 
@@ -530,8 +532,10 @@ xml_handle_mappings(parse_ctrl_t *info)
 		/* match multiple choices */
 		bool found = xml_match_multiple_choices(cur, &export_prop);
 		if (found && export_prop) {
-			property_set(export_prop_name, export_prop);
-			NOTICE("Match found; exporting '%s'->'%s'\n", export_prop, export_prop_name);
+			int rc = property_set(export_prop_name, export_prop);
+			NOTICE("Match found '%s'\n", export_prop);
+			if (rc != -1)
+				NOTICE("exported '%s'=>'%s'\n", export_prop_name, export_prop);
 			/* if matched result needs to be appended */
 			if (append_cnt) {
 				xml_preload_set_appendix(export_prop);
