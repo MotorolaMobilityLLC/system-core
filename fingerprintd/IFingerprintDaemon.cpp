@@ -179,6 +179,18 @@ status_t BnFingerprintDaemon::onTransact(uint32_t code, const Parcel& data, Parc
             reply->writeNoException();
             return NO_ERROR;
         }
+        /*Begin lenovo-sw zhongling1 add: for dev release change*/
+        case TESTDB: {
+            CHECK_INTERFACE(IFingerprintDaemon, data, reply);
+            if (!checkPermission(HAL_FINGERPRINT_PERMISSION)) {
+                return PERMISSION_DENIED;
+            }
+            const int32_t ret = testDb();
+            reply->writeNoException();
+            reply->writeInt32(ret);
+            return NO_ERROR;
+        }
+        /*End lenovo-sw zhongling1 add: for dev release change*/
         default:
             return BBinder::onTransact(code, data, reply, flags);
     }

@@ -44,6 +44,9 @@ class IFingerprintDaemon : public IInterface, public IBinder::DeathRecipient {
            CLOSE_HAL = IBinder::FIRST_CALL_TRANSACTION + 9,
            INIT = IBinder::FIRST_CALL_TRANSACTION + 10,
            POST_ENROLL = IBinder::FIRST_CALL_TRANSACTION + 11,
+           /*Begin lenovo-sw zhongling1 add: for dev release change*/
+           TESTDB = IBinder::FIRST_CALL_TRANSACTION + 12,
+           /*End lenovo-sw zhongling1 add: for dev release change*/
         };
 
         IFingerprintDaemon() { }
@@ -64,7 +67,9 @@ class IFingerprintDaemon : public IInterface, public IBinder::DeathRecipient {
         virtual int32_t setActiveGroup(int32_t groupId, const uint8_t* path, ssize_t pathLen) = 0;
         virtual int64_t openHal() = 0;
         virtual int32_t closeHal() = 0;
-
+        /*Begin lenovo-sw zhongling1 add: for dev release change*/
+        virtual int32_t testDb() = 0;
+        /*End lenovo-sw zhongling1 add: for dev release change*/
         // DECLARE_META_INTERFACE - C++ client interface not needed
         static const android::String16 descriptor;
         static void hal_notify_callback(const fingerprint_msg_t *msg);

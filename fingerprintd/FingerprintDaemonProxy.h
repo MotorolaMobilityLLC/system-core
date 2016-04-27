@@ -44,6 +44,9 @@ class FingerprintDaemonProxy : public BnFingerprintDaemon {
         virtual int32_t setActiveGroup(int32_t groupId, const uint8_t* path, ssize_t pathLen);
         virtual int64_t openHal();
         virtual int32_t closeHal();
+        /*Begin lenovo-sw zhongling1 add: for dev release change*/
+        virtual int32_t testDb();
+        /*End lenovo-sw zhongling1 add: for dev release change*/
 
     private:
         FingerprintDaemonProxy();

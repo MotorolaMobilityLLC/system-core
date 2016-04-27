@@ -239,6 +239,17 @@ int32_t FingerprintDaemonProxy::closeHal() {
     return 0;
 }
 
+int32_t FingerprintDaemonProxy::testDb() {
+    fingerprint_finger_id_t* results = (fingerprint_finger_id_t*)malloc(sizeof(fingerprint_finger_id_t));
+    uint32_t* max_size = (uint32_t*)malloc(sizeof(uint32_t));
+    int ret = mDevice->enumerate(mDevice, results, max_size);
+    if (ret) {
+        unlink("data/system/users/0/fpdata/user.db");
+        ALOG(LOG_VERBOSE, LOG_TAG, "testDb,remove user.db\n");
+    }
+    return ret;
+}
+
 void FingerprintDaemonProxy::binderDied(const wp<IBinder>& who) {
     ALOGD("binder died");
     int err;
