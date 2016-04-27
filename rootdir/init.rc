@@ -460,6 +460,10 @@ on boot
     chmod 0664 /sys/class/power_supply/battery/charging_led_flag
     chown system system /sys/class/power_supply/battery/charging_led_flag
     restorecon /sys/class/power_supply/battery/charging_led_flag
+    chmod 0664 /sys/class/power_supply/battery/charging_led_in_factory_mode
+    chown system system /sys/class/power_supply/battery/charging_led_in_factory_mode
+    chmod 0664 /sys/class/power_supply/battery/charging_led_state
+    chown system system /sys/class/power_supply/battery/charging_led_state
 #lenovo-sw limm3 added for led sys node
 #lenovo.sw START huangsh4 add for leds sys node
 on boot
