@@ -736,3 +736,25 @@ service logcatd /system/bin/logcat -b all -v threadtime -v usec -v printable -D 
     # logd for write to /data/misc/logd, log group for read from log daemon
     user logd
     group log
+
+#Lenovo-sw quebs2 added 20160229 begin,for efuse sbc check
+on property:sys.boot_completed=1
+    start efusecheck
+
+service efusecheck /system/bin/efusecheck
+    class main
+    user root
+    group system radio
+    disabled
+    oneshot
+#Lenovo-sw quebs2 added 20160229 end,for efuse sbc check
+#lenovo-sw wuwl9 add for recoverylog
+service recovery-log /system/bin/recoverylog recoverylog
+    class main
+    disabled
+    oneshot 
+
+on property:sys.boot_completed=1
+    start recovery-log
+#Lenovo-sw wuwl9 2014-12-11 add for recovery log
+
