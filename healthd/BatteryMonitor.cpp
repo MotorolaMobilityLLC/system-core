@@ -358,6 +358,7 @@ bool BatteryMonitor::update(void) {
     props.modFlag = modFlag;
     // END MOT, wlll01, IKMODSXP-514
 
+    props.modType = mModType; // MOT, a18273, IKMODS-586
     // END IKMODS-149
 
     logthis = !healthd_board_battery_update(&props);
@@ -397,6 +398,12 @@ bool BatteryMonitor::update(void) {
                 snprintf(b, sizeof(b), " mf=%d", props.modFlag);
                 strlcat(dmesgline, b, sizeof(dmesgline));
                 // END MOT, wlll01, IKMODSXP-514, IKSWM-29097
+
+                // BEGIN MOT, a18273, IKMODS-586
+                snprintf(b, sizeof(b), " mt=%d", props.modType);
+                strlcat(dmesgline, b, sizeof(dmesgline));
+                // END IKMODS-586
+
             }
             // END IKMODS-149
         } else {
