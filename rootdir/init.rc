@@ -758,3 +758,11 @@ on property:sys.boot_completed=1
     start recovery-log
 #Lenovo-sw wuwl9 2014-12-11 add for recovery log
 
+#lenovo-sw mahj2 add for runin apk test Begin
+on property:persist.sys.runin=enable
+    write /sys/class/power_supply/battery/device/BatteryTestStatus 1
+
+on property:persist.sys.runin=disable
+    write /sys/class/power_supply/battery/device/BatteryTestStatus 0
+#lenovo-sw mahj2 add for runin apk test End
+
