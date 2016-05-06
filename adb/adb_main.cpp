@@ -109,9 +109,7 @@ static void drop_capabilities_bounding_set_if_needed() {
 }
 
 static bool should_drop_privileges() {
-#ifdef MTK_ALLOW_ADBD_ROOT
     return false;
-#endif
 #if defined(ALLOW_ADBD_ROOT)
     char value[PROPERTY_VALUE_MAX];
 
@@ -245,15 +243,6 @@ int adb_main(int is_daemon, int server_port)
     if (ALLOW_ADBD_NO_AUTH && property_get_bool("ro.adb.secure", 0) == 0) {
         auth_required = false;
     }
-    
-#ifdef LENOVO_EASYIMAGE_ON
-    #define EASYIMAGE_FILE "/data/easyimage.zip"
-     if (access(EASYIMAGE_FILE,R_OK) == 0){
-        ///If found easyimage.zip, keep usb auth off
-        ///also see system/core/init/property_services.cpp changes
-        auth_required = false;
-    }
-#endif
 
     //customize
     property_get("debug.adb_syncsize", value, "0");

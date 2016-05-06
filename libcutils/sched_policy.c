@@ -69,6 +69,10 @@ static int fg_cgroup_fd = -1;
 static int bg_cpuset_fd = -1;
 static int fg_cpuset_fd = -1;
 
+
+static int bg_blkio_fd = -1;
+static int fg_blkio_fd = -1;
+
 /* Add tid to the scheduling group defined by the policy */
 static int add_tid_to_cgroup(int tid, int fd)
 {
@@ -133,6 +137,13 @@ static void __initialize(void) {
         bg_cpuset_fd = open(filename, O_WRONLY | O_CLOEXEC);
     }
 #endif
+
+   if (!access("/dev/blkio/tasks", F_OK)) {
+        filename = "/dev/blkio/tasks";
+        fg_blkio_fd = open(filename, O_WRONLY | O_CLOEXEC);
+        filename = "/dev/blkio/bg_non_interactive/tasks";
+        bg_blkio_fd = open(filename, O_WRONLY | O_CLOEXEC);
+   }
 
 }
 
@@ -240,6 +251,37 @@ int get_sched_policy(int tid, SchedPolicy *policy)
             return -1;
         }
     }
+    return 0;
+}
+
+int set_blkioset_policy(int tid, SchedPolicy policy)
+{
+    if (tid == 0) {
+        tid = gettid();
+    }
+    policy = _policy(policy);
+    pthread_once(&the_once, __initialize);
+
+    int fd;
+    switch (policy) {
+    case SP_BACKGROUND:
+        fd = bg_blkio_fd;
+        break;
+    case SP_FOREGROUND:
+    case SP_AUDIO_APP:
+    case SP_AUDIO_SYS:
+        fd = fg_blkio_fd;
+        break;
+    default:
+        fd = -1;
+        break;
+    }
+
+    if ((fd != -1) && (add_tid_to_cgroup(tid, fd) != 0)) {
+        if (errno != ESRCH && errno != ENOENT)
+            return -errno;
+    }
+
     return 0;
 }
 

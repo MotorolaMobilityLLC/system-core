@@ -115,6 +115,20 @@ on init
     write /proc/sys/net/ipv4/conf/all/accept_redirects 0
     write /proc/sys/net/ipv6/conf/all/accept_redirects 0
 
+    # Create blkio mount points for io groups
+    mkdir /dev/blkio
+    mount cgroup none /dev/blkio blkio
+    chown system system /dev/blkio
+    chown system system /dev/blkio/tasks
+    chmod 0666 /dev/blkio/tasks
+    write /dev/blkio/bg_non_interactive/blkio.weight 1000
+
+    mkdir /dev/blkio/bg_non_interactive
+    chown system system /dev/blkio/bg_non_interactive/tasks
+    chmod 0666 /dev/blkio/bg_non_interactive/tasks
+    # 50%
+    write /dev/blkio/bg_non_interactive/blkio.weight 500
+
     # Create cgroup mount points for process groups
     mkdir /dev/cpuctl
     mount cgroup none /dev/cpuctl cpu

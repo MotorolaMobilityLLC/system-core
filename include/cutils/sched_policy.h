@@ -36,6 +36,8 @@ typedef enum {
 
 extern int set_cpuset_policy(int tid, SchedPolicy policy);
 
+extern int set_blkioset_policy(int tid, SchedPolicy policy);
+
 /* Assign thread tid to the cgroup associated with the specified policy.
  * If the thread is a thread group leader, that is it's gettid() == getpid(),
  * then the other threads in the same thread group are _not_ affected.
