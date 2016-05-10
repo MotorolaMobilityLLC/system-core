@@ -758,6 +758,11 @@ on property:sys.boot_completed=1
     start recovery-log
 #Lenovo-sw wuwl9 2014-12-11 add for recovery log
 
+# Lenovo wuzb1 2016-01-11 drop kvm caches interface
+on property:sys.vm.drop_caches=*
+    sync
+    write /proc/sys/vm/drop_caches ${sys.vm.drop_caches}
+
 #lenovo-sw mahj2 add for runin apk test Begin
 on property:persist.sys.runin=enable
     write /sys/class/power_supply/battery/device/BatteryTestStatus 1
