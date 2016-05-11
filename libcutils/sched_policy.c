@@ -21,6 +21,8 @@
 
 #define LOG_TAG "SchedPolicy"
 
+#define USE_CPUSETS
+
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -69,10 +71,12 @@ static int fg_cgroup_fd = -1;
 static int bg_cpuset_fd = -1;
 static int fg_cpuset_fd = -1;
 
+#ifdef USE_BLKIOSETS
 
 static int bg_blkio_fd = -1;
 static int fg_blkio_fd = -1;
 
+#endif
 /* Add tid to the scheduling group defined by the policy */
 static int add_tid_to_cgroup(int tid, int fd)
 {
@@ -131,20 +135,21 @@ static void __initialize(void) {
 #ifdef USE_CPUSETS
     if (!access("/dev/cpuset/tasks", F_OK)) {
 
-        filename = "/dev/cpuset/foreground/tasks";
+        filename = "/dev/cpuset/tasks";
         fg_cpuset_fd = open(filename, O_WRONLY | O_CLOEXEC);
         filename = "/dev/cpuset/background/tasks";
         bg_cpuset_fd = open(filename, O_WRONLY | O_CLOEXEC);
     }
 #endif
 
+#ifdef USE_BLKIOSETS
    if (!access("/dev/blkio/tasks", F_OK)) {
         filename = "/dev/blkio/tasks";
         fg_blkio_fd = open(filename, O_WRONLY | O_CLOEXEC);
         filename = "/dev/blkio/bg_non_interactive/tasks";
         bg_blkio_fd = open(filename, O_WRONLY | O_CLOEXEC);
    }
-
+#endif
 }
 
 /*
@@ -253,7 +258,7 @@ int get_sched_policy(int tid, SchedPolicy *policy)
     }
     return 0;
 }
-
+#ifdef USE_BLKIOSETS
 int set_blkioset_policy(int tid, SchedPolicy policy)
 {
     if (tid == 0) {
@@ -281,9 +286,11 @@ int set_blkioset_policy(int tid, SchedPolicy policy)
         if (errno != ESRCH && errno != ENOENT)
             return -errno;
     }
-
     return 0;
 }
+#else
+int set_blkioset_policy(int tid UNUSED, SchedPolicy policy UNUSED) { return 0; }
+#endif
 
 int set_cpuset_policy(int tid, SchedPolicy policy)
 {
@@ -313,8 +320,8 @@ int set_cpuset_policy(int tid, SchedPolicy policy)
     }
 
     if (add_tid_to_cgroup(tid, fd) != 0) {
-        if (errno != ESRCH && errno != ENOENT)
-            return -errno;
+        SLOGD("set cpuset ignore error:%d", errno);
+        return 0;
     }
 
     return 0;

@@ -154,7 +154,12 @@ on init
     mkdir /dev/cpuset/background
     # this ensures that the cpusets are present and usable, but the device's
     # init.rc must actually set the correct cpus
-    write /dev/cpuset/foreground/cpus 0
+    write /proc/hps/enabled 0
+    write /sys/devices/system/cpu/cpu1/online 1
+    write /sys/devices/system/cpu/cpu2/online 1
+    write /sys/devices/system/cpu/cpu3/online 1
+    write /dev/cpuset/cgroup.clone_children 1
+    write /dev/cpuset/foreground/cpus 0-3
     write /dev/cpuset/background/cpus 0
     write /dev/cpuset/foreground/mems 0
     write /dev/cpuset/background/mems 0
@@ -167,6 +172,7 @@ on init
     chmod 0664 /dev/cpuset/foreground/tasks
     chmod 0664 /dev/cpuset/background/tasks
     chmod 0664 /dev/cpuset/tasks
+    write /proc/hps/enabled 1
 
 
     # qtaguid will limit access to specific data based on group memberships.
