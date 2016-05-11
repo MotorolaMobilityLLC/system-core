@@ -223,7 +223,10 @@ static int property_set_impl(const char* name, const char* value) {
 
     if(pi != 0) {
         /* ro.* properties may NEVER be modified once set */
-        if(!strncmp(name, "ro.", 3)) {
+
+       //lenovo-sw wengjun1 add ro.secure and ro.adb.secure for factory test 20160510, begin
+       if(!strncmp(name, "ro.", 3) && strcmp(name,"ro.adb.secure")) {
+       //lenovo-sw wengjun1 add ro.secure and ro.adb.secure for factory test 20160510, end
 #ifdef MTK_INIT
             ERROR("PropSet Error:[%s:%s]  ro.* properties may NEVER be modified once set\n", name, value);
 #endif
@@ -554,13 +557,15 @@ bool properties_initialized() {
 }
 
 static void load_override_properties() {
-    if (ALLOW_LOCAL_PROP_OVERRIDE) {
-        char debuggable[PROP_VALUE_MAX];
-        int ret = property_get("ro.debuggable", debuggable);
-        if (ret && (strcmp(debuggable, "1") == 0)) {
+//lenovo-sw wengjun1 add ro.secure and ro.adb.secure for factory test 20160510, begin
+   // if (ALLOW_LOCAL_PROP_OVERRIDE) {
+   //     char debuggable[PROP_VALUE_MAX];
+   //     int ret = property_get("ro.debuggable", debuggable);
+   //     if (ret && (strcmp(debuggable, "1") == 0)) {
             load_properties_from_file(PROP_PATH_LOCAL_OVERRIDE, NULL);
-        }
-    }
+   //     }
+   // }
+//lenovo-sw wengjun1 add ro.secure and ro.adb.secure for factory test 20160510, end
 }
 
 /* When booting an encrypted system, /data is not mounted when the
@@ -660,11 +665,18 @@ void load_all_props() {
 //Lenovo [EasyImage] End
 
 
+//lenovo-sw wengjun1 add ro.secure and ro.adb.secure for factory test 20160510, begin
+    load_override_properties();
+//lenovo-sw wengjun1 add ro.secure and ro.adb.secure for factory test 20160510, end
+
+
     load_properties_from_file(PROP_PATH_SYSTEM_BUILD, NULL);
     load_properties_from_file(PROP_PATH_VENDOR_BUILD, NULL);
     load_properties_from_file(PROP_PATH_FACTORY, "ro.*");
 
-    load_override_properties();
+//lenovo-sw wengjun1 add ro.secure and ro.adb.secure for factory test 20160510, begin
+    //load_override_properties();
+//lenovo-sw wengjun1 add ro.secure and ro.adb.secure for factory test 20160510, end
 
 //Lenovo [EasyImage] Start
 #ifdef LENOVO_EASYIMAGE_SUPPORT

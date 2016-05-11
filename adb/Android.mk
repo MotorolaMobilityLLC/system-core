@@ -241,7 +241,10 @@ ifeq (yes, $(strip $(MTK_BUILD_ROOT)))
 LOCAL_CFLAGS += -DMTK_ALLOW_ADBD_ROOT=1
 LOCAL_CFLAGS += -DALLOW_ADBD_NO_AUTH=1
 else
-LOCAL_CFLAGS += -DALLOW_ADBD_NO_AUTH=$(if $(filter userdebug eng,$(TARGET_BUILD_VARIANT)),1,0)
+#lenovo-sw wengjun1 add factory usb configuration 20160510, begin
+# LOCAL_CFLAGS += -DALLOW_ADBD_NO_AUTH=$(if $(filter userdebug eng,$(TARGET_BUILD_VARIANT)),1,0)
+LOCAL_CFLAGS += -DALLOW_ADBD_NO_AUTH=1
+#lenovo-sw wengjun1 factory usb configuration 20160510, begin
 endif
 
 LOCAL_MODULE := adbd
