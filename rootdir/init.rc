@@ -249,6 +249,9 @@ on post-fs
     # We restorecon /cache in case the cache partition has been reset.
     restorecon_recursive /cache
 
+    ##Lenovo,miaotao1,EasyImage, FactoryConfig
+    restorecon_recursive /persist
+
     # Create /cache/recovery in case it's not there. It'll also fix the odd
     # permissions if created by the recovery system.
     mkdir /cache/recovery 0770 system cache

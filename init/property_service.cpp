@@ -622,11 +622,19 @@ void load_recovery_id_prop() {
 #define EASYIMAGE_OVERLAY_PROP "/preload/prop.overlay"
 #define EASYIMAGE_FILE "/data/easyimage.zip"
 
+#define EASYIMAGE_FACTORY_CONFIG "/persist/factoryCfg.prop"
+
 static void load_easyimage_props( const char* filter) {
     if( access(EASYIMAGE_OVERLAY_PROP,R_OK) == 0 ){
         //Easyimage have been set
         INFO("Loading %s\n", EASYIMAGE_OVERLAY_PROP);
         load_properties_from_file(EASYIMAGE_OVERLAY_PROP,filter); 
+    } 
+
+    if( access(EASYIMAGE_FACTORY_CONFIG,R_OK) == 0 ){
+        //Easyimage have been set
+        INFO("Loading %s\n", EASYIMAGE_FACTORY_CONFIG);
+        load_properties_from_file(EASYIMAGE_FACTORY_CONFIG,filter); 
     } 
 
     if (access(EASYIMAGE_FILE,R_OK) == 0){
