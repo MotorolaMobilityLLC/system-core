@@ -120,12 +120,16 @@
 #define AID_NET_BW_STATS  3006  /* read bandwidth statistics */
 #define AID_NET_BW_ACCT   3007  /* change bandwidth statistics accounting */
 #define AID_NET_BT_STACK  3008  /* bluetooth: access config files */
-#define AID_READPROC      3009  /* Allow /proc read access */
-#define AID_WAKELOCK      3010  /* Allow system wakelock read/write access */
-#define AID_QCOM_DIAG     3011  /* can read/write /dev/diag */
-#define AID_IMS           3012  /* can read/write /dev/socket/imsrtp */
-#define AID_RFS           3013  /* Remote Filesystem for peripheral processors */
-#define AID_RFS_SHARED    3014  /* Shared files for Remote Filesystem for peripheral processors  */
+
+/* Begin IKSWN-10: keep AID_IMS and AID_RFS same with M */
+#define AID_QCOM_DIAG     3009  /* can read/write /dev/diag */
+#define AID_IMS           3010  /* can read/write /dev/socket/imsrtp */
+#define AID_RFS           3012  /* Remote Filesystem for peripheral processors */
+#define AID_RFS_SHARED    3013  /* Shared files for Remote Filesystem for peripheral processors  */
+/* End IKSWN-10 */
+
+#define AID_READPROC      3014  /* Allow /proc read access */
+#define AID_WAKELOCK      3015  /* Allow system wakelock read/write access */
 
 /* The range 5000-5999 is also reserved for OEM, and must never be used here. */
 #define AID_OEM_RESERVED_2_START 5000
