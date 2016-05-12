@@ -472,6 +472,10 @@ on boot
 #lenovo.sw END huangsh4 add for leds sys node
 #lenovo-sw wuwl10 20160331 add begin
     chown system system /sys/class/leds/test-led/brightness
+
+    chown system system /sys/class/graphics/fb0/device/cabc_mode
+    chown system system /sys/class/graphics/fb0/device/hbm
+    chown system system /sys/class/graphics/fb0/device/acl_mode
 #lenovo-sw wuwl10 20160331 add end
 
     # Define default initial receive window size in segments.
