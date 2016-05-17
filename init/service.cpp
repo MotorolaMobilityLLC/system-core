@@ -17,6 +17,7 @@
 #include "service.h"
 
 #include <fcntl.h>
+#include <sys/resource.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -57,6 +58,13 @@ ServiceEnvironmentInfo::ServiceEnvironmentInfo() {
 ServiceEnvironmentInfo::ServiceEnvironmentInfo(const std::string& name,
                                                const std::string& value)
     : name(name), value(value) {
+}
+
+ServiceRlimitInfo::ServiceRlimitInfo() {
+}
+
+ServiceRlimitInfo::ServiceRlimitInfo(int resource, unsigned long cur, unsigned long max)
+    : resource(resource), cur(cur), max(max) {
 }
 
 Service::Service(const std::string& name, const std::string& classname,
@@ -163,6 +171,9 @@ void Service::DumpState() const {
     for (const auto& si : sockets_) {
         INFO("  socket %s %s 0%o\n", si.name.c_str(), si.type.c_str(), si.perm);
     }
+    for (const auto& rl : rlimits_) {
+        INFO("  rlimit %d %lu %lu\n", rl.resource, rl.cur, rl.max);
+    }
 }
 
 bool Service::HandleClass(const std::vector<std::string>& args, std::string* err) {
@@ -234,6 +245,14 @@ bool Service::HandleOnrestart(const std::vector<std::string>& args, std::string*
     return true;
 }
 
+bool Service::HandleRlimit(const std::vector<std::string>& args, std::string* err) {
+    int resource = std::stoul(args[1]);
+    unsigned long cur = std::stoul(args[2]);
+    unsigned long max = std::stoul(args[3]);
+    rlimits_.emplace_back(resource, cur, max);
+    return true;
+}
+
 bool Service::HandleSeclabel(const std::vector<std::string>& args, std::string* err) {
     seclabel_ = args[1];
     return true;
@@ -290,6 +309,7 @@ Service::OptionHandlerMap::Map& Service::OptionHandlerMap::map() const {
         {"keycodes",    {1,     kMax, &Service::HandleKeycodes}},
         {"oneshot",     {0,     0,    &Service::HandleOneshot}},
         {"onrestart",   {1,     kMax, &Service::HandleOnrestart}},
+        {"rlimit",      {3,     3,    &Service::HandleRlimit}},
         {"seclabel",    {1,     1,    &Service::HandleSeclabel}},
         {"setenv",      {2,     2,    &Service::HandleSetenv}},
         {"socket",      {3,     6,    &Service::HandleSocket}},
@@ -425,6 +445,17 @@ bool Service::Start() {
             if (android_set_ioprio(getpid(), ioprio_class_, ioprio_pri_)) {
                 ERROR("Failed to set pid %d ioprio = %d,%d: %s\n",
                       getpid(), ioprio_class_, ioprio_pri_, strerror(errno));
+            }
+        }
+
+        for (const auto& rl : rlimits_) {
+            struct rlimit limit = {
+                .rlim_cur = rl.cur,
+                .rlim_max = rl.max,
+            };
+            if (setrlimit(rl.resource, &limit)) {
+                ERROR("Failed to set pid %d rlimit %d %lu %lu\n",
+                      getpid(), rl.resource, limit.rlim_cur, limit.rlim_max);
             }
         }
 
