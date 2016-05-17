@@ -66,6 +66,14 @@ struct ServiceEnvironmentInfo {
     std::string value;
 };
 
+struct ServiceRlimitInfo {
+    ServiceRlimitInfo();
+    ServiceRlimitInfo(int resource, unsigned long cur, unsigned long max);
+    int resource;
+    unsigned long cur;
+    unsigned long max;
+};
+
 class Service {
 public:
     Service(const std::string& name, const std::string& classname,
@@ -120,6 +128,7 @@ private:
     bool HandleKeycodes(const std::vector<std::string>& args, std::string* err);
     bool HandleOneshot(const std::vector<std::string>& args, std::string* err);
     bool HandleOnrestart(const std::vector<std::string>& args, std::string* err);
+    bool HandleRlimit(const std::vector<std::string>& args, std::string* err);
     bool HandleSeclabel(const std::vector<std::string>& args, std::string* err);
     bool HandleSetenv(const std::vector<std::string>& args, std::string* err);
     bool HandleSocket(const std::vector<std::string>& args, std::string* err);
@@ -143,6 +152,7 @@ private:
 
     std::vector<SocketInfo> sockets_;
     std::vector<ServiceEnvironmentInfo> envvars_;
+    std::vector<ServiceRlimitInfo> rlimits_;
 
     Action onrestart_;  // Commands to execute on restart.
 
