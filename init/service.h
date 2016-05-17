@@ -64,6 +64,14 @@ struct ServiceEnvironmentInfo {
     std::string value;
 };
 
+struct ServiceRlimitInfo {
+    ServiceRlimitInfo();
+    ServiceRlimitInfo(int resource, unsigned long cur, unsigned long max);
+    int resource;
+    unsigned long cur;
+    unsigned long max;
+};
+
 class Service {
   public:
     Service(const std::string& name, const std::vector<std::string>& args);
@@ -143,6 +151,8 @@ class Service {
     template <typename T>
     bool AddDescriptor(const std::vector<std::string>& args, std::string* err);
 
+    bool HandleRlimit(const std::vector<std::string>& args, std::string* err);
+
     std::string name_;
     std::set<std::string> classnames_;
     std::string console_;
@@ -163,6 +173,7 @@ class Service {
 
     std::vector<std::unique_ptr<DescriptorInfo>> descriptors_;
     std::vector<ServiceEnvironmentInfo> envvars_;
+    std::vector<ServiceRlimitInfo> rlimits_;
 
     Action onrestart_;  // Commands to execute on restart.
 

@@ -150,6 +150,13 @@ ServiceEnvironmentInfo::ServiceEnvironmentInfo(const std::string& name,
     : name(name), value(value) {
 }
 
+ServiceRlimitInfo::ServiceRlimitInfo() {
+}
+
+ServiceRlimitInfo::ServiceRlimitInfo(int resource, unsigned long cur, unsigned long max)
+    : resource(resource), cur(cur), max(max) {
+}
+
 Service::Service(const std::string& name, const std::vector<std::string>& args)
     : name_(name),
       classnames_({"default"}),
@@ -326,6 +333,9 @@ void Service::DumpState() const {
     LOG(INFO) << "  exec "<< android::base::Join(args_, " ");
     std::for_each(descriptors_.begin(), descriptors_.end(),
                   [] (const auto& info) { LOG(INFO) << *info; });
+    for (const auto& rl : rlimits_) {
+        LOG(INFO) << "  rlimit "  << rl.resource << rl.cur << rl.max;
+    }
 }
 
 bool Service::ParseCapabilities(const std::vector<std::string>& args, std::string* err) {
@@ -467,6 +477,14 @@ bool Service::ParseOomScoreAdjust(const std::vector<std::string>& args, std::str
     return true;
 }
 
+bool Service::HandleRlimit(const std::vector<std::string>& args, std::string* err) {
+    int resource = std::stoul(args[1]);
+    unsigned long cur = std::stoul(args[2]);
+    unsigned long max = std::stoul(args[3]);
+    rlimits_.emplace_back(resource, cur, max);
+    return true;
+}
+
 bool Service::ParseSeclabel(const std::vector<std::string>& args, std::string* err) {
     seclabel_ = args[1];
     return true;
@@ -558,6 +576,7 @@ Service::OptionParserMap::Map& Service::OptionParserMap::map() const {
         {"oom_score_adjust",
                         {1,     1,    &Service::ParseOomScoreAdjust}},
         {"namespace",   {1,     2,    &Service::ParseNamespace}},
+        {"rlimit",      {3,     3,    &Service::HandleRlimit}},
         {"seclabel",    {1,     1,    &Service::ParseSeclabel}},
         {"setenv",      {2,     2,    &Service::ParseSetenv}},
         {"socket",      {3,     6,    &Service::ParseSocket}},
@@ -702,6 +721,17 @@ bool Service::Start() {
             if (android_set_ioprio(getpid(), ioprio_class_, ioprio_pri_)) {
                 PLOG(ERROR) << "failed to set pid " << getpid()
                             << " ioprio=" << ioprio_class_ << "," << ioprio_pri_;
+            }
+        }
+
+        for (const auto& rl : rlimits_) {
+            struct rlimit limit = {
+                .rlim_cur = rl.cur,
+                .rlim_max = rl.max,
+            };
+            if (setrlimit(rl.resource, &limit)) {
+                ERROR("Failed to set pid %d rlimit %d %lu %lu\n",
+                      getpid(), rl.resource, limit.rlim_cur, limit.rlim_max);
             }
         }
 
