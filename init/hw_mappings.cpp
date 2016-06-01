@@ -139,6 +139,41 @@ typedef struct {
 
 static tag_val_t tagValuesTable[MAX_PROPS_NUM];
 
+static int xml_get_value_method(char *tag, tag_val_t *tval)
+{
+	bool data_ready = false;
+	char tagvalue[PROP_VALUE_MAX];
+	/* If value in tag contains '.', then it's a property */
+	/* Property has to be one of the properties exported */
+	/* from kernel cmdline, since this code is executed */
+	/* prior the rest of system properties get loaded */
+	if (strchr(tag, '.')) {
+		__property_get(tag, tagvalue);
+		pr_debug("property '%s'='%s'\n", tag, tagvalue);
+		data_ready = true;
+	} else { /* otherwise, it's utag */
+		int vfd, rbytes;
+		char tagname[PROP_NAME_MAX];
+		snprintf(tagname, PROP_NAME_MAX-1, "/proc/hw/%s/ascii", tag);
+		pr_debug("opening: '%s'\n", tagname);
+		vfd = open(tagname, O_RDONLY | O_CLOEXEC);
+		if (vfd != -1) {
+			rbytes = read(vfd, tagvalue, PROP_VALUE_MAX);
+			close(vfd);
+			if (rbytes != -1) {
+				tagvalue[rbytes-1] = 0;
+				data_ready = true;
+			}
+		}
+	}
+	if (data_ready) {
+		tval->tag_value = strdup(tagvalue);
+		tval->tag_name = strdup(tag);
+		return 0;
+	}
+	return -1;
+}
+
 static char
 *xml_tag_get_value(char *tag)
 {
@@ -146,26 +181,11 @@ static char
 	for (int i = 0; i < MAX_PROPS_NUM; i++) {
 		tag_val_t *tval = &tagValuesTable[i];
 		if (!tval->tag_name) {
-			int vfd;
-			char tagname[PROP_NAME_MAX];
-			snprintf(tagname, PROP_NAME_MAX-1, "/proc/hw/%s/ascii", tag);
-			pr_debug("opening: '%s'\n", tagname);
-			vfd = open(tagname, O_RDONLY | O_CLOEXEC);
-			if (vfd != -1) {
-				int error;
-				char tagvalue[PROP_VALUE_MAX];
-
-				error = read(vfd, tagvalue, PROP_VALUE_MAX);
-				close(vfd);
-
-				if (error != -1) {
-					tagvalue[error-1] = 0;
-					tval->tag_value = strdup(tagvalue);
-					tval->tag_name = strdup(tag);
-					value = tval->tag_value;
-					pr_debug("[%d] added value '%s' for utag '%s'\n",
-						i, tval->tag_value, tval->tag_name);
-				}
+			int rc = xml_get_value_method(tag, tval);
+			if (!rc) {
+				value = tval->tag_value;
+				pr_debug("[%d] added value '%s' for utag '%s'\n",
+					i, tval->tag_value, tval->tag_name);
 			}
 			break;
 		} else if (!strncmp(tval->tag_name, tag, strlen(tag))) {
