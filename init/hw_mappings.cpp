@@ -488,7 +488,7 @@ xml_handle_mappings(parse_ctrl_t *info)
 {
 	char *ptr, value[PROP_NAME_MAX] = {0};
 	char *boot_prop_name, *boot_prop;
-	char *export_prop_name, *export_prop = NULL;
+	char *export_prop_name, *export_prop, *default_v;
 	element_t *search_head, *cur = NULL;
 
 	/* retrieve boot property name */
@@ -534,9 +534,9 @@ xml_handle_mappings(parse_ctrl_t *info)
 
 	for (cur = search_head->child; cur; cur = cur->next) {
 		char *append_param;
-		int append_cnt = 0;
+		int rc, append_cnt = 0;
 
-		append_param = export_prop_name = export_prop = NULL;
+		append_param = export_prop_name = export_prop = default_v = NULL;
 
 		/* extract mandatory export parameter */
 		xml_find_parameter(cur, "export", &export_prop_name);
@@ -551,8 +551,11 @@ xml_handle_mappings(parse_ctrl_t *info)
 			append_cnt = xml_build_append_array(append_param);
 		/* match multiple choices */
 		bool found = xml_match_multiple_choices(cur, &export_prop);
-		if (found && export_prop) {
-			int rc = property_set(export_prop_name, export_prop);
+		if (found) {
+			if (!export_prop)
+				continue;
+
+			rc = property_set(export_prop_name, export_prop);
 			NOTICE("Match found '%s'\n", export_prop);
 			if (rc != -1)
 				NOTICE("exported '%s'=>'%s'\n", export_prop_name, export_prop);
@@ -564,8 +567,17 @@ xml_handle_mappings(parse_ctrl_t *info)
 				xml_load_properties_from_file(PROP_PATH_SYSTEM_BUILD, xml_preload_get_filter());
 				xml_preload_clear_all();
 			}
-		} else
-			pr_debug("no match found in section '%s'\n", cur->tag);
+		} else {
+			/* extract optional default parameter */
+			xml_find_parameter(cur, "default", &default_v);
+			if (default_v) {
+				rc = property_set(export_prop_name, default_v);
+				NOTICE("Applying default '%s'\n", default_v);
+				if (rc != -1)
+					NOTICE("exported '%s'=>'%s'\n", export_prop_name, default_v);
+			} else
+				pr_debug("no match found in section '%s'\n", cur->tag);
+		}
 
 		NOTICE("Processed section '%s'\n", cur->tag);
 	}
