@@ -41,7 +41,9 @@ class IFingerprintDaemonCallback : public IInterface {
 
         virtual status_t onEnrollResult(int64_t devId, int32_t fpId, int32_t gpId, int32_t rem) = 0;
         virtual status_t onAcquired(int64_t devId, int32_t acquiredInfo) = 0;
-        virtual status_t onAuthenticated(int64_t devId, int32_t fingerId, int32_t groupId) = 0;
+        /*Begin lenovo-sw zhongling1 add for avatar 20160601 */
+        virtual status_t onAuthenticated(int64_t devId, int32_t fingerId, int32_t groupId, int32_t coverage, int32_t quality) = 0;
+        /*End lenovo-sw zhongling1 add for avatar 20160602*/
         virtual status_t onError(int64_t devId, int32_t error) = 0;
         virtual status_t onRemoved(int64_t devId, int32_t fingerId, int32_t groupId) = 0;
         virtual status_t onEnumerate(int64_t devId, const int32_t* fpIds, const int32_t* gpIds,

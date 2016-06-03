@@ -59,16 +59,20 @@ void FingerprintDaemonProxy::hal_notify_callback(const fingerprint_msg_t *msg) {
             callback->onAcquired(device, msg->data.acquired.acquired_info);
             break;
         case FINGERPRINT_AUTHENTICATED:
-            ALOGD("onAuthenticated(fid=%d, gid=%d)",
+            ALOGD("onAuthenticated(fid=%d, gid=%d, coverage=%d, quality=%d)",
                     msg->data.authenticated.finger.fid,
-                    msg->data.authenticated.finger.gid);
+                    msg->data.authenticated.finger.gid,
+                    msg->data.authenticated.quality.coverage,
+                    msg->data.authenticated.quality.quality);
             if (msg->data.authenticated.finger.fid != 0) {
                 const uint8_t* hat = reinterpret_cast<const uint8_t *>(&msg->data.authenticated.hat);
                 instance->notifyKeystore(hat, sizeof(msg->data.authenticated.hat));
             }
             callback->onAuthenticated(device,
                     msg->data.authenticated.finger.fid,
-                    msg->data.authenticated.finger.gid);
+                    msg->data.authenticated.finger.gid,
+                    msg->data.authenticated.quality.coverage,
+                    msg->data.authenticated.quality.quality);
             break;
         case FINGERPRINT_TEMPLATE_ENROLLING:
             ALOGD("onEnrollResult(fid=%d, gid=%d, rem=%d)",
