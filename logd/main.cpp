@@ -107,6 +107,7 @@ static int drop_privs() {
         return -1;
     }
 
+#if 0
     if (setgid(AID_LOGD) != 0) {
         return -1;
     }
@@ -114,6 +115,7 @@ static int drop_privs() {
     if (setuid(AID_LOGD) != 0) {
         return -1;
     }
+#endif
 
     struct __user_cap_header_struct capheader;
     struct __user_cap_data_struct capdata[2];
@@ -170,8 +172,10 @@ static void *reinit_thread_start(void * /*obj*/) {
     set_sched_policy(0, SP_BACKGROUND);
     setpriority(PRIO_PROCESS, 0, ANDROID_PRIORITY_BACKGROUND);
 
+#if 0
     setgid(AID_SYSTEM);
     setuid(AID_SYSTEM);
+#endif
 
     while (reinit_running && !sem_wait(&reinit) && reinit_running) {
 
