@@ -187,12 +187,12 @@ public:
     virtual int brokenThrottleFix(int ret) {
         static unsigned int num_fail = 0;
 
+	num_fail++;
+
         if (ret == 0 )
             num_fail = 0;
         else if (num_fail > 4)
             ret = 30000;
-        else
-            num_fail++;
 
         return ret;
     }
