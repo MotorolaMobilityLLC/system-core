@@ -19,7 +19,7 @@ LOCAL_PATH := $(call my-dir)
 include $(CLEAR_VARS)
 LOCAL_CFLAGS := -Wall -Wextra -Werror -Wunused
 
-ifeq ($(call is-board-platform,msm8952),true)
+ifeq ($(call is-board-platform-in-list, msm8952 msm8994),true)
 LOCAL_CFLAGS += -DHAL_THROTTLE
 endif
 
