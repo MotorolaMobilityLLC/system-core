@@ -66,6 +66,7 @@
 #include "transport.h"
 #include "udp.h"
 #include "usb.h"
+#include "moto_handler.h"
 
 #ifndef O_BINARY
 #define O_BINARY 0
@@ -87,6 +88,10 @@ static unsigned kernel_offset  = 0x00008000;
 static unsigned ramdisk_offset = 0x01000000;
 static unsigned second_offset  = 0x00f00000;
 static unsigned tags_offset    = 0x00000100;
+
+#define MAX_OEM_CMD_LINE    64
+typedef struct OEMHandler OEMHandler;
+typedef int (*oem_handler)(int argc, char **argv);
 
 static const std::string convert_fbe_marker_filename("convert_fbe");
 
@@ -134,6 +139,35 @@ static std::string find_item_given_name(const char* img_name, const char* produc
 }
 
 std::string find_item(const char* item, const char* product) {
+struct OEMHandler
+{
+	char cmd[MAX_OEM_CMD_LINE];
+	OEMHandler *next;
+	oem_handler handler;
+};
+
+static OEMHandler *oem_handler_list = 0;
+static OEMHandler *oem_handler_last = 0;
+
+static void register_oem_handler(const char *cmd, oem_handler handler)
+{
+    OEMHandler *h;
+
+    h = (OEMHandler *)calloc(1, sizeof(OEMHandler));
+    if (h == 0) die("out of memory");
+
+    if (oem_handler_last) {
+        oem_handler_last->next = h;
+    } else {
+        oem_handler_list = h;
+    }
+    oem_handler_last = h;
+    strncpy(h->cmd, cmd, strlen(cmd));
+    h->handler = handler;
+}
+
+static char* find_item(const char* item, const char* product) {
+    char *dir;
     const char *fn;
 
     if (!strcmp(item,"boot")) {
@@ -152,10 +186,10 @@ std::string find_item(const char* item, const char* product) {
         fn = "android-info.txt";
     } else {
         fprintf(stderr,"unknown partition '%s'\n", item);
-        return "";
+        return (char *)"";
     }
 
-    return find_item_given_name(fn, product);
+    return find_item_given_name(fn, product).c_str();
 }
 
 static int64_t get_file_size(int fd) {
@@ -188,7 +222,7 @@ oops:
     return 0;
 }
 
-static void* load_file(const std::string& path, int64_t* sz) {
+void* load_file(const std::string& path, int64_t* sz) {
     int fd = open(path.c_str(), O_RDONLY | O_BINARY);
     if (fd == -1) return nullptr;
     return load_fd(fd, sz);
@@ -1247,7 +1281,14 @@ static int do_bypass_unlock_command(int argc, char **argv)
 
 static int do_oem_command(int argc, char** argv) {
     if (argc <= 1) return 0;
+    OEMHandler *h;
 
+    /* look for oem handler */
+    for (h = oem_handler_list; h; h = h->next) {
+        if (!strcmp(h->cmd, argv[1]) && h->handler) {
+            return h->handler(argc, argv);
+        }
+    }
     std::string command;
     while (argc > 0) {
         command += *argv;
@@ -1460,6 +1501,9 @@ int main(int argc, char **argv)
 #endif
         {0, 0, 0, 0}
     };
+
+    /* register oem handlers */
+    register_oem_handler("dump", oem_dump_handler);
 
     serial = getenv("ANDROID_SERIAL");
 
