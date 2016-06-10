@@ -25,5 +25,6 @@
 #define _MOT_HANDLER_H
 
 int oem_dump_handler(const std::string& cmd, std::vector<std::string>* args);
+int oem_ramdump_handler(const std::string& cmd, std::vector<std::string>* args);
 
 #endif /* _MOT_HANDLER_H */
