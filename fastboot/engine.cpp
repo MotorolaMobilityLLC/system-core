@@ -321,7 +321,7 @@ void fb_queue_dump(const std::string partition) {
 
 void fb_queue_ramdump(void) {
     Action& a = queue_action(OP_RAMDUMP, "");
-    ap.msg = "Ready to receive ramdumps";
+    a.msg = "Ready to receive ramdumps";
 }
 
 int64_t fb_execute_queue(Transport* transport) {
@@ -356,21 +356,17 @@ int64_t fb_execute_queue(Transport* transport) {
             if (status) break;
         } else if (a->op == OP_DUMP) {
             status = fb_dump_data(transport, (char *)a->data);
-            status = a->func(a, status, status ? fb_get_error().c_str() : "");
+            status = a->func(*a, status, status ? fb_get_error().c_str() : "");
             if (status) break;
         } else if (a->op == OP_WAIT_FOR_DISCONNECT) {
             transport->WaitForDisconnect();
         } else if (a->op == OP_UPLOAD) {
             status = fb_upload_data(transport, reinterpret_cast<char*>(a->data));
-<<<<<<< HEAD
             status = a->func(*a, status, status ? fb_get_error().c_str() : "");
-=======
-            status = a->func(a, status, status ? fb_get_error().c_str() : "");
         } else if (a->op == OP_RAMDUMP) {
             status = fb_dump_ram_files(transport);
-            status = a->func(a, status, status ? fb_get_error().c_str() : "");
+            status = a->func(*a, status, status ? fb_get_error().c_str() : "");
             if (status) break;
->>>>>>> 028b801... IKSWO-548 fastboot: Support "oem ramdump pull" command
         } else {
             die("unknown action: %d", a->op);
         }
