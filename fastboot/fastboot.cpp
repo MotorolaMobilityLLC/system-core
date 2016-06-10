@@ -90,7 +90,7 @@ static int64_t target_sparse_limit = -1;
 static unsigned page_size = 2048;
 static unsigned base_addr      = 0x10000000;
 static unsigned kernel_offset  = 0x00008000;
-static unsigned ramdisk_offset = 0x01000000;
+static unsigned ramdisk_offset = 0x02000000;
 static unsigned second_offset  = 0x00f00000;
 static unsigned tags_offset    = 0x00000100;
 
