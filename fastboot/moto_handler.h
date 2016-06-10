@@ -25,9 +25,14 @@
 #define _MOT_HANDLER_H
 
 #define FB_CMD_OEM_PARTITION	"partition"
+#define FB_CMD_OEM_RAMDUMP	"ramdump"
 
 fastboot::RetCode oem_partition_handler(fastboot::FastBootDriver* fb,
                                         const std::string& cmd,
                                         std::vector<std::string>* args);
+
+fastboot::RetCode oem_ramdump_handler(fastboot::FastBootDriver* fb,
+                                      const std::string& cmd,
+                                      std::vector<std::string>* args);
 
 #endif /* _MOT_HANDLER_H */
