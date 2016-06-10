@@ -1769,7 +1769,7 @@ int FastBootTool::Main(int argc, char* argv[]) {
     std::string next_active;
 
     g_boot_img_hdr.kernel_addr = 0x00008000;
-    g_boot_img_hdr.ramdisk_addr = 0x01000000;
+    g_boot_img_hdr.ramdisk_addr = 0x02000000;
     g_boot_img_hdr.second_addr = 0x00f00000;
     g_boot_img_hdr.tags_addr = 0x00000100;
     g_boot_img_hdr.page_size = 2048;
