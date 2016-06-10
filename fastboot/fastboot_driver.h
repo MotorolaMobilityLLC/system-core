@@ -47,6 +47,13 @@ class Transport;
 namespace fastboot {
 
 static constexpr size_t DUMP_BUF_SIZE = (4 * 1024 * 1024);
+static char const* RAM_DUMP_DIR = "ramdump";
+
+#ifdef _WIN32
+static char const* FILE_SPLIT = "\\";
+#else
+static char const* FILE_SPLIT = "/";
+#endif
 
 enum RetCode : int {
     SUCCESS = 0,
@@ -115,6 +122,7 @@ class FastBootDriver {
 
     RetCode Dump(const char* file_name, std::string* response = nullptr,
                  std::vector<std::string>* info = nullptr);
+    RetCode RamDump(std::string* response = nullptr, std::vector<std::string>* info = nullptr);
 
     /* HIGHER LEVEL COMMANDS -- Composed of the commands above */
     RetCode FlashPartition(const std::string& partition, const std::vector<char>& data);
@@ -168,6 +176,8 @@ class FastBootDriver {
                              const std::function<RetCode(const char*, uint64_t)>& write_fn);
 
     RetCode DumpFile(const char* file_name);
+    int DirExists(const char *dir_name);
+    int CreateRamdumpDir(void);
 
     int SparseWriteCallback(std::vector<char>& tpbuf, const char* data, size_t len);
 
