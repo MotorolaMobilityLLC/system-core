@@ -75,3 +75,32 @@ RetCode oem_partition_handler(fastboot::FastBootDriver* fb, const std::string& c
 
     return ret;
 }
+
+RetCode oem_ramdump_handler(fastboot::FastBootDriver* fb, const std::string& cmd, std::vector<std::string>* args)
+{
+    RetCode ret;
+    int is_pull = 0;
+
+    if (!fb) die("FastBootDriver is required");
+    if (args->empty()) die("empty oem command");
+
+    if (args->size() >= 2 && (args->at(1) == std::string("pull") || args->at(1) == std::string("moto-pull"))) {
+        /* translate "pull" to "moto-pull" */
+        args->at(1) = std::string("moto-pull");
+        is_pull = 1;
+    }
+
+    std::string command(cmd);
+    while (!args->empty()) {
+        command += " " + next_arg(args);
+    }
+
+    ret = fb->RawCommand(command, "Sending \"ramdump\" command");
+    if (!ret && is_pull) {
+        fprintf(stderr, "Ready to receive ramdumps");
+
+        ret = fb->RamDump();
+    }
+
+    return ret;
+}
