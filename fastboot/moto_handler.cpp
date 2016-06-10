@@ -73,3 +73,32 @@ int oem_ramdump_handler(int argc, char **argv)
 
     return 0;
 }
+
+int oem_partition_handler(int argc, char **argv)
+{
+    int i = 0;
+    char command[256];
+    int is_dump = 0;
+
+    command[0] = 0;
+    while(i < argc) {
+        if ((i==2) && !strcmp(argv[i], "dump") && (argc>3)) {
+            is_dump = 1;
+
+            /* translate "dump" to "moto-dump" */
+            strncat(command, "moto-", sizeof(command)-1);
+        }
+
+        strncat(command, argv[i], sizeof(command)-1);
+        if (i < argc-1)
+            strncat(command, " ", sizeof(command)-1);
+
+        i++;
+    }
+
+    fb_queue_command(command,"Sending command");
+    if (is_dump)
+        fb_queue_dump(argv[3]);
+
+    return 0;
+}
