@@ -42,6 +42,9 @@ struct sparse_file;
 int fb_command(Transport* transport, const char* cmd);
 int fb_command_response(Transport* transport, const char* cmd, char* response);
 int fb_dump_data(Transport *transport, const char *file_name);
+int fb_dump_data(Transport *transport, const char *file_name);
+int fb_query_ramdump_files(Transport *transport);
+int fb_dump_ram_files(Transport *transport);
 int fb_download_data(Transport* transport, const void* data, uint32_t size);
 int fb_download_data_sparse(Transport* transport, struct sparse_file* s);
 char *fb_get_error(void);
@@ -66,6 +69,7 @@ void fb_queue_download(const char *name, void *data, uint32_t size);
 void fb_queue_notice(const char *notice);
 void fb_queue_wait_for_disconnect(void);
 void fb_queue_dump(const char *partition);
+void fb_queue_ramdump(void);
 int fb_execute_queue(Transport* transport);
 void fb_set_active(const char *slot);
 
