@@ -44,3 +44,32 @@ int oem_dump_handler(int argc, char **argv)
 
     return 0;
 }
+
+int oem_ramdump_handler(int argc, char **argv)
+{
+    int i = 0;
+    char command[256];
+    int is_pull = 0;
+
+    command[0] = 0;
+    while(i < argc) {
+        if ((i == 2) && !strcmp(argv[i], "pull")) {
+            is_pull = 1;
+
+            /* translate "pull" to "moto-pull" */
+            strcat(command, "moto-");
+        }
+
+        strcat(command, argv[i]);
+        strcat(command, " ");
+
+        i++;
+    }
+
+    fb_queue_command(command,"Sending command");
+    if (is_pull) {
+        fb_queue_ramdump();
+    }
+
+    return 0;
+}
