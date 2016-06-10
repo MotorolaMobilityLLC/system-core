@@ -26,5 +26,6 @@
 
 int oem_dump_handler(int argc, char **argv);
 int oem_ramdump_handler(int argc, char **argv);
+int oem_partition_handler(int argc, char **argv);
 
 #endif /* _MOT_HANDLER_H */
