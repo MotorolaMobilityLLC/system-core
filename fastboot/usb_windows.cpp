@@ -152,7 +152,7 @@ std::unique_ptr<usb_handle> do_usb_open(const wchar_t* interface_name) {
 }
 
 ssize_t WindowsUsbTransport::Write(const void* data, size_t len) {
-    unsigned long time_out = 5000;
+    unsigned long time_out = 300000;
     unsigned long written = 0;
     unsigned count = 0;
     int ret;
