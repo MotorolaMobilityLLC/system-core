@@ -46,6 +46,7 @@
 #define OP_NOTICE     4
 #define OP_DOWNLOAD_SPARSE 5
 #define OP_WAIT_FOR_DISCONNECT 6
+#define OP_DUMP       8
 
 typedef struct Action Action;
 
@@ -330,6 +331,16 @@ void fb_queue_wait_for_disconnect(void)
     queue_action(OP_WAIT_FOR_DISCONNECT, "");
 }
 
+void fb_queue_dump(const char *partition)
+{
+    char *file_name = (char *)calloc(36, sizeof(char));
+    if (!file_name) die("no memory");
+    snprintf(file_name, 36, "%s.img", partition);
+    Action *ap = queue_action(OP_DUMP, "");
+    ap->data = file_name;
+    ap->msg = mkmsg("Dumping partition %s to %s", partition, file_name);
+}
+
 int fb_execute_queue(Transport* transport)
 {
     Action *a;
@@ -369,6 +380,10 @@ int fb_execute_queue(Transport* transport)
             if (status) break;
         } else if (a->op == OP_WAIT_FOR_DISCONNECT) {
             transport->WaitForDisconnect();
+        } else if (a->op == OP_DUMP) {
+            status = fb_dump_data(transport, (char *)a->data);
+            status = a->func(a, status, status ? fb_get_error() : "");
+            if (status) break;
         } else {
             die("bogus action");
         }
