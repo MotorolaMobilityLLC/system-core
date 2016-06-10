@@ -47,6 +47,7 @@
 #define OP_DOWNLOAD_FD 7
 #define OP_UPLOAD 8
 #define OP_DUMP       10
+#define OP_RAMDUMP    11
 
 typedef struct Action Action;
 
@@ -371,6 +372,12 @@ void fb_queue_dump(const std::string partition)
     ap->msg = mkmsg("Dumping partition %s to %s", partition.c_str(), file_name);
 }
 
+void fb_queue_ramdump(void)
+{
+    Action *ap = queue_action(OP_RAMDUMP, "");
+    ap->msg = mkmsg("Ready to receive ramdumps");
+}
+
 int64_t fb_execute_queue(Transport* transport)
 {
     Action *a;
@@ -421,6 +428,10 @@ int64_t fb_execute_queue(Transport* transport)
         } else if (a->op == OP_UPLOAD) {
             status = fb_upload_data(transport, reinterpret_cast<char*>(a->data));
             status = a->func(a, status, status ? fb_get_error().c_str() : "");
+        } else if (a->op == OP_RAMDUMP) {
+            status = fb_dump_ram_files(transport);
+            status = a->func(a, status, status ? fb_get_error().c_str() : "");
+            if (status) break;
         } else {
             die("bogus action");
         }
