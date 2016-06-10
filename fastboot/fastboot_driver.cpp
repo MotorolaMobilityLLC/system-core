@@ -39,6 +39,9 @@
 #include <memory>
 #include <regex>
 #include <vector>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #include <android-base/file.h>
 #include <android-base/mapped_file.h>
@@ -139,6 +142,78 @@ RetCode FastBootDriver::Dump(const char* file_name, std::string* response,
 
     epilog_(result);
     return result;
+}
+
+/*
+ * function RamDump() is used to dump the file[s] from phone side.
+ * fastboot will dump the ram files one by one according to the received
+ * file list.
+ */
+RetCode FastBootDriver::RamDump(std::string* response, std::vector<std::string>* info) {
+    RetCode ret = SUCCESS;
+    char cmd_buffer[64] = {0};
+
+    /* create the ramdump folder */
+    if (CreateRamdumpDir()) {
+        ret = IO_ERROR;
+        goto out;
+    }
+
+    fprintf(stderr, "\n");
+
+    while (true) {
+        int file_name_len;
+        char ram_file[24] = {0};
+        char file_name[32] = {0};
+
+        /* get ram file name: DUMP%04xfile */
+        int r = transport_->Read(cmd_buffer, 64);
+        if (r < 0) {
+            error_ = android::base::StringPrintf("status read failed (%s)", strerror(errno));
+            ret = DEVICE_FAIL;
+            goto out;
+        }
+
+        if (r < 8) {
+            error_ = android::base::StringPrintf("invalid dump command (%s)", cmd_buffer);
+            ret = BAD_DEV_RESP;
+            goto out;
+        }
+
+        if (strcmp(cmd_buffer, "DUMPDONE") == 0) {
+            ret = HandleResponse(response, info);
+            goto out;
+        }
+
+        if (sscanf(cmd_buffer, "DUMP%04x", &file_name_len) == EOF) {
+            error_ = android::base::StringPrintf("invalid protocol(%s)", cmd_buffer);
+            ret = BAD_DEV_RESP;
+            goto out;
+        }
+
+        memcpy(ram_file, cmd_buffer + 8, file_name_len);
+        snprintf(file_name, 32, "%s%s%s", RAM_DUMP_DIR, FILE_SPLIT, ram_file);
+
+        /* response "OKAY" to sync the protocol */
+        memset(cmd_buffer, 0, 64);
+        sprintf(cmd_buffer, "OKAY");
+        if (transport_->Write("OKAY", 4) < 0) {
+            ret = DEVICE_FAIL;
+            goto out;
+        }
+
+        fprintf(stderr, "Receiving \"%s\"...\t", ram_file);
+
+        /* start to recive file */
+        if ((ret = DumpFile(file_name))) {
+            error_ = android::base::StringPrintf("failed to dump ram file %s", ram_file);
+            goto out;
+        }
+    }
+
+out:
+    epilog_(ret);
+    return ret;
 }
 
 RetCode FastBootDriver::FlashPartition(const std::string& partition,
@@ -625,6 +700,62 @@ out:
     if (file != NULL) fclose(file);
     if (buff) free(buff);
     return ret;
+}
+
+int FastBootDriver::DirExists(const char *dir_name)
+{
+    struct stat st;
+
+    if (stat(dir_name, &st) == 0) {
+        if (S_ISDIR(st.st_mode)) {
+            return 1;
+        } else
+            return -1;
+     } else {
+            return 0;
+     }
+}
+
+int FastBootDriver::CreateRamdumpDir(void)
+{
+    int ret;
+
+    /* search and rename old ramdump file */
+    if ((ret = DirExists(RAM_DUMP_DIR)) == 1) {
+        /* rename the directory */
+        int i = 0;
+        while (1) {
+            char new_name[16] = {0};
+
+            sprintf(new_name, "%s_%d", RAM_DUMP_DIR, i++);
+            if (DirExists(new_name) == 0) {
+                if (rename(RAM_DUMP_DIR, new_name) == 0)
+                    break;
+                else {
+                    error_ = android::base::StringPrintf("failed to rename %s to %s: %s",
+                                                         RAM_DUMP_DIR, new_name, strerror(errno));
+                    return -1;
+                }
+            }
+        }
+    } else if (ret == -1) {
+        error_ = android::base::StringPrintf("non-directory %s exists, please rename it",
+                                             RAM_DUMP_DIR);
+        return -1;
+    }
+
+    /* create dir */
+#ifdef _WIN32
+    if (mkdir(RAM_DUMP_DIR) == -1) {
+#else
+    if (mkdir(RAM_DUMP_DIR, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) == -1) {
+#endif
+        error_ = android::base::StringPrintf("failed to create directory %s: %s",
+                                             RAM_DUMP_DIR, strerror(errno));
+        return -1;
+    }
+
+    return 0;
 }
 
 int FastBootDriver::SparseWriteCallback(std::vector<char>& tpbuf, const char* data, size_t len) {

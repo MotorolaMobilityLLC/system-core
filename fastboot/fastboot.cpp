@@ -1849,6 +1849,7 @@ int FastBootTool::Main(int argc, char* argv[]) {
 
     /* register oem handlers */
     register_oem_handler(FB_CMD_OEM_PARTITION, oem_partition_handler);
+    register_oem_handler(FB_CMD_OEM_RAMDUMP, oem_ramdump_handler);
 
     serial = getenv("ANDROID_SERIAL");
 
