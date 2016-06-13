@@ -90,6 +90,8 @@ static int mtd_name_to_number(const char *name);
 static int ubi_attach_mtd(const char *name);
 #endif
 
+#define MAX_MOUNT_RETRIES 2
+
 /*
  * gettime() - returns the time in seconds of the system's monotonic clock or
  * zero on error.
@@ -720,6 +722,7 @@ int fs_mgr_mount_all(struct fstab *fstab)
     int mret = -1;
     int mount_errno = 0;
     int attempted_idx = -1;
+    int retry = MAX_MOUNT_RETRIES;
 
     if (!fstab) {
         return -1;
@@ -855,6 +858,9 @@ int fs_mgr_mount_all(struct fstab *fstab)
             }
 
             /* Success!  Go get the next one */
+            INFO("Successfully mounted %s with file system type '%s'.\n",
+                fstab->recs[attempted_idx].mount_point, fstab->recs[attempted_idx].fs_type);
+            retry = MAX_MOUNT_RETRIES;
             continue;
         }
 
@@ -895,20 +901,38 @@ int fs_mgr_mount_all(struct fstab *fstab)
                       fstab->recs[attempted_idx].fs_type);
                 encryptable = FS_MGR_MNTALL_DEV_NEEDS_RECOVERY;
                 continue;
-            } else {
+             } else if (fs_mgr_is_partition_encrypted(&fstab->recs[top_idx])) {
                 /* Need to mount a tmpfs at this mountpoint for now, and set
                  * properties that vold will query later for decrypting
                  */
-                ERROR("%s(): possibly an encryptable blkdev %s for mount %s type %s )\n", __func__,
+                ERROR("%s(): encrypted blkdev %s for mount %s type %s )\n", __func__,
                       fstab->recs[attempted_idx].blk_device, fstab->recs[attempted_idx].mount_point,
                       fstab->recs[attempted_idx].fs_type);
                 if (fs_mgr_do_tmpfs_mount(fstab->recs[attempted_idx].mount_point) < 0) {
                     ++error_count;
                     continue;
                 }
+             } else {
+                if (--retry > 0) {
+                    ERROR("Failed to mount %s; retrying...\n",
+                        fstab->recs[attempted_idx].mount_point);
+                    i = top_idx - 1;
+                    continue;
+                }
+                ERROR("Failed to mount an encryptable partition on"
+                    "%s at %s options: %s error: %s. Suggest recovery...\n",
+                    fstab->recs[attempted_idx].blk_device, fstab->recs[attempted_idx].mount_point,
+                    fstab->recs[attempted_idx].fs_options, strerror(mount_errno));
+                encryptable = FS_MGR_MNTALL_DEV_NEEDS_RECOVERY;
+                continue;
             }
             encryptable = FS_MGR_MNTALL_DEV_MIGHT_BE_ENCRYPTED;
         } else {
+            if (--retry > 0) {
+                ERROR("Failed to mount %s; retrying...\n", fstab->recs[attempted_idx].mount_point);
+                i = top_idx - 1;
+                continue;
+            }
             ERROR("Failed to mount an un-encryptable or wiped partition on"
                    "%s at %s options: %s error: %s\n",
                    fstab->recs[attempted_idx].blk_device, fstab->recs[attempted_idx].mount_point,

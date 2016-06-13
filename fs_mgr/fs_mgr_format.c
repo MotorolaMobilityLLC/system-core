@@ -32,6 +32,56 @@
 
 /* These come from cryptfs.c */
 #define CRYPT_KEY_IN_FOOTER "footer"
+#define CRYPT_MAGIC         0xD0B5B1C4
+
+int fs_mgr_is_partition_encrypted(struct fstab_rec *fstab)
+{
+    int fd = -1;
+    struct stat statbuf;
+    unsigned int sectors;
+    off64_t offset;
+    __le32 crypt_magic = 0;
+    int ret = 0;
+
+    if (!fs_mgr_is_encryptable(fstab))
+        return 0;
+
+    if (fstab->key_loc[0] == '/') {
+        if ((fd = open(fstab->key_loc, O_RDWR)) < 0) {
+            goto out;
+        }
+    } else if (!strcmp(fstab->key_loc, CRYPT_KEY_IN_FOOTER)) {
+        if ((fd = open(fstab->blk_device, O_RDWR)) < 0) {
+            goto out;
+        }
+        if ((ioctl(fd, BLKGETSIZE, &sectors)) == -1) {
+            goto out;
+        }
+        offset = ((off64_t)sectors * 512) - CRYPT_FOOTER_OFFSET;
+        if (lseek64(fd, offset, SEEK_SET) == -1) {
+            goto out;
+        }
+    } else {
+        goto out;
+    }
+
+    if (read(fd, &crypt_magic, sizeof(crypt_magic)) != sizeof(crypt_magic)) {
+        goto out;
+    }
+    if (crypt_magic != CRYPT_MAGIC) {
+        goto out;
+    }
+
+    /* It's probably encrypted! */
+    ret = 1;
+
+out:
+    if (fd >= 0) {
+        close(fd);
+    }
+    return ret;
+}
+
 /*
  * Search the first 16 sectors, or 4*4k blocks.  This covers the EXT4 alignment
  * requirement and will also find the F2FS backup SB.
