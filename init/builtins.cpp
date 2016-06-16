@@ -1111,11 +1111,23 @@ static int check_rlim_action() {
         if (setrlimit(RLIMIT_CORE, &rl) < 0) {
             PLOG(ERROR) << "could not enable core file generation";
         }
+
     }
     return 0;
 }
 
 static Result<void> do_load_persist_props(const BuiltinArguments& args) {
+    // Devices with FDE have load_persist_props called twice; the first time when the temporary
+    // /data partition is mounted and then again once /data is truly mounted.  We do not want to
+    // read persistent properties from the temporary /data partition or mark persistent properties
+    // as having been loaded during the first call, so we return in that case.
+    std::string crypto_state = android::base::GetProperty("ro.crypto.state", "");
+    std::string crypto_type = android::base::GetProperty("ro.crypto.type", "");
+    if (crypto_state == "encrypted" && crypto_type == "block") {
+        static size_t num_calls = 0;
+        if (++num_calls == 1) return {};
+    }
+
     SendLoadPersistentPropertiesMessage();
 
     start_waiting_for_property("ro.persistent_properties.ready", "true");
