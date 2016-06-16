@@ -1055,6 +1055,19 @@ static Result<void> do_loglevel(const BuiltinArguments& args) {
     return {};
 }
 
+static int check_rlim_action() {
+    struct rlimit rl;
+    std::string value  = android::base::GetProperty("persist.debug.trace", "");
+    if(value == "1") {
+        rl.rlim_cur = RLIM_INFINITY;
+        rl.rlim_max = RLIM_INFINITY;
+        if (setrlimit(RLIMIT_CORE, &rl) < 0) {
+            PLOG(ERROR) << "could not enable core file generation";
+        }
+    }
+    return 0;
+}
+
 static Result<void> do_load_persist_props(const BuiltinArguments& args) {
     // Devices with FDE have load_persist_props called twice; the first time when the temporary
     // /data partition is mounted and then again once /data is truly mounted.  We do not want to
@@ -1070,6 +1083,8 @@ static Result<void> do_load_persist_props(const BuiltinArguments& args) {
     SendLoadPersistentPropertiesMessage();
 
     start_waiting_for_property("ro.persistent_properties.ready", "true");
+    /*check for coredump*/
+    check_rlim_action();
     return {};
 }
 
