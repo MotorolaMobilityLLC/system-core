@@ -209,7 +209,10 @@ int adb_main(int is_daemon, int server_port)
 #if !ADB_HOST
     int port;
     char value[PROPERTY_VALUE_MAX];
-
+    /* lenovo_sw wengjun1 add for adb auth. 2016-06-21 begin */
+    char bootmode[PROPERTY_VALUE_MAX];
+    char product_name[PROPERTY_VALUE_MAX];
+    /*lenovo_sw wengjun1 add adb for auth. 2016-06-21 end */
     umask(000);
 #endif
 
@@ -245,6 +248,17 @@ int adb_main(int is_daemon, int server_port)
     if (ALLOW_ADBD_NO_AUTH && property_get_bool("ro.adb.secure", 0) == 0) {
         auth_required = false;
     }
+
+    /* lenovo_sw wengjun1 add for adb auth. 2016-06-21 begin */
+    property_get("ro.product.name", product_name, "mediatek");
+    if(strcmp(product_name, "kungfu_m") == 0) {
+        property_get("ro.bootmode", bootmode, "normal");
+        if (strcmp(bootmode, "meta") == 0) {
+            auth_required = false;
+        }
+    }
+    printf("[wj]current product is %s, boot mode is %s.\n", product_name, bootmode);
+    /*lenovo_sw wengjun1 add adb for auth. 2016-06-21 end */
     /*lenovo_sw liuyc7 add for factory mode can open adb 2016-04-26 ---begin*/
     property_get("persist.sys.usb.factorymode", value, "false");
     if (strcmp(value, "true") == 0) 
