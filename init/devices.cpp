@@ -969,6 +969,10 @@ const struct extended_fw_path extended_paths[] = {
         .fw_substring = "-aov-",
         .fw_path = "/data/adspd",
     },
+    {
+        .fw_substring = "-ultrasound",
+        .fw_path = "/data/adspd",
+    },
 #endif
 #ifdef MOTO_GREYBUS_FIRMWARE
     {
