@@ -822,6 +822,16 @@ int fs_mgr_mount_all(struct fstab *fstab)
 
         /* Deal with encryptability. */
         if (!mret) {
+
+
+//Start, Lenovo-sw, EasyImage, always not force encrypt if set easyimage but not 7777
+#ifdef LENOVO_EASYIMAGE_ON
+            if(strncmp(fstab->recs[attempted_idx].mount_point, "/data", 5) == 0 && access("/data/easyimage.zip",R_OK) == 0){
+                ERROR("WILL NOT ENCRYPT DATA AS FOUND /data/easyimage.zip, NEED RUN FACTORY CLEAN DATA!!!");
+                continue;
+            }
+#endif
+//End, Lenovo-sw, Easyimage
             int status = handle_encryptable(fstab, &fstab->recs[attempted_idx]);
 
             if (status == FS_MGR_MNTALL_FAIL) {

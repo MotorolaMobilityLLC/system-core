@@ -614,12 +614,66 @@ void load_recovery_id_prop() {
     close(fd);
 }
 
+//Lenovo [EasyImage] Start
+
+#ifdef LENOVO_EASYIMAGE_SUPPORT
+
+#define EASYIMAGE_OVERLAY_DEFAULT "/preload/prop.default.overlay"
+#define EASYIMAGE_OVERLAY_PROP "/preload/prop.overlay"
+#define EASYIMAGE_FILE "/data/easyimage.zip"
+
+#define EASYIMAGE_FACTORY_CONFIG "/persist/factoryCfg.prop"
+
+static void load_easyimage_props( const char* filter) {
+    if( access(EASYIMAGE_OVERLAY_PROP,R_OK) == 0 ){
+        //Easyimage have been set
+        INFO("Loading %s\n", EASYIMAGE_OVERLAY_PROP);
+        load_properties_from_file(EASYIMAGE_OVERLAY_PROP,filter); 
+    } 
+
+    if( access(EASYIMAGE_FACTORY_CONFIG,R_OK) == 0 ){
+        //Easyimage have been set
+        INFO("Loading %s\n", EASYIMAGE_FACTORY_CONFIG);
+        load_properties_from_file(EASYIMAGE_FACTORY_CONFIG,filter); 
+    } 
+
+    if (access(EASYIMAGE_FILE,R_OK) == 0){
+        ///If found easyimage.zip, keep usb on
+        ///also see system/core/adb/adb_main.cpp changes
+        property_set("sys.usb.config","mtp,adb");
+        property_set("sys.usb.stat","mtp,adb");
+        property_set("persist.sys.usb.config","mtp,adb");
+    }
+}
+#endif
+//Lenovo [EasyImage] End
+
+
+
 void load_all_props() {
+
+//Lenovo [EasyImage] Start
+#ifdef LENOVO_EASYIMAGE_SUPPORT
+//First time to load easyimage prop to take place of ro prop
+    load_easyimage_props("ro.*");
+#endif
+//Lenovo [EasyImage] End
+
+
     load_properties_from_file(PROP_PATH_SYSTEM_BUILD, NULL);
     load_properties_from_file(PROP_PATH_VENDOR_BUILD, NULL);
     load_properties_from_file(PROP_PATH_FACTORY, "ro.*");
 
     load_override_properties();
+
+//Lenovo [EasyImage] Start
+#ifdef LENOVO_EASYIMAGE_SUPPORT
+//Load again to overwrite non ro prop
+	load_easyimage_props(NULL);
+#endif
+//Lenovo [EasyImage] End
+
+
 
     /* Read persistent properties after all default values have been loaded. */
     load_persistent_properties();
