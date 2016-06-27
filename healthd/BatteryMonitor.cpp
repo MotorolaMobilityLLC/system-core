@@ -681,8 +681,17 @@ void BatteryMonitor::init(struct healthd_config *hc) {
                 // MOT, a18273, IKSWM-23739
                 if (mHealthdConfig->batteryChargeFullPath.isEmpty()) {
                     path.clear();
-                    path.appendFormat("%s/%s/charge_full_design",
-                                      POWER_SUPPLY_SYSFS_PATH, name);
+                    // MOT w20191, IKSWM-46712
+                    if (property_get("ro.product.device", pval, NULL) > 0
+                                                             && !strcmp(pval,"quark")){
+                        path.appendFormat("%s/%s/charge_full",
+                                          POWER_SUPPLY_SYSFS_PATH, name);
+                    }
+                    else{
+                        path.appendFormat("%s/%s/charge_full_design",
+                                          POWER_SUPPLY_SYSFS_PATH, name);
+                    }
+
                     if (access(path, R_OK) == 0)
                         mHealthdConfig->batteryChargeFullPath = path;
                 }
