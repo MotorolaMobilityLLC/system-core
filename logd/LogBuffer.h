@@ -184,6 +184,7 @@ class LogBuffer {
     bool prune(log_id_t id, unsigned long pruneRows, uid_t uid = AID_ROOT);
     LogBufferElementCollection::iterator erase(
         LogBufferElementCollection::iterator it, bool coalesce = false);
+    void poison(LogBufferElementCollection::iterator it);
 };
 
 #endif  // _LOGD_LOG_BUFFER_H__
