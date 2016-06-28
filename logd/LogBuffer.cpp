@@ -786,6 +786,12 @@ void LogBuffer::maybePrune(log_id_t id) {
     }
 }
 
+void LogBuffer::poison(
+        LogBufferElementCollection::iterator it) {
+    unsigned long *it_addr = (unsigned long *)((unsigned long)&(*it));
+    memset(it_addr, 0x6b, sizeof(unsigned long));
+}
+
 LogBufferElementCollection::iterator LogBuffer::erase(
     LogBufferElementCollection::iterator it, bool coalesce) {
     LogBufferElement* element = *it;
@@ -821,6 +827,7 @@ LogBufferElementCollection::iterator LogBuffer::erase(
     log_id_for_each(i) {
         doSetLast |= setLast[i] = mLastSet[i] && (it == mLast[i]);
     }
+    poison(it);
 #ifdef DEBUG_CHECK_FOR_STALE_ENTRIES
     LogBufferElementCollection::iterator bad = it;
     int key = ((id == LOG_ID_EVENTS) || (id == LOG_ID_SECURITY))
@@ -1488,6 +1495,7 @@ uint64_t LogBuffer::flushTo(
     LogBufferElementCollection::iterator it;
     uint64_t max = start;
     uid_t uid = reader->getUid();
+    unsigned long oldit_value;
 
     pthread_mutex_lock(&mLogElementsLock);
 
@@ -1523,6 +1531,8 @@ uint64_t LogBuffer::flushTo(
             break;
         }
         lastElement = element;
+
+        oldit_value = (unsigned long)*it;
 
         if (!privileged && (element->getUid() != uid)) {
             continue;
@@ -1569,6 +1579,12 @@ uint64_t LogBuffer::flushTo(
 
         skip = maxSkip;
         pthread_mutex_lock(&mLogElementsLock);
+
+        if (oldit_value != (unsigned long)*it) {
+            pthread_mutex_unlock(&mLogElementsLock);
+            return max;
+        }
+
     }
     pthread_mutex_unlock(&mLogElementsLock);
 
