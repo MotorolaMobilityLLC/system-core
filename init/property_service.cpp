@@ -557,12 +557,20 @@ bool properties_initialized() {
 }
 
 static void load_override_properties() {
+
+    char product_name[PROP_VALUE_MAX];
 //lenovo-sw wengjun1 add ro.secure and ro.adb.secure for factory test 20160510, begin
    // if (ALLOW_LOCAL_PROP_OVERRIDE) {
    //     char debuggable[PROP_VALUE_MAX];
    //     int ret = property_get("ro.debuggable", debuggable);
    //     if (ret && (strcmp(debuggable, "1") == 0)) {
-            load_properties_from_file(PROP_PATH_LOCAL_OVERRIDE, NULL);
+
+    property_get("ro.product.name", product_name);
+    if(strcmp(product_name, "kungfu_m") == 0) {
+		load_properties_from_file("/cache/local.prop" , NULL);
+    } else {
+		load_properties_from_file(PROP_PATH_LOCAL_OVERRIDE, NULL);
+	}
    //     }
    // }
 //lenovo-sw wengjun1 add ro.secure and ro.adb.secure for factory test 20160510, end
