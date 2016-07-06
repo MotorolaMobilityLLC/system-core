@@ -685,6 +685,17 @@ void BatteryMonitor::init(struct healthd_config *hc) {
                                       POWER_SUPPLY_SYSFS_PATH, name);
                     if (access(path, R_OK) == 0)
                         mHealthdConfig->batteryChargeFullPath = path;
+		    // MOT, w65789, IKSWM-49669
+		    else {
+			    KLOG_ERROR(LOG_TAG,
+				       "charge_full_design not found, using charge_full\n");
+			    path.clear();
+			    path.appendFormat("%s/%s/charge_full",
+					      POWER_SUPPLY_SYSFS_PATH, name);
+			    if (access(path, R_OK) == 0)
+				    mHealthdConfig->batteryChargeFullPath = path;
+		    }
+		    // END IKSWM-49669
                 }
                 break;
                 // END IKSWM-23739
