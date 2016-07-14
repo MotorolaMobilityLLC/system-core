@@ -775,3 +775,11 @@ on property:persist.sys.runin=disable
     write /sys/class/power_supply/battery/device/BatteryTestStatus 0
 #lenovo-sw mahj2 add for runin apk test End
 
+#lenovo-sw limm3 add for factoryreset begin
+service boot-check /system/bin/init.lct.bootcheck.sh
+    class main
+    chmod 755 /system/bin/init.lct.bootcheck.sh
+    user root
+    oneshot
+#lenovo-sw limm3 add for factoryreset end
+
