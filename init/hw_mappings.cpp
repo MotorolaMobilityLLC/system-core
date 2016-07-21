@@ -9,6 +9,8 @@
 #include <ctype.h>
 #include <errno.h>
 
+#include <cutils/android_reboot.h>
+
 #define _REALLY_INCLUDE_SYS__SYSTEM_PROPERTIES_H_
 #include <sys/_system_properties.h>
 
@@ -837,4 +839,65 @@ cleanup_and_exit:
 	close(fin);
 just_exit:
 	return(error);
+}
+
+#define CARRIER_RO_PROP "ro.carrier"
+#define CARRIER_SUBSIDY_PROP "ro.carrier.subsidized"
+#define CARRIER_OEM_PROP "ro.carrier.oem"
+
+static char *get_property(const char *prop_name)
+{
+	char value[PROP_VALUE_MAX];
+	__property_get(prop_name, value);
+	return value[0] ? strdup(value) : NULL;
+}
+
+static int reboot_recovery(void)
+{
+	mkdir("/cache/recovery", 0700);
+	int fd = open("/cache/recovery/command", O_RDWR|O_CREAT|O_TRUNC|O_CLOEXEC, 0600);
+	if (fd >= 0) {
+		write(fd, "--show_text\n", strlen("--show_text\n") + 1);
+		close(fd);
+	} else {
+		ERROR("could not open /cache/recovery/command\n");
+		return -1;
+	}
+	android_reboot(ANDROID_RB_RESTART2, 0, "recovery");
+	while (1) { pause(); }  // never reached
+}
+
+#define IS_EMPTY(s) (!s || !strlen(s))
+
+void verify_carrier_compatibility(void)
+{
+	char *carrier_ro;
+	char *oem_carriers;
+	char *subsidized_carriers;
+
+	carrier_ro = get_property(CARRIER_RO_PROP);
+	if (IS_EMPTY(carrier_ro)) {
+		/* ro.carrier is empty - allow to boot */
+		pr_debug("property [%s] is empty\n", CARRIER_RO_PROP);
+		return;
+	}
+
+	oem_carriers = get_property(CARRIER_OEM_PROP);
+	subsidized_carriers = get_property(CARRIER_SUBSIDY_PROP);
+
+	if (IS_EMPTY(subsidized_carriers) || !strstr(subsidized_carriers, carrier_ro)) {
+		/* ro.carrier is not blacklisted in ro.carrier.subsidized - allow to boot */
+		pr_debug("did not find [%s] in [%s]\n", carrier_ro, subsidized_carriers);
+                return;
+	}
+
+	/* ro.carrier is blacklisted - it must be whitelisted for boot to be allowed */
+	if (!IS_EMPTY(oem_carriers) && strstr(oem_carriers, carrier_ro)) {
+		/* ro.carrier is whitelisted in ro.carrier.oem - allow to boot */
+		pr_debug("found [%s] in [%s]\n", carrier_ro, oem_carriers);
+		return;
+	}
+
+	NOTICE("[%s] compatibility check failed; rebooting to recovery...\n", carrier_ro);
+	reboot_recovery();
 }
