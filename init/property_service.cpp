@@ -765,6 +765,10 @@ void load_system_props() {
     load_properties_from_file("/odm/build.prop", NULL);
     load_properties_from_file("/vendor/build.prop", NULL);
     load_properties_from_file("/factory/factory.prop", "ro.*");
+    /* verify carrier compatibility immediately after */
+    /* build and oem properties get populated */
+    verify_carrier_compatibility();
+
     load_recovery_id_prop();
 }
 
