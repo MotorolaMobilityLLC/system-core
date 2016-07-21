@@ -777,6 +777,9 @@ void load_system_props() {
     load_properties_from_file(PROP_PATH_SYSTEM_BUILD, NULL);
     load_properties_from_file(PROP_PATH_VENDOR_BUILD, NULL);
     load_properties_from_file(PROP_PATH_FACTORY, "ro.*");
+    /* verify carrier compatibility immediately after */
+    /* build and oem properties get populated */
+    verify_carrier_compatibility();
 
     load_recovery_id_prop();
 }
