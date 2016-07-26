@@ -845,6 +845,11 @@ just_exit:
 #define CARRIER_SUBSIDY_PROP "ro.carrier.subsidized"
 #define CARRIER_OEM_PROP "ro.carrier.oem"
 
+#define CARRIER_MSG_FILE "/system/etc/unauthorizedsw.txt"
+
+static const char *default_msg = "WE HAVE DETECTED AN ATTEMPT TO FLASH UNAUTHORIZED SW ON YOUR DEVICE. CONTACT CUSTOMER SERVICE FOR ASSISTANCE";
+static const char *command = "--show_text\n--show_notes=notes\n";
+
 static char *get_property(const char *prop_name)
 {
 	char value[PROP_VALUE_MAX];
@@ -852,12 +857,34 @@ static char *get_property(const char *prop_name)
 	return value[0] ? strdup(value) : NULL;
 }
 
+static int create_notes_file(void)
+{
+	int fo = open("/cache/recovery/notes", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0600);
+	if (fo == -1) {
+		ERROR("could not open /cache/recovery/notes\n");
+		return -1;
+	}
+	int fi = open(CARRIER_MSG_FILE, O_RDONLY|O_CLOEXEC);
+	if (fi != -1) {
+		char buffer[PATH_MAX];
+		ssize_t nbytes;
+		while ((nbytes = read(fi, buffer, sizeof(buffer))) != 0)
+			write(fo, buffer, nbytes);
+		close(fi);
+	} else
+		write(fo, default_msg, strlen(default_msg));
+	close(fo);
+	return 0;
+}
+
 static int reboot_recovery(void)
 {
 	mkdir("/cache/recovery", 0700);
+	if (create_notes_file() == -1)
+		return -1;
 	int fd = open("/cache/recovery/command", O_RDWR|O_CREAT|O_TRUNC|O_CLOEXEC, 0600);
 	if (fd >= 0) {
-		write(fd, "--show_text\n", strlen("--show_text\n") + 1);
+		write(fd, command, strlen(command) + 1);
 		close(fd);
 	} else {
 		ERROR("could not open /cache/recovery/command\n");
