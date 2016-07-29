@@ -193,7 +193,19 @@ static void check_fs(char *blk_device, char *fs_type, char *target)
                     "-f",
                     blk_device
             };
-        INFO("Running %s -f %s\n", F2FS_FSCK_BIN, blk_device);
+        char tmp[PROP_VALUE_MAX];
+        int force = 0;
+
+        ret = __system_property_get("ro.boot.last_reboot", tmp);
+        if (ret) {
+            force = strtoul(tmp, 0, 16);
+        }
+
+        if (force) {
+            INFO("Forcing easy sysyem check...\n");
+            f2fs_fsck_argv[1] = "-a";
+        }
+        INFO("Running %s %s %s\n", F2FS_FSCK_BIN, f2fs_fsck_argv[1], blk_device);
 
         ret = android_fork_execvp_ext(ARRAY_SIZE(f2fs_fsck_argv), f2fs_fsck_argv,
                                       &status, true, LOG_KLOG | LOG_FILE,
