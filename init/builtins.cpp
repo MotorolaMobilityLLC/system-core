@@ -34,6 +34,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#include <sys/xattr.h>
 #include <unistd.h>
 #include <linux/loop.h>
 #include <ext4_crypt.h>
@@ -1017,6 +1018,32 @@ static int do_wait(const std::vector<std::string>& args) {
         return -1;
 }
 
+int do_setfattr(const std::vector<std::string>& args)
+{
+    /* setfattr <path> <name> [value] [flag] */
+    const int nargs = args.size();
+    const char *path, *name, *value;
+    size_t size;
+    int flag = 0;
+
+    if (nargs >= 3) {
+        path = args[1].c_str();
+        name = args[2].c_str();
+    }
+
+    if (nargs >= 4) {
+        value = args[3].c_str();
+        size = strlen(value);
+        if (nargs == 5)
+            flag = std::stoi(args[4]);
+        setxattr(path, name, value, size, flag);
+    } else if (nargs == 3) {
+        removexattr(path, name);
+    }
+
+    return 0;
+}
+
 /*
  * Callback to make a directory from the ext4 code
  */
@@ -1084,6 +1111,7 @@ BuiltinFunctionMap::Map& BuiltinFunctionMap::map() const {
         {"swapon_all",              {1,     1,    do_swapon_all}},
         {"symlink",                 {2,     2,    do_symlink}},
         {"sysclktz",                {1,     1,    do_sysclktz}},
+	{"setfattr",                {2,     4,    do_setfattr}},
         {"trigger",                 {1,     1,    do_trigger}},
         {"verity_load_state",       {0,     0,    do_verity_load_state}},
         {"verity_update_state",     {0,     0,    do_verity_update_state}},
