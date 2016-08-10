@@ -38,6 +38,7 @@
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <sys/xattr.h>
 #include <unistd.h>
 
 #include <android-base/chrono_utils.h>
@@ -981,6 +982,32 @@ static Result<Success> do_wait_for_prop(const BuiltinArguments& args) {
     return Success();
 }
 
+int do_setfattr(const std::vector<std::string>& args)
+{
+    /* setfattr <path> <name> [value] [flag] */
+    const int nargs = args.size();
+    const char *path, *name, *value;
+    size_t size;
+    int flag = 0;
+
+    if (nargs >= 3) {
+        path = args[1].c_str();
+        name = args[2].c_str();
+    }
+
+    if (nargs >= 4) {
+        value = args[3].c_str();
+        size = strlen(value);
+        if (nargs == 5)
+            flag = std::stoi(args[4]);
+        setxattr(path, name, value, size, flag);
+    } else if (nargs == 3) {
+        removexattr(path, name);
+    }
+
+    return 0;
+}
+
 static bool is_file_crypto() {
     return android::base::GetProperty("ro.crypto.type", "") == "file";
 }
@@ -1067,6 +1094,7 @@ const BuiltinFunctionMap::Map& BuiltinFunctionMap::map() const {
         {"restorecon_recursive",    {1,     kMax, {true,   do_restorecon_recursive}}},
         {"rm",                      {1,     1,    {true,   do_rm}}},
         {"rmdir",                   {1,     1,    {true,   do_rmdir}}},
+        {"setfattr",                {2,     4,    {true,  do_setattr}}},
         {"setprop",                 {2,     2,    {true,   do_setprop}}},
         {"setrlimit",               {3,     3,    {false,  do_setrlimit}}},
         {"start",                   {1,     1,    {false,  do_start}}},
