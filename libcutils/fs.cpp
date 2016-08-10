@@ -32,6 +32,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/xattr.h>
 #include <unistd.h>
 
 #include <log/log.h>
@@ -122,6 +123,18 @@ int fs_prepare_dir_strict(const char* path, mode_t mode, uid_t uid, gid_t gid) {
 
 int fs_prepare_file_strict(const char* path, mode_t mode, uid_t uid, gid_t gid) {
     return fs_prepare_path_impl(path, mode, uid, gid, /*allow_fixup*/ 0, /*prepare_as_dir*/ 0);
+}
+
+int fs_prepare_xattr(const char *path, const char *name, const char *value, const int flag)
+{
+    if (!path || !name || !value) {
+        ALOGE("Failed to prepare_xattr(%s, %s, %s, %d)\n", path, name, value, flag);
+        return -1;
+    }
+
+    setxattr(path, name, value, strlen(value), flag);
+
+    return 0;
 }
 
 int fs_read_atomic_int(const char* path, int* out_value) {
