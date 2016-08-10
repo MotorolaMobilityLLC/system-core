@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <sys/types.h>
+#include <string.h>
 
 extern int setxattr(const char *, const char *, const void *, size_t, int);
 
@@ -21,9 +22,7 @@ int setfattr_main(int argc, char **argv)
 {
     int i;
     char *name = NULL;
-    char *valuestr = NULL;
-    unsigned long long value = 0;
-    size_t valuelen = 0;
+    char *value = NULL;
 
     for (;;) {
         int ret;
@@ -41,28 +40,16 @@ int setfattr_main(int argc, char **argv)
                 name = optarg;
                 break;
             case 'v':
-                valuestr = optarg;
+                value = optarg;
                 break;
         }
     }
 
-    if (!name || !valuestr || optind == argc)
+    if (!name || !value || optind == argc)
         usage(argv[0]);
 
-    /*
-     * We are being super lazy here, since setxattr can take an arbitrary
-     * amount of binary data.  We assume that the value is numerical and
-     * not longer than 8 bytes.  strtoull() detects the numeric base from
-     * the string prefix (0x for hexidecimal or 0 for octal).  We also
-     * ignore endianness problems because it all works out fine on little
-     * endian.  Hey, it's toolbox!
-     */
-    value = strtoull(valuestr, NULL, 0);
-    while ((value >> (valuelen * 8)))
-        valuelen++;
-
     for (i = optind ; i < argc ; i++)
-        setxattr(argv[i], name, &value, valuelen, 0);
+        setxattr(argv[i], name, value, strlen(value), 0);
 
     return 0;
 }
