@@ -749,6 +749,7 @@ service logcatd /system/bin/logcat -b all -v threadtime -v usec -v printable -D 
 #Lenovo-sw quebs2 added 20160229 begin,for efuse sbc check
 on property:sys.boot_completed=1
     start efusecheck
+    start custom_sn
 
 service efusecheck /system/bin/efusecheck
     class main
