@@ -629,6 +629,8 @@ int load_verity_state(const FstabEntry& entry, int* mode) {
     if (fs_mgr_get_boot_config("veritymode", &veritymode)) {
         if (veritymode == "enforcing") {
             *mode = VERITY_MODE_DEFAULT;
+        } else if (!strcmp(veritymode.c_str(), "logging")) {
+            *mode = VERITY_MODE_LOGGING;
         }
         return 0;
     }
