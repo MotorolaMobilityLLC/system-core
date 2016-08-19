@@ -716,6 +716,8 @@ static int load_verity_state(struct fstab_rec *fstab, int *mode)
     if (*propbuf != '\0') {
         if (!strcmp(propbuf, "enforcing")) {
             *mode = VERITY_MODE_DEFAULT;
+        } else if (!strcmp(propbuf, "logging")) {
+            *mode = VERITY_MODE_LOGGING;
         }
         return 0;
     }
