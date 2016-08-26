@@ -151,6 +151,11 @@ void remount_service(int fd, void* cookie) {
         return;
     }
 
+   if (MOT_check_system_is_write_protected(fd) != 0) {
+        adb_close(fd);
+        return;
+    }
+
     char prop_buf[PROPERTY_VALUE_MAX];
     property_get("partition.system.verified", prop_buf, "");
     bool system_verified = (strlen(prop_buf) > 0);
@@ -179,13 +184,12 @@ void remount_service(int fd, void* cookie) {
     if (system_root) {
         success &= remount_partition(fd, "/");
     } else {
-        if (MOT_check_system_is_write_protected(fd) == 0) {
-            success &= remount_partition(fd, "/system");
-            success &= remount_partition(fd, "/vendor");
-            success &= remount_partition(fd, "/oem");
-        }
-        else
-            success = false;
+        success &= remount_partition(fd, "/system");
+        success &= remount_partition(fd, "/vendor");
+
+        /* Note: may fail on secure unlocked BL if moto-android tries to remount this partition */
+        if (remount_partition(fd, "/oem") == false)
+            WriteFdExactly(fd, "oem remount failed\n");
     }
 
     WriteFdExactly(fd, success ? "remount succeeded\n" : "remount failed\n");
