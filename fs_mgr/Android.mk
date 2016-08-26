@@ -68,7 +68,10 @@ ifeq ($(strip $(MTK_UFS_BOOTING)),yes)
 LOCAL_CFLAGS += -DMTK_UFS_BOOTING
 endif
 
-
+ifeq ($(MOT_TARGET_BUILD_ADDITIONAL_CONFIG),bldccfg)
+LOCAL_CFLAGS += -DALLOW_ADBD_DISABLE_VERITY=1
+LOCAL_CFLAGS += -DMOTO_BLD_C=1
+endif
 include $(BUILD_STATIC_LIBRARY)
 
 # ========================================================
