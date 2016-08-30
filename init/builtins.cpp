@@ -152,6 +152,9 @@ static void unmount_and_fsck(const struct mntent *entry) {
     if (strcmp(entry->mnt_type, "f2fs") && strcmp(entry->mnt_type, "ext4"))
         return;
 
+    if (!strcmp(entry->mnt_dir, "/data") || !strcmp(entry->mnt_dir, "/cache"))
+        return;
+
     /* First, lazily unmount the directory. This unmount request finishes when
      * all processes that open a file or directory in |entry->mnt_dir| exit.
      */
