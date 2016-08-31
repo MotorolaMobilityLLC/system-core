@@ -620,6 +620,10 @@ typedef enum log_id {
 #define sizeof_log_id_t sizeof(typeof_log_id_t)
 #define typeof_log_id_t unsigned char
 
+#define android_errorWriteLog(...) ((void)0)
+
+#define android_errorWriteWithInfoLog(...) ((void)0)
+
 /*
  * Use the per-tag properties "log.tag.<tagname>" to generate a runtime
  * result of non-zero to expose a log.
