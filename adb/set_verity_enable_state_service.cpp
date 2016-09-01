@@ -99,6 +99,7 @@ void set_verity_enabled_state_service(int fd, void* cookie) {
                    enable ? "enable" : "disable");
     }
 
+#ifndef MOTO_BLD_C
     if (!android::base::GetBoolProperty("ro.secure", false)) {
         WriteFdFmt(fd, "verity not enabled - ENG build\n");
         return;
@@ -107,7 +108,7 @@ void set_verity_enabled_state_service(int fd, void* cookie) {
         WriteFdFmt(fd, "verity cannot be disabled/enabled - USER build\n");
         return;
     }
-
+#endif
     // read all fstab entries at once from all sources
     fstab = fs_mgr_read_fstab_default();
     if (!fstab) {
