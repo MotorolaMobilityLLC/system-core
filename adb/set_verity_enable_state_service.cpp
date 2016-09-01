@@ -96,7 +96,7 @@ void set_verity_enabled_state_service(int fd, void* cookie)
         char propbuf[PROPERTY_VALUE_MAX];
         int i;
         bool any_changed = false;
-
+#ifndef MOTO_BLD_C
         property_get("ro.secure", propbuf, "0");
         if (strcmp(propbuf, "1")) {
             WriteFdFmt(fd, "verity not enabled - ENG build\n");
@@ -108,7 +108,7 @@ void set_verity_enabled_state_service(int fd, void* cookie)
             WriteFdFmt(fd, "verity cannot be disabled/enabled - USER build\n");
             goto errout;
         }
-
+#endif
         property_get("ro.hardware", propbuf, "");
         snprintf(fstab_filename, sizeof(fstab_filename), FSTAB_PREFIX"%s",
                  propbuf);
