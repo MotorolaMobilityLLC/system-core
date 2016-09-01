@@ -54,7 +54,7 @@ endif
 #
 # create some directories (some are mount points) and symlinks
 LOCAL_POST_INSTALL_CMD := mkdir -p $(addprefix $(TARGET_ROOT_OUT)/, \
-    sbin dev proc sys system data oem acct cache config storage mnt root $(BOARD_ROOT_EXTRA_FOLDERS)); \
+    sbin dev proc sys system data oem acct cache config storage mnt root modem $(BOARD_ROOT_EXTRA_FOLDERS)); \
     ln -sf /system/etc $(TARGET_ROOT_OUT)/etc; \
     ln -sf /sys/kernel/debug $(TARGET_ROOT_OUT)/d; \
     ln -sf /storage/self/primary $(TARGET_ROOT_OUT)/sdcard
