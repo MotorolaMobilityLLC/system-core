@@ -126,15 +126,15 @@ static int is_ext4(char *block)
  *   0 when the file system does not match the fstab entry
  *   1 when the file system does match the fstab entry
  */
-int fs_mgr_identify_fs(struct fstab_rec *fstab)
+int fs_mgr_identify_fs(char *fs_type, char *blk_device)
 {
     char *block = NULL;
     int fd = -1;
     int identified = -1;
 
-    if (strncmp(fstab->fs_type, "f2fs", 4) && strncmp(fstab->fs_type, "ext4", 4)) {
+    if (strncmp(fs_type, "f2fs", 4) && strncmp(fs_type, "ext4", 4)) {
         ERROR("Not identifying unsupported file system type '%s' on %s\n",
-                fstab->fs_type, fstab->blk_device);
+                fs_type, blk_device);
         return identified;
     }
 
@@ -142,7 +142,7 @@ int fs_mgr_identify_fs(struct fstab_rec *fstab)
     if (!block) {
         goto out;
     }
-    if ((fd = open(fstab->blk_device, O_RDONLY)) < 0) {
+    if ((fd = open(blk_device, O_RDONLY)) < 0) {
         goto out;
     }
     if (read(fd, block, TOTAL_SECTORS * 512) != TOTAL_SECTORS * 512) {
@@ -150,8 +150,8 @@ int fs_mgr_identify_fs(struct fstab_rec *fstab)
     }
 
     identified = 0;
-    if ((!strncmp(fstab->fs_type, "f2fs", 4) && is_f2fs(block)) ||
-        (!strncmp(fstab->fs_type, "ext4", 4) && is_ext4(block))) {
+    if ((!strncmp(fs_type, "f2fs", 4) && is_f2fs(block)) ||
+        (!strncmp(fs_type, "ext4", 4) && is_ext4(block))) {
         identified = 1;
     }
 
@@ -163,7 +163,7 @@ out:
         free(block);
     }
     if (identified == 0) {
-        ERROR("Did not recognize file system type '%s' on %s\n", fstab->fs_type, fstab->blk_device);
+        ERROR("Did not recognize file system type '%s' on %s\n", fs_type, blk_device);
     }
     return identified;
 }

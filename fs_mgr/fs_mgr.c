@@ -513,15 +513,13 @@ static int mount_with_alternatives(struct fstab *fstab, int start_idx, int *end_
                      fstab->recs[i].mount_point, i, fstab->recs[i].fs_type, fstab->recs[*attempted_idx].fs_type);
                 continue;
             }
-            if (fs_mgr_identify_fs(&fstab->recs[i]) == 0) {
+            if (fs_mgr_identify_fs(fstab->recs[i].fs_type, fstab->recs[i].blk_device) == 0) {
                 ERROR("%s(): skipping unidentified mountpoint=%s rec[%d].fs_type=%s.\n", __func__,
                      fstab->recs[i].mount_point, i, fstab->recs[i].fs_type);
                 continue;
             }
 #ifdef MTK_FSTAB_FLAGS
-            if(fstab->recs[i].fs_mgr_flags & MF_RESIZE &&
-				!strcmp(fstab->recs[i].fs_type,"ext4") &&
-				(fs_mgr_identify_fs(&fstab->recs[i]) == 1)) {
+            if(fstab->recs[i].fs_mgr_flags & MF_RESIZE) {
                 check_fs(fstab->recs[i].blk_device, fstab->recs[i].fs_type,
                          fstab->recs[i].mount_point);
                 resize_fs(fstab->recs[i].blk_device, fstab->recs[i].key_loc);
@@ -997,6 +995,12 @@ int fs_mgr_do_mount(struct fstab *fstab, char *n_name, char *n_blk_device,
         /* First check the filesystem if requested */
         if (fstab->recs[i].fs_mgr_flags & MF_WAIT) {
             wait_for_file(n_blk_device, WAIT_TIMEOUT);
+        }
+
+        if (fs_mgr_identify_fs(fstab->recs[i].fs_type, n_blk_device) == 0) {
+            ERROR("%s(): skipping unidentified mountpoint=%s rec[%d].fs_type=%s.\n", __func__,
+                  fstab->recs[i].mount_point, i, fstab->recs[i].fs_type);
+            continue;
         }
 #ifdef MTK_FSTAB_FLAGS
             if(fstab->recs[i].fs_mgr_flags & MF_RESIZE) {
