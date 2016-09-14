@@ -75,6 +75,13 @@ static char Buff[BUFFSIZE];
 static int Depth;
 
 static void
+hw_property_get(const char *prop_name, char *value)
+{
+	std::string prop_str = property_get(prop_name);
+	strncpy(value, prop_str.c_str(), prop_str.length());
+}
+
+static void
 xml_update_name(parse_ctrl_t *info, const char *name)
 {
 	element_t *cur = info->data;
@@ -150,7 +157,7 @@ static int xml_get_value_method(char *tag, tag_val_t *tval)
 	/* from kernel cmdline, since this code is executed */
 	/* prior the rest of system properties get loaded */
 	if (strchr(tag, '.')) {
-		__property_get(tag, tagvalue);
+		hw_property_get(tag, tagvalue);
 		pr_debug("property '%s'='%s'\n", tag, tagvalue);
 		data_ready = true;
 	} else { /* otherwise, it's utag */
@@ -500,7 +507,7 @@ xml_handle_mappings(parse_ctrl_t *info)
 		return 1;
 	}
 
-	__system_property_get(boot_prop_name, value);
+	hw_property_get(boot_prop_name, value);
 	pr_debug("original boot device name '%s'\n", value);
 	/* normalize boot device name */
 	for (ptr = value; *ptr; ptr++)
@@ -853,7 +860,7 @@ static const char *command = "--show_text\n--show_notes=notes\n";
 static char *get_property(const char *prop_name)
 {
 	char value[PROP_VALUE_MAX];
-	__property_get(prop_name, value);
+	hw_property_get(prop_name, value);
 	return value[0] ? strdup(value) : NULL;
 }
 
