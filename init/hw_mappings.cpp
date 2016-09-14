@@ -18,10 +18,10 @@
 #include "util.h"
 #include "hw_tags.h"
 
-//#define DEBUG
+//#define XML_EXTREME_DEBUG
 #define pr_debug(fmt, args...)	if(debug_on) NOTICE(fmt, ##args)
 
-#if defined(DEBUG)
+#if defined(XML_EXTREME_DEBUG)
 static bool debug_on = 1;
 #else
 static bool debug_on;
