@@ -300,6 +300,8 @@ std::vector<std::string> DeviceHandler::GetBlockDeviceSymlinks(const Uevent& uev
     std::string device;
     std::string type;
 
+    static int is_bootdevice_linked = 0;
+
     if (FindPlatformDevice(uevent.path, &device)) {
         // Skip /devices/platform or /devices/ if present
         static const std::string devices_platform_prefix = "/devices/platform/";
@@ -334,12 +336,16 @@ std::vector<std::string> DeviceHandler::GetBlockDeviceSymlinks(const Uevent& uev
                          << partition_name_sanitized << "'";
         }
         links.emplace_back(link_path + "/by-name/" + partition_name_sanitized);
-        links.emplace_back("/dev/block/bootdevice/by-name/%s" + partition_name_sanitized);
+        if (is_bootdevice_linked && !boot_device.empty() && (device.find(boot_device) != std:string::npos)) {
+            links.emplace_back("/dev/block/bootdevice/by-name/%s" + partition_name_sanitized);
+        }
     }
 
     if (uevent.partition_num >= 0) {
         links.emplace_back(link_path + "/by-num/p" + std::to_string(uevent.partition_num));
-        links.emplace_back("/dev/block/bootdevice/by-name/p" + std::to_string(uevent.partition_num));
+        if (is_bootdevice_linked && !boot_device.empty() && (device.find(boot_device) != std:string::npos)) {
+            links.emplace_back("/dev/block/bootdevice/by-name/p" + std::to_string(uevent.partition_num));
+        }
     }
 
     auto last_slash = uevent.path.rfind('/');
@@ -347,6 +353,7 @@ std::vector<std::string> DeviceHandler::GetBlockDeviceSymlinks(const Uevent& uev
 
     if (!boot_device.empty() && (device.find(boot_device) != std:string::npos)) {
         const std:string bootdevice = "/dev/block/bootdevice";
+        is_bootdevice_linked = 1;
         if (mkdir_recursive(Dirname(bootdevice), 0755, sehandle_)) {
             PLOG(ERROR) << "Failed to create directory " << Dirname(bootdevice);
         }
