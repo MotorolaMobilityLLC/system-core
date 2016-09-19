@@ -578,6 +578,7 @@ static char **get_block_device_symlinks(struct uevent *uevent)
     char link_path[256];
     int link_num = 0;
     char *p;
+    static int is_bootdevice_linked = 0;
 
     pdev = find_platform_device(uevent->path);
     if (pdev) {
@@ -592,6 +593,13 @@ static char **get_block_device_symlinks(struct uevent *uevent)
     } else {
         return NULL;
     }
+
+  if (!bootdevice) {
+        std::string property = property_get("ro.boot.bootdevice");
+        if (!property.empty())
+            bootdevice = strdup(property.c_str());
+    }
+
 
     char **links = (char**) malloc(sizeof(char *) * 6);
     if (!links)
@@ -611,10 +619,13 @@ static char **get_block_device_symlinks(struct uevent *uevent)
             link_num++;
         else
             links[link_num] = NULL;
-        if (asprintf(&links[link_num], "/dev/block/bootdevice/by-name/%s", p) > 0)
-            link_num++;
-        else
-            links[link_num] = NULL;
+
+        if (is_bootdevice_linked && !strcmp(device, bootdevice)) {
+            if (asprintf(&links[link_num], "/dev/block/bootdevice/by-name/%s", p) > 0)
+                link_num++;
+            else
+                links[link_num] = NULL;
+        }
 
         free(p);
     }
@@ -625,10 +636,12 @@ static char **get_block_device_symlinks(struct uevent *uevent)
         else
             links[link_num] = NULL;
 
-        if (asprintf(&links[link_num], "/dev/block/bootdevice/by-num/p%d", uevent->partition_num) > 0)
-            link_num++;
-        else
-            links[link_num] = NULL;
+        if (is_bootdevice_linked && !strcmp(device, bootdevice)) {
+            if (asprintf(&links[link_num], "/dev/block/bootdevice/by-num/p%d", uevent->partition_num) > 0)
+                link_num++;
+            else
+                links[link_num] = NULL;
+        }
     }
 
     slash = strrchr(uevent->path, '/');
@@ -642,8 +655,10 @@ static char **get_block_device_symlinks(struct uevent *uevent)
         if (!property.empty())
             bootdevice = strdup(property.c_str());
     }
-    if (bootdevice && !strcmp(device, bootdevice))
+    if (bootdevice && !strcmp(device, bootdevice)) {
         make_link_init(link_path, "/dev/block/bootdevice");
+        is_bootdevice_linked = 1;
+    }
 
     return links;
 }
