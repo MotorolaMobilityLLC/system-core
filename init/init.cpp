@@ -570,6 +570,8 @@ static void export_kernel_boot_props() {
         { "ro.boot.baseband",   "ro.baseband",   "unknown", },
         { "ro.boot.bootloader", "ro.bootloader", "unknown", },
         { "ro.boot.hardware",   "ro.hardware",   "unknown", },
+        { "ro.boot.revision",   "ro.revision",        NULL, },
+        { "ro.boot.revision",   "ro.hw.revision",     NULL, },
         { "ro.boot.radio", "ro.hw.radio", NULL, },
         { "ro.boot.carrier", "ro.carrier", NULL, },
         { "ro.boot.device", "ro.hw.device", NULL, },
@@ -666,21 +668,22 @@ static void export_kernel_boot_props() {
     std::string tmp;
     std::size_t found;
     tmp = property_get("ro.boot.revision");
-    if (tmp.empty())
+    if (tmp.empty()) {
         tmp = property_get("ro.hw.hwrev");
-    if (!tmp.empty()) {
-        found = tmp.find("0x");
-        if (found!=std::string::npos) {
-            tmp.erase(found, 2);
-            std::transform(tmp.begin(), tmp.end(), tmp.begin(), tolower);
+        if (!tmp.empty()) {
+            found = tmp.find("0x");
+            if (found!=std::string::npos) {
+                tmp.erase(found, 2);
+                std::transform(tmp.begin(), tmp.end(), tmp.begin(), tolower);
+            }
+            switch(tmp[0]){
+                case '1': tmp[0] = 's'; break;
+                case '2': tmp[0] = 'm'; break;
+                case '8': tmp[0] = 'p'; break;
+                case '9': tmp[0] = 'd'; break;
+            }
+            property_set("ro.revision", tmp.c_str());
         }
-        switch(tmp[0]){
-            case '1': tmp[0] = 's'; break;
-            case '2': tmp[0] = 'm'; break;
-            case '8': tmp[0] = 'p'; break;
-            case '9': tmp[0] = 'd'; break;
-        }
-        property_set("ro.revision", tmp.c_str());
     }
 
     export_kernel_boot_reason();
