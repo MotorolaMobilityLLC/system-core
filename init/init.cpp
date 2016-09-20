@@ -401,6 +401,8 @@ static void export_kernel_boot_props() {
         { "ro.boot.baseband",   "ro.baseband",   "unknown", },
         { "ro.boot.bootloader", "ro.bootloader", "unknown", },
         { "ro.boot.hardware",   "ro.hardware",   "unknown", },
+        { "ro.boot.revision",   "ro.revision",        NULL, },
+        { "ro.boot.revision",   "ro.hw.revision",     NULL, },
         { "ro.boot.carrier", "ro.carrier", NULL, },
         { "ro.boot.carrier", "ro.oem.key1", NULL, },
         { "ro.boot.radio", "ro.hw.radio", NULL, },
