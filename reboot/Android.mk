@@ -5,7 +5,9 @@ include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES := reboot.c
 
-LOCAL_SHARED_LIBRARIES := libcutils
+LOCAL_FORCE_STATIC_EXECUTABLE := true
+
+LOCAL_STATIC_LIBRARIES := libcutils
 
 LOCAL_MODULE := reboot
 
