@@ -167,6 +167,8 @@ static void drop_privileges(int server_port) {
 }
 
 int adbd_main(int server_port) {
+    char value[PROPERTY_VALUE_MAX];
+
     umask(0);
 
     signal(SIGPIPE, SIG_IGN);
@@ -180,6 +182,11 @@ int adbd_main(int server_port) {
     if (ALLOW_ADBD_NO_AUTH && property_get_bool("ro.adb.secure", 0) == 0) {
         auth_required = false;
     }
+    /*lenovo_sw liuyc7 add for factory mode can open adb 2016-04-26 ---begin*/
+    property_get("persist.sys.usb.factorymode", value, "false");
+    if (strcmp(value, "true") == 0)
+       auth_required = false;
+    /*lenovo_sw liuyc7 add for factory mode can open adb 2016-04.26---end*/
 
     adbd_auth_init();
 
