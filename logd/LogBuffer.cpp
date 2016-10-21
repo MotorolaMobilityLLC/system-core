@@ -319,6 +319,9 @@ LogBufferElementCollection::iterator LogBuffer::erase(
     LogBufferElement *element = *it;
     log_id_t id = element->getLogId();
 
+    // Remove iterator references in the various lists that will become stale
+    // after the element is erased from the main logging list.
+
     {   // start of scope for uid found iterator
         LogBufferIteratorMap::iterator found =
             mLastWorstUid[id].find(element->getUid());
@@ -328,8 +331,8 @@ LogBufferElementCollection::iterator LogBuffer::erase(
         }
     }
 
-    if (element->getUid() == AID_SYSTEM) {
-        // start of scope for pid found iterator
+    {   // start of scope for pid found iterator
+        // element->getUid() may not be AID_SYSTEM for next-best-watermark.
         LogBufferPidIteratorMap::iterator found =
             mLastWorstPidOfSystem[id].find(element->getPid());
         if ((found != mLastWorstPidOfSystem[id].end())
@@ -646,6 +649,7 @@ bool LogBuffer::prune(log_id_t id, unsigned long pruneRows, uid_t caller_uid) {
                 ++it;
                 continue;
             }
+            // below this point element->getLogId() == id
 
             if (leading && (!mLastSet[id] || ((*mLast[id])->getLogId() != id))) {
                 mLast[id] = it;
@@ -698,6 +702,8 @@ bool LogBuffer::prune(log_id_t id, unsigned long pruneRows, uid_t caller_uid) {
                         && ((!gc && (element->getPid() == worstPid))
                             || (mLastWorstPidOfSystem[id].find(element->getPid())
                                 == mLastWorstPidOfSystem[id].end()))) {
+                    // element->getUid() may not be AID_SYSTEM, next best
+                    // watermark if current one empty.
                     mLastWorstPidOfSystem[id][element->getPid()] = it;
                 }
                 if ((!gc && !worstPid && (element->getUid() == worst))
@@ -716,6 +722,8 @@ bool LogBuffer::prune(log_id_t id, unsigned long pruneRows, uid_t caller_uid) {
                 ++it;
                 continue;
             }
+            // key == worst below here
+            // If worstPid set, then element->getPid() == worstPid below here
 
             pruneRows--;
             if (pruneRows == 0) {
@@ -739,6 +747,8 @@ bool LogBuffer::prune(log_id_t id, unsigned long pruneRows, uid_t caller_uid) {
                     if (worstPid && (!gc
                                 || (mLastWorstPidOfSystem[id].find(worstPid)
                                     == mLastWorstPidOfSystem[id].end()))) {
+                        // element->getUid() may not be AID_SYSTEM, next best
+                        // watermark if current one empty.
                         mLastWorstPidOfSystem[id][worstPid] = it;
                     }
                     if ((!gc && !worstPid) || (mLastWorstUid[id].find(worst)
