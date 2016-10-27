@@ -647,3 +647,13 @@ on property:persist.sys.runin=enable
 on property:persist.sys.runin=disable
     write /sys/class/power_supply/battery/device/BatteryTestStatus 0
 #lenovo-sw mahj2 add for runin apk test End
+
+#lenovo-sw wuwl9 add for recoverylog
+service recovery-log /system/bin/recoverylog recoverylog
+    class main
+    disabled
+    oneshot 
+
+on property:sys.boot_completed=1
+    start recovery-log
+#Lenovo-sw wuwl9 2014-12-11 add for recovery log

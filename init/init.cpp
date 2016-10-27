@@ -68,6 +68,17 @@
 #include "util.h"
 #include "watchdogd.h"
 
+#ifdef MTK_INIT
+#define MT_NORMAL_BOOT 0
+#define MT_META_BOOT 1
+#define MT_RECOVERY_BOOT 2
+#define MT_SW_REBOOT 3
+#define MT_FACTORY_BOOT 4
+#define MT_ADVMETA_BOOT 5
+#define MT_ATE_FACTORY_BOOT 6
+#define MT_ALARM_BOOT 7
+#define MT_UNKNOWN_BOOT 8
+#endif
 struct selabel_handle *sehandle;
 struct selabel_handle *sehandle_prop;
 
@@ -558,6 +569,35 @@ static int audit_callback(void *data, security_class_t /*cls*/, char *buf, size_
             d->cr->pid, d->cr->uid, d->cr->gid);
     return 0;
 }
+#ifdef MTK_INIT
+/* NEW FEATURE: multi-boot mode */
+static int get_boot_mode(void)
+{
+  int fd;
+  size_t s;
+  char boot_mode[4] = {'0'};
+
+  fd = open("/sys/class/BOOT/BOOT/boot/boot_mode", O_RDONLY);
+  if (fd < 0)
+  {
+    ERROR("fail to open: %s\n", "/sys/class/BOOT/BOOT/boot/boot_mode");
+    return 0;
+  }
+
+  s = read(fd, (void *)&boot_mode, sizeof(boot_mode) - 1);
+  close(fd);
+
+  if(s <= 0)
+  {
+	ERROR("could not read boot mode sys file\n");
+    return 0;
+  }
+
+  boot_mode[s] = '\0';
+  return atoi(boot_mode);
+}
+/* end: multi-boot mode */
+#endif
 
 static void selinux_initialize(bool in_kernel_domain) {
     Timer t;
@@ -597,6 +637,9 @@ static void selinux_initialize(bool in_kernel_domain) {
 }
 
 int main(int argc, char** argv) {
+#ifdef MTK_INIT
+    int mt_boot_mode = 0;
+#endif
     if (!strcmp(basename(argv[0]), "ueventd")) {
         return ueventd_main(argc, argv);
     }
@@ -689,6 +732,13 @@ int main(int argc, char** argv) {
     property_load_boot_defaults();
     export_oem_lock_status();
     start_property_service();
+ mt_boot_mode = get_boot_mode();
+/* Begin,lenovo-sw wuwl9 add sh_static as recovery sh for recovery adb shell in 20150401 */
+#ifdef LENOVO_RECOVERY_SHELL_ENABLE
+    if(mt_boot_mode == MT_RECOVERY_BOOT)
+        property_set("ro.boot.bootupmode", "recovery");   // for adb service.c
+#endif
+/* End,lenovo-sw wuwl9 add sh_static as recovery sh for recovery adb shell in 20150401*/
 #ifdef BOOT_TRACE
     if (boot_trace) {
         ERROR("enable boot systrace...");

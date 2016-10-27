@@ -103,6 +103,17 @@
 #include "adb_utils.h"
 #include "security_log_tags.h"
 
+#if !ADB_HOST
+#include "cutils/android_reboot.h"
+#include "cutils/properties.h"
+#endif
+
+/* Begin,lenovo-sw wangxf14 add sh_static as recovery sh for recovery adb shell in 20150127 */
+#ifdef LENOVO_RECOVERY_SHELL_ENABLE
+#define RECOVERY_SHELL_COMMAND "/sbin/sh"
+#endif
+/* End,lenovo-sw wangxf14 add sh_static as recovery sh for recovery adb shell in 20150127 */
+
 namespace {
 
 void init_subproc_child()
@@ -228,6 +239,27 @@ bool Subprocess::ForkAndExec(std::string* error) {
     ScopedFd child_stdinout_sfd, child_stderr_sfd;
     ScopedFd parent_error_sfd, child_error_sfd;
     char pts_name[PATH_MAX];
+/* Begin,lenovo-sw wangxf14 add sh_static as recovery sh for recovery adb shell in 20150127 */
+#ifdef LENOVO_RECOVERY_SHELL_ENABLE
+	int is_recovery = 0;
+	unsigned int i;
+	char bootvalue[PROPERTY_VALUE_MAX];
+	char const *bootprop[] = {"ro.boot.bootupmode",
+						"ro.boot.mode",
+						"ro.bootmode"
+						};
+
+	/*The system have so much bootmode properties*/
+	for(i = 0; i < sizeof(bootprop)/sizeof(char*); i++) {
+		property_get(bootprop[i], bootvalue, "");
+		if(strcmp(bootvalue, "recovery") == 0) {
+			is_recovery = 1;
+			break;
+		}
+	}
+#endif
+/* End,lenovo-sw wangxf14 add sh_static as recovery sh for recovery adb shell in 20150127 */
+
 
     if (command_.empty()) {
         __android_log_security_bswrite(SEC_TAG_ADB_SHELL_INTERACTIVE, "");
@@ -335,8 +367,32 @@ bool Subprocess::ForkAndExec(std::string* error) {
         close_on_exec(child_error_sfd.fd());
 
         if (command_.empty()) {
+	 #ifdef LENOVO_RECOVERY_SHELL_ENABLE
+	/* Begin,lenovo-sw wangxf14 add sh_static as recovery sh for recovery adb shell in 20150127 */
+		if(is_recovery)
+		{
+			execle(RECOVERY_SHELL_COMMAND, RECOVERY_SHELL_COMMAND, "-", nullptr, cenv.data());
+			WriteFdExactly(child_error_sfd.fd(), "isrecovery1 '" RECOVERY_SHELL_COMMAND "' failed: ");
+        	WriteFdExactly(child_error_sfd.fd(), strerror(errno));
+        	child_error_sfd.Reset();
+		}
+		else
+	/* End,lenovo-sw wangxf14 add sh_static as recovery sh for recovery adb shell in 20150127 */
+	#endif
             execle(_PATH_BSHELL, _PATH_BSHELL, "-", nullptr, cenv.data());
         } else {
+        #ifdef LENOVO_RECOVERY_SHELL_ENABLE
+	  /* Begin,lenovo-sw wangxf14 add sh_static as recovery sh for recovery adb shell in 20150127 */
+		if(is_recovery)
+		{
+			execle(RECOVERY_SHELL_COMMAND, RECOVERY_SHELL_COMMAND, "-c", command_.c_str(), nullptr, cenv.data());
+			WriteFdExactly(child_error_sfd.fd(), "isrecovery2 '" RECOVERY_SHELL_COMMAND "' failed: ");
+        	WriteFdExactly(child_error_sfd.fd(), strerror(errno));
+        	child_error_sfd.Reset();
+		}
+		else
+	  /* End,lenovo-sw wangxf14 add sh_static as recovery sh for recovery adb shell in 20150127 */
+	  #endif
             execle(_PATH_BSHELL, _PATH_BSHELL, "-c", command_.c_str(), nullptr, cenv.data());
         }
         WriteFdExactly(child_error_sfd.fd(), "exec '" _PATH_BSHELL "' failed: ");

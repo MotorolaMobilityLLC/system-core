@@ -341,6 +341,11 @@ endif
 ifeq ($(strip $(MTK_EMMC_SUPPORT)),yes)
 LOCAL_CFLAGS += -DMTK_EMMC_SUPPORT
 endif
+#lenovo-sw wuwl9 add sh_static as recovery sh for recovery adb shell in 20150906, begin
+ifneq (,$(filter userdebug eng,$(TARGET_BUILD_VARIANT)))
+LOCAL_CFLAGS += -DLENOVO_RECOVERY_SHELL_ENABLE
+endif
+#lenovo-sw fwuwl9 add sh_static as recovery sh for recovery adb shell in 20150906, end
 
 LOCAL_MODULE := adbd
 
