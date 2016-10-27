@@ -48,12 +48,16 @@ public:
         return remote()->transact(ON_ACQUIRED, data, &reply, IBinder::FLAG_ONEWAY);
     }
 
-    virtual status_t onAuthenticated(int64_t devId, int32_t fpId, int32_t gpId) {
+    virtual status_t onAuthenticated(int64_t devId, int32_t fpId, int32_t gpId, int32_t coverage, int32_t quality) {
         Parcel data, reply;
         data.writeInterfaceToken(IFingerprintDaemonCallback::getInterfaceDescriptor());
         data.writeInt64(devId);
         data.writeInt32(fpId);
         data.writeInt32(gpId);
+        /*Begin lenovo-sw zhongling1 add for avatar 20160602*/
+        data.writeInt32(coverage);
+        data.writeInt32(quality);
+        /*End lenovo-sw zhongling1 add for avatar 20160602*/
         return remote()->transact(ON_AUTHENTICATED, data, &reply, IBinder::FLAG_ONEWAY);
     }
 
