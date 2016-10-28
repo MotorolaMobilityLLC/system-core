@@ -89,6 +89,11 @@ LOCAL_SRC_FILES:= \
     ueventd_parser.cpp \
     watchdogd.cpp \
 
+# lenovo-sw wuwl9 1add sh_static as recovery sh for recovery adb shell in 20150401, begin
+ifneq (,$(filter userdebug eng,$(TARGET_BUILD_VARIANT)))
+LOCAL_CFLAGS += -DLENOVO_RECOVERY_SHELL_ENABLE
+endif
+# lenovo-sw wuwl9 add sh_static as recovery sh for recovery adb shell in 20150401, end
 LOCAL_MODULE:= init
 LOCAL_C_INCLUDES += \
     system/extras/ext4_utils \
