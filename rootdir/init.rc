@@ -153,7 +153,7 @@ on init
     write /dev/cpuctl/bg_non_interactive/cpu.shares 52
     write /dev/cpuctl/bg_non_interactive/cpu.rt_period_us 1000000
     # active FIFO threads will never be in BG
-    write /dev/cpuctl/bg_non_interactive/cpu.rt_runtime_us 10000
+    write /dev/cpuctl/bg_non_interactive/cpu.rt_runtime_us 700000
 
     # sets up initial cpusets for ActivityManager
     mkdir /dev/cpuset
