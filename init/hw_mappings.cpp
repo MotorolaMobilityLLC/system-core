@@ -857,13 +857,6 @@ just_exit:
 static const char *default_msg = "WE HAVE DETECTED AN ATTEMPT TO FLASH UNAUTHORIZED SW ON YOUR DEVICE. CONTACT CUSTOMER SERVICE FOR ASSISTANCE";
 static const char *command = "--show_text\n--show_notes=notes\n";
 
-static char *get_property(const char *prop_name)
-{
-	char value[PROP_VALUE_MAX];
-	hw_property_get(prop_name, value);
-	return value[0] ? strdup(value) : NULL;
-}
-
 static int create_notes_file(void)
 {
 	int fo = open("/cache/recovery/notes", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0600);
@@ -901,32 +894,30 @@ static int reboot_recovery(void)
 	while (1) { pause(); }  // never reached
 }
 
-#define IS_EMPTY(s) (!s || !strlen(s))
-
 void verify_carrier_compatibility(void)
 {
-	char *carrier_ro;
-	char *oem_carriers;
-	char *subsidized_carriers;
+	char carrier_ro[PROP_VALUE_MAX]={0};
+	char oem_carriers[PROP_VALUE_MAX]={0};
+	char subsidized_carriers[PROP_VALUE_MAX]={0};
 
-	carrier_ro = get_property(CARRIER_RO_PROP);
-	if (IS_EMPTY(carrier_ro)) {
+	hw_property_get(CARRIER_RO_PROP, carrier_ro);
+	if (carrier_ro[0] == 0) {
 		/* ro.carrier is empty - allow to boot */
 		pr_debug("property [%s] is empty\n", CARRIER_RO_PROP);
 		return;
 	}
 
-	oem_carriers = get_property(CARRIER_OEM_PROP);
-	subsidized_carriers = get_property(CARRIER_SUBSIDY_PROP);
+	hw_property_get(CARRIER_OEM_PROP, oem_carriers);
+	hw_property_get(CARRIER_SUBSIDY_PROP, subsidized_carriers);
 
-	if (IS_EMPTY(subsidized_carriers) || !strstr(subsidized_carriers, carrier_ro)) {
+	if (subsidized_carriers[0] == 0 || !strstr(subsidized_carriers, carrier_ro)) {
 		/* ro.carrier is not blacklisted in ro.carrier.subsidized - allow to boot */
 		pr_debug("did not find [%s] in [%s]\n", carrier_ro, subsidized_carriers);
                 return;
 	}
 
 	/* ro.carrier is blacklisted - it must be whitelisted for boot to be allowed */
-	if (!IS_EMPTY(oem_carriers) && strstr(oem_carriers, carrier_ro)) {
+	if (oem_carriers[0] && strstr(oem_carriers, carrier_ro)) {
 		/* ro.carrier is whitelisted in ro.carrier.oem - allow to boot */
 		pr_debug("found [%s] in [%s]\n", carrier_ro, oem_carriers);
 		return;
