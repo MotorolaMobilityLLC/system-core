@@ -364,10 +364,16 @@ static void export_oem_lock_status() {
         return;
     }
 
-    std::string value = GetProperty("ro.boot.verifiedbootstate", "");
+    std::string value;
+    value = GetProperty("ro.boot.verifiedbootstate", "");
 
     if (!value.empty()) {
         property_set("ro.boot.flash.locked", value == "orange" ? "0" : "1");
+    } else {
+        value = GetProperty("ro.boot.bl_state", "");
+        if (!value.empty()) {
+            property_set("ro.boot.flash.locked", value == "2" ? "0" : "1");
+        }
     }
 }
 /*
