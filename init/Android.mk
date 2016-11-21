@@ -19,6 +19,12 @@ endif
 init_options += -DMTK_INIT
 # end
 
+#add by yangchao for single sim &dual sim,start
+ifeq ($(strip $(LCT_SIM_SINGLE_CHECK)),yes)
+LOCAL_CFLAGS += -D LCT_SIM_SINGLE_CHECK_SUPPORT
+endif
+#add by yangchao for single sim &dual sim,end
+
 ifeq ($(strip $(MTK_NAND_UBIFS_SUPPORT)),yes)
 init_options += -DMTK_UBIFS_SUPPORT
 endif

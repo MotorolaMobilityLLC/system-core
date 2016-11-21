@@ -22,6 +22,12 @@
 #include <sys/system_properties.h>
 #include <string>
 
+#ifdef LCT_SIM_SINGLE_CHECK_SUPPORT
+//add by yangchao for single sim &dual sim,start
+bool is_single_sim_card_device();
+//add by yangchao for single sim &dual sim,end
+#endif
+
 struct property_audit_data {
     ucred *cr;
     const char* name;

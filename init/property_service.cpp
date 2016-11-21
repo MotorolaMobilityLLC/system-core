@@ -467,11 +467,89 @@ static void load_properties(char *data, const char *filter)
                     if (strcmp(key, filter)) continue;
                 }
             }
+#ifdef LCT_SIM_SINGLE_CHECK_SUPPORT
+          //add by yangchao for single sim &dual sim,start
+            if (strcmp("ro.longcheer.simsum", key) == 0 && is_single_sim_card_device()) {
+                NOTICE("songgy--load_properties-{ro.longcheer.simsum}, value=%s, Modify_value=1)\n", value);
+                property_set(key, "1");
+            } 
+          //add by yangchao for single sim &dual sim,end
+#endif
 
             property_set(key, value);
         }
     }
 }
+
+#ifdef LCT_SIM_SINGLE_CHECK_SUPPORT
+//add by yangchao for single sim &dual sim,start
+/*private String projectinfo[][]={
+                         {"0","EVT2","AP"}
+                        ,{"1","EVT2","EMEA Dual SIM"}
+                        ,{"2","EVT2","EMEA Single SIM"}
+                        ,{"3","EVT2","LATAM Dual SIM"}
+                        ,{"4","EVT2","LATAM Single SIM"}
+
+                        ,{"5","DVT1","AP"}
+                        ,{"6","DVT1","EMEA Dual SIM"}
+                        ,{"7","DVT1","EMEA Single SIM"}
+                        ,{"8","DVT1","LATAM Dual SIM"}
+                        ,{"9","DVT1","LATAM Single SIM"}
+
+
+                        ,{"10","DVT2","AP"}
+                        ,{"11","DVT2","EMEA Dual SIM"}
+                        ,{"12","DVT2","EMEA Single SIM"}
+                        ,{"13","DVT2","LATAM Dual SIM"}
+                        ,{"14","DVT2","LATAM Single SIM"}
+
+                        ,{"15","PVT","AP"}
+                        ,{"16","PVT","EMEA Dual SIM"}
+                        ,{"17","PVT","EMEA Single SIM"}
+                        ,{"18","PVT","LATAM Dual SIM"}
+                        ,{"19","PVT","LATAM Single SIM"}
+
+                        ,{"20","MP","AP"}
+                        ,{"21","MP","EMEA Dual SIM"}
+                        ,{"22","MP","EMEA Single SIM"}
+                        ,{"23","MP","LATAM Dual SIM"}
+                        ,{"24","MP","LATAM Single SIM"}
+
+         }; 
+*/
+bool is_single_sim_card_device()
+{
+
+    char buffer[2];
+    int  skuid;
+    FILE *fp = fopen("/sys/devices/simcheck/sku_check", "r");
+    if (!fp) {
+        ERROR("yangchao - Cannot open file /sys/devices/simcheck/sku_check\n");
+    }
+
+    char *cp = fgets(buffer, sizeof(buffer), fp);
+    fclose(fp);
+    if (!cp) {
+        ERROR("yangchao - Error while reading file /sys/sim_card/single_or_dual\n");
+    }
+
+    
+    NOTICE("yangchao - buffer = %s\n", buffer);
+    skuid =atoi(buffer);
+    NOTICE("yangchao - skuid = %d\n", skuid);
+    if((skuid%5) == 2|| (skuid%5) == 4)
+    {
+     NOTICE("yangchao - is_single_sim_card_device - true\n");
+     return true;
+    }else {
+        NOTICE("yangchao - is_single_sim_card_device - false\n");
+        return false;
+    }
+
+}
+//add by yangchao for single sim &dual sim,end
+#endif
+
 
 /*
  * Filter is used to decide which properties to load: NULL loads all keys,
