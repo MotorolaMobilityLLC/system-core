@@ -20,8 +20,8 @@ init_options += -DMTK_INIT
 # end
 
 #add by yangchao for single sim &dual sim,start
-ifeq ($(strip $(LCT_SIM_SINGLE_CHECK)),yes)
-LOCAL_CFLAGS += -D LCT_SIM_SINGLE_CHECK_SUPPORT
+ifeq ($(strip $(LCT_SIM_SINGLE_CHECK_SUPPORT)),yes)
+init_options += -DLCT_SIM_SINGLE_CHECK
 endif
 #add by yangchao for single sim &dual sim,end
 

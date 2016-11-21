@@ -22,7 +22,7 @@
 #include <sys/system_properties.h>
 #include <string>
 
-#ifdef LCT_SIM_SINGLE_CHECK_SUPPORT
+#ifdef LCT_SIM_SINGLE_CHECK
 //add by yangchao for single sim &dual sim,start
 bool is_single_sim_card_device();
 //add by yangchao for single sim &dual sim,end

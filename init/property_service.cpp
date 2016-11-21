@@ -467,7 +467,7 @@ static void load_properties(char *data, const char *filter)
                     if (strcmp(key, filter)) continue;
                 }
             }
-#ifdef LCT_SIM_SINGLE_CHECK_SUPPORT
+#ifdef LCT_SIM_SINGLE_CHECK
           //add by yangchao for single sim &dual sim,start
             if (strcmp("ro.longcheer.simsum", key) == 0 && is_single_sim_card_device()) {
                 NOTICE("songgy--load_properties-{ro.longcheer.simsum}, value=%s, Modify_value=1)\n", value);
@@ -481,7 +481,7 @@ static void load_properties(char *data, const char *filter)
     }
 }
 
-#ifdef LCT_SIM_SINGLE_CHECK_SUPPORT
+#ifdef LCT_SIM_SINGLE_CHECK
 //add by yangchao for single sim &dual sim,start
 /*private String projectinfo[][]={
                          {"0","EVT2","AP"}
