@@ -66,6 +66,9 @@ ifeq ($(strip $(MTK_UFS_BOOTING)),yes)
 LOCAL_CFLAGS += -DMTK_UFS_BOOTING
 endif
 
+ifeq ($(LENOVO_EASYIMAGE_ON),yes)
+LOCAL_CFLAGS    += -DLENOVO_EASYIMAGE_ON
+endif
 
 include $(BUILD_STATIC_LIBRARY)
 
@@ -138,4 +141,7 @@ LOCAL_STATIC_LIBRARIES := libfs_mgr \
     libselinux
 LOCAL_CXX_STL := libc++_static
 LOCAL_CFLAGS := -Werror
+ifeq ($(LENOVO_EASYIMAGE_ON),yes)
+LOCAL_CFLAGS    += -DLENOVO_EASYIMAGE_ON
+endif
 include $(BUILD_EXECUTABLE)
