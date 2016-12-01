@@ -472,6 +472,7 @@ static void load_properties(char *data, const char *filter)
 #ifdef LCT_SIM_SINGLE_CHECK
           //add by yangchao for single sim &dual sim,start
             if (strcmp("ro.longcheer.simsum", key) == 0)
+            {
                 sku_id =get_sku_id();
                 NOTICE("yangchao--load_properties-{ro.longcheer.simsum}, value=%s, Modify_value=1)\n", value);
                 if(sku_id ==2 ||sku_id ==4 )
