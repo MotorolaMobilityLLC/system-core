@@ -421,7 +421,9 @@ static void load_properties(char *data, const char *filter)
 {
     char *key, *value, *eol, *sol, *tmp, *fn;
     size_t flen = 0;
-
+#ifdef LCT_SIM_SINGLE_CHECK
+    int sku_id;
+#endif
     if (filter) {
         flen = strlen(filter);
     }
@@ -469,10 +471,25 @@ static void load_properties(char *data, const char *filter)
             }
 #ifdef LCT_SIM_SINGLE_CHECK
           //add by yangchao for single sim &dual sim,start
-            if (strcmp("ro.longcheer.simsum", key) == 0 && is_single_sim_card_device()) {
-                NOTICE("songgy--load_properties-{ro.longcheer.simsum}, value=%s, Modify_value=1)\n", value);
-                property_set(key, "1");
+            if (strcmp("ro.longcheer.simsum", key) == 0)
+                sku_id =get_sku_id();
+                NOTICE("yangchao--load_properties-{ro.longcheer.simsum}, value=%s, Modify_value=1)\n", value);
+                if(sku_id ==2 ||sku_id ==4 )
+                {
+                 property_set(key, "1");
+                }
             } 
+            if (strcmp("ro.longcheer.sku", key) == 0) {
+                NOTICE("yangchao--load_properties-{ro.longcheer.sku}, value=%s, Modify_value=1)\n", value);
+                sku_id =get_sku_id();
+                if(sku_id ==0)
+                property_set(key, "AP");
+                else if(sku_id ==1 || sku_id ==2)
+                property_set(key, "EMEA");
+                else if(sku_id ==3 || sku_id ==4)
+                property_set(key, "LATAM");
+            } 
+
           //add by yangchao for single sim &dual sim,end
 #endif
 
@@ -517,11 +534,12 @@ static void load_properties(char *data, const char *filter)
 
          }; 
 */
-bool is_single_sim_card_device()
+int get_sku_id()
 {
 
     char buffer[2];
     int  skuid;
+    int  sku_id;
     FILE *fp = fopen("/sys/devices/simcheck/sku_check", "r");
     if (!fp) {
         ERROR("yangchao - Cannot open file /sys/devices/simcheck/sku_check\n");
@@ -537,14 +555,8 @@ bool is_single_sim_card_device()
     NOTICE("yangchao - buffer = %s\n", buffer);
     skuid =atoi(buffer);
     NOTICE("yangchao - skuid = %d\n", skuid);
-    if((skuid%5) == 2|| (skuid%5) == 4)
-    {
-     NOTICE("yangchao - is_single_sim_card_device - true\n");
-     return true;
-    }else {
-        NOTICE("yangchao - is_single_sim_card_device - false\n");
-        return false;
-    }
+    sku_id = skuid%5;
+    return sku_id ;
 
 }
 //add by yangchao for single sim &dual sim,end

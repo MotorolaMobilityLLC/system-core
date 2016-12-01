@@ -24,7 +24,7 @@
 
 #ifdef LCT_SIM_SINGLE_CHECK
 //add by yangchao for single sim &dual sim,start
-bool is_single_sim_card_device();
+int get_sku_id();
 //add by yangchao for single sim &dual sim,end
 #endif
 
