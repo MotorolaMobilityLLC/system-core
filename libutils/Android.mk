@@ -110,18 +110,6 @@ LOCAL_C_INCLUDES += external/safe-iop/include
 LOCAL_CLANG := true
 LOCAL_SANITIZE := integer
 
-# --- MediaTek -------------------------------------------------------------
-LOCAL_WHOLE_STATIC_LIBRARIES :=
-LOCAL_SRC_FILES:= \
-	$(commonSources) \
-	BlobCache.cpp \
-	Looper.cpp \
-	ProcessCallStack.cpp \
-	Trace.cpp
-
-LOCAL_CFLAGS += -DBUILD_SHARED
-# -------------------------------------------------------------------------
-
 include $(BUILD_SHARED_LIBRARY)
 
 include $(CLEAR_VARS)
