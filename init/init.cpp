@@ -441,10 +441,31 @@ static void export_kernel_boot_props() {
         { "ro.boot.bootloader", "ro.bootloader", "unknown", },
         { "ro.boot.hardware",   "ro.hardware",   "unknown", },
         { "ro.boot.revision",   "ro.revision",   "0", },
+        { "ro.boot.dtv",        "ro.dtv",        "false"},
+        { "ro.boot.emmc",       "ro.emmc",       "true"},
     };
     for (size_t i = 0; i < ARRAY_SIZE(prop_map); i++) {
         std::string value = property_get(prop_map[i].src_prop);
         property_set(prop_map[i].dst_prop, (!value.empty()) ? value.c_str() : prop_map[i].default_value);
+    }
+
+    const char boardIdPath1[] = "/sys/devices/cust_boardid@1/biddevnum";
+    const char boardIdPath2[] = "/sys/devices/simcheck/sku_check";
+#define MACRO_TO_STR1(S) #S
+#define MACRO_TO_STR(S) MACRO_TO_STR1(S)
+    /* we got valid Name */
+    int fd = open(boardIdPath1, O_RDONLY);
+    if (fd < 0 && (fd = open(boardIdPath2, O_RDONLY)) < 0) {
+        ERROR("board Id path:%s and %s are both NOT valid\n", boardIdPath1, boardIdPath2);
+    }
+    else {
+        char boardIdStr[20];
+        if (read(fd, boardIdStr, sizeof(boardIdStr)) > 0) {
+            char deviceTag[PROP_VALUE_MAX];
+            snprintf(deviceTag, sizeof(deviceTag), "%s_%s", MACRO_TO_STR(PRODUCT_DEVICE), boardIdStr);
+            property_set("ro.boot.device", deviceTag);
+        }
+        close(fd);
     }
 }
 

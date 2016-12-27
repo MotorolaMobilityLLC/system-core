@@ -29,6 +29,9 @@ endif
 
 init_options += -DLOG_UEVENTS=0
 
+init_options += -DPRODUCT_DEVICE=$(TARGET_PRODUCT)
+
+
 init_cflags += \
     $(init_options) \
     -Wall -Wextra \
