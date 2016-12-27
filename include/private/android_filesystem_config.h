@@ -121,6 +121,8 @@
 #define AID_OEM_RESERVED_2_START 5000
 #define AID_OEM_RESERVED_2_END   5999
 
+#define AID_MOT_MOD       9020 /* can interact with motorola mod HW */
+
 #define AID_EVERYBODY     9997  /* shared between all apps in the same profile */
 #define AID_MISC          9998  /* access to misc storage */
 #define AID_NOBODY        9999
@@ -220,6 +222,7 @@ static const struct android_id_info android_ids[] = {
     { "everybody",     AID_EVERYBODY, },
     { "misc",          AID_MISC, },
     { "nobody",        AID_NOBODY, },
+    { "mot_mod",       AID_MOT_MOD, },
 };
 
 #define android_id_count \
