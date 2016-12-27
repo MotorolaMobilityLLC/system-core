@@ -25,6 +25,9 @@ init_options += -DLCT_SIM_SINGLE_CHECK
 endif
 #add by yangchao for single sim &dual sim,end
 
+init_options += -DPRODUCT_DEVICE=$(TARGET_PRODUCT)
+
+
 ifeq ($(strip $(MTK_NAND_UBIFS_SUPPORT)),yes)
 init_options += -DMTK_UBIFS_SUPPORT
 endif
