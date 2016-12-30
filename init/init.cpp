@@ -441,14 +441,14 @@ static void export_kernel_boot_props() {
         { "ro.boot.bootloader", "ro.bootloader", "unknown", },
         { "ro.boot.hardware",   "ro.hardware",   "unknown", },
         { "ro.boot.revision",   "ro.revision",   "0", },
-        { "ro.boot.dtv",        "ro.dtv",        "false"},
-        { "ro.boot.emmc",       "ro.emmc",       "true"},
     };
     for (size_t i = 0; i < ARRAY_SIZE(prop_map); i++) {
         std::string value = property_get(prop_map[i].src_prop);
         property_set(prop_map[i].dst_prop, (!value.empty()) ? value.c_str() : prop_map[i].default_value);
     }
 
+    /* below items are for motorola compatible */
+    /* set property for ro.boot.device */
     const char boardIdPath1[] = "/sys/devices/cust_boardid@1/biddevnum";
     const char boardIdPath2[] = "/sys/devices/simcheck/sku_check";
 #define MACRO_TO_STR1(S) #S
@@ -464,8 +464,34 @@ static void export_kernel_boot_props() {
             char deviceTag[PROP_VALUE_MAX];
             snprintf(deviceTag, sizeof(deviceTag), "%s_%s", MACRO_TO_STR(PRODUCT_DEVICE), boardIdStr);
             property_set("ro.boot.device", deviceTag);
+            property_set("ro.hw.device", deviceTag);
         }
         close(fd);
+    }
+
+    /* predefined properties */
+    property_set("ro.boot.dtv", "false");
+    property_set("ro.hw.dtv", "false");
+    property_set("ro.boot.emmc", "true");
+
+    const char fpPath[] = "/sys/devices/egistec/et360";
+    if (access(fpPath, F_OK) == 0) {
+        property_set("ro.boot.fps", "true");
+        property_set("ro.hw.fps", "true");
+    }
+    else {
+        property_set("ro.boot.fps", "false");
+        property_set("ro.hw.fps", "false");
+    }
+
+    const char nfcPath[] = "/dev/pn547";
+    if (access(nfcPath, F_OK) == 0) {
+        property_set("ro.boot.nfc", "true");
+        property_set("ro.hw.nfc", "true");
+    }
+    else {
+        property_set("ro.boot.nfc", "false");
+        property_set("ro.hw.nfc", "false");
     }
 }
 
