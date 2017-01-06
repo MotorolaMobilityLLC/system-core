@@ -160,10 +160,13 @@ static int xml_get_value_method(char *tag, tag_val_t *tval)
 		hw_property_get(tag, tagvalue);
 		pr_debug("property '%s'='%s'\n", tag, tagvalue);
 		data_ready = true;
-	} else { /* otherwise, it's utag */
+	} else { /* otherwise, it's utag or file */
 		int vfd, rbytes;
-		char tagname[PROP_NAME_MAX];
-		snprintf(tagname, PROP_NAME_MAX-1, "/proc/hw/%s/ascii", tag);
+		char tagname[PROP_VALUE_MAX];
+		if (*tag == '/') /* absolute path to file */
+			snprintf(tagname, PROP_VALUE_MAX-1, "%s", tag);
+		else	/* constructing path to HW UTAG file */
+			snprintf(tagname, PROP_VALUE_MAX-1, "/proc/hw/%s/ascii", tag);
 		pr_debug("opening: '%s'\n", tagname);
 		vfd = open(tagname, O_RDONLY | O_CLOEXEC);
 		if (vfd != -1) {
