@@ -210,8 +210,37 @@ static char
 	return value;
 }
 
+static void xml_find_parameter(element_t *el, const char *token, char **data_ptr);
+static int xml_build_append_array(char *source);
+
+typedef struct {
+	bool inited;
+	char *export_prop_name;
+	char *export_prop;
+	char *default_v;
+	int append_cnt;
+} map_outs_t;
+
+static void
+xml_extract_outs(element_t *el, map_outs_t *mouts)
+{
+	char *append_param;
+	/* extract export parameter */
+	xml_find_parameter(el, "export", &mouts->export_prop_name);
+	if (mouts->export_prop_name) {
+		pr_debug("export_prop_name '%s'\n", mouts->export_prop_name);
+		mouts->inited = true;
+	}
+	/* extract optional append parameter */
+	xml_find_parameter(el, "append", &append_param);
+	if (append_param)
+		mouts->append_cnt = xml_build_append_array(append_param);
+	/* extract optional default parameter */
+	xml_find_parameter(el, "default", &mouts->default_v);
+}
+
 static bool
-xml_match_multiple_choices(element_t *head, char **data_ptr)
+xml_match_multiple_choices(element_t *head, map_outs_t *mouts)
 {
 	bool match = false;
 	char *name_to_return = NULL;
@@ -219,7 +248,12 @@ xml_match_multiple_choices(element_t *head, char **data_ptr)
 	for (node = head->child; node; node = node->next) {
 		if (!node->child)
 			continue;
-
+		if (!mouts->inited) {
+			xml_extract_outs(node, mouts);
+			if (mouts->inited)
+				pr_debug("export_prop_name '%s'\n",
+					mouts->export_prop_name);
+		}
 		match = true;
 		name_to_return = node->name;
 		for (choice = node->child; choice; choice = choice->next) {
@@ -238,10 +272,7 @@ xml_match_multiple_choices(element_t *head, char **data_ptr)
 			name_to_return = NULL;
 	}
 
-	if (name_to_return)
-		*data_ptr = strdup(name_to_return);
-	else
-		*data_ptr = NULL;
+	mouts->export_prop = name_to_return;
 
 	for (int i = 0; i < MAX_PROPS_NUM; i++) {
 		tag_val_t *tval = &tagValuesTable[i];
@@ -500,7 +531,6 @@ xml_handle_mappings(parse_ctrl_t *info)
 {
 	char *ptr, value[PROP_NAME_MAX] = {0};
 	char *boot_prop_name, *boot_prop;
-	char *export_prop_name, *export_prop, *default_v;
 	element_t *search_head, *cur = NULL;
 
 	/* retrieve boot property name */
@@ -545,48 +575,39 @@ xml_handle_mappings(parse_ctrl_t *info)
 	pr_debug("found section 'mappings'\n");
 
 	for (cur = search_head->child; cur; cur = cur->next) {
-		char *append_param;
-		int rc, append_cnt = 0;
+		int rc;
+		map_outs_t mouts;
 
-		append_param = export_prop_name = export_prop = default_v = NULL;
+		memset(&mouts, 0, sizeof(mouts));
+		xml_extract_outs(cur, &mouts);
 
-		/* extract mandatory export parameter */
-		xml_find_parameter(cur, "export", &export_prop_name);
-		if (!export_prop_name) {
-			NOTICE("Section'%s' has no export property; skipped\n", cur->tag);
-			continue;
-		}
-		pr_debug("export_prop_name '%s'\n", export_prop_name);
-		/* extract optional append parameter */
-		xml_find_parameter(cur, "append", &append_param);
-		if (append_param)
-			append_cnt = xml_build_append_array(append_param);
 		/* match multiple choices */
-		bool found = xml_match_multiple_choices(cur, &export_prop);
+		bool found = xml_match_multiple_choices(cur, &mouts);
 		if (found) {
-			if (!export_prop)
+			if (!mouts.export_prop)
 				continue;
 
-			rc = property_set(export_prop_name, export_prop);
-			NOTICE("Match found '%s'\n", export_prop);
+			rc = property_set(mouts.export_prop_name, mouts.export_prop);
+			NOTICE("Match found '%s'\n", mouts.export_prop);
 			if (rc != -1)
-				NOTICE("exported '%s'=>'%s'\n", export_prop_name, export_prop);
+				NOTICE("exported '%s'=>'%s'\n",
+					mouts.export_prop_name, mouts.export_prop);
 			/* if matched result needs to be appended */
-			if (append_cnt) {
-				xml_preload_set_appendix(export_prop);
+			if (mouts.append_cnt) {
+				xml_preload_set_appendix(mouts.export_prop);
 				if (access(PROP_PATH_OEM_OVERRIDE, R_OK) == 0)
 					xml_load_properties_from_file(PROP_PATH_OEM_OVERRIDE, xml_preload_get_filter());
 				xml_load_properties_from_file(PROP_PATH_SYSTEM_BUILD, xml_preload_get_filter());
 				xml_preload_clear_all();
 			}
 		} else {
-			/* extract optional default parameter */
-			xml_find_parameter(cur, "default", &default_v);
-			if (default_v) {
-				rc = property_set(export_prop_name, default_v);
-				NOTICE("Applying default '%s'\n", default_v);
+			if (mouts.default_v) {
+				rc = property_set(mouts.export_prop_name, mouts.default_v);
+				NOTICE("Applying default '%s'\n", mouts.default_v);
 				if (rc != -1)
-					NOTICE("exported '%s'=>'%s'\n", export_prop_name, default_v);
+					NOTICE("exported '%s'=>'%s'\n",
+						mouts.export_prop_name,
+						mouts.default_v);
 			} else
 				pr_debug("no match found in section '%s'\n", cur->tag);
 		}
