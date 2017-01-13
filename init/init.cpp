@@ -484,7 +484,7 @@ static void export_kernel_boot_props() {
         property_set("ro.hw.fps", "false");
     }
 
-    const char nfcPath[] = "/dev/pn547";
+    const char nfcPath[] = "/sys/devices/virtual/misc/pn547";
     if (access(nfcPath, F_OK) == 0) {
         property_set("ro.boot.nfc", "true");
         property_set("ro.hw.nfc", "true");
