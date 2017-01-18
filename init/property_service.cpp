@@ -469,6 +469,7 @@ static void load_properties(char *data, const char *filter)
                     if (strcmp(key, filter)) continue;
                 }
             }
+
 #ifdef LCT_SIM_SINGLE_CHECK
           //add by yangchao for single sim &dual sim,start
             if (strcmp("ro.longcheer.simsum", key) == 0)
@@ -490,7 +491,6 @@ static void load_properties(char *data, const char *filter)
                 else if(sku_id ==3 || sku_id ==4)
                 property_set(key, "LATAM");
             } 
-
           //add by yangchao for single sim &dual sim,end
 #endif
 
@@ -538,7 +538,7 @@ static void load_properties(char *data, const char *filter)
 int get_sku_id()
 {
 
-    char buffer[2];
+    char buffer[4];
     int  skuid;
     int  sku_id;
     FILE *fp = fopen("/sys/devices/simcheck/sku_check", "r");
