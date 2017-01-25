@@ -52,7 +52,7 @@
 
 #define POWER_SUPPLY_MOD_BATTERY_MODE_PROP "sys.mod.batterymode"
 
-#define POWER_SUPPLY_MOD_TYPE_PATH "/sys/devices/platform/mods_ap/greybus1/1-3/power_supply/gb_ptp/internal_send"
+#define POWER_SUPPLY_MOD_TYPE_PATH "/sys/class/power_supply/gb_ptp/internal_send"
 #define POWER_SUPPLY_MOD_RECHRG_START_SOC "/sys/module/qpnp_smbcharger_mmi/parameters/eb_rechrg_start_soc"
 #define POWER_SUPPLY_MOD_RECHRG_STOP_SOC "/sys/module/qpnp_smbcharger_mmi/parameters/eb_rechrg_stop_soc"
 
