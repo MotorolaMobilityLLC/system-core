@@ -118,6 +118,8 @@ ifdef BOARD_CACHEIMAGE_FILE_SYSTEM_TYPE
 else
 ifneq ($(AB_OTA_UPDATER),true)
   LOCAL_POST_INSTALL_CMD += ; ln -sf /data/cache $(TARGET_ROOT_OUT)/cache
+else
+  LOCAL_POST_INSTALL_CMD += ; mkdir -p $(TARGET_ROOT_OUT)/cache
 endif
 endif
 ifdef BOARD_ROOT_EXTRA_SYMLINKS
