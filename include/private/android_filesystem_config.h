@@ -167,6 +167,8 @@
 #define AID_MOT_SHARED    9323 /* motorola shared uid, IKSWM-342 */
 #define AID_MOT_COMMON    9341 /* motorola common uid, IKSWM-342 */
 
+#define AID_MOT_TCMD      9004 /* mot_tcmd */
+#define AID_FINGERP       9015 /* IKFPS-98 Add permission group for fingerprint */
 #define AID_MOT_MOD       9020  /* can interact with motorola mod HW */
 #define AID_MOT_SHARED    9323 /* motorola shared uid, IKSWM-342 */
 #define AID_MOT_COMMON    9341 /* motorola common uid, IKSWM-342 */
@@ -305,6 +307,8 @@ static const struct android_id_info android_ids[] = {
     { "mot_dtv",       AID_MOT_DTV, },
     { "mot_shared",    AID_MOT_SHARED, },
     { "mot_common",    AID_MOT_COMMON, },
+    { "mot_tcmd",      AID_MOT_TCMD, },
+    { "fingerp",       AID_FINGERP, },
     { "mot_mod",       AID_MOT_MOD, },
     { "mot_shared",    AID_MOT_SHARED, },
     { "mot_common",    AID_MOT_COMMON, },
