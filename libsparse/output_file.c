@@ -707,7 +707,7 @@ int write_fill_chunk(struct output_file *out, int64_t len,
 	return out->sparse_ops->write_fill_chunk(out, len, fill_val);
 #endif
     if(fill_val==0x00) {
-        return out->sparse_ops->write_skip_chunk(out, len);
+        return out->sparse_ops->write_skip_chunk(out, len, true);
     }
     else {
       uint32_t *data = malloc(len);
