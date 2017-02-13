@@ -287,6 +287,8 @@ static const struct android_id_info android_ids[] = {
     { "mot_shared",    AID_MOT_SHARED, },
     { "mot_common",    AID_MOT_COMMON, },
 
+    { "qcom_diag", AID_QCOM_DIAG, },
+
     { "mot_accy",	AID_MOT_ACCY, },
     { "mot_pwric",	AID_MOT_PWRIC, },
     { "mot_usb",	AID_MOT_USB, },
