@@ -139,7 +139,6 @@ static std::string find_item_given_name(const char* img_name, const char* produc
     return android::base::StringPrintf("%s/%s", dir, img_name);
 }
 
-std::string find_item(const char* item, const char* product) {
 struct OEMHandler
 {
 	char cmd[MAX_OEM_CMD_LINE];
@@ -166,9 +165,7 @@ static void register_oem_handler(const char *cmd, oem_handler handler)
     strncpy(h->cmd, cmd, strlen(cmd));
     h->handler = handler;
 }
-
-static char* find_item(const char* item, const char* product) {
-    char *dir;
+std::string find_item(const char* item, const char* product) {
     const char *fn;
 
     if(!strcmp(item,"boot")) {
@@ -187,10 +184,10 @@ static char* find_item(const char* item, const char* product) {
         fn = "android-info.txt";
     } else {
         fprintf(stderr,"unknown partition '%s'\n", item);
-        return (char *)"";
+        return "";
     }
 
-    return find_item_given_name(fn, product).c_str();
+    return find_item_given_name(fn, product);
 }
 
 static int64_t get_file_size(int fd) {
