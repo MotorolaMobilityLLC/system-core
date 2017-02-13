@@ -52,7 +52,7 @@ void healthd_mode_android_init(struct healthd_config* /*config*/) {
     IPCThreadState::self()->setupPolling(&gBinderFd);
 
     if (gBinderFd >= 0) {
-        if (healthd_register_event(gBinderFd, binder_event, 0))
+        if (healthd_register_event(gBinderFd, binder_event, (EventWakeup)0))
             KLOG_ERROR(LOG_TAG,
                        "Register for binder events failed\n");
     }
