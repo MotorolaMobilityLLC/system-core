@@ -89,12 +89,6 @@ enum {
     // autofocus - FOCUS_MODE_CONTINUOUS_VIDEO and FOCUS_MODE_CONTINUOUS_PICTURE.
     CAMERA_MSG_FOCUS_MOVE = 0x0800,       // notifyCallback
 
-    // BEGIN Motorola, w4779c, 2012-02-17, IKHSS6-8697
-    // Define Motorola-specific camera interface. It is Motorola-specific msg
-    // to pass quality related information from HAL back to Camera app.
-    CAMERA_MSG_ENV_DETECT = 0x8000,
-    // END IKHSS6-8697
-
     CAMERA_MSG_STATS_DATA = 0x1000,
     CAMERA_MSG_META_DATA = 0x2000,
 
