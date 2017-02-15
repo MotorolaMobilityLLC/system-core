@@ -138,12 +138,6 @@
 #define AID_OEM_RESERVED_2_END   5999
 #define AID_SENSORS       3011 /* access to /dev/socket/sensor_ctl_socket & QCCI/QCSI */
 
-#define AID_MOT_TCMD      9004 /* mot_tcmd */
-#define AID_FINGERP       9015 /* IKFPS-98 Add permission group for fingerprint */
-#define AID_MOT_MOD       9020  /* can interact with motorola mod HW */
-#define AID_MOT_SHARED    9323 /* motorola shared uid, IKSWM-342 */
-#define AID_MOT_COMMON    9341 /* motorola common uid, IKSWM-342 */
-
 #define AID_MOT_ACCY      9000  /* access to accessory */
 #define AID_MOT_PWRIC     9001  /* power IC */
 #define AID_MOT_USB       9002  /* mot usb */
@@ -164,12 +158,6 @@
 #define AID_MOT_MOD       9020  /* can interact with motorola mod HW */
 
 #define AID_MOT_DBVC      9014  /* mot_dbvc - This group is used to access DataBlock feature */
-#define AID_MOT_SHARED    9323 /* motorola shared uid, IKSWM-342 */
-#define AID_MOT_COMMON    9341 /* motorola common uid, IKSWM-342 */
-
-#define AID_MOT_TCMD      9004 /* mot_tcmd */
-#define AID_FINGERP       9015 /* IKFPS-98 Add permission group for fingerprint */
-#define AID_MOT_MOD       9020  /* can interact with motorola mod HW */
 #define AID_MOT_SHARED    9323 /* motorola shared uid, IKSWM-342 */
 #define AID_MOT_COMMON    9341 /* motorola common uid, IKSWM-342 */
 
