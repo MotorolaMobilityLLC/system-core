@@ -58,7 +58,7 @@ const int LOCAL_NFLOG_PACKET = NFNL_SUBSYS_ULOG << 8 | NFULNL_MSG_PACKET;
 
 
 #ifndef RTM_NORA
-const int RTM_NORA =110 ;
+const int RTM_NORA = 87;
 #endif
 void clearRaInfoFlag(char *buff);
 void clearPrefixProp(char *buff);

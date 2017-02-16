@@ -134,7 +134,7 @@ int string_to_ip(const char *string, struct sockaddr_storage *ss) {
 int ifc_init(void)
 {
     int ret;
-
+    ALOGI("ifc_init, get ifc_sock_mutex, tid = %d", gettid());
     pthread_mutex_lock(&ifc_sock_mutex);
     if (ifc_ctl_sock == -1) {
         ifc_ctl_sock = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
@@ -168,6 +168,7 @@ void ifc_close(void)
         ifc_ctl_sock = -1;
     }
     pthread_mutex_unlock(&ifc_sock_mutex);
+    ALOGI("ifc_close, free ifc_sock_mutex, tid = %d", gettid());
 }
 
 void ifc_close6(void)
@@ -346,6 +347,8 @@ int ifc_act_on_address(int action, const char *name, const char *address,
         memcpy(RTA_DATA(rta), addr, addrlen);
     }
 
+    //debug for interface setcfg timeout
+    ALOGI("ifc_act_on_address, send start");
     s = socket(PF_NETLINK, SOCK_RAW | SOCK_CLOEXEC, NETLINK_ROUTE);
     if (s < 0) {
         return -errno;
@@ -356,14 +359,14 @@ int ifc_act_on_address(int action, const char *name, const char *address,
         close(s);
         return -saved_errno;
     }
-
+    ALOGI("ifc_act_on_address, send end, recv start");
     len = recv(s, buf, sizeof(buf), 0);
     saved_errno = errno;
     close(s);
     if (len < 0) {
         return -saved_errno;
     }
-
+    ALOGI("ifc_act_on_address, recv end");
     // Parse the acknowledgement to find the return code.
     nh = (struct nlmsghdr *) buf;
     if (!NLMSG_OK(nh, (unsigned) len) || nh->nlmsg_type != NLMSG_ERROR) {

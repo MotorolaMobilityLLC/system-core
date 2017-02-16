@@ -75,7 +75,7 @@ static bool valid_size(unsigned long value) {
 #if defined(HAVE_AEE_FEATURE) && defined(ANDROID_LOG_MUCH_COUNT)
 #include <cutils/sockets.h>
 
-char aee_string[50];
+char aee_string[70];
 char *log_much_buf;
 int log_much_used_size;
 bool log_much_detected = false;
@@ -189,7 +189,7 @@ void LogBuffer::init() {
         }
 #if defined(HAVE_AEE_FEATURE) && defined(ANDROID_LOG_MUCH_COUNT)
         if (i == LOG_ID_MAIN || i == LOG_ID_RADIO) {
-            property_size = 3 * property_size;
+            property_size = 5 * property_size;
         }
 #endif
 
@@ -337,6 +337,11 @@ int LogBuffer::log(log_id_t log_id, log_time realtime,
 
     pthread_mutex_lock(&mLogElementsLock);
 #if defined(HAVE_AEE_FEATURE) && defined(ANDROID_LOG_MUCH_COUNT)
+    if (log_detect_value == 0) {
+        pause_detect = 0;
+        delay_time = 0;
+        original_detect_value = 0;
+    }
     if (pause_detect == 1) {
         if (pause_time.tv_sec == 0) {
             clock_gettime(CLOCK_MONOTONIC, &pause_time);
@@ -346,6 +351,7 @@ int LogBuffer::log(log_id_t log_id, log_time realtime,
             pause_detect = 0;
             delay_time = 0;
             log_detect_value = original_detect_value;
+            original_detect_value = 0;
             kernel_log_print("logd: detect delay end:level %d,old level %d.\n",
             log_detect_value, original_detect_value);
         }
@@ -357,13 +363,30 @@ int LogBuffer::log(log_id_t log_id, log_time realtime,
     }
 
     now_time = realtime.tv_sec;
+    if (old_time == 0) {
+        log_much_delay_detect = 181;
+    }
+
+    if (log_much_delay_detect == 1) {
+        line_count = 1;
+        old_time = now_time + 1;
+        log_much_delay_detect = 0;
+        pause_detect = 0;
+        delay_time = 0;
+        original_detect_value = log_detect_value;
+    }
+
     if (log_much_delay_detect > 0) {
         pause_detect = 1;
         clock_gettime(CLOCK_MONOTONIC, &pause_time);
         delay_time = log_much_delay_detect;
         log_much_delay_detect = 0;
         old_time = now_time;
-        original_detect_value = log_detect_value;
+        if (original_detect_value == 0) {
+            original_detect_value = log_detect_value;
+        } else {
+            log_detect_value = original_detect_value;
+        }
         log_detect_value = 2 * log_detect_value;
         kernel_log_print("logd: detect delay:time %d, level %d,old level %d.\n",
             delay_time, log_detect_value, original_detect_value);
@@ -497,9 +520,9 @@ next_log:
         if ((file_count / 8 > (log_detect_value * detect_time) / 10) && !pthread_attr_init(&attr)) {
             struct sched_param param;
 
-            memset(aee_string, 0, 50);
+            memset(aee_string, 0, 70);
             kernel_log_print("logd:logmuch file total size %d.\n", log_much_used_size);
-            sprintf(aee_string, "Android log much: %d, %d.detect time %d.", line_count, file_count, detect_time);
+            sprintf(aee_string, "Android log much: %d, %d.detect time %d.level %d.", line_count, file_count, detect_time,log_detect_value);
             memset(&param, 0, sizeof(param));
             pthread_attr_setschedparam(&attr, &param);
             pthread_attr_setschedpolicy(&attr, SCHED_BATCH);

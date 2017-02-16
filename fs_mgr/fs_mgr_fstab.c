@@ -336,7 +336,7 @@ static int parse_flags(char *flags, struct flag_list *fl,
     }
 
     if (fl ==fs_mgr_flags) {
-        if (f & (MF_CRYPT | MF_FORCECRYPT)) {
+        if (f & (MF_CRYPT | MF_FORCECRYPT|MF_FORCEFDEORFBE)) {
             int f_backup = f;
 
             if (f & MF_FORCECRYPT) {
@@ -349,6 +349,18 @@ static int parse_flags(char *flags, struct flag_list *fl,
                 }
                 else {
                    // normal mode
+                }
+            }
+            if (f & MF_FORCEFDEORFBE) {
+                int mt_boot_mode  = get_boot_mode();
+                if (mt_boot_mode != 0) {
+                 f &= (~MF_FORCEFDEORFBE);
+                 f |= MF_CRYPT;
+                 NOTICE("%s: bootmode(%d) is NOT normal mode, disable 'forcefdeorfbe', flag=(0x%x -> 0x%x) \n",
+                         __FUNCTION__, mt_boot_mode, f_backup, f);
+                }
+                else {
+                 // normal mode
                 }
             }
         }

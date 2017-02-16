@@ -268,8 +268,8 @@ void kernel_log_print(const char *fmt, ...) {
 static int log_reader_count = 0;
 void logd_reader_del(void) {
     if (log_reader_count == 1) {
-        property_set("log.tag", "E");
-        kernel_log_print("logd no log reader, set log level to ERROR!\n");
+        property_set("log.tag", "I");
+        kernel_log_print("logd no log reader, set log level to INFO!\n");
     }
     log_reader_count--;
 }
@@ -348,29 +348,38 @@ static void *reinit_thread_start(void * /*obj*/) {
 
         value = property_get_bool("persist.logmuch.detect", true);
         if (value == true) {
-            log_detect_value = ANDROID_LOG_MUCH_COUNT;
             property_get("ro.build.type", property, "");
             if (!strcmp(property, "eng")) {
                 build_type = 0;
             } else if (!strcmp(property, "userdebug")) {
                 build_type = 1;
+                detect_time = 6;
             } else {
                 build_type = 2;
+                detect_time = 6;
             }
 
-            if (build_type != 0) { /* user load  level is 0.5 eng load*/
-               /* log_detect_value = log_detect_value / 2; */
-               log_detect_value = 500;
-               detect_time = 6;
+            if (log_detect_value == 0) {
+                log_detect_value = ANDROID_LOG_MUCH_COUNT;
             }
-            property_get("logmuch.detect.value", property, "");
+
+            property_get("logmuch.detect.value", property, "-1");
             count = atoi(property);
-
-            if (count > 0 && count != log_detect_value) {
-                log_detect_value = count;
-                log_much_delay_detect = 4;
+            if (count == 0) {
+                count = ANDROID_LOG_MUCH_COUNT;
             }
+            kernel_log_print("logd: logmuch detect, build type %d, detect value %d:%d.\n",
+                build_type, count, log_detect_value);
 
+            if (count > 0 && count != log_detect_value) {  //set new log level
+                log_detect_value = count;
+                if (log_detect_value > 1000) {
+                    detect_time = 1;
+                } else {
+                    detect_time = 6;
+                }
+                log_much_delay_detect = 1;
+            }
             property_get("logmuch.detect.delay", property, "");
             delay = atoi(property);
 
@@ -378,9 +387,6 @@ static void *reinit_thread_start(void * /*obj*/) {
                 log_much_delay_detect = 3*60;
                 property_set("logmuch.detect.delay", "0");
             }
-
-            kernel_log_print("logd: logmuch detect, build type %d, detect value %d:%d.\n",
-                build_type, count, log_detect_value);
         } else {
             log_detect_value = 0;
             kernel_log_print("logd: logmuch detect disable.");
@@ -388,8 +394,8 @@ static void *reinit_thread_start(void * /*obj*/) {
 #endif
 #if defined(MTK_LOGD_FILTER)    /*for default status */
         if (log_reader_count == 0) {
-            property_set("log.tag", "E");
-            kernel_log_print("logd no log reader, set log level to ERROR!\n");
+            property_set("log.tag", "I");
+            kernel_log_print("logd no log reader, set log level to INFO!\n");
         }
 #endif
     }

@@ -49,7 +49,11 @@ ifeq ($(HAVE_AEE_FEATURE), yes)
 endif
 
 ifneq ($(ANDROID_LOG_MUCH_COUNT), )
+ifeq ($(TARGET_BUILD_VARIANT),eng)
     LOCAL_CFLAGS += -DANDROID_LOG_MUCH_COUNT=$(ANDROID_LOG_MUCH_COUNT)
+else
+    LOCAL_CFLAGS += -DANDROID_LOG_MUCH_COUNT=500
+endif
     LOCAL_INIT_RC := logd_e.rc
 endif
 
