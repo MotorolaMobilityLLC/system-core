@@ -441,6 +441,12 @@ static void export_kernel_boot_props() {
         { "ro.boot.bootloader", "ro.bootloader", "unknown", },
         { "ro.boot.hardware",   "ro.hardware",   "unknown", },
         { "ro.boot.revision",   "ro.revision",   "0", },
+/* HQ:zhangjingzhi on: Fri, 17 Feb 2017 17:40:21 +0800
+ * MANNING-170 add for get hw info
+ */
+        { "ro.boot.boardversion","ro.hw.boardversion",   "", },
+        { "ro.boot.hwrev",      "ro.hw.hwrev",   "", },
+// End of HQ:zhangjingzhi
     };
     for (size_t i = 0; i < ARRAY_SIZE(prop_map); i++) {
         std::string value = property_get(prop_map[i].src_prop);
