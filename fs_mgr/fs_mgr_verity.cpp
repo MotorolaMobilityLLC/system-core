@@ -30,7 +30,7 @@
 #include <time.h>
 
 #include <android-base/file.h>
-#include <private/android_filesystem_config.h>
+#include <android-base/strings.h>
 #include <cutils/properties.h>
 #include <logwrap/logwrap.h>
 
@@ -189,7 +189,7 @@ static int invalidate_table(char *table, size_t table_length)
     return -1;
 }
 
-static void verity_ioctl_init(struct dm_ioctl *io, char *name, unsigned flags)
+static void verity_ioctl_init(struct dm_ioctl *io, const char *name, unsigned flags)
 {
     memset(io, 0, DM_BUF_SIZE);
     io->data_size = DM_BUF_SIZE;
@@ -229,7 +229,7 @@ static int get_verity_device_name(struct dm_ioctl *io, char *name, int fd, char 
 }
 
 struct verity_table_params {
-    const char *table;
+    char *table;
     int mode;
     struct fec_ecc_metadata ecc;
     const char *ecc_dev;
@@ -792,8 +792,9 @@ out:
 int fs_mgr_update_verity_state(fs_mgr_verity_state_callback callback)
 {
     alignas(dm_ioctl) char buffer[DM_BUF_SIZE];
+    bool system_root = false;
     char fstab_filename[PROPERTY_VALUE_MAX + sizeof(FSTAB_PREFIX)];
-    char *mount_point;
+    const char *mount_point;
     char propbuf[PROPERTY_VALUE_MAX];
     char *status;
     int fd = -1;
@@ -821,6 +822,9 @@ int fs_mgr_update_verity_state(fs_mgr_verity_state_callback callback)
     property_get("ro.hardware", propbuf, "");
     snprintf(fstab_filename, sizeof(fstab_filename), FSTAB_PREFIX"%s", propbuf);
 
+    property_get("ro.build.system_root_image", propbuf, "");
+    system_root = !strcmp(propbuf, "true");
+
     fstab = fs_mgr_read_fstab(fstab_filename);
 
     if (!fstab) {
@@ -833,7 +837,12 @@ int fs_mgr_update_verity_state(fs_mgr_verity_state_callback callback)
             continue;
         }
 
-        mount_point = basename(fstab->recs[i].mount_point);
+        if (system_root && !strcmp(fstab->recs[i].mount_point, "/")) {
+            mount_point = "system";
+        } else {
+            mount_point = basename(fstab->recs[i].mount_point);
+        }
+
         verity_ioctl_init(io, mount_point, 0);
 
         if (ioctl(fd, DM_TABLE_STATUS, io)) {
@@ -844,7 +853,9 @@ int fs_mgr_update_verity_state(fs_mgr_verity_state_callback callback)
 
         status = &buffer[io->data_start + sizeof(struct dm_target_spec)];
 
-        callback(&fstab->recs[i], mount_point, mode, *status);
+        if (*status == 'C' || *status == 'V') {
+            callback(&fstab->recs[i], mount_point, mode, *status);
+        }
     }
 
     rc = 0;
@@ -861,15 +872,42 @@ out:
     return rc;
 }
 
+static void update_verity_table_blk_device(char *blk_device, char **table)
+{
+    std::string result, word;
+    auto tokens = android::base::Split(*table, " ");
+
+    for (const auto token : tokens) {
+        if (android::base::StartsWith(token, "/dev/block/") &&
+            android::base::StartsWith(blk_device, token.c_str())) {
+            word = blk_device;
+        } else {
+            word = token;
+        }
+
+        if (result.empty()) {
+            result = word;
+        } else {
+            result += " " + word;
+        }
+    }
+
+    if (result.empty()) {
+        return;
+    }
+
+    free(*table);
+    *table = strdup(result.c_str());
+}
+
 int fs_mgr_setup_verity(struct fstab_rec *fstab)
 {
     int retval = FS_MGR_SETUP_VERITY_FAIL;
     int fd = -1;
-    char *invalid_table = NULL;
     char *verity_blk_name = NULL;
     struct fec_handle *f = NULL;
     struct fec_verity_metadata verity;
-    struct verity_table_params params;
+    struct verity_table_params params = { .table = NULL };
 
     alignas(dm_ioctl) char buffer[DM_BUF_SIZE];
     struct dm_ioctl *io = (struct dm_ioctl *) buffer;
@@ -930,6 +968,15 @@ int fs_mgr_setup_verity(struct fstab_rec *fstab)
         params.mode = VERITY_MODE_EIO;
     }
 
+    if (!verity.table) {
+        goto out;
+    }
+
+    params.table = strdup(verity.table);
+    if (!params.table) {
+        goto out;
+    }
+
     // verify the signature on the table
     if (verify_verity_signature(verity) < 0) {
         if (params.mode == VERITY_MODE_LOGGING) {
@@ -939,19 +986,17 @@ int fs_mgr_setup_verity(struct fstab_rec *fstab)
         }
 
         // invalidate root hash and salt to trigger device-specific recovery
-        invalid_table = strdup(verity.table);
-
-        if (!invalid_table ||
-                invalidate_table(invalid_table, verity.table_length) < 0) {
+        if (invalidate_table(params.table, verity.table_length) < 0) {
             goto out;
         }
-
-        params.table = invalid_table;
-    } else {
-        params.table = verity.table;
     }
 
     INFO("Enabling dm-verity for %s (mode %d)\n", mount_point, params.mode);
+
+    if (fstab->fs_mgr_flags & MF_SLOTSELECT) {
+        // Update the verity params using the actual block device path
+        update_verity_table_blk_device(fstab->blk_device, &params.table);
+    }
 
     // load the verity mapping table
     if (load_verity_table(io, mount_point, verity.data_size, fd, &params,
@@ -1018,7 +1063,7 @@ out:
     }
 
     fec_close(f);
-    free(invalid_table);
+    free(params.table);
     free(verity_blk_name);
 
     return retval;

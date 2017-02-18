@@ -40,6 +40,13 @@ enum verity_mode {
     VERITY_MODE_DEFAULT = VERITY_MODE_RESTART
 };
 
+// Mount modes
+enum mount_mode {
+    MOUNT_MODE_DEFAULT = 0,
+    MOUNT_MODE_EARLY = 1,
+    MOUNT_MODE_LATE = 2
+};
+
 /*
  * The entries must be kept in the same order as they were seen in the fstab.
  * Unless explicitly requested, a lookup on mount point should always
@@ -65,6 +72,7 @@ struct fstab_rec {
     int partnum;
     int swap_prio;
     unsigned int zram_size;
+    unsigned int file_encryption_mode;
 };
 
 // Callback function for verity status
@@ -81,10 +89,11 @@ void fs_mgr_free_fstab(struct fstab *fstab);
 #define FS_MGR_MNTALL_DEV_NOT_ENCRYPTED 1
 #define FS_MGR_MNTALL_DEV_NOT_ENCRYPTABLE 0
 #define FS_MGR_MNTALL_FAIL -1
-int fs_mgr_mount_all(struct fstab *fstab);
+int fs_mgr_mount_all(struct fstab *fstab, int mount_mode);
 
 #define FS_MGR_DOMNT_FAILED -1
 #define FS_MGR_DOMNT_BUSY -2
+
 int fs_mgr_do_mount(struct fstab *fstab, char *n_name, char *n_blk_device,
                     char *tmp_mount_point);
 int fs_mgr_do_tmpfs_mount(char *n_name);
@@ -102,11 +111,13 @@ int fs_mgr_is_nonremovable(const struct fstab_rec *fstab);
 int fs_mgr_is_verified(const struct fstab_rec *fstab);
 int fs_mgr_is_encryptable(const struct fstab_rec *fstab);
 int fs_mgr_is_file_encrypted(const struct fstab_rec *fstab);
+const char* fs_mgr_get_file_encryption_mode(const struct fstab_rec *fstab);
 int fs_mgr_is_convertible_to_fbe(const struct fstab_rec *fstab);
 int fs_mgr_is_noemulatedsd(const struct fstab_rec *fstab);
 int fs_mgr_is_notrim(struct fstab_rec *fstab);
 int fs_mgr_is_formattable(struct fstab_rec *fstab);
 int fs_mgr_is_nofail(struct fstab_rec *fstab);
+int fs_mgr_is_latemount(struct fstab_rec *fstab);
 int fs_mgr_swapon_all(struct fstab *fstab);
 
 int fs_mgr_do_format(struct fstab_rec *fstab);

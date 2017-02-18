@@ -160,8 +160,10 @@ int get_available_local_transport_index();
 int  init_socket_transport(atransport *t, int s, int port, int local);
 void init_usb_transport(atransport *t, usb_handle *usb, ConnectionState state);
 
+std::string getEmulatorSerialString(int console_port);
 #if ADB_HOST
 atransport* find_emulator_transport_by_adb_port(int adb_port);
+atransport* find_emulator_transport_by_console_port(int console_port);
 #endif
 
 int service_to_fd(const char* name, const atransport* transport);
@@ -225,8 +227,6 @@ void usb_kick(usb_handle *h);
 #if ADB_HOST
 int is_adb_interface(int vid, int pid, int usb_class, int usb_subclass, int usb_protocol);
 #endif
-
-int adb_commandline(int argc, const char **argv);
 
 ConnectionState connection_state(atransport *t);
 
