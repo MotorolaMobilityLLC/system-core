@@ -81,6 +81,15 @@ void property_init() {
     }
 }
 
+static int save_count = 0;
+static char save_persist_props_flag = 1;
+
+struct property_info {
+    unsigned serial;
+    char value[PROP_VALUE_MAX];
+    char name[PROP_NAME_MAX];
+};
+
 static int check_mac_perms(const char *name, char *sctx, struct ucred *cr)
 {
     char *tctx = NULL;
@@ -153,6 +162,22 @@ static void write_persistent_property(const char *name, const char *value)
     }
 }
 
+static void save_persistent_property(void)
+{
+    int i = 0;
+
+    if (save_persist_props_flag == 0)
+        return;
+    save_persist_props_flag = 0;
+    for (i = 0; i < save_count; i++) {
+        struct property_info *pi = (struct property_info*) __system_property_find_nth(i);
+        if ((pi != 0) && strncmp("persist.", pi->name, strlen("persist.")) == 0) {
+            write_persistent_property(pi->name, pi->value);
+         }
+    }
+    save_count = 0;
+}
+
 static bool is_legal_property_name(const char* name, size_t namelen)
 {
     size_t i;
@@ -215,6 +240,7 @@ static int property_set_impl(const char* name, const char* value) {
 #endif
             return rc;
         }
+        save_count++;
     }
     /* If name starts with "net." treat as a DNS property. */
     if (strncmp("net.", name, strlen("net.")) == 0)  {
@@ -709,16 +735,18 @@ void load_persist_props(void) {
      * Also, we reset persistent_properties_loaded flag to avoid persist props
      * to be overwrite by default values.
      */
-    persistent_properties_loaded = 0;
-    load_properties_from_file(PROP_PATH_SYSTEM_BUILD, "persist.*");
+    //persistent_properties_loaded = 0;
+    //load_properties_from_file(PROP_PATH_SYSTEM_BUILD, "persist.*");
     /* END Motorola Hong-Mei Li 2012-09-10, IKJBREL1-5477 */
 
-    load_override_properties();
+    if (save_persist_props_flag)
+        save_persistent_property();
 
+    load_override_properties();
     /* IKVPREL1L-4680 - update usb properties after decryption */
     update_persistent_usb_property();
-
     /* Read persistent properties after all default values have been loaded. */
+
     load_persistent_properties();
     /* read efuse to check die condition */
     if (ro_hardware == "mt6757") {
