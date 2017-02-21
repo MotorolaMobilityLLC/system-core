@@ -267,9 +267,12 @@ void kernel_log_print(const char *fmt, ...) {
 #if defined(MTK_LOGD_FILTER)
 static int log_reader_count = 0;
 void logd_reader_del(void) {
+    char property[PROPERTY_VALUE_MAX];
+
     if (log_reader_count == 1) {
-        property_set("log.tag", "I");
-        kernel_log_print("logd no log reader, set log level to INFO!\n");
+        property_get("persist.log.tag", property, "I");
+        property_set("log.tag", property);
+        kernel_log_print("logd no log reader, set log level to %s!\n", property);
     }
     log_reader_count--;
 }
@@ -353,10 +356,8 @@ static void *reinit_thread_start(void * /*obj*/) {
                 build_type = 0;
             } else if (!strcmp(property, "userdebug")) {
                 build_type = 1;
-                detect_time = 6;
             } else {
                 build_type = 2;
-                detect_time = 6;
             }
 
             if (log_detect_value == 0) {
@@ -373,12 +374,12 @@ static void *reinit_thread_start(void * /*obj*/) {
 
             if (count > 0 && count != log_detect_value) {  // set new log level
                 log_detect_value = count;
-                if (log_detect_value > 1000) {
-                    detect_time = 1;
-                } else {
-                    detect_time = 6;
-                }
                 log_much_delay_detect = 1;
+            }
+            if (log_detect_value > 1000) {
+                detect_time = 1;
+            } else {
+                detect_time = 6;
             }
             property_get("logmuch.detect.delay", property, "");
             delay = atoi(property);
