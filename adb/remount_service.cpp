@@ -160,25 +160,28 @@ void remount_service(int fd, void* cookie) {
 
     bool system_verified = !(android::base::GetProperty("partition.system.verified", "").empty());
     bool vendor_verified = !(android::base::GetProperty("partition.vendor.verified", "").empty());
+    bool oem_verified = !(android::base::GetProperty("partition.oem.verified", "").empty());
 
-    if (system_verified || vendor_verified) {
-        // Allow remount but warn of likely bad effects
+    if (system_verified || vendor_verified || oem_verified) {
+        // Don't allow remount
         bool both = system_verified && vendor_verified;
+        bool both2 = (system_verified || vendor_verified) && oem_verified;
         WriteFdFmt(fd,
-                   "dm_verity is enabled on the %s%s%s partition%s.\n",
+                   "dm_verity is enabled on the %s%s%s%s%s partition%s.\n",
                    system_verified ? "system" : "",
                    both ? " and " : "",
                    vendor_verified ? "vendor" : "",
+                   both2 ? " and " : "",
+                   oem_verified ? "oem" : "",
                    both ? "s" : "");
         WriteFdExactly(fd,
-                       "Use \"adb disable-verity\" to disable verity.\n"
-                       "If you do not, remount may succeed, however, you will still "
-                       "not be able to write to these volumes.\n");
+                       "Don't allow remount.\n"
+                       "Use \"adb disable-verity\" to disable verity.\n");
     }
 
     bool success = true;
     if (android::base::GetBoolProperty("ro.build.system_root_image", false)) {
-        success &= remount_partition(fd, "/");
+        success &= !system_verified ? remount_partition(fd, "/") : false;
     } else {
         success &= remount_partition(fd, "/system");
     }
@@ -190,6 +193,8 @@ void remount_service(int fd, void* cookie) {
     /* Note: may fail on secure unlocked BL if moto-android tries to remount this partition */
     if (remount_partition(fd, "/oem") == false) {
             WriteFdExactly(fd, "oem remount failed\n");
+            success &= false;
+        }
     }
 
     WriteFdExactly(fd, success ? "remount succeeded\n" : "remount failed\n");
