@@ -297,6 +297,8 @@ int LogBuffer::log(log_id_t log_id, log_time realtime,
     int log_prio = ANDROID_LOG_INFO;
     int i, fd_file, ret;
     int buf_len, msg_len;
+    char property[PROPERTY_VALUE_MAX];
+    int prop_value;
 #if !defined(_WIN32)
     struct tm tmBuf;
 #endif
@@ -399,6 +401,20 @@ int LogBuffer::log(log_id_t log_id, log_time realtime,
 
     if (now_time > (old_time + detect_time - 1)) {
        if (line_count > (log_detect_value * detect_time)) {
+        property_get("logmuch.detect.value", property, "-1");
+        prop_value= atoi(property);
+        if (prop_value > log_detect_value) {
+            log_detect_value = prop_value;
+            line_count = 1;
+            old_time = now_time + detect_time;
+            if (log_detect_value > 1000) {
+                detect_time = 1;
+            } else {
+                detect_time = 6;
+            }
+            goto log_much_exit;
+        }
+
         buff = new char[1024];
         if (buff == NULL)
             goto log_much_exit;

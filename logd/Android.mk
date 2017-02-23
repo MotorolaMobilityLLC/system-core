@@ -48,6 +48,7 @@ ifeq ($(HAVE_AEE_FEATURE), yes)
     LOCAL_C_INCLUDES += $(MTK_ROOT)/external/aee/binary/inc
 endif
 
+ifeq ($(MTK_INTERNAL),yes)
 ifneq ($(ANDROID_LOG_MUCH_COUNT), )
 ifeq ($(TARGET_BUILD_VARIANT),eng)
     LOCAL_CFLAGS += -DANDROID_LOG_MUCH_COUNT=$(ANDROID_LOG_MUCH_COUNT)
@@ -55,6 +56,7 @@ else
     LOCAL_CFLAGS += -DANDROID_LOG_MUCH_COUNT=1000
 endif
     LOCAL_INIT_RC := logd_e.rc
+endif
 endif
 
 LOCAL_CFLAGS += -DMTK_LOGD_FILTER
