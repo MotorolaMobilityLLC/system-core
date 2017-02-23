@@ -159,33 +159,40 @@ void remount_service(int fd, void* cookie) {
     property_get("partition.vendor.verified", prop_buf, "");
     bool vendor_verified = (strlen(prop_buf) > 0);
 
-    if (system_verified || vendor_verified) {
-        // Allow remount but warn of likely bad effects
+    property_get("partition.oem.verified", prop_buf, "");
+    bool oem_verified = (strlen(prop_buf) > 0);
+
+    if (system_verified || vendor_verified || oem_verified) {
+        // Don't allow remount
         bool both = system_verified && vendor_verified;
+        bool both2 = (system_verified || vendor_verified) && oem_verified;
         WriteFdFmt(fd,
-                   "dm_verity is enabled on the %s%s%s partition%s.\n",
+                   "dm_verity is enabled on the %s%s%s%s%s partition%s.\n",
                    system_verified ? "system" : "",
                    both ? " and " : "",
                    vendor_verified ? "vendor" : "",
+                   both2 ? " and " : "",
+                   oem_verified ? "oem" : "",
                    both ? "s" : "");
         WriteFdExactly(fd,
-                       "Use \"adb disable-verity\" to disable verity.\n"
-                       "If you do not, remount may succeed, however, you will still "
-                       "not be able to write to these volumes.\n");
+                       "Don't allow remount.\n"
+                       "Use \"adb disable-verity\" to disable verity.\n");
     }
 
     bool success = true;
     property_get("ro.build.system_root_image", prop_buf, "");
     bool system_root = !strcmp(prop_buf, "true");
     if (system_root) {
-        success &= remount_partition(fd, "/");
+        success &= !system_verified ? remount_partition(fd, "/") : false;
     } else {
-        success &= remount_partition(fd, "/system");
-        success &= remount_partition(fd, "/vendor");
+        success &= !system_verified ? remount_partition(fd, "/system") : false;
+        success &= !vendor_verified ? remount_partition(fd, "/vendor") : false;
 
         /* Note: may fail on secure unlocked BL if moto-android tries to remount this partition */
-        if (remount_partition(fd, "/oem") == false)
+        if (oem_verified || remount_partition(fd, "/oem") == false) {
             WriteFdExactly(fd, "oem remount failed\n");
+            success &= false;
+        }
     }
 
     WriteFdExactly(fd, success ? "remount succeeded\n" : "remount failed\n");
