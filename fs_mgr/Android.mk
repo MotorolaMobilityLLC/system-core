@@ -40,6 +40,13 @@ LOCAL_CFLAGS := -Werror
 ifneq (,$(filter userdebug,$(TARGET_BUILD_VARIANT)))
 LOCAL_CFLAGS += -DALLOW_ADBD_DISABLE_VERITY=1
 endif
+
+# Lenovo wuzb1 2017-02-28 INDRIYAPRO-106 Moto Build C
+ifeq ($(MOT_TARGET_BUILD_ADDITIONAL_CONFIG),bldccfg)
+LOCAL_CFLAGS += -DALLOW_ADBD_DISABLE_VERITY=1
+LOCAL_CFLAGS += -DMOTO_BLD_C=1
+endif
+
 # add mtk fstab flags support
 LOCAL_CFLAGS += -DMTK_FSTAB_FLAGS
 # end
