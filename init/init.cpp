@@ -440,7 +440,6 @@ static void export_kernel_boot_props() {
         { "ro.boot.baseband",   "ro.baseband",   "unknown", },
         { "ro.boot.bootloader", "ro.bootloader", "unknown", },
         { "ro.boot.hardware",   "ro.hardware",   "unknown", },
-        { "ro.boot.revision",   "ro.revision",   "0", },
     };
     for (size_t i = 0; i < ARRAY_SIZE(prop_map); i++) {
         std::string value = property_get(prop_map[i].src_prop);
@@ -455,16 +454,47 @@ static void export_kernel_boot_props() {
 #define MACRO_TO_STR(S) MACRO_TO_STR1(S)
     /* we got valid Name */
     int fd = open(boardIdPath1, O_RDONLY);
-    if (fd < 0 && (fd = open(boardIdPath2, O_RDONLY)) < 0) {
+    int path2 = 0;
+    if (fd < 0 && (path2 = 1, fd = open(boardIdPath2, O_RDONLY)) < 0) {
         ERROR("board Id path:%s and %s are both NOT valid\n", boardIdPath1, boardIdPath2);
     }
     else {
         char boardIdStr[20];
+        char *hwTag = NULL;
+        int skuid;
         if (read(fd, boardIdStr, sizeof(boardIdStr)) > 0) {
             char deviceTag[PROP_VALUE_MAX];
             snprintf(deviceTag, sizeof(deviceTag), "%s_%s", MACRO_TO_STR(PRODUCT_DEVICE), boardIdStr);
             property_set("ro.boot.device", deviceTag);
             property_set("ro.hw.device", deviceTag);
+        }
+        if (path2) {
+            skuid = atoi(boardIdStr);
+            NOTICE("longcheer - skuid = %d\n", skuid);
+            if (0 <= skuid && skuid <= 4)
+            {
+                hwTag = (char *)"EVT2";
+            } else if (skuid >= 5 && skuid <= 9)
+            {
+                hwTag = (char *)"DVT1";
+            }else if(skuid >= 10 && skuid <= 14)
+            {
+                hwTag = (char *)"DVT2";
+            }else if(skuid >= 15 && skuid <= 19)
+            {
+                hwTag = (char *)"PVT";
+            }else if(skuid >= 20 && skuid <= 24)
+            {
+                hwTag = (char *)"MP";
+            }
+            else
+            {
+                hwTag = (char *)"Error";
+            }
+
+            property_set("ro.boot.revision", hwTag);
+            property_set("ro.revision", hwTag);
+            property_set("ro.hw.revision", hwTag);
         }
         close(fd);
     }
