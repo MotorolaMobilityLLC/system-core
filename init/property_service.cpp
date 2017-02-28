@@ -493,6 +493,16 @@ static void load_properties(char *data, const char *filter)
                 property_set(key, "LATAM");
             } 
           //add by yangchao for single sim &dual sim,end
+
+            //begin zhangsx10 for dynamic feature support
+            if (strcmp("ro.hw.gyroscope", key) == 0) {
+                sku_id =get_sku_id();
+                if (sku_id ==3 || sku_id ==4) {
+                    NOTICE("zhangsx10--load_properties-{ro.hw.gyroscope}, value=%s, Modify_value=true)\n", value);
+                    property_set(key, "true");
+                }
+            } 
+            //end zhangsx10 for dynamic feature support
 #endif
 
             property_set(key, value);
