@@ -434,17 +434,22 @@ static void import_kernel_nv(const std::string& key, const std::string& value, b
 #ifdef WIND_DEF_BOARD_VERSION
 	int boardid = 0xff;
 	if (android::base::StartsWith(key, "bid_num")) {
-
-		boardid = bid_atoi((char *)value.c_str());
+        char *hwTag = (char *)"None";
+		hwTag = bid_atoi((char *)value.c_str());
 		INFO("bid_num = %d\n",boardid);
 		if(0 <= boardid && boardid <= 5)
-			property_set("ro.hw.boardversion","EVT1_2");
+            hwTag = (char *)"EVT1_2";
 		else if(6 <= boardid && boardid <= 11)
-			property_set("ro.hw.boardversion","DVT1");
+            hwTag = (char *)"DVT1";
 		else if(12 <= boardid && boardid <= 19)
-			property_set("ro.hw.boardversion","DVT2");
+            hwTag = (char *)"DVT2";
 		else if(20 <= boardid && boardid <= 27)
-			property_set("ro.hw.boardversion","DVT2_1");
+            hwTag = "DVT2_1";
+
+        property_set("ro.boot.revision", hwTag);
+        property_set("ro.revision", hwTag);
+        property_set("ro.hw.revision", hwTag);
+
     }
 #endif
 //add property for BoardVersion --sunsiyuan@wind-mobi.com 20170301 end
