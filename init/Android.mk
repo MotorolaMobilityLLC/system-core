@@ -36,6 +36,12 @@ ifeq ($(strip $(MTK_NAND_MTK_FTL_SUPPORT)),yes)
 init_options += -DMTK_FTL_SUPPORT
 endif
 
+# add for BoardVersion --sunsiyuan@wind-mobi.com 20170301 begin
+ifeq ($(strip $(WIND_DEF_BOARD_VERSION)),yes)
+init_options += -DWIND_DEF_BOARD_VERSION
+endif
+# add for BoardVersion --sunsiyuan@wind-mobi.com 20170301 end
+
 init_options += -DLOG_UEVENTS=0
 
 init_cflags += \
