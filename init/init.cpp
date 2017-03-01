@@ -391,6 +391,21 @@ static int console_init_action(const std::vector<std::string>& args)
 
     return 0;
 }
+//add property for BoardVersion --sunsiyuan@wind-mobi.com 20170301 begin
+#ifdef WIND_DEF_BOARD_VERSION
+static int bid_atoi(char *nptr)
+ {
+	int tmp=0;
+	while(*nptr>='0' && *nptr<='1')
+	{
+		tmp *= 2;
+		tmp += *nptr - '0';
+		nptr++;
+	}
+	 return tmp;
+ }
+#endif
+//add property for BoardVersion --sunsiyuan@wind-mobi.com 20170301 end
 
 #ifdef BOOT_TRACE
 static bool boot_trace = false;
@@ -415,6 +430,24 @@ static void import_kernel_nv(const std::string& key, const std::string& value, b
         property_set(android::base::StringPrintf("ro.boot.%s", key.c_str() + 12).c_str(),
                      value.c_str());
     }
+//add property for BoardVersion --sunsiyuan@wind-mobi.com 20170301 begin
+#ifdef WIND_DEF_BOARD_VERSION
+	int boardid = 0xff;
+	if (android::base::StartsWith(key, "bid_num")) {
+
+		boardid = bid_atoi((char *)value.c_str());
+		INFO("bid_num = %d\n",boardid);
+		if(0 <= boardid && boardid <= 5)
+			property_set("ro.hw.boardversion","EVT1_2");
+		else if(6 <= boardid && boardid <= 11)
+			property_set("ro.hw.boardversion","DVT1");
+		else if(12 <= boardid && boardid <= 19)
+			property_set("ro.hw.boardversion","DVT2");
+		else if(20 <= boardid && boardid <= 27)
+			property_set("ro.hw.boardversion","DVT2_1");
+    }
+#endif
+//add property for BoardVersion --sunsiyuan@wind-mobi.com 20170301 end
 }
 
 static void export_oem_lock_status() {
