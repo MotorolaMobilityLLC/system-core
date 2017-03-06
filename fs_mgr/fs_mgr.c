@@ -89,6 +89,8 @@ static int mtd_name_to_number(const char *name);
 static int ubi_attach_mtd(const char *name);
 #endif
 
+#define MAX_MOUNT_RETRIES 2
+
 /*
  * gettime() - returns the time in seconds of the system's monotonic clock or
  * zero on error.
@@ -192,10 +194,22 @@ static void check_fs(char *blk_device, char *fs_type, char *target)
     } else if (!strcmp(fs_type, "f2fs")) {
             char *f2fs_fsck_argv[] = {
                     F2FS_FSCK_BIN,
-                    "-a",
+                    "-f",
                     blk_device
             };
-        INFO("Running %s -a %s\n", F2FS_FSCK_BIN, blk_device);
+        char tmp[PROP_VALUE_MAX];
+        int force = 0;
+
+        ret = __system_property_get("ro.boot.last_reboot", tmp);
+        if (ret) {
+            force = strtoul(tmp, 0, 16);
+        }
+
+        if (force) {
+            INFO("Forcing easy sysyem check...\n");
+            f2fs_fsck_argv[1] = "-a";
+        }
+        INFO("Running %s %s %s\n", F2FS_FSCK_BIN, f2fs_fsck_argv[1], blk_device);
 
         ret = android_fork_execvp_ext(ARRAY_SIZE(f2fs_fsck_argv), f2fs_fsck_argv,
                                       &status, true, LOG_KLOG | LOG_FILE,
@@ -513,6 +527,11 @@ static int mount_with_alternatives(struct fstab *fstab, int start_idx, int *end_
                      fstab->recs[i].mount_point, i, fstab->recs[i].fs_type, fstab->recs[*attempted_idx].fs_type);
                 continue;
             }
+            if (fs_mgr_identify_fs(fstab->recs[i].fs_type, fstab->recs[i].blk_device) == 0) {
+                ERROR("%s(): skipping unidentified mountpoint=%s rec[%d].fs_type=%s.\n", __func__,
+                     fstab->recs[i].mount_point, i, fstab->recs[i].fs_type);
+                continue;
+            }
 #ifdef MTK_FSTAB_FLAGS
             if(fstab->recs[i].fs_mgr_flags & MF_RESIZE) {
                 check_fs(fstab->recs[i].blk_device, fstab->recs[i].fs_type,
@@ -719,6 +738,7 @@ int fs_mgr_mount_all(struct fstab *fstab, int mount_mode)
     int mret = -1;
     int mount_errno = 0;
     int attempted_idx = -1;
+    int retry = MAX_MOUNT_RETRIES;
 
     if (!fstab) {
         return -1;
@@ -856,6 +876,9 @@ int fs_mgr_mount_all(struct fstab *fstab, int mount_mode)
             }
 
             /* Success!  Go get the next one */
+            INFO("Successfully mounted %s with file system type '%s'.\n",
+                fstab->recs[attempted_idx].mount_point, fstab->recs[attempted_idx].fs_type);
+            retry = MAX_MOUNT_RETRIES;
             continue;
         }
 
@@ -900,17 +923,30 @@ int fs_mgr_mount_all(struct fstab *fstab, int mount_mode)
                       fstab->recs[attempted_idx].fs_type);
                 encryptable = FS_MGR_MNTALL_DEV_NEEDS_RECOVERY;
                 continue;
-            } else {
+             } else if (fs_mgr_is_partition_encrypted(&fstab->recs[top_idx])) {
                 /* Need to mount a tmpfs at this mountpoint for now, and set
                  * properties that vold will query later for decrypting
                  */
-                ERROR("%s(): possibly an encryptable blkdev %s for mount %s type %s )\n", __func__,
+                ERROR("%s(): encrypted blkdev %s for mount %s type %s )\n", __func__,
                       fstab->recs[attempted_idx].blk_device, fstab->recs[attempted_idx].mount_point,
                       fstab->recs[attempted_idx].fs_type);
                 if (fs_mgr_do_tmpfs_mount(fstab->recs[attempted_idx].mount_point) < 0) {
                     ++error_count;
                     continue;
                 }
+             } else {
+                if (--retry > 0) {
+                    ERROR("Failed to mount %s; retrying...\n",
+                        fstab->recs[attempted_idx].mount_point);
+                    i = top_idx - 1;
+                    continue;
+                }
+                ERROR("Failed to mount an encryptable partition on"
+                    "%s at %s options: %s error: %s. Suggest recovery...\n",
+                    fstab->recs[attempted_idx].blk_device, fstab->recs[attempted_idx].mount_point,
+                    fstab->recs[attempted_idx].fs_options, strerror(mount_errno));
+                encryptable = FS_MGR_MNTALL_DEV_NEEDS_RECOVERY;
+                continue;
             }
             encryptable = FS_MGR_MNTALL_DEV_MIGHT_BE_ENCRYPTED;
         } else if(mret && mount_errno != EBUSY && mount_errno != EACCES &&
@@ -927,6 +963,11 @@ int fs_mgr_mount_all(struct fstab *fstab, int mount_mode)
                        fstab->recs[attempted_idx].blk_device, fstab->recs[attempted_idx].mount_point,
                        fstab->recs[attempted_idx].fs_options, strerror(mount_errno));
             } else {
+                if (--retry > 0) {
+                       ERROR("Failed to mount %s; retrying...\n", fstab->recs[attempted_idx].mount_point);
+                       i = top_idx - 1;
+                       continue;
+                }
                 ERROR("Failed to mount an un-encryptable or wiped partition on"
                        "%s at %s options: %s error: %s\n",
                        fstab->recs[attempted_idx].blk_device, fstab->recs[attempted_idx].mount_point,
@@ -1044,6 +1085,11 @@ int fs_mgr_do_mount(struct fstab *fstab, char *n_name, char *n_blk_device,
             wait_for_file(n_blk_device, WAIT_TIMEOUT);
         }
 
+        if (fs_mgr_identify_fs(fstab->recs[i].fs_type, n_blk_device) == 0) {
+            ERROR("%s(): skipping unidentified mountpoint=%s rec[%d].fs_type=%s.\n", __func__,
+                  fstab->recs[i].mount_point, i, fstab->recs[i].fs_type);
+            continue;
+        }
         if (fstab->recs[i].fs_mgr_flags & MF_CHECK) {
             check_fs(n_blk_device, fstab->recs[i].fs_type,
                      fstab->recs[i].mount_point);
