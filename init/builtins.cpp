@@ -66,7 +66,7 @@
 
 #define chmod DO_NOT_USE_CHMOD_USE_FCHMODAT_SYMLINK_NOFOLLOW
 #define UNMOUNT_CHECK_MS 5000
-#define UNMOUNT_CHECK_TIMES 10
+#define UNMOUNT_CHECK_TIMES 50
 
 static const int kTerminateServiceDelayMicroSeconds = 50000;
 
