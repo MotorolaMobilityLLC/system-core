@@ -183,7 +183,7 @@ void remount_service(int fd, void* cookie) {
     if (android::base::GetBoolProperty("ro.build.system_root_image", false)) {
         success &= !system_verified ? remount_partition(fd, "/") : false;
     } else {
-        success &= remount_partition(fd, "/system");
+        success &= !system_verified ? remount_partition(fd, "/system") : false;
     }
 
     success &= remount_partition(fd, "/odm");
@@ -194,7 +194,6 @@ void remount_service(int fd, void* cookie) {
     if (remount_partition(fd, "/oem") == false) {
             WriteFdExactly(fd, "oem remount failed\n");
             success &= false;
-        }
     }
 
     WriteFdExactly(fd, success ? "remount succeeded\n" : "remount failed\n");
