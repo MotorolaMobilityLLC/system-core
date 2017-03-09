@@ -172,13 +172,14 @@ void remount_service(int fd, void* cookie) {
         success &= !system_verified ? remount_partition(fd, "/") : false;
     } else {
         success &= !system_verified ? remount_partition(fd, "/system") : false;
-        success &= !vendor_verified ? remount_partition(fd, "/vendor") : false;
+    }
 
-        /* Note: may fail on secure unlocked BL if moto-android tries to remount this partition */
-        if (oem_verified || remount_partition(fd, "/oem") == false) {
-            WriteFdExactly(fd, "oem remount failed\n");
-            success &= false;
-        }
+    success &= !vendor_verified ? remount_partition(fd, "/vendor") : false;
+
+    /* Note: may fail on secure unlocked BL if moto-android tries to remount this partition */
+    if (oem_verified || remount_partition(fd, "/oem") == false) {
+        WriteFdExactly(fd, "oem remount failed\n");
+        success &= false;
     }
 
     WriteFdExactly(fd, success ? "remount succeeded\n" : "remount failed\n");
