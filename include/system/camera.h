@@ -321,6 +321,14 @@ typedef struct camera_face {
     int32_t leye_blink;
     int32_t reye_blink;
 
+//#ifdef LENOVO_FLAWLESS_SUPPORTED
+    //songwei add 
+    int32_t sex;
+    int32_t age;
+    int32_t orientation;
+    int32_t is_pro;
+    //songwei add end.
+//#endif
 } camera_face_t;
 
 /**
