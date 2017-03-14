@@ -339,6 +339,12 @@ else
 LOCAL_CFLAGS += -DALLOW_ADBD_NO_AUTH=$(if $(filter userdebug eng,$(TARGET_BUILD_VARIANT)),1,0)
 endif
 
+#zhuzhibin@wind-mobi.com add 2017/03/13 start
+ifeq ($(strip $(WIND_DEF_WOODS_BR)),yes)
+LOCAL_CFLAGS += -DWIND_BR_ALLOW_ADBD_ROOT
+endif
+#zhuzhibin@wind-mobi.com add 2017/03/13 end
+
 ifeq ($(strip $(MTK_NAND_MTK_FTL_SUPPORT)),yes)
 LOCAL_CFLAGS += -DMTK_FTL_SUPPORT
 endif
