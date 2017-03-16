@@ -212,6 +212,13 @@ int adbd_main(int server_port) {
         auth_required = false;
     }
 
+    //START IKANGEROW-165, enable adb by default until do factory reset
+    if ( property_get_bool("ro.lenovo.need.fdr", 0) == 1 ){
+        ///also see system/core/init/property_service.cpp changes
+        auth_required = false;
+    }
+    //END IKANGEROW-165
+
     adbd_auth_init();
 
     // Our external storage path may be different than apps, since
