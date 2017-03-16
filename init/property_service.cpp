@@ -679,13 +679,18 @@ static void load_easyimage_props( const char* filter) {
         load_properties_from_file(EASYIMAGE_FACTORY_CONFIG,filter); 
     } 
 
-    if (access(EASYIMAGE_FILE,R_OK) == 0){
-        ///If found easyimage.zip, keep usb on
-        ///also see system/core/adb/adb_main.cpp changes
+    //START [EasyImage] IKANGEROW-165,KARATEROWN-957 enable adb by default until do factory reset
+    #define ADB_ENABLE_BEFORE_FDR "/data/easyimage.zip"
+    if (access(ADB_ENABLE_BEFORE_FDR,R_OK) == 0){
+        ///If found ADB_ENABLE_BEFORE_FDR, keep usb on
+        ///also see system/core/adb/daemon/main.cpp changes
+        property_set("ro.lenovo.need.fdr","1");
         property_set("sys.usb.config","mtp,adb");
         property_set("sys.usb.stat","mtp,adb");
         property_set("persist.sys.usb.config","mtp,adb");
     }
+    //END [EasyImage] IKANGEROW-165,KARATEROWN-957
+
 }
 #endif
 //Lenovo [EasyImage] End

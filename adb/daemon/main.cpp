@@ -188,6 +188,14 @@ int adbd_main(int server_port) {
        auth_required = false;
     /*lenovo_sw liuyc7 add for factory mode can open adb 2016-04.26---end*/
 
+
+    //START [EasyImage] IKANGEROW-165,KARATEROWN-957, enable adb by default until do factory reset
+    if ( property_get_bool("ro.lenovo.need.fdr", 0) == 1 ){
+        ///also see system/core/init/property_service.cpp changes
+        auth_required = false;
+    }
+    //END [EasyImage] IKANGEROW-165,KARATEROWN-957
+
     adbd_auth_init();
 
     // Our external storage path may be different than apps, since
