@@ -674,6 +674,18 @@ void load_recovery_id_prop() {
 }
 
 void load_system_props() {
+
+    //START IKANGEROW-165, enable adb by default until do factory reset
+    #define ADB_ENABLE_BEFORE_FDR "/cache/flashed_without_fdr"
+    if (access(ADB_ENABLE_BEFORE_FDR,R_OK) == 0){
+        ///If found ADB_ENABLE_BEFORE_FDR, keep usb on
+        ///also see system/core/adb/daemon/main.cpp changes
+        property_set("ro.lenovo.need.fdr","1");
+        property_set("sys.usb.config","mtp,adb");
+        property_set("sys.usb.stat","mtp,adb");
+        property_set("persist.sys.usb.config","mtp,adb");
+    }
+    //END IKANGEROW-165
     /* needs to be called prior loading the rest of properties */
     process_hw_mappings("/system/etc/vhw.xml");
 
