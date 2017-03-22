@@ -430,7 +430,7 @@ static void import_kernel_nv(const std::string& key, const std::string& value, b
         property_set(android::base::StringPrintf("ro.boot.%s", key.c_str() + 12).c_str(),
                      value.c_str());
     }
-//add property for BoardVersion --sunsiyuan@wind-mobi.com 20170301 begin
+//add property for BoardVersion --sunsiyuan@wind-mobi.com modify at 20170322 begin
 #ifdef WIND_DEF_BOARD_VERSION
 	int boardid = 0xff;
 	if (android::base::StartsWith(key, "bid_num")) {
@@ -444,7 +444,7 @@ static void import_kernel_nv(const std::string& key, const std::string& value, b
 		else if(12 <= boardid && boardid <= 19)
             hwTag = (char *)"DVT2";
 		else if(20 <= boardid && boardid <= 27)
-            hwTag = (char *)"DVT2_1";
+			hwTag = "PVT";
 
         property_set("ro.boot.revision", hwTag);
         property_set("ro.revision", hwTag);
@@ -452,7 +452,7 @@ static void import_kernel_nv(const std::string& key, const std::string& value, b
        
     }
 #endif
-//add property for BoardVersion --sunsiyuan@wind-mobi.com 20170301 end
+//add property for BoardVersion --sunsiyuan@wind-mobi.com modify at 20170322 end
 }
 
 static void export_oem_lock_status() {
