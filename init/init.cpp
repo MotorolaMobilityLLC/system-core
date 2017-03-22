@@ -443,7 +443,7 @@ static void import_kernel_nv(const std::string& key, const std::string& value, b
             hwTag = (char *)"DVT1";
 		else if(12 <= boardid && boardid <= 19)
             hwTag = (char *)"DVT2";
-		else if(20 <= boardid && boardid <= 27)
+		else if(20 <= boardid && boardid <= 28)
 			hwTag = (char *)"PVT";
 		else if(29 <= boardid && boardid <= 37)
 			hwTag = (char *)"MP";
