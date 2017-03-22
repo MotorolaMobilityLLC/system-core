@@ -492,14 +492,15 @@ static void load_properties_from_file(const char* filename, const char* filter) 
 }
 
 static void load_persistent_properties() {
-    persistent_properties_loaded = 1;
-
     std::unique_ptr<DIR, int(*)(DIR*)> dir(opendir(PERSISTENT_PROPERTY_DIR), closedir);
     if (!dir) {
         ERROR("Unable to open persistent property directory \"%s\": %s\n",
               PERSISTENT_PROPERTY_DIR, strerror(errno));
         return;
     }
+
+    /* Set the flag only after PERSISTENT_PROPERTY_DIR has been mounted*/
+    persistent_properties_loaded = 1;
 
     struct dirent* entry;
     while ((entry = readdir(dir.get())) != NULL) {
