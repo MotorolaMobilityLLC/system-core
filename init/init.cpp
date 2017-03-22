@@ -444,12 +444,14 @@ static void import_kernel_nv(const std::string& key, const std::string& value, b
 		else if(12 <= boardid && boardid <= 19)
             hwTag = (char *)"DVT2";
 		else if(20 <= boardid && boardid <= 27)
-			hwTag = "PVT";
+			hwTag = (char *)"PVT";
+		else if(29 <= boardid && boardid <= 37)
+			hwTag = (char *)"MP";
+		
 
         property_set("ro.boot.revision", hwTag);
         property_set("ro.revision", hwTag);
         property_set("ro.hw.revision", hwTag);
-       
     }
 #endif
 //add property for BoardVersion --sunsiyuan@wind-mobi.com modify at 20170322 end
