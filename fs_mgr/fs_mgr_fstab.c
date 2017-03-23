@@ -367,26 +367,26 @@ static int parse_flags(char *flags, struct flag_list *fl,
 
             if (f & MF_FORCECRYPT) {
                 int mt_boot_mode  = get_boot_mode();
-                if (mt_boot_mode != 0) {
+                if ((mt_boot_mode != 0) && (mt_boot_mode != 7)) {
                    f &= (~MF_FORCECRYPT);
                    f |= MF_CRYPT;
                    NOTICE("%s: bootmode(%d) is NOT normal mode, disable 'default encrytion', flag=(0x%x -> 0x%x) \n",
                            __FUNCTION__, mt_boot_mode, f_backup, f);
                 }
                 else {
-                   // normal mode
+                   // normal mode or alarm boot
                 }
             }
             if (f & MF_FORCEFDEORFBE) {
                 int mt_boot_mode  = get_boot_mode();
-                if (mt_boot_mode != 0) {
+                if ((mt_boot_mode != 0) && (mt_boot_mode != 7)) {
                  f &= (~MF_FORCEFDEORFBE);
                  f |= MF_CRYPT;
                  NOTICE("%s: bootmode(%d) is NOT normal mode, disable 'forcefdeorfbe', flag=(0x%x -> 0x%x) \n",
                          __FUNCTION__, mt_boot_mode, f_backup, f);
                 }
                 else {
-                 // normal mode
+                 // normal mode or alarm boot
                 }
             }
         }
