@@ -67,11 +67,6 @@ static bool should_drop_privileges() {
 #ifdef MTK_ALLOW_ADBD_ROOT
     return false;
 #endif
-//zhuzhibin@wind-mobi.com add 2017/03/13 start
-#ifdef WIND_BR_ALLOW_ADBD_ROOT
-    return false;
-#endif
-//zhuzhibin@wind-mobi.com add 2017/03/13 end
 #if defined(ALLOW_ADBD_ROOT)
     char value[PROPERTY_VALUE_MAX];
 
