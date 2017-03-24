@@ -146,6 +146,7 @@
 #define AID_MOT_CAIF      9010  /* can create CAIF sockets */
 #define AID_MOT_DLNA      9011  /*DLNA native */
 #define AID_MOT_ATVC      9012  /* mot_atvc - This is for use of the ATVC service ONLY */
+#define AID_SPRINT_EXTENSION 9013 /* IKASANTISPRINT-149 sprint extension service */
 #define AID_FINGERP       9015  /* IKFPS-98 Add permission group for fingerprint */
 #define AID_MOT_ESDFS     9016  /* mot_esdfs for ESDFS package list parsing */
 #define AID_ITSON         9018  /* itson permission  */
@@ -235,6 +236,7 @@ static const struct android_id_info android_ids[] = {
     { "webserv",       AID_WEBSERV },
     { "debuggerd",     AID_DEBUGGERD, },
     { "mediacodec",    AID_MEDIA_CODEC, },
+    { "sprint_extension", AID_SPRINT_EXTENSION, },
     { "cameraserver",  AID_CAMERASERVER, },
     { "firewall",      AID_FIREWALL, },
     { "trunks",        AID_TRUNKS, },
