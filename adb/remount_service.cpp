@@ -184,6 +184,11 @@ void remount_service(int fd, void* cookie) {
     bool system_root = !strcmp(prop_buf, "true");
     if (system_root) {
         success &= !system_verified ? remount_partition(fd, "/") : false;
+
+        if (!success) {
+           WriteFdExactly(fd, "Reminder: verity must be disabled in bootloader. Run fastboot oem ssm_test.\n");
+        }
+
     } else {
         success &= !system_verified ? remount_partition(fd, "/system") : false;
     }
