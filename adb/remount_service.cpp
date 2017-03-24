@@ -170,6 +170,11 @@ void remount_service(int fd, void* cookie) {
     bool success = true;
     if (android::base::GetBoolProperty("ro.build.system_root_image", false)) {
         success &= !system_verified ? remount_partition(fd, "/") : false;
+
+        if (!success) {
+           WriteFdExactly(fd, "Reminder: verity must be disabled in bootloader. Run fastboot oem ssm_test.\n");
+        }
+
     } else {
         success &= !system_verified ? remount_partition(fd, "/system") : false;
     }
