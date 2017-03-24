@@ -341,7 +341,9 @@ endif
 
 #zhuzhibin@wind-mobi.com add 2017/03/13 start
 ifeq ($(strip $(WIND_DEF_WOODS_BR)),yes)
+ifneq (,$(filter userdebug eng,$(TARGET_BUILD_VARIANT)))
 LOCAL_CFLAGS += -DWIND_BR_ALLOW_ADBD_ROOT
+endif
 endif
 #zhuzhibin@wind-mobi.com add 2017/03/13 end
 
