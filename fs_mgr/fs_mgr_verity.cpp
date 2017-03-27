@@ -44,6 +44,8 @@
 #include "fs_mgr_priv.h"
 #include "fs_mgr_priv_verity.h"
 
+#include <cutils/android_reboot.h>
+
 #define FSTAB_PREFIX "/fstab."
 
 #define VERITY_TABLE_RSA_KEY "/verity_key"
@@ -984,6 +986,14 @@ int fs_mgr_setup_verity(struct fstab_rec *fstab)
             retval = FS_MGR_SETUP_VERITY_SUCCESS;
             goto out;
         }
+#ifdef LENOVO_RADIO_SECURE
+    // Invalid verity signature for the metadata, recomend to
+    // recover the system partition via the metadata reset
+    // since this should be caused by maliciously reflash from
+    // third party, thus reflash to official userbuild is needed.
+    ERROR("DM-verity: Security failure,rebooting into bootloader mode...\n");
+    android_reboot(ANDROID_RB_RESTART2, 0, "bootloader");
+#endif
 
         // invalidate root hash and salt to trigger device-specific recovery
         if (invalidate_table(params.table, verity.table_length) < 0) {
