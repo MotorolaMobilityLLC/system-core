@@ -50,6 +50,9 @@ endif
 # add mtk fstab flags support
 LOCAL_CFLAGS += -DMTK_FSTAB_FLAGS
 # end
+ifeq ($(LENOVO_RADIO_SECURE), yes)
+LOCAL_CFLAGS += -DLENOVO_RADIO_SECURE=1
+endif
 
 ifeq ($(strip $(MTK_NAND_UBIFS_SUPPORT)),yes)
 LOCAL_CFLAGS += -DMTK_UBIFS_SUPPORT
