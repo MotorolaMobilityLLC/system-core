@@ -539,27 +539,22 @@ static void export_kernel_boot_props() {
 
     /* predefined properties */
     property_set("ro.boot.dtv", "false");
-    property_set("ro.hw.dtv", "false");
     property_set("ro.boot.emmc", "true");
 
     const char fpPath[] = "/sys/devices/egistec/et360";
     if (access(fpPath, F_OK) == 0) {
         property_set("ro.boot.fps", "true");
-        property_set("ro.hw.fps", "true");
     }
     else {
         property_set("ro.boot.fps", "false");
-        property_set("ro.hw.fps", "false");
     }
 
     const char nfcPath[] = "/sys/devices/virtual/misc/pn547";
     if (access(nfcPath, F_OK) == 0) {
         property_set("ro.boot.nfc", "true");
-        property_set("ro.hw.nfc", "true");
     }
     else {
         property_set("ro.boot.nfc", "false");
-        property_set("ro.hw.nfc", "false");
     }
 }
 
