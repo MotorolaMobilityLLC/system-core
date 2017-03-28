@@ -667,9 +667,12 @@ static void export_kernel_boot_props() {
     const char nfcPath[] = "/sys/devices/virtual/misc/pn547";
     if (access(nfcPath, F_OK) == 0) {
         property_set("ro.boot.nfc", "true");
+	    property_set("ro.hw.nfc", "true");
+	
     }
     else {
         property_set("ro.boot.nfc", "false");
+        property_set("ro.hw.nfc", "false");
     }
     std::string tmp;
     std::size_t found;
