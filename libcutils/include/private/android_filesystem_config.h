@@ -172,7 +172,7 @@
 #define AID_MOT_WHISPER   9009  /* Whisper Protocol access */
 #define AID_MOT_CAIF      9010  /* can create CAIF sockets */
 #define AID_MOT_DLNA      9011  /*DLNA native */
-
+#define AID_MOT_ATVC      9012  /* mot_atvc - This is for use of the ATVC service ONLY */
 #define AID_MOT_DBVC      9014  /* mot_dbvc - This group is used to access DataBlock feature */
 
 #define AID_MOT_ESDFS     9016  /* mot_esdfs for ESDFS package list parsing */
