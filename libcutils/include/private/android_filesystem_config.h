@@ -182,6 +182,7 @@
 #define AID_MOT_ESDFS     9016  /* mot_esdfs for ESDFS package list parsing */
 #define AID_ITSON         9018  /* itson permission  */
 #define AID_MOT_DTV       9019  /* dtv */
+#define AID_MOT_MOD       9020  /* can interact with motorola mod HW */
 
 #define AID_MOT_SHARED    9323  /* motorola shared uid, IKSWM-342 */
 #define AID_MOT_COMMON    9341  /* motorola common uid, IKSWM-342 */
