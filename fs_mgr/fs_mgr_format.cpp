@@ -67,6 +67,21 @@ static int format_ext4(char *fs_blkdev, char *fs_mnt_point, bool crypt_footer)
     /* Format the partition using the calculated length */
     if (crypt_footer) {
         dev_sz -= CRYPT_FOOTER_OFFSET;
+
+        struct crypt_mnt_ftr crypt_ftr;
+        LINFO << "Wiping old crypto info.";
+        memset (&crypt_ftr, 0, sizeof(crypt_ftr));
+        if (lseek64(fd, dev_sz, SEEK_SET) == -1) {
+            PERROR << "Cannot seek to block device footer: ";
+            close(fd);
+            return -1;
+        }
+        write(fd, &crypt_ftr, sizeof(struct crypt_mnt_ftr));
+        if (lseek64(fd, 0ULL, SEEK_SET) == -1) {
+            PERROR << "Cannot seek to start of block device: ";
+            close(fd);
+            return -1;
+        }
     }
 
     std::string size_str = std::to_string(dev_sz / 4096);
