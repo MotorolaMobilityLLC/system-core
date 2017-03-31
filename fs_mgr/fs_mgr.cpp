@@ -36,6 +36,8 @@
 #include <thread>
 #include <vector>
 
+#include <selinux/selinux.h>
+
 #include <android-base/file.h>
 #include <android-base/properties.h>
 #include <android-base/stringprintf.h>
@@ -68,6 +70,8 @@
 #define F2FS_FSCK_BIN   "/system/bin/fsck.f2fs"
 #define MKSWAP_BIN      "/system/bin/mkswap"
 #define TUNE2FS_BIN     "/system/bin/tune2fs"
+
+#define MKSWAP_SECURITY_CONTEXT "u:r:toolbox:s0"
 
 #define FSCK_LOG_FILE   "/dev/fscklogs/log"
 
@@ -1238,6 +1242,9 @@ int fs_mgr_swapon_all(struct fstab *fstab)
         }
 
         /* Initialize the swap area */
+        if (setexeccon(MKSWAP_SECURITY_CONTEXT)) {
+            LERROR << "Failed to set security context for mkswap";
+        }
         mkswap_argv[1] = fstab->recs[i].blk_device;
         err = android_fork_execvp_ext(ARRAY_SIZE(mkswap_argv),
                                       const_cast<char **>(mkswap_argv),
@@ -1247,6 +1254,10 @@ int fs_mgr_swapon_all(struct fstab *fstab)
             LERROR << "mkswap failed for " << fstab->recs[i].blk_device;
             ret = -1;
             continue;
+        }
+
+        if (setexeccon(NULL)) {
+            LERROR << "Failed to restore security context"; 
         }
 
         /* If -1, then no priority was specified in fstab, so don't set
