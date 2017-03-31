@@ -33,7 +33,11 @@ cc_library {
     defaults: ["fs_mgr_defaults"],
     recovery_available: true,
     export_include_dirs: ["include"],
-    include_dirs: ["system/vold"],
+    include_dirs: [
+        "system/vold",
+        "external/selinux/libselinux/include",
+    ],
+
     srcs: [
         "fs_mgr.cpp",
         "fs_mgr_format.cpp",
