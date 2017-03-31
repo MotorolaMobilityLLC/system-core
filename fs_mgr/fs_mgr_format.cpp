@@ -55,6 +55,21 @@ static int format_ext4(char *fs_blkdev, char *fs_mnt_point, bool crypt_footer)
     /* Format the partition using the calculated length */
     if (crypt_footer) {
         dev_sz -= CRYPT_FOOTER_OFFSET;
+
+        struct crypt_mnt_ftr crypt_ftr;
+        LINFO << "Wiping old crypto info.";
+        memset (&crypt_ftr, 0, sizeof(crypt_ftr));
+        if (lseek64(fd, dev_sz, SEEK_SET) == -1) {
+            PERROR << "Cannot seek to block device footer: ";
+            close(fd);
+            return -1;
+        }
+        write(fd, &crypt_ftr, sizeof(struct crypt_mnt_ftr));
+        if (lseek64(fd, 0ULL, SEEK_SET) == -1) {
+            PERROR << "Cannot seek to start of block device: ";
+            close(fd);
+            return -1;
+        }
     }
 
     std::string size_str = std::to_string(dev_sz / 4096);
@@ -85,9 +100,13 @@ static int format_ext4(char *fs_blkdev, char *fs_mnt_point, bool crypt_footer)
     return rc;
 }
 
-static int format_f2fs(char *fs_blkdev)
+static int format_f2fs(char *fs_blkdev, bool crypt_footer)
 {
-    const char* const args[] = {"/system/bin/make_f2fs", "-f", "-O encrypt", fs_blkdev, nullptr};
+    char footer_size[10];
+    int footer = crypt_footer ? CRYPT_FOOTER_OFFSET : 0;
+
+    snprintf(footer_size, sizeof(footer_size), "%d", footer);
+    const char* const args[] = {"/system/bin/make_f2fs", "-r", footer_size, "-f", "-O encrypt", fs_blkdev, nullptr};
 
     return android_fork_execvp_ext(arraysize(args), const_cast<char**>(args), NULL, true,
                                    LOG_KLOG, true, nullptr, nullptr, 0);
@@ -101,7 +120,7 @@ int fs_mgr_do_format(struct fstab_rec *fstab, bool crypt_footer)
            << " as '" << fstab->fs_type << "'";
 
     if (!strncmp(fstab->fs_type, "f2fs", 4)) {
-        rc = format_f2fs(fstab->blk_device);
+        rc = format_f2fs(fstab->blk_device, crypt_footer);
     } else if (!strncmp(fstab->fs_type, "ext4", 4)) {
         rc = format_ext4(fstab->blk_device, fstab->mount_point, crypt_footer);
     } else {
