@@ -42,6 +42,8 @@
 #include <utility>
 #include <vector>
 
+#include <selinux/selinux.h>
+
 #include <android-base/file.h>
 #include <android-base/properties.h>
 #include <android-base/stringprintf.h>
@@ -77,6 +79,8 @@
 #define F2FS_FSCK_BIN   "/system/bin/fsck.f2fs"
 #define MKSWAP_BIN      "/system/bin/mkswap"
 #define TUNE2FS_BIN     "/system/bin/tune2fs"
+
+#define MKSWAP_SECURITY_CONTEXT "u:r:toolbox:s0"
 
 #define FSCK_LOG_FILE   "/dev/fscklogs/log"
 
@@ -1805,6 +1809,9 @@ bool fs_mgr_swapon_all(const Fstab& fstab) {
         }
 
         // Initialize the swap area.
+        if (setexeccon(MKSWAP_SECURITY_CONTEXT)) {
+            LERROR << "Failed to set security context for mkswap";
+        }
         const char* mkswap_argv[2] = {
                 MKSWAP_BIN,
                 entry.blk_device.c_str(),
@@ -1817,6 +1824,10 @@ bool fs_mgr_swapon_all(const Fstab& fstab) {
             LERROR << "mkswap failed for " << entry.blk_device;
             ret = false;
             continue;
+        }
+
+        if (setexeccon(NULL)) {
+            LERROR << "Failed to restore security context";
         }
 
         /* If -1, then no priority was specified in fstab, so don't set
