@@ -34,7 +34,10 @@ cc_library_static {
     name: "libfs_mgr",
     defaults: ["fs_mgr_defaults"],
     export_include_dirs: ["include"],
-    include_dirs: ["system/vold"],
+    include_dirs: [
+        "system/vold",
+        "external/libselinux/include",
+    ],
     srcs: [
         "fs_mgr.cpp",
         "fs_mgr_dm_ioctl.cpp",
