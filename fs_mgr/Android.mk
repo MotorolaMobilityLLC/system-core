@@ -30,7 +30,9 @@ LOCAL_SRC_FILES:= \
 LOCAL_C_INCLUDES := \
     $(LOCAL_PATH)/include \
     system/vold \
-    system/extras/ext4_utils
+    system/extras/ext4_utils \
+    external/libselinux/include
+
 LOCAL_MODULE:= libfs_mgr
 LOCAL_STATIC_LIBRARIES := $(common_static_libraries)
 LOCAL_EXPORT_C_INCLUDE_DIRS := $(LOCAL_PATH)/include
