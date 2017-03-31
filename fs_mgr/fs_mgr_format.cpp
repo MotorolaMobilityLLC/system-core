@@ -105,7 +105,7 @@ static int format_ext4(char *fs_blkdev, char *fs_mnt_point, bool crypt_footer)
 #define MKFS_SECURITY_CONTEXT "u:r:mkfs:s0"
 static int format_f2fs(char *fs_blkdev, bool crypt_footer)
 {
-    char * args[5];
+    char * args[7];
     int pid;
     int rc = 0;
     char footer_size[10];
@@ -115,8 +115,10 @@ static int format_f2fs(char *fs_blkdev, bool crypt_footer)
     args[0] = (char *)MKFS_F2FS_PATH;
     args[1] = (char *)"-r";
     args[2] = footer_size;
-    args[3] = fs_blkdev;
-    args[4] = (char *)0;
+    args[3] = (char *)"-O";
+    args[4] = (char *)"encrypt";
+    args[5] = fs_blkdev;
+    args[6] = (char *)0;
 
     pid = fork();
     if (pid < 0) {
