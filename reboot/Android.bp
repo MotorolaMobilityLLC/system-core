@@ -3,6 +3,7 @@
 cc_binary {
     name: "reboot",
     srcs: ["reboot.c"],
-    shared_libs: ["libcutils"],
+    static_libs: ["libcutils"],
     cflags: ["-Werror"],
+    static_executable: true,
 }
