@@ -60,6 +60,7 @@ static struct healthd_config healthd_config = {
     .modCapacityPath = String8(String8::kEmptyString),
     .modStatusPath = String8(String8::kEmptyString),
     .modTypePath = String8(String8::kEmptyString),
+    .modPowerSourcePath = String8(String8::kEmptyString),
     .modRechargeStartLevelPath = String8(String8::kEmptyString),
     .modRechargeStopLevelPath = String8(String8::kEmptyString),
     // END IKMODS-149
