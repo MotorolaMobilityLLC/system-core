@@ -53,6 +53,7 @@
 #define POWER_SUPPLY_MOD_BATTERY_MODE_PROP "sys.mod.batterymode"
 
 #define POWER_SUPPLY_MOD_TYPE_PATH "/sys/class/power_supply/gb_ptp/internal_send"
+#define POWER_SOURCE_MOD_PATH "/sys/class/power_supply/gb_ptp/power_source"
 #define POWER_SUPPLY_MOD_RECHRG_START_SOC "/sys/module/qpnp_smbcharger_mmi/parameters/eb_rechrg_start_soc"
 #define POWER_SUPPLY_MOD_RECHRG_STOP_SOC "/sys/module/qpnp_smbcharger_mmi/parameters/eb_rechrg_stop_soc"
 
@@ -314,6 +315,7 @@ bool BatteryMonitor::update(void) {
     props.modLevel = -1;
     props.modStatus = BATTERY_STATUS_UNKNOWN;
     props.modType = POWER_SUPPLY_MOD_TYPE_UNKNOWN;
+    props.modPowerSource = 0;
     props.modFlag = 0;
 
     // get mod battery status
@@ -332,6 +334,11 @@ bool BatteryMonitor::update(void) {
         // get mod type
         if (access(mHealthdConfig->modTypePath.string(), R_OK) == 0) {
             props.modType = getIntField(mHealthdConfig->modTypePath);
+        }
+
+        // get mod powersource
+        if (access(mHealthdConfig->modPowerSourcePath.string(), R_OK) == 0) {
+            props.modPowerSource = getIntField(mHealthdConfig->modPowerSourcePath);
         }
 
         // attempt to hack battery level for non-empty supplemental mod
@@ -373,6 +380,7 @@ bool BatteryMonitor::update(void) {
         props.modLevel = -1;
         props.modStatus == BATTERY_STATUS_UNKNOWN;
         props.modType = POWER_SUPPLY_MOD_TYPE_UNKNOWN;
+        props.modPowerSource = 0;
         props.modFlag = 0;
     }
     // END IKMODS-149
@@ -419,6 +427,9 @@ bool BatteryMonitor::update(void) {
             strlcat(dmesgline, b, sizeof(dmesgline));
 
             snprintf(b, sizeof(b), " mt=%d", props.modType);
+            strlcat(dmesgline, b, sizeof(dmesgline));
+
+            snprintf(b, sizeof(b), " mps=%d", props.modPowerSource);
             strlcat(dmesgline, b, sizeof(dmesgline));
             // END IKMODS-149
         } else {
@@ -755,6 +766,9 @@ void BatteryMonitor::init(struct healthd_config *hc) {
 
     // mod type path
     mHealthdConfig->modTypePath = POWER_SUPPLY_MOD_TYPE_PATH;
+
+    // mod Power Source path
+    mHealthdConfig->modPowerSourcePath = POWER_SOURCE_MOD_PATH;
 
     // efficiency mode recharge start path
     mHealthdConfig->modRechargeStartLevelPath = POWER_SUPPLY_MOD_RECHRG_START_SOC;
