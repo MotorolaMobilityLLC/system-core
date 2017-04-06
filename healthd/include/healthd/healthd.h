@@ -72,6 +72,7 @@ struct healthd_config {
     android::String8 modCapacityPath;
     android::String8 modStatusPath;
     android::String8 modTypePath;
+    android::String8 modPowerSourcePath;
     android::String8 modRechargeStartLevelPath;
     android::String8 modRechargeStopLevelPath;
     // END IKMODS-149
