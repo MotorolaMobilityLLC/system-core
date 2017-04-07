@@ -211,7 +211,7 @@ static void unmount_and_fsck(const struct mntent *entry) {
     int st;
     if (!strcmp(entry->mnt_type, "f2fs")) {
         const char *f2fs_argv[] = {
-            "/system/bin/fsck.f2fs", "-f", entry->mnt_fsname,
+            "/system/bin/fsck.f2fs", "-a", entry->mnt_fsname,
         };
         android_fork_execvp_ext(ARRAY_SIZE(f2fs_argv), (char **)f2fs_argv,
                                 &st, true, LOG_KLOG, true, NULL, NULL, 0);
