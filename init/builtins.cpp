@@ -617,6 +617,7 @@ static int mount_fstab(const char* fstabfile, int mount_mode) {
 static int queue_fs_event(int code) {
     int ret = code;
     if (code == FS_MGR_MNTALL_DEV_NEEDS_ENCRYPTION) {
+        property_set("ro.crypto.state", "unencrypted");
         ActionManager::GetInstance().QueueEventTrigger("encrypt");
     } else if (code == FS_MGR_MNTALL_DEV_MIGHT_BE_ENCRYPTED) {
         property_set("ro.crypto.state", "encrypted");
