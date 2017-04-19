@@ -1132,6 +1132,15 @@ typedef enum android_dataspace {
      */
     HAL_DATASPACE_DEPTH = 0x1000
 
+
+    // BEGIN, Motorola, w36195, IKMMINTG-16293, 360mod camera2
+    /*
+     * The buffer contains image data that should use spherical mapping to
+     * be deconstructed before displaying or authoring.
+     */
+    , HAL_DATASPACE_SPHERICAL = 0x2000
+    // END, Motorola, IKMMINTG-16293
+
 } android_dataspace_t;
 
 /*
