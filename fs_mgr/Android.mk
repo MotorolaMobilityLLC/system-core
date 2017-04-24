@@ -43,6 +43,9 @@ endif
 # add mtk fstab flags support
 LOCAL_CFLAGS += -DMTK_FSTAB_FLAGS
 # end
+ifeq ($(SECURE_BOOT), yes)
+LOCAL_CFLAGS += -DSECURE_BOOT=1
+endif
 
 ifeq ($(strip $(MTK_NAND_UBIFS_SUPPORT)),yes)
 LOCAL_CFLAGS += -DMTK_UBIFS_SUPPORT
