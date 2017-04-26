@@ -497,13 +497,13 @@ static void print_procs(void) {
         if (!threads) {
             printf("%5d %-8.8s %2s %3ld %3" PRIu64 "%% %c %5d %6" PRIu64 "K %6" PRIu64 "K %3s %s\n",
                    proc->pid, user_str, proc->pr, proc->ni,
-                   proc->delta_time * 100 / total_delta_time, proc->state, proc->num_threads,
+                   (total_delta_time != 0) ? (proc->delta_time * 100 / total_delta_time) : 0, proc->state, proc->num_threads,
                    proc->vss / 1024, proc->rss * getpagesize() / 1024, proc->policy,
                    proc->name[0] != 0 ? proc->name : proc->tname);
         } else {
             printf("%5d %5d %-8.8s %2s %3ld %3" PRIu64 "%% %c %6" PRIu64 "K %6" PRIu64 "K %3s %-15s %s\n",
                    proc->pid, proc->tid, user_str, proc->pr, proc->ni,
-                   proc->delta_time * 100 / total_delta_time, proc->state,
+                   (total_delta_time != 0) ? (proc->delta_time * 100 / total_delta_time) : 0, proc->state,
                    proc->vss / 1024, proc->rss * getpagesize() / 1024, proc->policy,
                    proc->tname, proc->name);
         }
