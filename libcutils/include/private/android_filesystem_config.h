@@ -151,7 +151,9 @@
 #define AID_NET_BW_ACCT 3007  /* change bandwidth statistics accounting */
 
 /* Begin IKSWN-10: keep AID_IMS and AID_RFS same with M */
+#define AID_QCOM_DIAG     3009  /* can read/write /dev/diag */
 #define AID_IMS           3010  /* can read/write /dev/socket/imsrtp */
+#define AID_SENSORS       3011 /* access to /dev/socket/sensor_ctl_socket & QCCI/QCSI */
 #define AID_RFS           3012  /* Remote Filesystem for peripheral processors */
 #define AID_RFS_SHARED    3013  /* Shared files for Remote Filesystem for peripheral processors  */
 /* End IKSWN-10 */
