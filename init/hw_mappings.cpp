@@ -9,17 +9,16 @@
 #include <ctype.h>
 #include <errno.h>
 
+#include <android-base/properties.h>
 #include <cutils/android_reboot.h>
-
-#define _REALLY_INCLUDE_SYS__SYSTEM_PROPERTIES_H_
-#include <sys/_system_properties.h>
+#include <log/log.h>
 
 #include "log.h"
 #include "util.h"
 #include "hw_tags.h"
 
 //#define XML_EXTREME_DEBUG
-#define pr_debug(fmt, args...)	if(debug_on) NOTICE(fmt, ##args)
+#define pr_debug(fmt, args...)	if(debug_on) ALOGE(fmt, ##args)
 
 #if defined(XML_EXTREME_DEBUG)
 static bool debug_on = 1;
@@ -77,7 +76,7 @@ static int Depth;
 static void
 hw_property_get(const char *prop_name, char *value)
 {
-	std::string prop_str = property_get(prop_name);
+	std::string prop_str = android::base::GetProperty(prop_name, "");
 	strncpy(value, prop_str.c_str(), prop_str.length());
 }
 
@@ -87,7 +86,7 @@ xml_update_name(parse_ctrl_t *info, const char *name)
 	element_t *cur = info->data;
 
 	if (!cur) {
-		ERROR("%s: data pointer is NULL\n", __func__);
+		PLOG(ERROR) <<  __FUNCTION__ << ": data pointer is NULL";
 		return;
 	}
 	if (cur->name) {
@@ -105,24 +104,24 @@ xml_update_parameter(parse_ctrl_t *info, const char *title, const char *data)
 	element_t *cur = info->data;
 
 	if (!cur) {
-		ERROR("%s: data pointer is NULL\n", __func__);
+		PLOG(ERROR) << __FUNCTION__ << ": data pointer is NULL";
 		return;
 	}
 	cur->parameters = (parameter_t **)realloc(cur->parameters,
 				sizeof(parameter_t *) * (cur->count + 1));
 	if (!cur->parameters) {
-		ERROR("%s: data pointer is NULL\n", __func__);
+		PLOG(ERROR) << __FUNCTION__ << ": data pointer is NULL";
 		return;
 	}
 	cur->parameters[cur->count] = (parameter_t *)calloc(1, sizeof(parameter_t));
 	if (!cur->parameters[cur->count]) {
-		ERROR("%s: data pointer is NULL\n", __func__);
+		PLOG(ERROR) << __FUNCTION__ << ": data pointer is NULL";
 		return;
 	}
 	cur->parameters[cur->count]->pname = strdup(title);
 	cur->parameters[cur->count]->pdata = strdup(data);
 	cur->count++;
-	pr_debug("%s: count=%d, param ptr=%p\n", __func__,
+	pr_debug("%s: count=%d, param ptr=%p\n", __FUNCTION__,
 			cur->count, cur->parameters);
 }
 
@@ -132,12 +131,12 @@ static char
 	element_t *cur = info->data;
 
 	if (!cur) {
-		ERROR("%s: data pointer is NULL\n", __func__);
+		PLOG(ERROR) << __FUNCTION__ << ": data pointer is NULL";
 		return NULL;
 	}
 	cur->payload = (char *)calloc(1, len + 1);
 	strncpy(cur->payload, data, len);
-	pr_debug("%s: updating element ptr %p\n", __func__, cur);
+	pr_debug("%s: updating element ptr %p\n", __FUNCTION__, cur);
 	return(cur->payload);
 }
 
@@ -387,7 +386,8 @@ xml_preload_apply(char *key, char *value)
 		snprintf(new_value, PROP_VALUE_MAX-1, "%s%s", value, append->appendix);
 		rc = property_set(append->props[i], new_value);
 		if (rc != -1)
-			NOTICE("added hw variant: '%s'=>'%s'\n", append->props[i], new_value);
+			LOG(WARNING) << "added hw variant: '" <<
+				append->props[i] << "'=>'" <<  new_value << "'";
 	}
 }
 
@@ -536,7 +536,7 @@ xml_handle_mappings(parse_ctrl_t *info)
 	/* retrieve boot property name */
 	xml_find_parameter(info->head, "match", &boot_prop_name);
 	if (!boot_prop_name) {
-		ERROR("Unable to find boot property\n");
+		PLOG(ERROR) << "Unable to find boot property";
 		return 1;
 	}
 
@@ -554,14 +554,14 @@ xml_handle_mappings(parse_ctrl_t *info)
 
 	boot_prop = strdup(value);
 	if (!boot_prop) {
-		ERROR("Unable to match device\n");
+		PLOG(ERROR) << "Unable to match device";
 		return 1;
 	}
 
 	/* search matching device section */
 	search_head = search_node(info->head, boot_prop, BY_NAME);
 	if (!search_head) {
-		ERROR("No device section matching '%s' found\n", boot_prop);
+		PLOG(ERROR) << "No device section matching " << boot_prop << " found";
 		return 1;
 	}
 	pr_debug("found section 'device name=\"%s\"'\n", search_head->name);
@@ -569,7 +569,7 @@ xml_handle_mappings(parse_ctrl_t *info)
 	/* search in device section */
 	search_head = search_node(search_head, "mappings", BY_TAG);
 	if (!search_head) {
-		ERROR("No section 'mappings' found\n");
+		PLOG(ERROR) << "No section 'mappings' found";
 		return 1;
 	}
 	pr_debug("found section 'mappings'\n");
@@ -588,31 +588,30 @@ xml_handle_mappings(parse_ctrl_t *info)
 				continue;
 
 			rc = property_set(mouts.export_prop_name, mouts.export_prop);
-			NOTICE("Match found '%s'\n", mouts.export_prop);
+			LOG(WARNING) << "Match found '" << mouts.export_prop << "'";
 			if (rc != -1)
-				NOTICE("exported '%s'=>'%s'\n",
-					mouts.export_prop_name, mouts.export_prop);
+				LOG(WARNING) << "exported '" << mouts.export_prop_name
+					<< "'=>'" << mouts.export_prop << "'";
 			/* if matched result needs to be appended */
 			if (mouts.append_cnt) {
 				xml_preload_set_appendix(mouts.export_prop);
 				if (access(PROP_PATH_OEM_OVERRIDE, R_OK) == 0)
 					xml_load_properties_from_file(PROP_PATH_OEM_OVERRIDE, xml_preload_get_filter());
-				xml_load_properties_from_file(PROP_PATH_SYSTEM_BUILD, xml_preload_get_filter());
+				xml_load_properties_from_file("/system/build.prop", xml_preload_get_filter());
 				xml_preload_clear_all();
 			}
 		} else {
 			if (mouts.default_v) {
 				rc = property_set(mouts.export_prop_name, mouts.default_v);
-				NOTICE("Applying default '%s'\n", mouts.default_v);
+				LOG(WARNING) << "Applying default '" << mouts.default_v << "'";
 				if (rc != -1)
-					NOTICE("exported '%s'=>'%s'\n",
-						mouts.export_prop_name,
-						mouts.default_v);
+					LOG(WARNING) << "exported '" << mouts.export_prop_name <<
+						"'=>'" << mouts.default_v << "'";
 			} else
 				pr_debug("no match found in section '%s'\n", cur->tag);
 		}
 
-		NOTICE("Processed section '%s'\n", cur->tag);
+		LOG(WARNING) << "Processed section '" << cur->tag << "'";
 	}
 
 	return 0;
@@ -625,13 +624,13 @@ static element_t
 
 	new_el = (element_t *)calloc(1, sizeof(element_t));
 	if (!new_el) {
-		ERROR("%s: data pointer is NULL\n", __func__);
+		PLOG(ERROR) <<  __FUNCTION__ << ": data pointer is NULL";
 		return NULL;
 	}
 	if (!NodesList) {
 		NodesList = new_el;
 		info->head = NodesList;
-		pr_debug("%s: head ptr %p\n", __func__, info->head);
+		pr_debug("%s: head ptr %p\n", __FUNCTION__, info->head);
 	}
 	if (!cur)
 		goto fill_in;
@@ -639,20 +638,20 @@ static element_t
 		/* for child, save ptr to parent */
 		cur->child = new_el;
 		new_el->parent = cur;
-		pr_debug("%s: added child ptr %p to '%s'\n", __func__,
+		pr_debug("%s: added child ptr %p to '%s'\n", __FUNCTION__,
 				new_el, cur->name ? cur->name : cur->tag);
 	} else {
 		/* for brother, propagate parent */
 		cur->next = new_el;
 		new_el->parent = cur->parent;
-		pr_debug("%s: added brother ptr %p to '%s'\n", __func__, new_el,
+		pr_debug("%s: added brother ptr %p to '%s'\n", __FUNCTION__, new_el,
 			(cur->parent && cur->parent->name) ?
 			cur->parent->name : cur->parent->tag);
 	}
 fill_in:
 	new_el->depth = depth;
 	new_el->tag = strdup(el);
-	pr_debug("%s: ptr %p depth %d; adding %p depth %d tag '%s'\n", __func__,
+	pr_debug("%s: ptr %p depth %d; adding %p depth %d tag '%s'\n", __FUNCTION__,
 		cur, cur ? cur->depth : -1, new_el, depth, new_el->tag);
 	info->data = new_el;
 	return(new_el);
@@ -664,12 +663,12 @@ xml_update_parent(parse_ctrl_t *info, int depth)
 	element_t *cur = info->data;
 
 	if (!cur) {
-		ERROR("%s: data pointer is NULL\n", __func__);
+		PLOG(ERROR) <<  __FUNCTION__ << ": data pointer is NULL";
 		return;
 	}
 	if (cur->depth > depth && cur->parent)
 		info->data = cur->parent;
-	pr_debug("%s: ptr %p depth %d; moving to %p depth %d\n", __func__,
+	pr_debug("%s: ptr %p depth %d; moving to %p depth %d\n", __FUNCTION__,
 			cur, cur->depth, info->data, depth);
 }
 
@@ -768,19 +767,19 @@ int process_hw_mappings(const char *xml_name)
 	pr_debug("file '%s' opened fd=%d\n", PROCFS_HW_RELOAD, freload);
 	if (freload == -1) {
 		error = errno;
-		ERROR("Cannot open HW descriptor: %s\n", strerror(errno));
+		PLOG(ERROR) << "Cannot open HW descriptor: ";
 		goto just_exit;
 	}
 
 	/* read reload status */
 	error = read(freload, command, 1);
 	if (error == -1) {
-		ERROR("Unable to read HW descriptor status\n");
+		LOG(ERROR) << "Unable to read HW descriptor status";
 		close(freload);
 		goto just_exit;
 	} else {
 		lseek(freload, 0L, SEEK_SET);
-		NOTICE("HW descriptor status=%c\n", command[0]);
+		LOG(WARNING) << "HW descriptor status=" << command[0];
 	}
 
 	/* HW init script should have started reload already, thus */
@@ -789,9 +788,9 @@ int process_hw_mappings(const char *xml_name)
 	if (command[0] == '2') {
 		strcpy(command, "1\n");
 		error = write(freload, command, 2);
-		NOTICE("Sent HW descriptor reload command rc=%d\n", error);
+		LOG(WARNING) << "Sent HW descriptor reload command rc=" << error;
 		if (error != 2) {
-			ERROR("Unable to start HW descriptor reload\n");
+			LOG(ERROR) << "Unable to read HW descriptor reload";
 			close(freload);
 			goto just_exit;
 		}
@@ -804,16 +803,16 @@ int process_hw_mappings(const char *xml_name)
 	if (fin == -1) {
 		error = errno;
 		if (errno == ENOENT)
-			ERROR("File '%s' not found\n", xml_name);
+			LOG(ERROR) << "File " << xml_name << " not found";
 		else
-			ERROR("Failed to open '%s': %s\n", xml_name, strerror(errno));
+			PLOG(ERROR) << "Failed to open  " << xml_name << ": ";
 		close(freload);
 		goto just_exit;
 	}
 
 	p = XML_ParserCreate(NULL);
 	if (!p) {
-		ERROR("Failed to allocate memory for parser\n");
+		LOG(ERROR) << "Failed to allocate memory for parser";
 		error = ENOMEM;
 		goto cleanup_and_exit;
 	}
@@ -832,9 +831,8 @@ int process_hw_mappings(const char *xml_name)
 			break;
 		done = len < BUFFSIZE-1 ? 1 : 0;
 		if (XML_Parse(p, Buff, len, done) == XML_STATUS_ERROR) {
-			ERROR("Parse error at line %lu:\n%s\n",
-				XML_GetCurrentLineNumber(p),
-				XML_ErrorString(XML_GetErrorCode(p)));
+			LOG(ERROR) << "Parse error at line " << XML_GetCurrentLineNumber(p)
+				<< ":" << XML_ErrorString(XML_GetErrorCode(p));
 			break;
 		}
 		if (done)
@@ -847,13 +845,13 @@ int process_hw_mappings(const char *xml_name)
 		lseek(freload, 0L, SEEK_SET);
 		error = read(freload, command, 1);
 		if (error == -1) {
-			ERROR("Unable to confirm HW descriptor reload\n");
+			LOG(ERROR) << "Unable to confirm HW descriptor reload";
 			break;
 		} else if (command[0] == '1') {
-			NOTICE("HW descriptor reload is in progress...\n");
+			LOG(WARNING) << "HW descriptor reload is in progress...";
 			usleep(50000);
 		} else if (command[0] == '0') {
-			NOTICE("HW descriptor reload completed with rc=%c\n", command[0]);
+			LOG(WARNING) << "HW descriptor reload completed with rc=" << command[0];
 			break;
 		}
 	}
@@ -862,7 +860,7 @@ int process_hw_mappings(const char *xml_name)
 	if (info.head && command[0] == '0')
 		error = xml_handle_mappings(&info);
 	else
-		NOTICE("Not ready to process HW mappings\n");
+		LOG(WARNING) << "Not ready to process HW mappings";
 
 	xml_free_list(NodesList);
 	NodesList = NULL;
@@ -885,7 +883,7 @@ static int create_notes_file(void)
 {
 	int fo = open("/cache/recovery/notes", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0600);
 	if (fo == -1) {
-		ERROR("could not open /cache/recovery/notes\n");
+		LOG(ERROR) << "could not open /cache/recovery/notes";
 		return -1;
 	}
 	int fi = open(CARRIER_MSG_FILE, O_RDONLY|O_CLOEXEC);
@@ -911,7 +909,7 @@ static int reboot_recovery(void)
 		write(fd, command, strlen(command) + 1);
 		close(fd);
 	} else {
-		ERROR("could not open /cache/recovery/command\n");
+		LOG(ERROR) << "could not open /cache/recovery/command";
 		return -1;
 	}
 	android_reboot(ANDROID_RB_RESTART2, 0, "recovery");
@@ -947,6 +945,6 @@ void verify_carrier_compatibility(void)
 		return;
 	}
 
-	NOTICE("[%s] compatibility check failed; rebooting to recovery...\n", carrier_ro);
+	LOG(WARNING) << "[" << carrier_ro << "] compatibility check failed; rebooting to recovery...";
 	reboot_recovery();
 }
