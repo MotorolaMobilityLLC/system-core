@@ -15,7 +15,7 @@ ADB_COMMON_CFLAGS := \
     -Wno-unused-parameter \
     -Wno-missing-field-initializers \
     -Wvla \
-    -DADB_VERSION=\"$(tool_version)\" \
+    -DADB_VERSION="\"$(tool_version)\""
 
 ADB_COMMON_linux_CFLAGS := \
     -Wexit-time-destructors \
