@@ -524,6 +524,7 @@ static bool load_properties_from_file(const char* filename, const char* filter) 
 }
 
 static void load_persistent_properties() {
+    persistent_properties_loaded = 1;
     std::unique_ptr<DIR, int(*)(DIR*)> dir(opendir(PERSISTENT_PROPERTY_DIR), closedir);
     if (!dir) {
         PLOG(ERROR) << "Unable to open persistent property directory \""
@@ -532,7 +533,9 @@ static void load_persistent_properties() {
     }
 
     /* Set the flag only after PERSISTENT_PROPERTY_DIR has been mounted*/
-    persistent_properties_loaded = 1;
+    /*removed by zhaoch3. If /data/property mounted after load_persistent_perperties(), we can
+    never write persist property to /data/property */
+    //persistent_properties_loaded = 1; 
 
     struct dirent* entry;
     while ((entry = readdir(dir.get())) != NULL) {
