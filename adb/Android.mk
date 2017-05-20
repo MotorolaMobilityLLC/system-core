@@ -355,7 +355,8 @@ LOCAL_MODULE := adbd
 LOCAL_FORCE_STATIC_EXECUTABLE := true
 
 LOCAL_SANITIZE := $(adb_target_sanitize)
-LOCAL_STRIP_MODULE := keep_symbols
+#MMI_STOPSHIP Reduce adbd size
+#LOCAL_STRIP_MODULE := keep_symbols
 LOCAL_STATIC_LIBRARIES := \
     libadbd \
     libasyncio \
