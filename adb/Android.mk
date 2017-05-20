@@ -357,7 +357,8 @@ LOCAL_MODULE_PATH := $(TARGET_ROOT_OUT_SBIN)
 LOCAL_UNSTRIPPED_PATH := $(TARGET_ROOT_OUT_SBIN_UNSTRIPPED)
 
 LOCAL_SANITIZE := $(adb_target_sanitize)
-LOCAL_STRIP_MODULE := keep_symbols
+#MMI_STOPSHIP Reduce adbd size
+#LOCAL_STRIP_MODULE := keep_symbols
 LOCAL_STATIC_LIBRARIES := \
     libadbd \
     libbase \
