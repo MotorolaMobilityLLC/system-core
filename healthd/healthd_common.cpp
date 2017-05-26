@@ -220,7 +220,7 @@ static void uevent_init(void) {
     }
 
     fcntl(uevent_fd, F_SETFL, O_NONBLOCK);
-    if (healthd_register_event(uevent_fd, uevent_event, EVENT_WAKEUP_FD))
+    if (healthd_register_event(uevent_fd, uevent_event))
         KLOG_ERROR(LOG_TAG,
                    "register for uevent events failed\n");
 }
