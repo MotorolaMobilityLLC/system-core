@@ -114,11 +114,13 @@ static struct flag_list fs_mgr_flags[] = {
 #define EM_ICE          2
 #define EM_AES_256_CTS  3
 #define EM_AES_256_HEH  4
+#define EM_FMP		5
 
 static const struct flag_list file_contents_encryption_modes[] = {
     {"aes-256-xts", EM_AES_256_XTS},
     {"software", EM_AES_256_XTS}, /* alias for backwards compatibility */
     {"ice", EM_ICE}, /* hardware-specific inline cryptographic engine */
+    {"fmp", EM_FMP}, /* FMP hardware-specific inline cryptographic engine */
     {0, 0},
 };
 
