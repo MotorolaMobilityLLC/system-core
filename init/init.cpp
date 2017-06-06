@@ -528,6 +528,7 @@ static void export_kernel_boot_props() {
         { "ro.boot.revision",   "ro.hw.revision",     NULL, },
         { "ro.boot.radio", "ro.hw.radio", NULL, },
         { "ro.boot.carrier", "ro.carrier", NULL, },
+        { "ro.boot.carrier", "ro.oem.key1", NULL, },
         { "ro.boot.device", "ro.hw.device", NULL, },
         { "ro.boot.hwrev", "ro.hw.hwrev", NULL, },
         { "ro.boot.radio", "ro.hw.radio", NULL, },
