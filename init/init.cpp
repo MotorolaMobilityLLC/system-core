@@ -385,6 +385,7 @@ static void export_kernel_boot_props() {
         { "ro.boot.hardware",   "ro.hardware",   "unknown", },
         { "ro.boot.revision",   "ro.revision",   "0", },
         { "ro.boot.carrier", "ro.carrier", NULL, },
+        { "ro.boot.carrier", "ro.oem.key1", NULL, },
         { "ro.boot.radio", "ro.hw.radio", NULL, },
         { "ro.boot.dualsim", "ro.hw.dualsim", NULL, },
         { "ro.boot.device", "ro.hw.device", NULL, },
