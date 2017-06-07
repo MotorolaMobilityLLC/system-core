@@ -416,6 +416,10 @@ static int find_pci_device_prefix(const char *path, char *buf, ssize_t buf_sz)
 
 static int find_bootdevice_prefix(const char *path, char *buf, ssize_t buf_sz)
 {
+    /* Before "bootdevice" assign a valid string, do nothing at prefix check */
+    if (!bootdevice)
+        return -1;
+
     if (strstr(path, bootdevice)) {
        strlcpy(buf, bootdevice, buf_sz);
        return 0;
