@@ -492,15 +492,13 @@ static void load_properties_from_file(const char* filename, const char* filter) 
 }
 
 static void load_persistent_properties() {
+    persistent_properties_loaded = 1;
     std::unique_ptr<DIR, int(*)(DIR*)> dir(opendir(PERSISTENT_PROPERTY_DIR), closedir);
     if (!dir) {
         ERROR("Unable to open persistent property directory \"%s\": %s\n",
               PERSISTENT_PROPERTY_DIR, strerror(errno));
         return;
     }
-
-    /* Set the flag only after PERSISTENT_PROPERTY_DIR has been mounted*/
-    persistent_properties_loaded = 1;
 
     struct dirent* entry;
     while ((entry = readdir(dir.get())) != NULL) {
@@ -586,6 +584,17 @@ unsigned int mt_get_chip_hw_ver(void) {
     return 0;
 }
 
+/*Begin, lenovo-sw yelw1, get prop and ret once again for update */
+void update_persistent_aplogd_property(void)
+{
+    int ret = 0;
+    std::string enablelogd = property_get("persist.log.aplogd.enable");
+    ret = property_set("persist.log.aplogd.enable", enablelogd.c_str());
+    if(ret < 0)
+        ERROR("[PropSet] set persist.log.aplogd.enable  value = %s fail!! \n",enablelogd.c_str());
+}
+/*End, lenovo-sw yelw1, get prop and ret once again for update */
+
 /* When booting an encrypted system, /data is not mounted when the
  * property service is started, so any properties stored there are
  * not loaded.  Vold triggers init to load these properties once it
@@ -596,19 +605,10 @@ void load_persist_props(void) {
     std::string ro_hardware = property_get("ro.hardware");
     NOTICE("ro.hardware: %s.\n", ro_hardware.c_str());
 
-    /* BEGIN Motorola Hong-Mei Li 2012-09-10, IKJBREL1-5477 */
-    /* To load all default properties for encrypted system. This is mandatory
-     * for re-launch the main class service to be triggered on property, and
-     * that property has no backup on /data (user never changes it at runtime).
-     * Also, we reset persistent_properties_loaded flag to avoid persist props
-     * to be overwrite by default values.
-     */
-    persistent_properties_loaded = 0;
-    //lenovo-sw yelw1 modified: just reload persist.log.aplogd.* prop
-    load_properties_from_file(PROP_PATH_SYSTEM_BUILD, "persist.log.aplogd.*");
-    /* END Motorola Hong-Mei Li 2012-09-10, IKJBREL1-5477 */
-
     load_override_properties();
+   /*Begin, lenovo-sw yelw1, update persist.log.aplogd.enable prop */
+    update_persistent_aplogd_property();
+   /*End, lenovo-sw yelw1, update persist.log.aplogd.enable prop */
 
     /* Read persistent properties after all default values have been loaded. */
     load_persistent_properties();
