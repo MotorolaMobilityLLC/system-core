@@ -35,6 +35,7 @@ LOCAL_SRC_FILES := \
     tcp.cpp \
     udp.cpp \
     util.cpp \
+    moto_handler.cpp \
 
 LOCAL_MODULE := fastboot
 LOCAL_MODULE_TAGS := debug optional
