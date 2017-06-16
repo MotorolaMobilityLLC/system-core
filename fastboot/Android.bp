@@ -278,6 +278,7 @@ cc_library_host_static {
         "util.cpp",
         "vendor_boot_img_utils.cpp",
         "fastboot_driver.cpp",
+        "moto_handler.cpp",
     ],
 
     // Only version the final binaries
