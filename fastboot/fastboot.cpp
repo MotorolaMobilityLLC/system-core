@@ -76,6 +76,7 @@
 #include "udp.h"
 #include "usb.h"
 #include "util.h"
+#include "moto_handler.h"
 
 using android::base::ReadFully;
 using android::base::Split;
@@ -100,6 +101,12 @@ static std::string g_dtb_path;
 
 static bool g_disable_verity = false;
 static bool g_disable_verification = false;
+
+#define MAX_OEM_CMD_LINE    64
+typedef struct OEMHandler OEMHandler;
+typedef fastboot::RetCode (*oem_handler)(fastboot::FastBootDriver* fb,
+                                         const std::string& cmd,
+                                         std::vector<std::string>* args);
 
 static const std::string convert_fbe_marker_filename("convert_fbe");
 
@@ -169,6 +176,33 @@ static Image images[] = {
     { nullptr,    "vendor_other.img", "vendor.sig",   "vendor",   true,  ImageType::Normal },
         // clang-format on
 };
+
+struct OEMHandler
+{
+    char cmd[MAX_OEM_CMD_LINE];
+    OEMHandler *next;
+    oem_handler handler;
+};
+
+static OEMHandler *oem_handler_list = 0;
+static OEMHandler *oem_handler_last = 0;
+
+static void register_oem_handler(const char *cmd, oem_handler handler)
+{
+    OEMHandler *h;
+
+    h = (OEMHandler *)calloc(1, sizeof(OEMHandler));
+    if (h == 0) die("out of memory");
+
+    if (oem_handler_last) {
+        oem_handler_last->next = h;
+    } else {
+        oem_handler_list = h;
+    }
+    oem_handler_last = h;
+    strncpy(h->cmd, cmd, strlen(cmd));
+    h->handler = handler;
+}
 
 static char* get_android_product_out() {
     char* dir = getenv("ANDROID_PRODUCT_OUT");
@@ -1537,6 +1571,15 @@ static std::string next_arg(std::vector<std::string>* args) {
 static void do_oem_command(const std::string& cmd, std::vector<std::string>* args) {
     if (args->empty()) syntax_error("empty oem command");
 
+    /* look for oem handler */
+    OEMHandler *h;
+    for (h = oem_handler_list; h; h = h->next) {
+        if (std::string(h->cmd) == args->at(0) && h->handler) {
+            h->handler(fb, cmd, args);
+            return;
+        }
+    }
+
     std::string command(cmd);
     while (!args->empty()) {
         command += " " + next_arg(args);
@@ -1803,6 +1846,9 @@ int FastBootTool::Main(int argc, char* argv[]) {
 #endif
         {0, 0, 0, 0}
     };
+
+    /* register oem handlers */
+    register_oem_handler(FB_CMD_OEM_PARTITION, oem_partition_handler);
 
     serial = getenv("ANDROID_SERIAL");
 
