@@ -233,6 +233,7 @@ cc_library_host_static {
         "udp.cpp",
         "util.cpp",
         "fastboot_driver.cpp",
+        "moto_handler.cpp",
     ],
 
     // Only version the final binaries

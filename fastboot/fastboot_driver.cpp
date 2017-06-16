@@ -131,6 +131,16 @@ RetCode FastBootDriver::SnapshotUpdateCommand(const std::string& command, std::s
     return result;
 }
 
+RetCode FastBootDriver::Dump(const char* file_name, std::string* response,
+                             std::vector<std::string>* info) {
+    auto result = DumpFile(file_name);
+    if (!result)
+        result = HandleResponse(response, info);
+
+    epilog_(result);
+    return result;
+}
+
 RetCode FastBootDriver::FlashPartition(const std::string& partition,
                                        const std::vector<char>& data) {
     RetCode ret;
@@ -542,6 +552,79 @@ RetCode FastBootDriver::ReadBuffer(void* buf, size_t size) {
     }
 
     return SUCCESS;
+}
+
+RetCode FastBootDriver::DumpFile(const char* file_name)
+{
+    static unsigned long long size, read_size, left_size;
+    int r;
+    char *buff = (char *)malloc(DUMP_BUF_SIZE);
+    FILE *file = NULL;
+    RetCode ret = SUCCESS;
+
+    if (!buff) {
+        error_ = android::base::StringPrintf("out of memory");
+        ret = BAD_ARG;
+        goto out;
+    }
+
+    memset(buff, 0, DUMP_BUF_SIZE);
+
+    file = fopen(file_name, "wb");
+    if (file == NULL) {
+        error_ = android::base::StringPrintf("failed to open %s", file_name);
+        ret = IO_ERROR;
+        goto out;
+    }
+
+    /* get data size: DATA%016llx */
+    r = transport_->Read(buff, 20);
+    if (r < 0) {
+        error_ = android::base::StringPrintf("status read failed (%s)", strerror(errno));
+        ret = DEVICE_FAIL;
+        goto out;
+    }
+
+    if (sscanf(buff, "DATA%016llx", &size) == EOF) {
+        error_ = android::base::StringPrintf("invalid protocol(%s)", buff);
+        ret = BAD_DEV_RESP;
+        goto out;
+    }
+
+    left_size = size; read_size = 0;
+
+    /* start to read the data */
+    while (left_size > 0) {
+        r = left_size > DUMP_BUF_SIZE ? DUMP_BUF_SIZE : left_size;
+        r = transport_->Read(buff, r);
+        if (r < 0) {
+            error_ = android::base::StringPrintf("status read failed (%s)", strerror(errno));
+            ret = DEVICE_FAIL;
+            goto out;
+        }
+        /* write data into file */
+        if (fwrite(buff, 1, r, file) < (size_t)r) {
+            error_ = android::base::StringPrintf("status write failed (%s)", strerror(errno));
+            ret = IO_ERROR;
+            goto out;
+        }
+        left_size -= r;
+        read_size += r;
+
+        /* "    0.00%", "   99.99%", "  100.00%" */
+        if (read_size - r) {
+            fprintf(stderr, "\b\b\b\b\b\b\b\b\b");
+        }
+
+        fprintf(stderr, "%8.2f%%", (100.0 * read_size / size));
+    }
+
+    fprintf(stderr, "\n");
+
+out:
+    if (file != NULL) fclose(file);
+    if (buff) free(buff);
+    return ret;
 }
 
 int FastBootDriver::SparseWriteCallback(std::vector<char>& tpbuf, const char* data, size_t len) {
