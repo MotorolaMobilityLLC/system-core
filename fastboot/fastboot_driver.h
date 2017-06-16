@@ -46,6 +46,8 @@ class Transport;
 
 namespace fastboot {
 
+static constexpr size_t DUMP_BUF_SIZE = (4 * 1024 * 1024);
+
 enum RetCode : int {
     SUCCESS = 0,
     BAD_ARG,
@@ -111,6 +113,9 @@ class FastBootDriver {
                       int64_t offset = -1, int64_t size = -1, std::string* response = nullptr,
                       std::vector<std::string>* info = nullptr);
 
+    RetCode Dump(const char* file_name, std::string* response = nullptr,
+                 std::vector<std::string>* info = nullptr);
+
     /* HIGHER LEVEL COMMANDS -- Composed of the commands above */
     RetCode FlashPartition(const std::string& partition, const std::vector<char>& data);
     RetCode FlashPartition(const std::string& partition, android::base::borrowed_fd fd,
@@ -161,6 +166,8 @@ class FastBootDriver {
     RetCode RunAndReadBuffer(const std::string& cmd, std::string* response,
                              std::vector<std::string>* info,
                              const std::function<RetCode(const char*, uint64_t)>& write_fn);
+
+    RetCode DumpFile(const char* file_name);
 
     int SparseWriteCallback(std::vector<char>& tpbuf, const char* data, size_t len);
 
