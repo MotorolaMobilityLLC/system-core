@@ -65,6 +65,10 @@ public:
     bool parseRtMessage(const struct nlmsghdr *nh);
     bool parseNdUserOptMessage(const struct nlmsghdr *nh);
     struct nlattr* findNlAttr(const nlmsghdr* nl, size_t hdrlen, uint16_t attr);
+
+#if defined(IPT_TLV_SUPPORT)
+    bool parseTlvMessage(struct nlmsghdr *nh);
+#endif
 };
 
 #endif
