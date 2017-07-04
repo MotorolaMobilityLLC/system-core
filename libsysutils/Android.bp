@@ -17,7 +17,10 @@ cc_library_shared {
 
     logtags: ["EventLogTags.logtags"],
 
-    cflags: ["-Werror"],
+    cflags: [
+        "-Werror",
+        "-DIPT_TLV_SUPPORT",
+    ],
 
     shared_libs: [
         "libbase",
