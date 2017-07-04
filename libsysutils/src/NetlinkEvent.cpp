@@ -44,6 +44,12 @@ const int LOCAL_NFLOG_PACKET = NFNL_SUBSYS_ULOG << 8 | NFULNL_MSG_PACKET;
 #include <log/log.h>
 #include <sysutils/NetlinkEvent.h>
 
+#if defined(IPT_TLV_SUPPORT)
+/* From kernel's net/netfilter/xt_tlv.c */
+const int LOCAL_TLV_NL_EVENT = 113;
+#define TLV_CMD_ATTR_TOKEN 1
+#endif
+
 NetlinkEvent::NetlinkEvent() {
     mAction = Action::kUnknown;
     memset(mParams, 0, sizeof(mParams));
@@ -90,6 +96,9 @@ static const char *rtMessageName(int type) {
         NL_EVENT_RTM_NAME(RTM_NEWNDUSEROPT);
         NL_EVENT_RTM_NAME(LOCAL_QLOG_NL_EVENT);
         NL_EVENT_RTM_NAME(LOCAL_NFLOG_PACKET);
+#if defined(IPT_TLV_SUPPORT)
+        NL_EVENT_RTM_NAME(LOCAL_TLV_NL_EVENT);
+#endif
         default:
             return NULL;
     }
@@ -262,6 +271,25 @@ bool NetlinkEvent::parseUlogPacketMessage(const struct nlmsghdr *nh) {
     mAction = Action::kChange;
     return true;
 }
+
+#if defined(IPT_TLV_SUPPORT)
+/*
+ * Parse a TLV_NL_EVENT message.
+ */
+bool NetlinkEvent::parseTlvMessage(struct nlmsghdr *nh) {
+    bool ret = false;
+    unsigned int token;
+    struct nlattr *token_attr = nlmsg_find_attr(nh, sizeof(struct genlmsghdr), TLV_CMD_ATTR_TOKEN);
+    if (token_attr) {
+        token = nla_get_u32(token_attr);
+        asprintf(&mParams[0], "TOKEN=%d", token);
+        mSubsystem = strdup("tlv");
+        mAction = Action::kChange;
+        ret = true;
+    }
+    return ret;
+}
+#endif
 
 /*
  * Parse a LOCAL_NFLOG_PACKET message.
@@ -549,6 +577,13 @@ bool NetlinkEvent::parseBinaryNetlinkMessage(char *buffer, int size) {
                 return true;
 
         }
+#if defined(IPT_TLV_SUPPORT)
+        else if (nh->nlmsg_type == LOCAL_TLV_NL_EVENT) {
+          if (parseTlvMessage(nh))
+              return true;
+
+        }
+#endif
     }
 
     return false;
