@@ -64,6 +64,10 @@ public:
     bool parseNfPacketMessage(struct nlmsghdr *nh);
     bool parseRtMessage(const struct nlmsghdr *nh);
     bool parseNdUserOptMessage(const struct nlmsghdr *nh);
+
+#if defined(IPT_TLV_SUPPORT)
+    bool parseTlvMessage(struct nlmsghdr *nh);
+#endif
 };
 
 #endif
