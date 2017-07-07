@@ -52,6 +52,7 @@ cc_defaults {
         "getprop.cpp",
         "newfs_msdos.c",
         "setfattr.c",
+        "getfattr.c",
         "sendevent2.c",
     ],
     generated_headers: [
@@ -70,6 +71,7 @@ cc_defaults {
         "getprop",
         "newfs_msdos",
         "setfattr",
+        "getfattr",
         "sendevent2",
     ],
 }
