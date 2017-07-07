@@ -55,6 +55,7 @@ OUR_TOOLS += sendevent2
 
 # Motorola, rknize2, 2013-Apr-16, IKJBXLINE-3829
 OUR_TOOLS += setfattr
+OUR_TOOLS += getfattr
 
 ALL_TOOLS = $(BSD_TOOLS) $(OUR_TOOLS)
 LOCAL_SRC_FILES := \
