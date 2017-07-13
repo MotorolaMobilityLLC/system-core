@@ -31,6 +31,7 @@
 #include <sys/un.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <fts.h>
 
 #include <linux/netlink.h>
 
@@ -172,11 +173,41 @@ static void fixup_sys_perms(const char* upath, const char* subsystem) {
             continue;
         }
 
-        std::string attr_file = path + "/" + dp->attr;
-        LOG(INFO) << "fixup " << attr_file
-                  << " " << dp->uid << " " << dp->gid << " " << std::oct << dp->perm;
-        chown(attr_file.c_str(), dp->uid, dp->gid);
-        chmod(attr_file.c_str(), dp->perm);
+        if (strchr(dp->attr, '*') || strchr(dp->attr, '?')) {
+            FTS *ftsp;
+            FTSENT *entp;
+
+            char * const dirs[] = { const_cast<char *>(path.c_str()), NULL };
+
+            int fts_options = FTS_COMFOLLOW | FTS_LOGICAL | FTS_NOCHDIR | FTS_NOSTAT;
+            if ((ftsp = fts_open(dirs, fts_options, NULL)) == NULL) {
+                continue;
+            }
+
+            while ((entp = fts_read(ftsp)) != NULL) {
+                switch (entp->fts_info) {
+                case FTS_D:
+                case FTS_F:
+                    if (fnmatch(dp->attr, entp->fts_path + path.length() + 1, FNM_PATHNAME) == 0) {
+                        LOG(INFO) << "fixup " << entp->fts_path
+                                  << " " << dp->uid << " " << dp->gid << " " << std::oct << dp->perm;
+                        chown(entp->fts_path, dp->uid, dp->gid);
+                        chmod(entp->fts_path, dp->perm);
+                    }
+                    break;
+                default:
+                    break;
+                }
+            }
+            fts_close(ftsp);
+
+        } else {
+            std::string attr_file = path + "/" + dp->attr;
+            LOG(INFO) << "fixup " << attr_file
+                      << " " << dp->uid << " " << dp->gid << " " << std::oct << dp->perm;
+            chown(attr_file.c_str(), dp->uid, dp->gid);
+            chmod(attr_file.c_str(), dp->perm);
+        }
     }
 
     if (access(path.c_str(), F_OK) == 0) {
