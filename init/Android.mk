@@ -37,6 +37,14 @@ ifeq ($(strip $(TARGET_USE_MOT_NEW_COM)),true)
 init_options += -DMOTO_NEW_CHARGE_ONLY_MODE
 endif
 
+ifeq ($(BOARD_HAS_AUDIO_DSP_XMCS),true)
+init_options += -DMOTO_AOV_WITH_XMCS
+endif
+
+ifeq ($(BOARD_HAS_GREYBUS_INTERFACE),true)
+init_options += -DMOTO_GREYBUS_FIRMWARE
+endif
+
 init_cflags += \
     $(init_options) \
     -Wall -Wextra \
