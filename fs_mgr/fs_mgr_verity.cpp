@@ -360,6 +360,18 @@ static int test_access(char *device) {
     return -1;
 }
 
+static void persist_verity_log(char * buffer, ssize_t size) {
+
+    int fd = TEMP_FAILURE_RETRY(open("/persist/security/verity_fail_info.txt", O_WRONLY | O_SYNC | O_CLOEXEC | O_CREAT));
+
+    if (fd >= 0) {
+        TEMP_FAILURE_RETRY(pwrite64(fd, buffer, size, 0));
+        close(fd);
+    } else {
+        ERROR("Failed to open log file\n");
+    }
+}
+
 static int check_verity_restart(const char *fname)
 {
     char buffer[VERITY_KMSG_BUFSIZE + 1];
@@ -404,6 +416,7 @@ static int check_verity_restart(const char *fname)
 
     if (strstr(buffer, VERITY_KMSG_RESTART) != NULL) {
         rc = 1;
+        persist_verity_log(buffer, size);
     }
 
 out:
@@ -417,6 +430,7 @@ out:
 static int was_verity_restart()
 {
     static const char *files[] = {
+        "/sys/fs/pstore/console-ramoops-0",
         "/sys/fs/pstore/console-ramoops",
         "/proc/last_kmsg",
         NULL
@@ -714,10 +728,14 @@ static int load_verity_state(struct fstab_rec *fstab, int *mode)
     property_get("ro.boot.veritymode", propbuf, "");
 
     if (*propbuf != '\0') {
+        static bool check_for_restart = true;
         if (!strcmp(propbuf, "enforcing")) {
             *mode = VERITY_MODE_DEFAULT;
         } else if (!strcmp(propbuf, "logging")) {
             *mode = VERITY_MODE_LOGGING;
+        } else if (check_for_restart) {
+            check_for_restart = false;
+            was_verity_restart();
         }
         return 0;
     }
