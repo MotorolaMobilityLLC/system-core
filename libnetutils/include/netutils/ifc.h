@@ -60,6 +60,7 @@ extern int ifc_configure(const char *ifname, in_addr_t address,
                          in_addr_t dns1, in_addr_t dns2);
 
 extern in_addr_t prefixLengthToIpv4Netmask(int prefix_length);
+extern int ifc_set_throttle(const char *ifname, int rxKbps, int txKbps);
 extern int ifc_set_txq_state(const char *ifname, int state);
 extern int ifc_ccmni_md_cfg(const char *ifname, int md_id);
 extern int ifc_ipv6_trigger_rs(char *ifname);

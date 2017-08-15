@@ -725,6 +725,48 @@ ifc_configure(const char *ifname,
 
     return 0;
 }
+/*do not call this function in netd*/
+int ifc_set_throttle(const char *ifname, int rxKbps, int txKbps)
+{
+    FILE* fnetd = NULL;
+    int ret = -1;
+    int seq = 1;
+    char rcv_buf[24];
+    int nread = 0;
+    int netd_sock = 0;
+
+    ALOGD("enter ifc_set_throttle: ifname = %s, rx = %d kbs, tx = %d kbs", ifname, rxKbps, txKbps);
+
+    netd_sock = ifc_netd_sock_init();
+    if(netd_sock <= 0)
+        goto exit;
+
+    // Send the request.
+    fnetd = fdopen(netd_sock, "r+");
+    if(fnetd == NULL){
+        ALOGE("open netd socket failed, err:%d(%s)", errno, strerror(errno));
+        goto exit;
+    }
+    if (fprintf(fnetd, "%d interface setthrottle %s %d %d", seq, ifname, rxKbps, txKbps) < 0) {
+        goto exit;
+    }
+    // literal NULL byte at end, required by FrameworkListener
+    if (fputc(0, fnetd) == EOF ||
+        fflush(fnetd) != 0) {
+        goto exit;
+    }
+    ret = 0;
+
+    //Todo: read the whole response from netd
+    nread = fread(rcv_buf, 1, 20, fnetd);
+    rcv_buf[23] = 0;
+    ALOGD("response: %s", rcv_buf);
+exit:
+    if (fnetd != NULL) {
+        fclose(fnetd);
+    }
+    return ret;
+}
 #define SIOCSTXQSTATE (SIOCDEVPRIVATE + 0)  //start/stop ccmni tx queue
 #define SIOCSCCMNICFG (SIOCDEVPRIVATE + 1)  //configure ccmni/md remapping
 
