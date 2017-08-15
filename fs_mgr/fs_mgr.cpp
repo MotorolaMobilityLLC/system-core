@@ -63,6 +63,9 @@
 #define F2FS_FSCK_BIN   "/system/bin/fsck.f2fs"
 #define MKSWAP_BIN      "/system/bin/mkswap"
 #define TUNE2FS_BIN     "/system/bin/tune2fs"
+#ifdef MTK_FSTAB_FLAGS
+#define RESIZE2FS_BIN   "/system/bin/resize2fs"
+#endif
 
 #define FSCK_LOG_FILE   "/dev/fscklogs/log"
 
@@ -424,6 +427,40 @@ static void do_reserved_size(char *blk_device, char *fs_type, struct fstab_rec *
     }
 }
 
+#ifdef MTK_FSTAB_FLAGS
+
+static void resize_fs(const char *blk_device, char *fs_type)
+{
+    if (!strcmp(fs_type, "ext2") || !strcmp(fs_type, "ext3") || !strcmp(fs_type, "ext4")) {
+        if (access(RESIZE2FS_BIN, X_OK)) {
+            LINFO << "Not running " << RESIZE2FS_BIN << " on " << blk_device
+                  << " (executable not in system image)";
+        } else {
+            int status = 0;
+            int ret = 0;
+
+            LINFO << "Running " << RESIZE2FS_BIN << " on " << blk_device;
+            const char *resize2fs_argv[] = {
+                RESIZE2FS_BIN,
+                "-f",
+                blk_device
+            };
+
+            ret = android_fork_execvp_ext(ARRAY_SIZE(resize2fs_argv),
+                                          const_cast<char **>(resize2fs_argv),
+                                          &status, true, LOG_KLOG,
+                                          false, NULL, NULL, 0);
+            if (ret < 0) {
+                /* No need to check for error in fork, we can't really handle it now */
+                LERROR << "Failed trying to run " << RESIZE2FS_BIN;
+                return;
+            }
+        }
+    }
+}
+
+#endif
+
 static void remove_trailing_slashes(char *n)
 {
     int len;
@@ -574,6 +611,14 @@ static int mount_with_alternatives(struct fstab *fstab, int start_idx, int *end_
                 check_fs(fstab->recs[i].blk_device, fstab->recs[i].fs_type,
                          fstab->recs[i].mount_point, &fs_stat);
             }
+
+#ifdef MTK_FSTAB_FLAGS
+            if (fstab->recs[i].fs_mgr_flags & MF_RESIZE) {
+                resize_fs(fstab->recs[i].blk_device, fstab->recs[i].fs_type);
+                check_fs(fstab->recs[i].blk_device, fstab->recs[i].fs_type,
+                         fstab->recs[i].mount_point, &fs_stat);
+            }
+#endif
 
             if (fstab->recs[i].fs_mgr_flags & MF_RESERVEDSIZE) {
                 do_reserved_size(fstab->recs[i].blk_device, fstab->recs[i].fs_type,
