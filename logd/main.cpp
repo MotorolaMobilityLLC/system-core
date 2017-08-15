@@ -379,7 +379,7 @@ static void* reinit_thread_start(void* /*obj*/) {
             if (count == 0) {
                 count = ANDROID_LOG_MUCH_COUNT;
             }
-            android::prdebug("logd: logmuch detect, build type %d, detect value %d:%d.\n",
+            android::prdebug("logmuch detect, build type %d, detect value %d:%d.\n",
                 build_type, count, log_detect_value);
 
             if (count > 0 && count != log_detect_value) {  // set new log level
@@ -400,7 +400,7 @@ static void* reinit_thread_start(void* /*obj*/) {
             }
         } else {
             log_detect_value = 0;
-            android::prdebug("logd: logmuch detect disable.");
+            android::prdebug("logmuch detect disable.");
         }
 #endif
 #if defined(MTK_LOGD_FILTER)    /*for default status */

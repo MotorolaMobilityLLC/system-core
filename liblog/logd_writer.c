@@ -57,7 +57,7 @@ LIBLOG_HIDDEN struct android_log_transport_write logdLoggerWrite = {
   .close = logdClose,
   .write = logdWrite,
 };
-#ifdef MTK_LOGD_ENHANCE
+#if defined(MTK_LOGD_ENHANCE) && defined(CONFIG_MT_DEBUG_BUILD)
 #define SOCKET_TIME_OUT 5
 #define THREAD_NAME_1 "aee_core_forwar"
 #define THREAD_NAME_2 "aee_dumpstate"
@@ -67,13 +67,13 @@ LIBLOG_HIDDEN struct android_log_transport_write logdLoggerWrite = {
 /* log_init_lock assumed */
 static int logdOpen() {
     int i, ret = 0;
-#ifdef MTK_LOGD_ENHANCE
+#if defined(MTK_LOGD_ENHANCE) && defined(CONFIG_MT_DEBUG_BUILD)
     int skip_thread = 0;
 #endif
 
     i = atomic_load(&logdLoggerWrite.context.sock);
     if (i < 0) {
-#ifdef MTK_LOGD_ENHANCE
+#if defined(MTK_LOGD_ENHANCE) && defined(CONFIG_MT_DEBUG_BUILD)
         FILE *fp;
         char path[PATH_MAX];
         char threadnamebuf[1024];

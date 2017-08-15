@@ -137,7 +137,7 @@ void* LogTimeEntry::threadStart(void* obj) {
 #if defined(MTK_LOGD_FILTER)
     logd_reader_add();
 #endif
-    android::prdebug("logd: logd.reader.per thread start.\n");
+    android::prdebug("logd.reader.per thread start.\n");
 #endif
     lock();
 
@@ -193,7 +193,7 @@ void* LogTimeEntry::threadStart(void* obj) {
 #if defined(MTK_LOGD_FILTER)
     logd_reader_del();
 #endif
-    android::prdebug("logd: logd.reader.per thread stop.\n");
+    android::prdebug("logd.reader.per thread stop.\n");
 #endif
     return nullptr;
 }

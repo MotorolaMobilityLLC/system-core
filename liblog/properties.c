@@ -280,12 +280,41 @@ static int __android_log_level(const char* tag, size_t len, int default_prio) {
 LIBLOG_ABI_PUBLIC int __android_log_is_loggable_len(int prio, const char* tag,
                                                     size_t len,
                                                     int default_prio) {
+#if defined(MTK_LOGD_ENHANCE) && defined(ANDROID_LOG_MUCH_COUNT)
+  char new_tag[1024];
+  char* ptr = NULL;
+
+  if (strstr(tag, "-0x") != NULL) {
+    strcpy(new_tag, tag);
+    ptr = strstr(new_tag, "-0x");
+    if (ptr != NULL) {
+      *ptr = 0;
+      tag = new_tag;
+      len = strlen(tag);
+    }
+  }
+#endif
+
   int logLevel = __android_log_level(tag, len, default_prio);
   return logLevel >= 0 && prio >= logLevel;
 }
 
 LIBLOG_ABI_PUBLIC int __android_log_is_loggable(int prio, const char* tag,
                                                 int default_prio) {
+#if defined(MTK_LOGD_ENHANCE) && defined(ANDROID_LOG_MUCH_COUNT)
+  char new_tag[1024];
+  char* ptr = NULL;
+
+  if (strstr(tag, "-0x") != NULL) {
+    strcpy(new_tag, tag);
+    ptr = strstr(new_tag, "-0x");
+    if (ptr != NULL) {
+      *ptr = 0;
+      tag = new_tag;
+    }
+  }
+#endif
+
   int logLevel =
       __android_log_level(tag, (tag && *tag) ? strlen(tag) : 0, default_prio);
   return logLevel >= 0 && prio >= logLevel;
