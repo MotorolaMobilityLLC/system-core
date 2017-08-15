@@ -323,6 +323,7 @@ const char* android::strnstr(const char* s, size_t len, const char* needle) {
     return s;
 }
 
+char nowtimestr[64] = {0};
 void LogKlog::sniffTime(log_time &now,
                         const char **buf, size_t len,
                         bool reverse) {
@@ -333,6 +334,9 @@ void LogKlog::sniffTime(log_time &now,
     if (cp) {
         static const char healthd[] = "healthd";
         static const char battery[] = ": battery ";
+
+        snprintf(nowtimestr, sizeof(nowtimestr), "[%5lu.%06lu]",
+               (unsigned long)now.tv_sec, (unsigned long)now.tv_nsec/1000);
 
         len -= cp - *buf;
         if (len && isspace(*cp)) {
@@ -392,8 +396,12 @@ void LogKlog::sniffTime(log_time &now,
     } else {
         if (isMonotonic()) {
             now = log_time(CLOCK_MONOTONIC);
+            snprintf(nowtimestr, sizeof(nowtimestr), "[%5lu.%06lu]",
+                 (unsigned long)now.tv_sec, (unsigned long)now.tv_nsec/1000);
         } else {
             now = log_time(CLOCK_REALTIME);
+            snprintf(nowtimestr, sizeof(nowtimestr), "[%5lu.%06lu]",
+                 (unsigned long)now.tv_sec, (unsigned long)now.tv_nsec/1000);
         }
     }
 }
@@ -618,9 +626,10 @@ int LogKlog::log(const char* buf, size_t len) {
     // Some may view the following as an ugly heuristic, the desire is to
     // beautify the kernel logs into an Android Logging format; the goal is
     // admirable but costly.
-    while ((p < &buf[len]) && (isspace(*p) || !*p)) {
+    // Comment By MTK: Do not skip the space before the cpu id
+    /*while ((p < &buf[len]) && (isspace(*p) || !*p)) {
         ++p;
-    }
+    }*/
     if (p >= &buf[len]) { // timestamp, no content
         return 0;
     }
@@ -750,13 +759,50 @@ twoWord:    while (--taglen && !isspace(*++cp) && (*cp != ':'));
     //   eg: [143:healthd]healthd -> [143:healthd]
     taglen = etag - tag;
     // Mediatek-special printk induced stutter
-    const char *mp = strnrchr(tag, ']', taglen);
+    /*const char *mp = strnrchr(tag, ']', taglen);
     if (mp && (++mp < etag)) {
         size_t s = etag - mp;
-        if (((s + s) < taglen) && !fastcmp<memcmp>(mp, mp - 1 - s, s)) {
+        if (((s + s) < taglen) && !fast<memcmp>(mp, mp - 1 - s, s)) {
             taglen = mp - tag;
         }
-    }
+    }*/
+
+    /*Add by MTK*/
+    if (!taglen) {
+        tag = bt;
+        const char *mp = strstr(tag, "][");
+        if (mp) {
+            char *tp;
+            mp += 1;  // '['
+            if (!strncmp(mp, "[name:", 6)) {  // [name:xxxx&]
+                const char *end = mp;
+                while (*end != ']') end++;  // [name:xxxx&]
+                if (*(end - 1) == '&') {  // *end == ']'
+                    etag = end + 1;
+                    taglen = etag - tag;
+                    p = end + 1;
+                } else {
+                    etag = mp;
+                    taglen = etag - tag;
+                    p = mp;
+                }
+            } else {
+                etag = mp;
+                taglen = etag - tag;
+                p = mp;
+            }
+        } else {
+            /*for log like: (1)[141:kworker/u20:1]typec typec@0: ADC on VBUS=5014*/
+            mp = strchr(tag , ']');
+            if (mp) {
+                mp++;
+                etag = mp;
+                taglen = etag - tag;
+                p = mp;
+            }
+        }
+    } /*end of if*/
+
     // Deal with sloppy and simplistic harmless p = cp + 1 etc above.
     if (len < (size_t)(p - buf)) {
         p = &buf[len];
@@ -789,19 +835,22 @@ twoWord:    while (--taglen && !isspace(*++cp) && (*cp != ':'));
         return -EINVAL;
     }
 
+    int timelen = strlen(nowtimestr);
     // Careful.
     // We are using the stack to house the log buffer for speed reasons.
     // If we malloc'd this buffer, we could get away without n's USHRT_MAX
     // test above, but we would then required a max(n, USHRT_MAX) as
     // truncating length argument to logbuf->log() below. Gain is protection
     // of stack sanity and speedup, loss is truncated long-line content.
-    char newstr[n];
+    char newstr[n + timelen];
     char *np = newstr;
 
     // Convert priority into single-byte Android logger priority
     *np = convertKernelPrioToAndroidPrio(pri);
     ++np;
 
+    memcpy(np, nowtimestr, timelen);
+    np += timelen;
     // Copy parsed tag following priority
     memcpy(np, tag, taglen);
     np += taglen;
@@ -839,7 +888,7 @@ twoWord:    while (--taglen && !isspace(*++cp) && (*cp != ':'));
 
     // Log message
     int rc = logbuf->log(LOG_ID_KERNEL, now, uid, pid, tid, newstr,
-                         (unsigned short) n);
+                         (unsigned short) (n + timelen));
 
     // notify readers
     if (!rc) {

@@ -530,6 +530,7 @@ public:
     void enableStatistics() { enable = true; }
 
     void add(LogBufferElement *entry);
+    void add_total_size(LogBufferElement *entry);
     void subtract(LogBufferElement *entry);
     // entry->setDropped(1) must follow this call
     void drop(LogBufferElement *entry);

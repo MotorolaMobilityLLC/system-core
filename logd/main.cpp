@@ -97,18 +97,18 @@ static int drop_privs(bool klogd, bool auditd) {
     struct sched_param param;
     memset(&param, 0, sizeof(param));
 
-    if (set_sched_policy(0, SP_BACKGROUND) < 0) {
-        android::prdebug("failed to set background scheduling policy");
+    if (set_sched_policy(0, SP_FOREGROUND) < 0) {
+        android::prdebug("failed to set forground scheduling policy");
         if (!eng) return -1;
     }
-
+/*
     if (sched_setscheduler((pid_t) 0, SCHED_BATCH, &param) < 0) {
         android::prdebug("failed to set batch scheduler");
         if (!eng) return -1;
     }
-
-    if (setpriority(PRIO_PROCESS, 0, ANDROID_PRIORITY_BACKGROUND) < 0) {
-        android::prdebug("failed to set background cgroup");
+*/
+    if (setpriority(PRIO_PROCESS, 0, ANDROID_PRIORITY_FOREGROUND) < 0) {
+        android::prdebug("failed to set forground cgroup");
         if (!eng) return -1;
     }
 
@@ -230,10 +230,44 @@ static bool package_list_parser_cb(pkg_info *info, void * /* userdata */) {
     return rc;
 }
 
+#if defined(MTK_LOGD_FILTER)
+static int log_reader_count = 0;
+void logd_reader_del(void) {
+    char property[PROPERTY_VALUE_MAX];
+
+    if (log_reader_count == 1) {
+        property_get("persist.log.tag", property, "I");
+        property_set("log.tag", property);
+        android::prdebug("logd no log reader, set log level to %s!\n", property);
+    }
+    log_reader_count--;
+}
+
+void logd_reader_add(void) {
+    char property[PROPERTY_VALUE_MAX];
+
+    if (log_reader_count == 0) {
+        property_get("persist.log.tag", property, "M");
+        property_set("log.tag", property);
+        android::prdebug("logd first log reader, set log level to %s!\n", property);
+    }
+    log_reader_count++;
+}
+
+#endif
+
+#if defined(HAVE_AEE_FEATURE) && defined(ANDROID_LOG_MUCH_COUNT)
+int log_detect_value;
+int log_much_delay_detect = 0;      // log much detect pause, may use double detect value
+int build_type;     // eng:0, userdebug:1 user:2
+int detect_time = 1;
+#endif
+
+
 static void *reinit_thread_start(void * /*obj*/) {
     prctl(PR_SET_NAME, "logd.daemon");
-    set_sched_policy(0, SP_BACKGROUND);
-    setpriority(PRIO_PROCESS, 0, ANDROID_PRIORITY_BACKGROUND);
+    set_sched_policy(0, SP_FOREGROUND);
+    setpriority(PRIO_PROCESS, 0, ANDROID_PRIORITY_FOREGROUND);
 
     cap_t caps = cap_init();
     (void)cap_clear(caps);
@@ -245,6 +279,12 @@ static void *reinit_thread_start(void * /*obj*/) {
     // worth checking for error returns setting this thread's privileges.
     (void)setgid(AID_SYSTEM); // readonly access to /data/system/packages.list
     (void)setuid(AID_LOGD);   // access to everything logd, eg /data/misc/logd
+#if defined(HAVE_AEE_FEATURE) && defined(ANDROID_LOG_MUCH_COUNT)
+    char property[PROPERTY_VALUE_MAX];
+    bool value;
+    int count;
+    int delay;
+#endif
 
     while (reinit_running && !sem_wait(&reinit) && reinit_running) {
 
@@ -272,6 +312,64 @@ static void *reinit_thread_start(void * /*obj*/) {
             logBuf->initPrune(NULL);
         }
         android::ReReadEventLogTags();
+#if defined(HAVE_AEE_FEATURE) && defined(ANDROID_LOG_MUCH_COUNT)
+        property_get("ro.aee.build.info", property, "");
+        value = !strcmp(property, "mtk");
+        if (value != true) {
+            log_detect_value = 0;
+            continue;
+        }
+
+        value = property_get_bool("persist.logmuch.detect", true);
+        if (value == true) {
+            property_get("ro.build.type", property, "");
+            if (!strcmp(property, "eng")) {
+                build_type = 0;
+            } else if (!strcmp(property, "userdebug")) {
+                build_type = 1;
+            } else {
+                build_type = 2;
+            }
+
+            if (log_detect_value == 0) {
+                log_detect_value = ANDROID_LOG_MUCH_COUNT;
+            }
+
+            property_get("logmuch.detect.value", property, "-1");
+            count = atoi(property);
+            if (count == 0) {
+                count = ANDROID_LOG_MUCH_COUNT;
+            }
+            android::prdebug("logd: logmuch detect, build type %d, detect value %d:%d.\n",
+                build_type, count, log_detect_value);
+
+            if (count > 0 && count != log_detect_value) {  // set new log level
+                log_detect_value = count;
+                log_much_delay_detect = 1;
+            }
+            if (log_detect_value > 1000) {
+                detect_time = 1;
+            } else {
+                detect_time = 6;
+            }
+            property_get("logmuch.detect.delay", property, "");
+            delay = atoi(property);
+
+            if (delay > 0) {
+                log_much_delay_detect = 3*60;
+                property_set("logmuch.detect.delay", "0");
+            }
+        } else {
+            log_detect_value = 0;
+            android::prdebug("logd: logmuch detect disable.");
+        }
+#endif
+#if defined(MTK_LOGD_FILTER)    /*for default status */
+        if (log_reader_count == 0) {
+            property_set("log.tag", "I");
+            android::prdebug("logd no log reader, set log level to INFO!\n");
+        }
+#endif
     }
 
     return NULL;

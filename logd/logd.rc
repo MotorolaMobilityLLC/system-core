@@ -6,14 +6,12 @@ service logd /system/bin/logd
     file /dev/kmsg w
     user logd
     group logd system readproc
-    writepid /dev/cpuset/system-background/tasks
 
 service logd-reinit /system/bin/logd --reinit
     oneshot
     disabled
     user logd
     group logd
-    writepid /dev/cpuset/system-background/tasks
 
 on fs
     write /dev/event-log-tags "# content owned by logd
