@@ -231,6 +231,10 @@ static inline void atrace_async_end(uint64_t tag, const char* name, int32_t cook
  * This can be used to track how a value changes over time.
  */
 #define ATRACE_INT(name, value) atrace_int(ATRACE_TAG, name, value)
+/*
+ * M: Performance tracer to reduce Systrace overhead
+ */
+#define ATRACE_INT_PERF(name, value) atrace_int(ATRACE_TAG|ATRACE_TAG_PERF, name, value)
 static inline void atrace_int(uint64_t tag, const char* name, int32_t value)
 {
     if (CC_UNLIKELY(atrace_is_tag_enabled(tag))) {
