@@ -53,6 +53,7 @@ cc_library_headers {
 cc_library {
     name: "libcutils",
     host_supported: true,
+    defaults: ["mtk_malloc_debug_defaults"],
     srcs: [
         "config_utils.c",
         "fs_config.c",
