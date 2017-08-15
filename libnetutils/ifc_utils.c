@@ -62,7 +62,6 @@ void printerr(char *fmt, ...);
 #define DBG 0
 #define INET_ADDRLEN 4
 #define INET6_ADDRLEN 16
-const char ipv6_proc_path[] = "/proc/sys/net/ipv6/conf";
 
 in_addr_t prefixLengthToIpv4Netmask(int prefix_length)
 {
@@ -858,75 +857,5 @@ int ifc_ccmni_md_cfg(const char *ifname, int md_id)
 
     close(ctl_sock);
     return ret;
-}
-
-static int setEnableIPv6(char* ifname, int on) {
-    char *path;
-    const char *value = on ? "0" : "1";
-    unsigned int size = strlen(value);
-
-    //full path: proc/sys/net/ipv6/conf/ifname/disalbe_ipv6
-    asprintf(&path, "%s/%s/%s", ipv6_proc_path, ifname, "disable_ipv6");
-    ALOGE("setEnableIPv6: set path %s to %s", path, value);
-    int fd = open(path, O_WRONLY);
-    if (fd < 0) {
-        ALOGE("Failed to open %s: %s", path, strerror(errno));
-        return -1;
-    }
-
-    if (write(fd, value, size) != (ssize_t)size) {
-        ALOGE("Failed to write %s: %s", path, strerror(errno));
-        close(fd);
-        return -1;
-    }
-    close(fd);
-    free(path);
-    return 0;
-}
-
-static int setIPv6DefaultRoute(char* ifname, int on) {
-    char *path;
-    const char *value = on ? "1" : "0";
-    unsigned int size = strlen(value);
-
-    //full path: /proc/sys/net/ipv6/conf/ccmni0/accept_ra_defrtr
-    asprintf(&path, "%s/%s/%s", ipv6_proc_path, ifname, "accept_ra_defrtr");
-    ALOGE("setIPv6DefaultRoute: set path %s to %s", path, value);
-    int fd = open(path, O_WRONLY);
-    if (fd < 0) {
-        ALOGE("Failed to open %s: %s", path, strerror(errno));
-        return -1;
-    }
-
-    if (write(fd, value, size) != (ssize_t)size) {
-        ALOGE("Failed to write %s: %s", path, strerror(errno));
-        close(fd);
-        return -1;
-    }
-    close(fd);
-    free(path);
-    return 0;
-}
-
-
-
-
-int ifc_ipv6_trigger_rs(char *ifname){
-    int errNo = setEnableIPv6(ifname, 0);
-     if (errNo < 0) {
-         ALOGE("ifc_ipv6_irat_triger_rs disable interface %s IPv6 fail %d",ifname, errNo);
-     }
-     errNo = setEnableIPv6(ifname, 1);
-     if (errNo < 0) {
-         ALOGE("ifc_ipv6_irat_triger_rs enalbe interface %s IPv6 fail %d",ifname, errNo);
-     }
-
-    //set accept_ra_defrtr 1
-    errNo = setIPv6DefaultRoute(ifname,1);
-    if (errNo < 0) {
-         ALOGE("ifc_ipv6_irat_triger_rs enalbe interface %s accept_ra_defrtr fail %d",ifname, errNo);
-     }
-
-    return 0;
 }
 
