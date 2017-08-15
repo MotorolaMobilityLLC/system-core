@@ -293,6 +293,11 @@ Commands
 `copy <src> <dst>`
 > Copies a file. Similar to write, but useful for binary/large
   amounts of data.
+  Regarding to the src file, copying from symbolic link file and world-writable
+  or group-writable files are not allowed.
+  Regarding to the dst file, the default mode created is 0600 if it does not
+  exist. And it will be truncated if dst file is a normal regular file and
+  already exists.
 
 `domainname <name>`
 > Set the domain name.
@@ -364,10 +369,6 @@ Commands
   _flag_s include "ro", "rw", "remount", "noatime", ...
   _options_ include "barrier=1", "noauto\_da\_alloc", "discard", ... as
   a comma separated string, eg: barrier=1,noauto\_da\_alloc
-
-`powerctl`
-> Internal implementation detail used to respond to changes to the
-  "sys.powerctl" system property, used to implement rebooting.
 
 `restart <service>`
 > Stops and restarts a running service, does nothing if the service is currently

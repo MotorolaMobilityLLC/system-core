@@ -161,10 +161,11 @@ out_unlink:
     return -1;
 }
 
-bool read_file(const char* path, std::string* content) {
+bool read_file(const std::string& path, std::string* content) {
     content->clear();
 
-    android::base::unique_fd fd(TEMP_FAILURE_RETRY(open(path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)));
+    android::base::unique_fd fd(
+        TEMP_FAILURE_RETRY(open(path.c_str(), O_RDONLY | O_NOFOLLOW | O_CLOEXEC)));
     if (fd == -1) {
         return false;
     }
@@ -184,9 +185,9 @@ bool read_file(const char* path, std::string* content) {
     return android::base::ReadFdToString(fd, content);
 }
 
-bool write_file(const char* path, const char* content) {
-    android::base::unique_fd fd(
-        TEMP_FAILURE_RETRY(open(path, O_WRONLY | O_CREAT | O_NOFOLLOW | O_CLOEXEC, 0600)));
+bool write_file(const std::string& path, const std::string& content) {
+    android::base::unique_fd fd(TEMP_FAILURE_RETRY(
+        open(path.c_str(), O_WRONLY | O_CREAT | O_NOFOLLOW | O_TRUNC | O_CLOEXEC, 0600)));
     if (fd == -1) {
         PLOG(ERROR) << "write_file: Unable to open '" << path << "'";
         return false;
@@ -419,4 +420,27 @@ void panic() {
 std::ostream& operator<<(std::ostream& os, const Timer& t) {
     os << t.duration_s() << " seconds";
     return os;
+}
+
+// Reads the content of device tree file under kAndroidDtDir directory.
+// Returns true if the read is success, false otherwise.
+bool read_android_dt_file(const std::string& sub_path, std::string* dt_content) {
+    const std::string file_name = kAndroidDtDir + sub_path;
+    if (android::base::ReadFileToString(file_name, dt_content)) {
+        if (!dt_content->empty()) {
+            dt_content->pop_back();  // Trims the trailing '\0' out.
+            return true;
+        }
+    }
+    return false;
+}
+
+bool is_android_dt_value_expected(const std::string& sub_path, const std::string& expected_content) {
+    std::string dt_content;
+    if (read_android_dt_file(sub_path, &dt_content)) {
+        if (dt_content == expected_content) {
+            return true;
+        }
+    }
+    return false;
 }

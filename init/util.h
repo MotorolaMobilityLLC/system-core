@@ -27,13 +27,15 @@
 
 #define COLDBOOT_DONE "/dev/.coldboot_done"
 
+const std::string kAndroidDtDir("/proc/device-tree/firmware/android/");
+
 using namespace std::chrono_literals;
 
 int create_socket(const char *name, int type, mode_t perm,
                   uid_t uid, gid_t gid, const char *socketcon);
 
-bool read_file(const char* path, std::string* content);
-bool write_file(const char* path, const char* content);
+bool read_file(const std::string& path, std::string* content);
+bool write_file(const std::string& path, const std::string& content);
 
 // A std::chrono clock based on CLOCK_BOOTTIME.
 class boot_clock {
@@ -79,5 +81,9 @@ bool is_dir(const char* pathname);
 bool expand_props(const std::string& src, std::string* dst);
 
 void panic() __attribute__((__noreturn__));
+
+// Reads or compares the content of device tree file under kAndroidDtDir directory.
+bool read_android_dt_file(const std::string& sub_path, std::string* dt_content);
+bool is_android_dt_value_expected(const std::string& sub_path, const std::string& expected_content);
 
 #endif

@@ -25,9 +25,10 @@
 #include "fs_mgr.h"
 
 enum FsManagerAvbHandleStatus {
+    kFsManagerAvbHandleUninitialized = -1,
     kFsManagerAvbHandleSuccess = 0,
     kFsManagerAvbHandleHashtreeDisabled = 1,
-    kFsManagerAvbHandleFail = 2,
+    kFsManagerAvbHandleErrorVerification = 2,
 };
 
 class FsManagerAvbHandle;
@@ -72,7 +73,8 @@ class FsManagerAvbHandle {
     // Otherwise, returns false.
     bool SetUpAvb(fstab_rec* fstab_entry, bool wait_for_verity_dev);
 
-    bool AvbHashtreeDisabled() { return status_ == kFsManagerAvbHandleHashtreeDisabled; }
+    bool hashtree_disabled() const { return status_ == kFsManagerAvbHandleHashtreeDisabled; }
+    const std::string& avb_version() const { return avb_version_; }
 
     FsManagerAvbHandle(const FsManagerAvbHandle&) = delete;             // no copy
     FsManagerAvbHandle& operator=(const FsManagerAvbHandle&) = delete;  // no assignment
@@ -87,11 +89,12 @@ class FsManagerAvbHandle {
     };
 
   protected:
-    FsManagerAvbHandle() : avb_slot_data_(nullptr), status_(kFsManagerAvbHandleFail) {}
+    FsManagerAvbHandle() : avb_slot_data_(nullptr), status_(kFsManagerAvbHandleUninitialized) {}
 
   private:
     AvbSlotVerifyData* avb_slot_data_;
     FsManagerAvbHandleStatus status_;
+    std::string avb_version_;
 };
 
 #endif /* __CORE_FS_MGR_AVB_H */
