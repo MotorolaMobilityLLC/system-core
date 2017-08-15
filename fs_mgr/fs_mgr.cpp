@@ -999,6 +999,10 @@ int fs_mgr_do_mount_one(struct fstab_rec *rec)
         return FS_MGR_DOMNT_FAILED;
     }
 
+    if (rec->fs_mgr_flags & MF_WAIT) {
+        wait_for_file(rec->blk_device, WAIT_TIMEOUT);
+    }
+
     int ret = __mount(rec->blk_device, rec->mount_point, rec);
     if (ret) {
       ret = (errno == EBUSY) ? FS_MGR_DOMNT_BUSY : FS_MGR_DOMNT_FAILED;
