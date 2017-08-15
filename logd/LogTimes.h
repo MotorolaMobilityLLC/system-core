@@ -79,7 +79,9 @@ class LogTimeEntry {
     void triggerSkip_Locked(log_id_t id, unsigned int skip) {
         skipAhead[id] = skip;
     }
+#ifdef MTK_LOGD_ENHANCE
     unsigned int getSkipAhead(log_id_t id) { return skipAhead[id]; }
+#endif
     void cleanSkip_Locked(void);
 
     // These called after LogTimeEntry removed from list, lock implicitly held

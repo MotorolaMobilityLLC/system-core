@@ -95,22 +95,32 @@ static int drop_privs(bool klogd, bool auditd) {
 
     struct sched_param param;
     memset(&param, 0, sizeof(param));
-
+#ifdef MTK_LOGD_ENHANCE
     if (set_sched_policy(0, SP_FOREGROUND) < 0) {
         android::prdebug("failed to set forground scheduling policy");
         if (!eng) return -1;
     }
-/*
-    if (sched_setscheduler((pid_t) 0, SCHED_BATCH, &param) < 0) {
-        android::prdebug("failed to set batch scheduler");
-        if (!eng) return -1;
-    }
-*/
+
     if (setpriority(PRIO_PROCESS, 0, ANDROID_PRIORITY_FOREGROUND) < 0) {
         android::prdebug("failed to set forground cgroup");
         if (!eng) return -1;
     }
+#else
+    if (set_sched_policy(0, SP_BACKGROUND) < 0) {
+        android::prdebug("failed to set background scheduling policy");
+        if (!eng) return -1;
+    }
 
+    if (sched_setscheduler((pid_t)0, SCHED_BATCH, &param) < 0) {
+        android::prdebug("failed to set batch scheduler");
+        if (!eng) return -1;
+    }
+
+    if (setpriority(PRIO_PROCESS, 0, ANDROID_PRIORITY_BACKGROUND) < 0) {
+        android::prdebug("failed to set background cgroup");
+        if (!eng) return -1;
+    }
+#endif
     if (!eng && (prctl(PR_SET_DUMPABLE, 0) < 0)) {
         android::prdebug("failed to clear PR_SET_DUMPABLE");
         return -1;
@@ -235,6 +245,7 @@ static bool package_list_parser_cb(pkg_info* info, void* /* userdata */) {
     return rc;
 }
 
+#ifdef MTK_LOGD_ENHANCE
 #if defined(MTK_LOGD_FILTER)
 static int log_reader_count = 0;
 void logd_reader_del(void) {
@@ -267,13 +278,17 @@ int log_much_delay_detect = 0;      // log much detect pause, may use double det
 int build_type;     // eng:0, userdebug:1 user:2
 int detect_time = 1;
 #endif
+#endif
 
-
-static void *reinit_thread_start(void * /*obj*/) {
+static void* reinit_thread_start(void* /*obj*/) {
     prctl(PR_SET_NAME, "logd.daemon");
+#ifdef MTK_LOGD_ENHANCE
     set_sched_policy(0, SP_FOREGROUND);
     setpriority(PRIO_PROCESS, 0, ANDROID_PRIORITY_FOREGROUND);
-
+#else
+    set_sched_policy(0, SP_BACKGROUND);
+    setpriority(PRIO_PROCESS, 0, ANDROID_PRIORITY_BACKGROUND);
+#endif
     cap_t caps = cap_init();
     (void)cap_clear(caps);
     (void)cap_set_proc(caps);
@@ -284,13 +299,14 @@ static void *reinit_thread_start(void * /*obj*/) {
     // worth checking for error returns setting this thread's privileges.
     (void)setgid(AID_SYSTEM); // readonly access to /data/system/packages.list
     (void)setuid(AID_LOGD);   // access to everything logd, eg /data/misc/logd
+#ifdef MTK_LOGD_ENHANCE
 #if defined(HAVE_AEE_FEATURE) && defined(ANDROID_LOG_MUCH_COUNT)
     char property[PROPERTY_VALUE_MAX];
     bool value;
     int count;
     int delay;
 #endif
-
+#endif
     while (reinit_running && !sem_wait(&reinit) && reinit_running) {
         // uidToName Privileged Worker
         if (uid) {
@@ -334,6 +350,7 @@ static void *reinit_thread_start(void * /*obj*/) {
             logBuf->initPrune(NULL);
         }
         android::ReReadEventLogTags();
+#ifdef MTK_LOGD_ENHANCE
 #if defined(HAVE_AEE_FEATURE) && defined(ANDROID_LOG_MUCH_COUNT)
         property_get("ro.aee.build.info", property, "");
         value = !strcmp(property, "mtk");
@@ -391,6 +408,7 @@ static void *reinit_thread_start(void * /*obj*/) {
             property_set("log.tag", "I");
             android::prdebug("logd no log reader, set log level to INFO!\n");
         }
+#endif
 #endif
     }
 

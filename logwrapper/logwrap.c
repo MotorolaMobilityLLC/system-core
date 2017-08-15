@@ -302,7 +302,6 @@ static int parent(const char *tag, int parent_read, pid_t pid,
         },
     };
     int rc = 0;
-    int ret = 0;
     int fd;
 
     struct log_info log_info;
@@ -350,27 +349,34 @@ static int parent(const char *tag, int parent_read, pid_t pid,
     log_info.abbreviated = abbreviated;
 
     while (!found_child) {
-        ret = TEMP_FAILURE_RETRY(poll(poll_fds, ARRAY_SIZE(poll_fds), 5000));
-        if (ret < 0) {
+#ifdef MTK_LOGD_ENHANCE
+        int value;
+        value = TEMP_FAILURE_RETRY(poll(poll_fds, ARRAY_SIZE(poll_fds), 5000));
+        if (value < 0) {
             ERROR("poll failed\n");
             rc = -1;
             goto err_poll;
         }
 
-
-        if (ret == 0) {
-            ret = waitpid(pid, &status, WNOHANG);
-            if (ret < 0) {
+        if (value == 0) {
+            value = waitpid(pid, &status, WNOHANG);
+            if (value < 0) {
                 rc = errno;
                 ALOG(LOG_ERROR, "logwrap", "waitpid failed with %s\n", strerror(errno));
                 goto err_waitpid;
             }
-            if (ret > 0) {
+            if (value > 0) {
                 found_child = true;
             }
             continue;
         }
-
+#else
+        if (TEMP_FAILURE_RETRY(poll(poll_fds, ARRAY_SIZE(poll_fds), -1)) < 0) {
+            ERROR("poll failed\n");
+            rc = -1;
+            goto err_poll;
+        }
+#endif
         if (poll_fds[0].revents & POLLIN) {
             sz = TEMP_FAILURE_RETRY(
                 read(parent_read, &buffer[b], sizeof(buffer) - 1 - b));
@@ -422,6 +428,7 @@ static int parent(const char *tag, int parent_read, pid_t pid,
         }
 
         if (poll_fds[0].revents & POLLHUP) {
+            int ret;
 
             ret = TEMP_FAILURE_RETRY(waitpid(pid, &status, 0));
             if (ret < 0) {

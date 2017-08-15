@@ -14,6 +14,7 @@ cc_library {
     local_include_dirs: ["include"],
     cflags: [
         "-Werror",
+        "-DMTK_LOGD_ENHANCE",
     ],
 }
 
@@ -30,5 +31,6 @@ cc_binary {
     ],
     cflags: [
         "-Werror",
+        "-DMTK_LOGD_ENHANCE",
     ],
 }

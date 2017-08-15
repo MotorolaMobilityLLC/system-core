@@ -39,7 +39,6 @@
 #include "log_portability.h"
 #include "logger.h"
 
-#define SOCKET_TIME_OUT 5
 /* branchless on many architectures. */
 #define min(x, y) ((y) ^ (((x) ^ (y)) & -((x) < (y))))
 
@@ -58,20 +57,23 @@ LIBLOG_HIDDEN struct android_log_transport_write logdLoggerWrite = {
   .close = logdClose,
   .write = logdWrite,
 };
-
+#ifdef MTK_LOGD_ENHANCE
+#define SOCKET_TIME_OUT 5
 #define THREAD_NAME_1 "aee_core_forwar"
 #define THREAD_NAME_2 "aee_dumpstate"
 #define THREAD_NAME_3 "debuggerd"
 #define THREAD_NAME_4 "adbd"
-
+#endif
 /* log_init_lock assumed */
-static int logdOpen()
-{
+static int logdOpen() {
     int i, ret = 0;
+#ifdef MTK_LOGD_ENHANCE
     int skip_thread = 0;
+#endif
 
     i = atomic_load(&logdLoggerWrite.context.sock);
     if (i < 0) {
+#ifdef MTK_LOGD_ENHANCE
         FILE *fp;
         char path[PATH_MAX];
         char threadnamebuf[1024];
@@ -112,32 +114,40 @@ static int logdOpen()
                     return ret;
                 }
             }
-            memset(&un, 0, sizeof(struct sockaddr_un));
-            un.sun_family = AF_UNIX;
-            strcpy(un.sun_path, "/dev/socket/logdw");
+#else
+    int sock = TEMP_FAILURE_RETRY(
+        socket(PF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0));
+    if (sock < 0) {
+      ret = -errno;
+    } else {
+      struct sockaddr_un un;
+#endif
+      memset(&un, 0, sizeof(struct sockaddr_un));
+      un.sun_family = AF_UNIX;
+      strcpy(un.sun_path, "/dev/socket/logdw");
 
-            if (TEMP_FAILURE_RETRY(connect(sock, (struct sockaddr *)&un,
-                                           sizeof(struct sockaddr_un))) < 0) {
-                ret = -errno;
-                switch (ret) {
-                case -ENOTCONN:
-                case -ECONNREFUSED:
-                case -ENOENT:
-                    i = atomic_exchange(&logdLoggerWrite.context.sock, ret);
-                    /* FALLTHRU */
-                default:
-                    break;
-                }
-                close(sock);
-            } else {
-                ret = atomic_exchange(&logdLoggerWrite.context.sock, sock);
-                if ((ret >= 0) && (ret != sock)) {
-                    close(ret);
-                }
-                ret = 0;
-            }
+      if (TEMP_FAILURE_RETRY(connect(sock, (struct sockaddr*)&un,
+                                     sizeof(struct sockaddr_un))) < 0) {
+        ret = -errno;
+        switch (ret) {
+          case -ENOTCONN:
+          case -ECONNREFUSED:
+          case -ENOENT:
+            i = atomic_exchange(&logdLoggerWrite.context.sock, ret);
+          /* FALLTHRU */
+          default:
+            break;
         }
+        close(sock);
+      } else {
+        ret = atomic_exchange(&logdLoggerWrite.context.sock, sock);
+        if ((ret >= 0) && (ret != sock)) {
+          close(ret);
+        }
+        ret = 0;
+      }
     }
+  }
 
   return ret;
 }

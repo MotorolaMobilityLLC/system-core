@@ -172,27 +172,33 @@ static int __android_log_level(const char* tag, size_t len, int default_prio) {
     strncpy(key + sizeof(log_namespace) - 1, tag, len);
     key[sizeof(log_namespace) - 1 + len] = '\0';
 
-        /* kp = key; */
-        kp = key + base_offset;
-        for (i = 0; i < (sizeof(tag_cache) / sizeof(tag_cache[0])); ++i) {
-            struct cache_char* cache = &tag_cache[i];
-            struct cache_char temp_cache;
+#ifdef MTK_LOGD_ENHANCE
+    kp = key + base_offset;
+#else
+    kp = key;
+#endif
+    for (i = 0; i < (sizeof(tag_cache) / sizeof(tag_cache[0])); ++i) {
+      struct cache_char* cache = &tag_cache[i];
+      struct cache_char temp_cache;
 
-            if (not_locked) {
-                temp_cache.cache.pinfo = NULL;
-                temp_cache.c = '\0';
-                cache = &temp_cache;
-            }
-            if (local_change_detected) {
-                refresh_cache(cache, kp);
-            }
+      if (not_locked) {
+        temp_cache.cache.pinfo = NULL;
+        temp_cache.c = '\0';
+        cache = &temp_cache;
+      }
+      if (local_change_detected) {
+        refresh_cache(cache, kp);
+      }
 
-            if (cache->c) {
-                c = cache->c;
-                break;
-            }
-            kp = key;
-            /* kp = key + base_offset; */
+      if (cache->c) {
+        c = cache->c;
+        break;
+      }
+#ifdef MTK_LOGD_ENHANCE
+      kp = key;
+#else
+      kp = key + base_offset;
+#endif
         }
   }
 
@@ -208,33 +214,39 @@ static int __android_log_level(const char* tag, size_t len, int default_prio) {
     case BOOLEAN_FALSE: /* Not officially supported */
       break;
     default:
-        /* clear '.' after log.tag */
-        key[sizeof(log_namespace) - 2] = '\0';
+      /* clear '.' after log.tag */
+      key[sizeof(log_namespace) - 2] = '\0';
 
-        /* kp = key; */
+#ifdef MTK_LOGD_ENHANCE
+      kp = key + base_offset;
+#else
+      kp = key;
+#endif
+      for (i = 0; i < (sizeof(global_cache) / sizeof(global_cache[0])); ++i) {
+        struct cache_char* cache = &global_cache[i];
+        struct cache_char temp_cache;
+
+        if (not_locked) {
+          temp_cache = *cache;
+          if (temp_cache.cache.pinfo != cache->cache.pinfo) { /* check atomic */
+            temp_cache.cache.pinfo = NULL;
+            temp_cache.c = '\0';
+          }
+          cache = &temp_cache;
+        }
+        if (global_change_detected) {
+          refresh_cache(cache, kp);
+        }
+
+        if (cache->c) {
+          c = cache->c;
+          break;
+        }
+#ifdef MTK_LOGD_ENHANCE
+        kp = key;
+#else
         kp = key + base_offset;
-        for (i = 0; i < (sizeof(global_cache) / sizeof(global_cache[0])); ++i) {
-            struct cache_char* cache = &global_cache[i];
-            struct cache_char temp_cache;
-
-            if (not_locked) {
-                temp_cache = *cache;
-                if (temp_cache.cache.pinfo != cache->cache.pinfo) { /* check atomic */
-                    temp_cache.cache.pinfo = NULL;
-                    temp_cache.c = '\0';
-                }
-                cache = &temp_cache;
-            }
-            if (global_change_detected) {
-                refresh_cache(cache, kp);
-            }
-
-            if (cache->c) {
-                c = cache->c;
-                break;
-            }
-            kp = key;
-            /* kp = key + base_offset; */
+#endif
       }
       break;
   }
