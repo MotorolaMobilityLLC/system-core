@@ -741,7 +741,7 @@ void LogBuffer::log(LogBufferElement* elem) {
         }
 
         if (end_always
-                || (end_set && (end >= (*last)->getSequence()))) {
+                || (end_set && (end >= (*it)->getSequence()))) {
             mLogElements.push_back(elem);
         } else {
             // should be short as timestamps are localized near end()
