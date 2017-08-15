@@ -240,6 +240,9 @@ static bool handle_send_file(int s, const char* path, uid_t uid, gid_t gid, uint
         if (msg.data.id != ID_DATA) {
             if (msg.data.id == ID_DONE) {
                 timestamp = msg.data.size;
+#if !ADB_HOST //Debug purpose
+                ADBLOG("handle_send_file ID_DONE");
+#endif
                 break;
             }
             SendSyncFail(s, "invalid data message");
@@ -282,6 +285,9 @@ fail:
     // the case with old versions of adb). To maintain compatibility, keep
     // reading and throwing away ID_DATA packets until the other side notices
     // that we've reported an error.
+#if !ADB_HOST //Debug purpose
+    ADBLOG("handle_send_file fail loop");
+#endif
     while (true) {
         if (!ReadFdExactly(s, &msg.data, sizeof(msg.data))) goto fail;
 
@@ -305,6 +311,9 @@ fail:
     }
 
 abort:
+#if !ADB_HOST //Debug purpose
+    ADBLOG("handle_send_file abort");
+#endif
     if (fd >= 0) adb_close(fd);
     if (do_unlink) adb_unlink(path);
     return false;
@@ -484,6 +493,10 @@ static bool handle_sync_command(int fd, std::vector<char>& buffer) {
     ATRACE_NAME(trace_name.c_str());
 
     D("sync: %s('%s')", id_name.c_str(), name);
+#if !ADB_HOST
+    ADBLOG("sync: %s('%s')", id_name.c_str(), name);
+#endif
+
     switch (request.id) {
         case ID_LSTAT_V1:
             if (!do_lstat_v1(fd, name)) return false;
@@ -518,5 +531,8 @@ void file_sync_service(int fd, void*) {
     }
 
     D("sync: done");
+#if !ADB_HOST
+    ADBLOG("sync: done fd(%d)", fd);
+#endif
     adb_close(fd);
 }

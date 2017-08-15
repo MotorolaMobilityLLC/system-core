@@ -263,16 +263,26 @@ static int create_service_thread(void (*func)(int, void *), void *cookie)
         free(sti);
         adb_close(s[0]);
         adb_close(s[1]);
+#if !ADB_HOST
+        ADBLOG("cannot create service thread\n");
+#endif
         printf("cannot create service thread\n");
         return -1;
     }
 
     D("service thread started, %d:%d",s[0], s[1]);
+#if !ADB_HOST
+    ADBLOG("service thread started, %d:%d",s[0], s[1]);
+#endif
     return s[0];
 }
 
 int service_to_fd(const char* name, const atransport* transport) {
     int ret = -1;
+
+#if !ADB_HOST
+    ADBLOG("service_to_fd %s\n", name);
+#endif
 
     if (is_socket_spec(name)) {
         std::string error;
