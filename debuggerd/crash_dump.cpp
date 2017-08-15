@@ -43,6 +43,7 @@
 #include <log/log.h>
 #include <procinfo/process.h>
 #include <selinux/selinux.h>
+#include <dlfcn.h>
 
 #include "backtrace.h"
 #include "tombstone.h"
@@ -190,6 +191,40 @@ static void drop_capabilities() {
   if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0) {
     PLOG(FATAL) << "failed to set PR_SET_NO_NEW_PRIVS";
   }
+}
+
+// add for crash_dump notify aee_aed
+#define LIB_AED "libaed.so"
+typedef void (*notify_function_pointer)(const char *tombstone_path);
+
+static void notify_aed(int tombstone_fd)
+{
+  void *handle = NULL;
+  notify_function_pointer notify_fptr = NULL;
+
+  dlerror();
+  handle = dlopen(LIB_AED, RTLD_NOW);
+  if (!handle) {
+    LOG(FATAL) << "dlopen " << LIB_AED << " fail: " << dlerror();
+    return;
+  }
+
+  dlerror();
+  notify_fptr = (notify_function_pointer)dlsym(handle, "crash_dump_notify");
+  if (notify_fptr == NULL) {
+    LOG(FATAL) << "find crash_dump_notify fail: " << dlerror();
+    dlclose(handle);
+    return;
+  }
+
+  char buf[256];
+  char tombstone_path[1024];
+
+  snprintf(buf, sizeof(buf), "/proc/%d/task/%d/fd/%d", getpid(), gettid(), tombstone_fd);
+  readlink(buf, tombstone_path, sizeof(tombstone_path));
+
+  notify_fptr(tombstone_path);
+  dlclose(handle);
 }
 
 int main(int argc, char** argv) {
@@ -364,6 +399,11 @@ int main(int argc, char** argv) {
   } else {
     engrave_tombstone(output_fd.get(), backtrace_map.get(), &open_files, target, main_tid,
                       process_name, threads, abort_address, fatal_signal ? &amfd_data : nullptr);
+  }
+
+  // crash_dump notify aee_aed when NE occurs
+  if (fatal_signal) {
+    notify_aed(output_fd.get());
   }
 
   // We don't actually need to PTRACE_DETACH, as long as our tracees aren't in
