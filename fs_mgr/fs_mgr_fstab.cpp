@@ -96,6 +96,9 @@ static struct flag_list fs_mgr_flags[] = {
     { "quota",              MF_QUOTA },
     { "eraseblk=",          MF_ERASEBLKSIZE },
     { "logicalblk=",        MF_LOGICALBLKSIZE },
+#ifdef MTK_FSTAB_FLAGS
+    { "resize",             MF_RESIZE },
+#endif
     { "defaults",           0 },
     { 0,                    0 },
 };

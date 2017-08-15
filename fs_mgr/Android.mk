@@ -41,6 +41,9 @@ endif
 ifneq (,$(filter eng,$(TARGET_BUILD_VARIANT)))
 LOCAL_CFLAGS += -DALLOW_SKIP_SECURE_CHECK=1
 endif
+# add mtk fstab flags support
+LOCAL_CFLAGS += -DMTK_FSTAB_FLAGS
+# end
 include $(BUILD_STATIC_LIBRARY)
 
 # ========================================================
@@ -80,6 +83,9 @@ endif
 ifneq (,$(filter eng,$(TARGET_BUILD_VARIANT)))
 LOCAL_CFLAGS += -DALLOW_SKIP_SECURE_CHECK=1
 endif
+# add mtk fstab flags support
+LOCAL_CFLAGS += -DMTK_FSTAB_FLAGS
+# end
 include $(BUILD_SHARED_LIBRARY)
 
 include $(CLEAR_VARS)

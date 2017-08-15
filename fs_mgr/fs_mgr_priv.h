@@ -108,6 +108,10 @@
 #define MF_LOGICALBLKSIZE  0X1000000
 #define MF_AVB             0X2000000
 
+#ifdef MTK_FSTAB_FLAGS
+#define MF_RESIZE         0x10000000
+#endif
+
 #define DM_BUF_SIZE 4096
 
 int fs_mgr_set_blk_ro(const char *blockdev);
