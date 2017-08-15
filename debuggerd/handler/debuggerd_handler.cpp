@@ -338,6 +338,34 @@ static void resend_signal(siginfo_t* info, bool crash_dump_started) {
   }
 }
 
+#define NEED_FILTER_PROCESS
+
+#ifdef NEED_FILTER_PROCESS
+static const char* const skip_processes[] = {
+    "sdcard",
+    nullptr
+};
+
+static int skip_dump() {
+  int i = 0;
+  char thread_name[MAX_TASK_NAME_LEN + 1];
+
+  if (prctl(PR_GET_NAME, reinterpret_cast<unsigned long>(thread_name), 0, 0, 0) != 0) {
+    return 0;
+  } else {
+    thread_name[MAX_TASK_NAME_LEN] = 0;
+  }
+
+  for (i = 0; skip_processes[i]; i++) {
+    if (strstr(thread_name, skip_processes[i])) {
+      __libc_format_log(ANDROID_LOG_INFO, "libc", "skip tid %d (%s)", gettid(), thread_name);
+      return 1;
+    }
+  }
+  return 0;
+}
+#endif
+
 // Handler that does crash dumping by forking and doing the processing in the child.
 // Do this by ptracing the relevant thread, and then execing debuggerd to do the actual dump.
 static void debuggerd_signal_handler(int signal_number, siginfo_t* info, void* context) {
@@ -388,6 +416,13 @@ static void debuggerd_signal_handler(int signal_number, siginfo_t* info, void* c
   }
 
   log_signal_summary(signal_number, info);
+
+#ifdef NEED_FILTER_PROCESS
+  if (signal_number == DEBUGGER_SIGNAL && skip_dump()) {
+    pthread_mutex_unlock(&crash_mutex);
+    return;
+  }
+#endif
 
   // If this was a fatal crash, populate si_value with the abort message address if possible.
   // Note that applications can set an abort message without aborting.
