@@ -368,7 +368,7 @@ static int skip_dump() {
 
   for (i = 0; skip_processes[i]; i++) {
     if (strstr(thread_name, skip_processes[i])) {
-      __libc_format_log(ANDROID_LOG_INFO, "libc", "skip tid %d (%s)", gettid(), thread_name);
+      // __libc_format_log(ANDROID_LOG_INFO, "libc", "skip tid %d (%s)", gettid(), thread_name);
       return 1;
     }
   }
