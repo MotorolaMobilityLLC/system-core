@@ -205,7 +205,7 @@ static bool FindPartitionsToUmount(std::vector<MountEntry>* blockDevPartitions,
     return true;
 }
 
-static void DumpUmountDebuggingInfo() {
+static void DumpUmountDebuggingInfo(bool dump_all) {
     int status;
     if (!security_getenforce()) {
         LOG(INFO) << "Run lsof";
@@ -214,6 +214,10 @@ static void DumpUmountDebuggingInfo() {
                                 true, nullptr, nullptr, 0);
     }
     FindPartitionsToUmount(nullptr, nullptr, true);
+    if (dump_all) {
+        // dump current tasks, this log can be lengthy, so only dump with dump_all
+        android::base::WriteStringToFile("t", "/proc/sysrq-trigger");
+    }
 }
 
 static UmountStat UmountPartitions(int timeoutMs) {
@@ -277,11 +281,11 @@ static UmountStat TryUmountAndFsck(bool runFsck, int timeoutMs) {
     UmountStat stat = UmountPartitions(timeoutMs - t.duration_ms());
     if (stat != UMOUNT_STAT_SUCCESS) {
         LOG(INFO) << "umount timeout, last resort, kill all and try";
-        if (DUMP_ON_UMOUNT_FAILURE) DumpUmountDebuggingInfo();
+        if (DUMP_ON_UMOUNT_FAILURE) DumpUmountDebuggingInfo(false);
         KillAllProcesses();
         // even if it succeeds, still it is timeout and do not run fsck with all processes killed
         UmountPartitions(0);
-        if (DUMP_ON_UMOUNT_FAILURE) DumpUmountDebuggingInfo();
+        if (DUMP_ON_UMOUNT_FAILURE) DumpUmountDebuggingInfo(true);
     }
 
     if (stat == UMOUNT_STAT_SUCCESS && runFsck) {
@@ -314,8 +318,7 @@ void DoReboot(unsigned int cmd, const std::string& reason, const std::string& re
         abort();
     }
 
-    /* TODO update default waiting time based on usage data */
-    constexpr unsigned int shutdownTimeoutDefault = 10;
+    constexpr unsigned int shutdownTimeoutDefault = 6;
     unsigned int shutdownTimeout = shutdownTimeoutDefault;
     if (SHUTDOWN_ZERO_TIMEOUT) {  // eng build
         shutdownTimeout = 0;
@@ -341,18 +344,9 @@ void DoReboot(unsigned int cmd, const std::string& reason, const std::string& re
     Service* bootAnim = ServiceManager::GetInstance().FindServiceByName("bootanim");
     Service* surfaceFlinger = ServiceManager::GetInstance().FindServiceByName("surfaceflinger");
     if (bootAnim != nullptr && surfaceFlinger != nullptr && surfaceFlinger->IsRunning()) {
-        property_set("service.bootanim.exit", "0");
-        // Could be in the middle of animation. Stop and start so that it can pick
-        // up the right mode.
-        bootAnim->Stop();
-        // start all animation classes if stopped.
         ServiceManager::GetInstance().ForEachServiceInClass("animation", [](Service* s) {
-            s->Start();
             s->SetShutdownCritical();  // will not check animation class separately
         });
-        bootAnim->Start();
-        surfaceFlinger->SetShutdownCritical();
-        bootAnim->SetShutdownCritical();
     }
 
     // optional shutdown step
@@ -424,4 +418,53 @@ void DoReboot(unsigned int cmd, const std::string& reason, const std::string& re
     // Reboot regardless of umount status. If umount fails, fsck after reboot will fix it.
     RebootSystem(cmd, rebootTarget);
     abort();
+}
+
+bool HandlePowerctlMessage(const std::string& command) {
+    unsigned int cmd = 0;
+    std::vector<std::string> cmd_params = android::base::Split(command, ",");
+    std::string reboot_target = "";
+    bool run_fsck = false;
+    bool command_invalid = false;
+
+    if (cmd_params.size() > 3) {
+        command_invalid = true;
+    } else if (cmd_params[0] == "shutdown") {
+        cmd = ANDROID_RB_POWEROFF;
+        if (cmd_params.size() == 2 && cmd_params[1] == "userrequested") {
+            // The shutdown reason is PowerManager.SHUTDOWN_USER_REQUESTED.
+            // Run fsck once the file system is remounted in read-only mode.
+            run_fsck = true;
+        }
+    } else if (cmd_params[0] == "reboot") {
+        cmd = ANDROID_RB_RESTART2;
+        if (cmd_params.size() >= 2) {
+            reboot_target = cmd_params[1];
+            // When rebooting to the bootloader notify the bootloader writing
+            // also the BCB.
+            if (reboot_target == "bootloader") {
+                std::string err;
+                if (!write_reboot_bootloader(&err)) {
+                    LOG(ERROR) << "reboot-bootloader: Error writing "
+                                  "bootloader_message: "
+                               << err;
+                }
+            }
+            // If there is an additional bootloader parameter, pass it along
+            if (cmd_params.size() == 3) {
+                reboot_target += "," + cmd_params[2];
+            }
+        }
+    } else if (command == "thermal-shutdown") {  // no additional parameter allowed
+        cmd = ANDROID_RB_THERMOFF;
+    } else {
+        command_invalid = true;
+    }
+    if (command_invalid) {
+        LOG(ERROR) << "powerctl: unrecognized command '" << command << "'";
+        return false;
+    }
+
+    DoReboot(cmd, command, reboot_target, run_fsck);
+    return true;
 }

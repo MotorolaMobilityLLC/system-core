@@ -14,20 +14,10 @@
  * limitations under the License.
  */
 
-#ifndef _INIT_REBOOT_H
-#define _INIT_REBOOT_H
+#ifndef _INIT_FIRST_STAGE_H
+#define _INIT_FIRST_STAGE_H
 
-/* Reboot / shutdown the system.
- * cmd ANDROID_RB_* as defined in android_reboot.h
- * reason Reason string like "reboot", "userrequested"
- * rebootTarget Reboot target string like "bootloader". Otherwise, it should be an
- *              empty string.
- * runFsck Whether to run fsck after umount is done.
- */
-void DoReboot(unsigned int cmd, const std::string& reason, const std::string& rebootTarget,
-              bool runFsck) __attribute__((__noreturn__));
-
-// Parses and handles a setprop sys.powerctl message.
-bool HandlePowerctlMessage(const std::string& command);
+bool DoFirstStageMount();
+void SetInitAvbVersionInRecovery();
 
 #endif
