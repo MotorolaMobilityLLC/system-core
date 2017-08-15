@@ -41,9 +41,12 @@ cc_library_headers {
     host_supported: true,
     export_include_dirs: ["include"],
     target: {
-       windows: {
-          enabled: true,
-       },
+        linux_bionic: {
+            enabled: true,
+        },
+        windows: {
+            enabled: true,
+        },
     },
 }
 
@@ -60,7 +63,7 @@ cc_library {
         "native_handle.c",
         "open_memstream.c",
         "record_stream.c",
-        "sched_policy.c",
+        "sched_policy.cpp",
         "sockets.cpp",
         "strdup16to8.c",
         "strdup8to16.c",
@@ -68,10 +71,13 @@ cc_library {
         "threads.c",
     ],
 
-
     target: {
         host: {
             srcs: ["dlmalloc_stubs.c"],
+        },
+        linux_bionic: {
+            enabled: true,
+            exclude_srcs: ["dlmalloc_stubs.c"],
         },
         not_windows: {
             srcs: libcutils_nonwindows_sources + [
@@ -141,14 +147,6 @@ cc_library {
     header_libs: ["libcutils_headers"],
     export_header_lib_headers: ["libcutils_headers"],
 
-    product_variables: {
-        cpusets: {
-            cflags: ["-DUSE_CPUSETS"],
-        },
-        schedboost: {
-            cflags: ["-DUSE_SCHEDBOOST"],
-        },
-    },
     cflags: [
         "-Werror",
         "-Wall",

@@ -21,6 +21,7 @@
 #include <string>
 #include <vector>
 
+#include <android-base/file.h>
 #include <android-base/strings.h>
 
 #include "sysdeps.h"
@@ -46,7 +47,8 @@ class BugreportStandardStreamsCallback : public StandardStreamsCallbackInterface
           invalid_lines_(),
           show_progress_(show_progress),
           status_(0),
-          line_() {
+          line_(),
+          last_progress_(0) {
         SetLineMessage("generating");
     }
 
@@ -65,6 +67,7 @@ class BugreportStandardStreamsCallback : public StandardStreamsCallbackInterface
     void OnStderr(const char* buffer, int length) {
         OnStream(nullptr, stderr, buffer, length);
     }
+
     int Done(int unused_) {
         // Process remaining line, if any.
         ProcessLine(line_);
@@ -113,14 +116,14 @@ class BugreportStandardStreamsCallback : public StandardStreamsCallbackInterface
 
   private:
     void SetLineMessage(const std::string& action) {
-        line_message_ = action + " " + adb_basename(dest_file_);
+        line_message_ = action + " " + android::base::Basename(dest_file_);
     }
 
     void SetSrcFile(const std::string path) {
         src_file_ = path;
         if (!dest_dir_.empty()) {
             // Only uses device-provided name when user passed a directory.
-            dest_file_ = adb_basename(path);
+            dest_file_ = android::base::Basename(path);
             SetLineMessage("generating");
         }
     }
@@ -144,6 +147,11 @@ class BugreportStandardStreamsCallback : public StandardStreamsCallbackInterface
             size_t idx1 = line.rfind(BUGZ_PROGRESS_PREFIX) + strlen(BUGZ_PROGRESS_PREFIX);
             size_t idx2 = line.rfind(BUGZ_PROGRESS_SEPARATOR);
             int progress = std::stoi(line.substr(idx1, (idx2 - idx1)));
+            if (progress <= last_progress_) {
+                // Ignore.
+                return;
+            }
+            last_progress_ = progress;
             int total = std::stoi(line.substr(idx2 + 1));
             br_->UpdateProgress(line_message_, progress, total);
         } else {
@@ -178,6 +186,10 @@ class BugreportStandardStreamsCallback : public StandardStreamsCallbackInterface
 
     // Temporary buffer containing the characters read since the last newline (\n).
     std::string line_;
+
+    // Last displayed progress.
+    // Since dumpstate progress can recede, only forward progress should be displayed
+    int last_progress_;
 
     DISALLOW_COPY_AND_ASSIGN(BugreportStandardStreamsCallback);
 };

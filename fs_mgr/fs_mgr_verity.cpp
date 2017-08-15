@@ -30,6 +30,7 @@
 #include <unistd.h>
 
 #include <android-base/file.h>
+#include <android-base/properties.h>
 #include <android-base/strings.h>
 #include <android-base/unique_fd.h>
 #include <crypto_utils/android_pubkey.h>
@@ -38,16 +39,12 @@
 #include <openssl/obj_mac.h>
 #include <openssl/rsa.h>
 #include <openssl/sha.h>
-#include <private/android_filesystem_config.h>
 
 #include "fec/io.h"
 
 #include "fs_mgr.h"
 #include "fs_mgr_priv.h"
 #include "fs_mgr_priv_dm_ioctl.h"
-#include "fs_mgr_priv_verity.h"
-
-#define FSTAB_PREFIX "/fstab."
 
 #define VERITY_TABLE_RSA_KEY "/verity_key"
 #define VERITY_TABLE_HASH_IDX 8
@@ -658,7 +655,6 @@ static int get_verity_state_offset(struct fstab_rec *fstab, off64_t *offset)
 
 static int load_verity_state(struct fstab_rec *fstab, int *mode)
 {
-    char propbuf[PROPERTY_VALUE_MAX];
     int match = 0;
     off64_t offset = 0;
 
@@ -666,10 +662,9 @@ static int load_verity_state(struct fstab_rec *fstab, int *mode)
     *mode = VERITY_MODE_EIO;
 
     /* use the kernel parameter if set */
-    property_get("ro.boot.veritymode", propbuf, "");
-
-    if (*propbuf != '\0') {
-        if (!strcmp(propbuf, "enforcing")) {
+    std::string veritymode;
+    if (fs_mgr_get_boot_config("veritymode", &veritymode)) {
+        if (veritymode.compare("enforcing")) {
             *mode = VERITY_MODE_DEFAULT;
         }
         return 0;
@@ -697,8 +692,6 @@ static int load_verity_state(struct fstab_rec *fstab, int *mode)
 
 int fs_mgr_load_verity_state(int *mode)
 {
-    char fstab_filename[PROPERTY_VALUE_MAX + sizeof(FSTAB_PREFIX)];
-    char propbuf[PROPERTY_VALUE_MAX];
     int rc = -1;
     int i;
     int current;
@@ -708,13 +701,9 @@ int fs_mgr_load_verity_state(int *mode)
      * logging mode, in which case return that */
     *mode = VERITY_MODE_DEFAULT;
 
-    property_get("ro.hardware", propbuf, "");
-    snprintf(fstab_filename, sizeof(fstab_filename), FSTAB_PREFIX"%s", propbuf);
-
-    fstab = fs_mgr_read_fstab(fstab_filename);
-
+    fstab = fs_mgr_read_fstab_default();
     if (!fstab) {
-        LERROR << "Failed to read " << fstab_filename;
+        LERROR << "Failed to read default fstab";
         goto out;
     }
 
@@ -748,7 +737,6 @@ int fs_mgr_update_verity_state(fs_mgr_verity_state_callback callback)
 {
     alignas(dm_ioctl) char buffer[DM_BUF_SIZE];
     bool system_root = false;
-    char fstab_filename[PROPERTY_VALUE_MAX + sizeof(FSTAB_PREFIX)];
     std::string mount_point;
     char propbuf[PROPERTY_VALUE_MAX];
     const char *status;
@@ -768,22 +756,16 @@ int fs_mgr_update_verity_state(fs_mgr_verity_state_callback callback)
     }
 
     fd = TEMP_FAILURE_RETRY(open("/dev/device-mapper", O_RDWR | O_CLOEXEC));
-
     if (fd == -1) {
         PERROR << "Error opening device mapper";
         goto out;
     }
 
-    property_get("ro.hardware", propbuf, "");
-    snprintf(fstab_filename, sizeof(fstab_filename), FSTAB_PREFIX"%s", propbuf);
-
     property_get("ro.build.system_root_image", propbuf, "");
     system_root = !strcmp(propbuf, "true");
-
-    fstab = fs_mgr_read_fstab(fstab_filename);
-
+    fstab = fs_mgr_read_fstab_default();
     if (!fstab) {
-        LERROR << "Failed to read " << fstab_filename;
+        LERROR << "Failed to read default fstab";
         goto out;
     }
 
@@ -859,7 +841,10 @@ static void update_verity_table_blk_device(char *blk_device, char **table)
     *table = strdup(result.c_str());
 }
 
-int fs_mgr_setup_verity(struct fstab_rec *fstab, bool verify_dev)
+// prepares the verity enabled (MF_VERIFY / MF_VERIFYATBOOT) fstab record for
+// mount. The 'wait_for_verity_dev' parameter makes this function wait for the
+// verity device to get created before return
+int fs_mgr_setup_verity(struct fstab_rec *fstab, bool wait_for_verity_dev)
 {
     int retval = FS_MGR_SETUP_VERITY_FAIL;
     int fd = -1;
@@ -873,6 +858,13 @@ int fs_mgr_setup_verity(struct fstab_rec *fstab, bool verify_dev)
     const std::string mount_point(basename(fstab->mount_point));
     bool verified_at_boot = false;
 
+    // This is a public API and so deserves its own check to see if verity
+    // setup is needed at all.
+    if (!is_device_secure()) {
+        LINFO << "Verity setup skipped for " << mount_point;
+        return FS_MGR_SETUP_VERITY_SUCCESS;
+    }
+
     if (fec_open(&f, fstab->blk_device, O_RDONLY, FEC_VERITY_DISABLE,
             FEC_DEFAULT_ROOTS) < 0) {
         PERROR << "Failed to open '" << fstab->blk_device << "'";
@@ -882,6 +874,11 @@ int fs_mgr_setup_verity(struct fstab_rec *fstab, bool verify_dev)
     // read verity metadata
     if (fec_verity_get_metadata(f, &verity) < 0) {
         PERROR << "Failed to get verity metadata '" << fstab->blk_device << "'";
+        // Allow verity disabled when the device is unlocked without metadata
+        if ("0" == android::base::GetProperty("ro.boot.flash.locked", "")) {
+            retval = FS_MGR_SETUP_VERITY_DISABLED;
+            LWARNING << "Allow invalid metadata when the device is unlocked";
+        }
         goto out;
     }
 
@@ -1026,7 +1023,7 @@ loaded:
     }
 
     // make sure we've set everything up properly
-    if (verify_dev && fs_mgr_test_access(fstab->blk_device) < 0) {
+    if (wait_for_verity_dev && fs_mgr_test_access(fstab->blk_device) < 0) {
         goto out;
     }
 

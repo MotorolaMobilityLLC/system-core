@@ -53,7 +53,7 @@ endef
 
 # Pretty comprehensive set of native services. This list is helpful if all that's to be checked is an
 # app.
-ifeq ($(SANITIZE_LITE),true)
+ifeq ($(SANITIZE_LITE_SERVICES),true)
 SANITIZE_ASAN_OPTIONS_FOR := \
   adbd \
   ATFWD-daemon \
@@ -116,6 +116,12 @@ ifneq ($(filter address,$(SANITIZE_TARGET)),)
   EXPORT_GLOBAL_ASAN_OPTIONS := export ASAN_OPTIONS include=/system/asan.options
   LOCAL_REQUIRED_MODULES := asan.options $(ASAN_OPTIONS_FILES)
 endif
+
+EXPORT_GLOBAL_GCOV_OPTIONS :=
+ifeq ($(NATIVE_COVERAGE),true)
+  EXPORT_GLOBAL_GCOV_OPTIONS := export GCOV_PREFIX /data/misc/gcov
+endif
+
 # Put it here instead of in init.rc module definition,
 # because init.rc is conditionally included.
 #
@@ -163,6 +169,7 @@ $(LOCAL_BUILT_MODULE): $(LOCAL_PATH)/init.environ.rc.in $(bcp_dep)
 	$(hide) sed -e 's?%BOOTCLASSPATH%?$(PRODUCT_BOOTCLASSPATH)?g' $< >$@
 	$(hide) sed -i -e 's?%SYSTEMSERVERCLASSPATH%?$(PRODUCT_SYSTEM_SERVER_CLASSPATH)?g' $@
 	$(hide) sed -i -e 's?%EXPORT_GLOBAL_ASAN_OPTIONS%?$(EXPORT_GLOBAL_ASAN_OPTIONS)?g' $@
+	$(hide) sed -i -e 's?%EXPORT_GLOBAL_GCOV_OPTIONS%?$(EXPORT_GLOBAL_GCOV_OPTIONS)?g' $@
 
 bcp_md5 :=
 bcp_dep :=

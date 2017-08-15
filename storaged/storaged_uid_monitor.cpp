@@ -20,12 +20,13 @@
 #include <time.h>
 
 #include <string>
-#include <sstream>
 #include <unordered_map>
 
 #include <android-base/file.h>
 #include <android-base/logging.h>
 #include <android-base/macros.h>
+#include <android-base/parseint.h>
+#include <android-base/strings.h>
 #include <android-base/stringprintf.h>
 #include <log/log_event_list.h>
 #include <packagelistparser/packagelistparser.h>
@@ -59,24 +60,35 @@ std::unordered_map<uint32_t, struct uid_info> uid_monitor::get_uid_io_stats_lock
 {
     std::unordered_map<uint32_t, struct uid_info> uid_io_stats;
     std::string buffer;
-    if (!android::base::ReadFileToString(UID_IO_STATS_PATH, &buffer)) {
+    if (!ReadFileToString(UID_IO_STATS_PATH, &buffer)) {
         PLOG_TO(SYSTEM, ERROR) << UID_IO_STATS_PATH << ": ReadFileToString failed";
         return uid_io_stats;
     }
 
-    std::stringstream ss(buffer);
+    std::vector<std::string> io_stats = Split(buffer, "\n");
     struct uid_info u;
     bool refresh_uid = false;
 
-    while (ss >> u.uid) {
-        ss >> u.io[FOREGROUND].rchar >> u.io[FOREGROUND].wchar
-           >> u.io[FOREGROUND].read_bytes >> u.io[FOREGROUND].write_bytes
-           >> u.io[BACKGROUND].rchar >> u.io[BACKGROUND].wchar
-           >> u.io[BACKGROUND].read_bytes >> u.io[BACKGROUND].write_bytes;
-
-        if (!ss.good()) {
-            ss.clear(std::ios_base::badbit);
-            break;
+    for (uint32_t i = 0; i < io_stats.size(); i++) {
+        if (io_stats[i].empty()) {
+            continue;
+        }
+        std::vector<std::string> fields = Split(io_stats[i], " ");
+        if (fields.size() < 11 ||
+            !ParseUint(fields[0],  &u.uid) ||
+            !ParseUint(fields[1],  &u.io[FOREGROUND].rchar) ||
+            !ParseUint(fields[2],  &u.io[FOREGROUND].wchar) ||
+            !ParseUint(fields[3],  &u.io[FOREGROUND].read_bytes) ||
+            !ParseUint(fields[4],  &u.io[FOREGROUND].write_bytes) ||
+            !ParseUint(fields[5],  &u.io[BACKGROUND].rchar) ||
+            !ParseUint(fields[6],  &u.io[BACKGROUND].wchar) ||
+            !ParseUint(fields[7],  &u.io[BACKGROUND].read_bytes) ||
+            !ParseUint(fields[8],  &u.io[BACKGROUND].write_bytes) ||
+            !ParseUint(fields[9],  &u.io[FOREGROUND].fsync) ||
+            !ParseUint(fields[10], &u.io[BACKGROUND].fsync)) {
+            LOG_TO(SYSTEM, WARNING) << "Invalid I/O stats: \""
+                                    << io_stats[i] << "\"";
+            continue;
         }
 
         if (last_uid_io_stats.find(u.uid) == last_uid_io_stats.end()) {
@@ -86,11 +98,6 @@ std::unordered_map<uint32_t, struct uid_info> uid_monitor::get_uid_io_stats_lock
             u.name = last_uid_io_stats[u.uid].name;
         }
         uid_io_stats[u.uid] = u;
-    }
-
-    if (!ss.eof() || ss.bad()) {
-        uid_io_stats.clear();
-        LOG_TO(SYSTEM, ERROR) << "read UID IO stats failed";
     }
 
     if (refresh_uid) {
@@ -103,11 +110,11 @@ std::unordered_map<uint32_t, struct uid_info> uid_monitor::get_uid_io_stats_lock
 static const int MAX_UID_RECORDS_SIZE = 1000 * 48; // 1000 uids in 48 hours
 
 static inline int records_size(
-    const std::map<uint64_t, std::vector<struct uid_record>>& records)
+    const std::map<uint64_t, struct uid_records>& curr_records)
 {
     int count = 0;
-    for (auto const& it : records) {
-        count += it.second.size();
+    for (auto const& it : curr_records) {
+        count += it.second.entries.size();
     }
     return count;
 }
@@ -122,45 +129,75 @@ void uid_monitor::add_records_locked(uint64_t curr_ts)
         records.erase(records.begin(), it);
     }
 
-    std::vector<struct uid_record> new_records;
+    struct uid_records new_records;
     for (const auto& p : curr_io_stats) {
         struct uid_record record = {};
         record.name = p.first;
         record.ios = p.second;
         if (memcmp(&record.ios, &zero_io_usage, sizeof(struct uid_io_usage))) {
-            new_records.push_back(record);
+            new_records.entries.push_back(record);
         }
     }
 
     curr_io_stats.clear();
+    new_records.start_ts = start_ts;
+    start_ts = curr_ts;
 
-    if (new_records.empty())
+    if (new_records.entries.empty())
       return;
 
     // make some room for new records
     int overflow = records_size(records) +
-        new_records.size() - MAX_UID_RECORDS_SIZE;
+        new_records.entries.size() - MAX_UID_RECORDS_SIZE;
     while (overflow > 0 && records.size() > 0) {
-        overflow -= records[0].size();
+        auto del_it = records.begin();
+        overflow -= del_it->second.entries.size();
         records.erase(records.begin());
     }
 
-    records[curr_ts].insert(records[curr_ts].end(),
-        new_records.begin(), new_records.end());
+    records[curr_ts] = new_records;
 }
 
-std::map<uint64_t, std::vector<struct uid_record>> uid_monitor::dump(int hours)
+std::map<uint64_t, struct uid_records> uid_monitor::dump(
+    double hours, uint64_t threshold, bool force_report)
 {
+    if (force_report) {
+        report();
+    }
+
     std::unique_ptr<lock_t> lock(new lock_t(&um_lock));
 
-    std::map<uint64_t, std::vector<struct uid_record>> dump_records;
+    std::map<uint64_t, struct uid_records> dump_records;
     uint64_t first_ts = 0;
 
     if (hours != 0) {
-        first_ts = time(NULL) - (uint64_t)hours * HOUR_TO_SEC;
+        first_ts = time(NULL) - hours * HOUR_TO_SEC;
     }
 
-    dump_records.insert(records.lower_bound(first_ts), records.end());
+    for (auto it = records.lower_bound(first_ts); it != records.end(); ++it) {
+        const std::vector<struct uid_record>& recs = it->second.entries;
+        struct uid_records filtered;
+
+        for (const auto& rec : recs) {
+            if (rec.ios.bytes[READ][FOREGROUND][CHARGER_ON] +
+                rec.ios.bytes[READ][FOREGROUND][CHARGER_OFF] +
+                rec.ios.bytes[READ][BACKGROUND][CHARGER_ON] +
+                rec.ios.bytes[READ][BACKGROUND][CHARGER_OFF] +
+                rec.ios.bytes[WRITE][FOREGROUND][CHARGER_ON] +
+                rec.ios.bytes[WRITE][FOREGROUND][CHARGER_OFF] +
+                rec.ios.bytes[WRITE][BACKGROUND][CHARGER_ON] +
+                rec.ios.bytes[WRITE][BACKGROUND][CHARGER_OFF] > threshold) {
+                filtered.entries.push_back(rec);
+            }
+        }
+
+        if (filtered.entries.empty())
+            continue;
+
+        filtered.start_ts = it->second.start_ts;
+        dump_records.insert(
+            std::pair<uint64_t, struct uid_records>(it->first, filtered));
+    }
 
     return dump_records;
 }
@@ -181,18 +218,23 @@ void uid_monitor::update_curr_io_stats_locked()
         }
 
         struct uid_io_usage& usage = curr_io_stats[uid.name];
-        usage.bytes[READ][FOREGROUND][charger_stat] +=
-            uid.io[FOREGROUND].read_bytes -
+        int64_t fg_rd_delta = uid.io[FOREGROUND].read_bytes -
             last_uid_io_stats[uid.uid].io[FOREGROUND].read_bytes;
-        usage.bytes[READ][BACKGROUND][charger_stat] +=
-            uid.io[BACKGROUND].read_bytes -
+        int64_t bg_rd_delta = uid.io[BACKGROUND].read_bytes -
             last_uid_io_stats[uid.uid].io[BACKGROUND].read_bytes;
-        usage.bytes[WRITE][FOREGROUND][charger_stat] +=
-            uid.io[FOREGROUND].write_bytes -
+        int64_t fg_wr_delta = uid.io[FOREGROUND].write_bytes -
             last_uid_io_stats[uid.uid].io[FOREGROUND].write_bytes;
+        int64_t bg_wr_delta = uid.io[BACKGROUND].write_bytes -
+            last_uid_io_stats[uid.uid].io[BACKGROUND].write_bytes;
+
+        usage.bytes[READ][FOREGROUND][charger_stat] +=
+            (fg_rd_delta < 0) ? uid.io[FOREGROUND].read_bytes : fg_rd_delta;
+        usage.bytes[READ][BACKGROUND][charger_stat] +=
+            (bg_rd_delta < 0) ? uid.io[BACKGROUND].read_bytes : bg_rd_delta;
+        usage.bytes[WRITE][FOREGROUND][charger_stat] +=
+            (fg_wr_delta < 0) ? uid.io[FOREGROUND].write_bytes : fg_wr_delta;
         usage.bytes[WRITE][BACKGROUND][charger_stat] +=
-            uid.io[BACKGROUND].write_bytes -
-            last_uid_io_stats[uid.uid].io[BACKGROUND].write_bytes;;
+            (bg_wr_delta < 0) ? uid.io[BACKGROUND].write_bytes : bg_wr_delta;
     }
 
     last_uid_io_stats = uid_io_stats;
@@ -221,6 +263,7 @@ void uid_monitor::set_charger_state(charger_stat_t stat)
 void uid_monitor::init(charger_stat_t stat)
 {
     charger_stat = stat;
+    start_ts = time(NULL);
     last_uid_io_stats = get_uid_io_stats();
 }
 

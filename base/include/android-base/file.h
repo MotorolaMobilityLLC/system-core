@@ -47,10 +47,17 @@ bool WriteFully(int fd, const void* data, size_t byte_count);
 bool RemoveFileIfExists(const std::string& path, std::string* err = nullptr);
 
 #if !defined(_WIN32)
+bool Realpath(const std::string& path, std::string* result);
 bool Readlink(const std::string& path, std::string* result);
 #endif
 
 std::string GetExecutablePath();
+std::string GetExecutableDirectory();
+
+// Like the regular basename and dirname, but thread-safe on all
+// platforms and capable of correctly handling exotic Windows paths.
+std::string Basename(const std::string& path);
+std::string Dirname(const std::string& path);
 
 }  // namespace base
 }  // namespace android

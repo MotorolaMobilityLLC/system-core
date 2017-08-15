@@ -35,9 +35,9 @@
 #include <android-base/parseint.h>
 #include <android-base/strings.h>
 #include <cutils/properties.h>
+#include <metricslogger/metrics_logger.h>
 
 #include "boot_event_record_store.h"
-#include "histogram_logger.h"
 #include "uptime_parser.h"
 
 namespace {
@@ -49,7 +49,7 @@ void LogBootEvents() {
 
   auto events = boot_event_store.GetAllBootEvents();
   for (auto i = events.cbegin(); i != events.cend(); ++i) {
-    bootstat::LogHistogram(i->first, i->second);
+    android::metricslogger::LogHistogram(i->first, i->second);
   }
 }
 
@@ -225,7 +225,12 @@ void RecordInitBootTimeProp(
 void RecordBootloaderTimings(BootEventRecordStore* boot_event_store) {
   // |ro.boot.boottime| is of the form 'stage1:time1,...,stageN:timeN'.
   std::string value = GetProperty("ro.boot.boottime");
+  if (value.empty()) {
+    // ro.boot.boottime is not reported on all devices.
+    return;
+  }
 
+  int32_t total_time = 0;
   auto stages = android::base::Split(value, ",");
   for (auto const &stageTiming : stages) {
     // |stageTiming| is of the form 'stage:time'.
@@ -235,10 +240,13 @@ void RecordBootloaderTimings(BootEventRecordStore* boot_event_store) {
     std::string stageName = stageTimingValues[0];
     int32_t time_ms;
     if (android::base::ParseInt(stageTimingValues[1], &time_ms)) {
+      total_time += time_ms;
       boot_event_store->AddBootEventWithValue(
           "boottime.bootloader." + stageName, time_ms);
     }
   }
+
+  boot_event_store->AddBootEventWithValue("boottime.bootloader.total", total_time);
 }
 
 // Records several metrics related to the time it takes to boot the device,
@@ -317,18 +325,18 @@ void RecordFactoryReset() {
 
   if (current_time_utc < 0) {
     // UMA does not display negative values in buckets, so convert to positive.
-    bootstat::LogHistogram(
+    android::metricslogger::LogHistogram(
         "factory_reset_current_time_failure", std::abs(current_time_utc));
 
-    // Logging via BootEventRecordStore to see if using bootstat::LogHistogram
+    // Logging via BootEventRecordStore to see if using android::metricslogger::LogHistogram
     // is losing records somehow.
     boot_event_store.AddBootEventWithValue(
         "factory_reset_current_time_failure", std::abs(current_time_utc));
     return;
   } else {
-    bootstat::LogHistogram("factory_reset_current_time", current_time_utc);
+    android::metricslogger::LogHistogram("factory_reset_current_time", current_time_utc);
 
-    // Logging via BootEventRecordStore to see if using bootstat::LogHistogram
+    // Logging via BootEventRecordStore to see if using android::metricslogger::LogHistogram
     // is losing records somehow.
     boot_event_store.AddBootEventWithValue(
         "factory_reset_current_time", current_time_utc);
@@ -347,9 +355,9 @@ void RecordFactoryReset() {
   // Calculate and record the difference in time between now and the
   // factory_reset time.
   time_t factory_reset_utc = record.second;
-  bootstat::LogHistogram("factory_reset_record_value", factory_reset_utc);
+  android::metricslogger::LogHistogram("factory_reset_record_value", factory_reset_utc);
 
-  // Logging via BootEventRecordStore to see if using bootstat::LogHistogram
+  // Logging via BootEventRecordStore to see if using android::metricslogger::LogHistogram
   // is losing records somehow.
   boot_event_store.AddBootEventWithValue(
       "factory_reset_record_value", factory_reset_utc);

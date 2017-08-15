@@ -25,23 +25,21 @@ LOCAL_SRC_FILES:= \
     fs_mgr_slotselect.cpp \
     fs_mgr_verity.cpp \
     fs_mgr_avb.cpp \
-    fs_mgr_avb_ops.cpp
+    fs_mgr_avb_ops.cpp \
+    fs_mgr_boot_config.cpp
 LOCAL_C_INCLUDES := \
     $(LOCAL_PATH)/include \
     system/vold \
-    system/extras/ext4_utils \
-    bootable/recovery
+    system/extras/ext4_utils
 LOCAL_MODULE:= libfs_mgr
 LOCAL_STATIC_LIBRARIES := $(common_static_libraries)
 LOCAL_EXPORT_C_INCLUDE_DIRS := $(LOCAL_PATH)/include
 LOCAL_CFLAGS := -Werror
-ifeq ($(TARGET_USERIMAGES_USE_EXT4), true)
-  ifeq ($(TARGET_USES_MKE2FS), true)
-    LOCAL_CFLAGS += -DTARGET_USES_MKE2FS
-  endif
-endif
 ifneq (,$(filter userdebug,$(TARGET_BUILD_VARIANT)))
 LOCAL_CFLAGS += -DALLOW_ADBD_DISABLE_VERITY=1
+endif
+ifneq (,$(filter eng,$(TARGET_BUILD_VARIANT)))
+LOCAL_CFLAGS += -DALLOW_SKIP_SECURE_CHECK=1
 endif
 include $(BUILD_STATIC_LIBRARY)
 

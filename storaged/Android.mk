@@ -9,7 +9,6 @@ LIBSTORAGED_SHARED_LIBRARIES := \
     libcutils \
     liblog \
     libsysutils \
-    libcap \
     libpackagelistparser \
     libbatteryservice \
 
@@ -17,6 +16,7 @@ include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES := \
     storaged.cpp \
+    storaged_info.cpp \
     storaged_service.cpp \
     storaged_utils.cpp \
     storaged_uid_monitor.cpp \

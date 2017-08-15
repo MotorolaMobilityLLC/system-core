@@ -158,93 +158,6 @@ void add_disk_stats(struct disk_stats* src, struct disk_stats* dst) {
     }
 }
 
-bool parse_emmc_ecsd(int ext_csd_fd, struct emmc_info* info) {
-    CHECK(ext_csd_fd >= 0);
-    struct hex {
-        char str[2];
-    };
-    // List of interesting offsets
-    static const size_t EXT_CSD_REV_IDX = 192 * sizeof(hex);
-    static const size_t EXT_PRE_EOL_INFO_IDX = 267 * sizeof(hex);
-    static const size_t EXT_DEVICE_LIFE_TIME_EST_A_IDX = 268 * sizeof(hex);
-    static const size_t EXT_DEVICE_LIFE_TIME_EST_B_IDX = 269 * sizeof(hex);
-
-    // Read file
-    CHECK(lseek(ext_csd_fd, 0, SEEK_SET) == 0);
-    std::string buffer;
-    if (!android::base::ReadFdToString(ext_csd_fd, &buffer)) {
-        PLOG_TO(SYSTEM, ERROR) << "ReadFdToString failed.";
-        return false;
-    }
-
-    if (buffer.length() < EXT_CSD_FILE_MIN_SIZE) {
-        LOG_TO(SYSTEM, ERROR) << "EMMC ext csd file has truncated content. "
-            << "File length: " << buffer.length();
-        return false;
-    }
-
-    std::string sub;
-    std::stringstream ss;
-    // Parse EXT_CSD_REV
-    int ext_csd_rev = -1;
-    sub = buffer.substr(EXT_CSD_REV_IDX, sizeof(hex));
-    ss << sub;
-    ss >> std::hex >> ext_csd_rev;
-    if (ext_csd_rev < 0) {
-        LOG_TO(SYSTEM, ERROR) << "Failure on parsing EXT_CSD_REV.";
-        return false;
-    }
-    ss.clear();
-
-    static const char* ver_str[] = {
-        "4.0", "4.1", "4.2", "4.3", "Obsolete", "4.41", "4.5", "5.0"
-    };
-
-    strlcpy(info->mmc_ver,
-            (ext_csd_rev < (int)(sizeof(ver_str) / sizeof(ver_str[0]))) ?
-                           ver_str[ext_csd_rev] :
-                           "Unknown",
-            MMC_VER_STR_LEN);
-
-    if (ext_csd_rev < 7) {
-        return 0;
-    }
-
-    // Parse EXT_PRE_EOL_INFO
-    info->eol = -1;
-    sub = buffer.substr(EXT_PRE_EOL_INFO_IDX, sizeof(hex));
-    ss << sub;
-    ss >> std::hex >> info->eol;
-    if (info->eol < 0) {
-        LOG_TO(SYSTEM, ERROR) << "Failure on parsing EXT_PRE_EOL_INFO.";
-        return false;
-    }
-    ss.clear();
-
-    // Parse DEVICE_LIFE_TIME_EST
-    info->lifetime_a = -1;
-    sub = buffer.substr(EXT_DEVICE_LIFE_TIME_EST_A_IDX, sizeof(hex));
-    ss << sub;
-    ss >> std::hex >> info->lifetime_a;
-    if (info->lifetime_a < 0) {
-        LOG_TO(SYSTEM, ERROR) << "Failure on parsing EXT_DEVICE_LIFE_TIME_EST_TYP_A.";
-        return false;
-    }
-    ss.clear();
-
-    info->lifetime_b = -1;
-    sub = buffer.substr(EXT_DEVICE_LIFE_TIME_EST_B_IDX, sizeof(hex));
-    ss << sub;
-    ss >> std::hex >> info->lifetime_b;
-    if (info->lifetime_b < 0) {
-        LOG_TO(SYSTEM, ERROR) << "Failure on parsing EXT_DEVICE_LIFE_TIME_EST_TYP_B.";
-        return false;
-    }
-    ss.clear();
-
-    return true;
-}
-
 static bool cmp_uid_info(struct uid_info l, struct uid_info r) {
     // Compare background I/O first.
     for (int i = UID_STATS - 1; i >= 0; i--) {
@@ -270,25 +183,14 @@ void sort_running_uids_info(std::vector<struct uid_info> &uids) {
 
 // Logging functions
 void log_console_running_uids_info(std::vector<struct uid_info> uids) {
-// Sample Output:
-//                                       Application        FG Read       FG Write        FG Read       FG Write        BG Read       BG Write        BG Read       BG Write
-//                                          NAME/UID     Characters     Characters          Bytes          Bytes     Characters     Characters          Bytes          Bytes
-//                                        ----------     ----------     ----------     ----------     ----------     ----------     ----------     ----------     ----------
-//                      com.google.android.gsf.login              0              0              0              0       57195097        5137089      176386048        6512640
-//           com.google.android.googlequicksearchbox              0              0              0              0        4196821       12123468       34295808       13225984
-//                                              1037           4572            537              0              0         131352        5145643       34263040        5144576
-//                        com.google.android.youtube           2182             70              0              0       63969383         482939       38731776         466944
-
-    // Title
-    printf("Per-UID I/O stats\n");
-    printf("                                       Application        FG Read       FG Write        FG Read       FG Write        BG Read       BG Write        BG Read       BG Write\n"
-           "                                          NAME/UID     Characters     Characters          Bytes          Bytes     Characters     Characters          Bytes          Bytes\n"
-           "                                        ----------     ----------     ----------     ----------     ----------     ----------     ----------     ----------     ----------\n");
+    printf("name/uid fg_rchar fg_wchar fg_rbytes fg_wbytes "
+           "bg_rchar bg_wchar bg_rbytes bg_wbytes fg_fsync bg_fsync\n");
 
     for (const auto& uid : uids) {
-        printf("%50s%15ju%15ju%15ju%15ju%15ju%15ju%15ju%15ju\n", uid.name.c_str(),
+        printf("%s %ju %ju %ju %ju %ju %ju %ju %ju %ju %ju\n", uid.name.c_str(),
             uid.io[0].rchar, uid.io[0].wchar, uid.io[0].read_bytes, uid.io[0].write_bytes,
-            uid.io[1].rchar, uid.io[1].wchar, uid.io[1].read_bytes, uid.io[1].write_bytes);
+            uid.io[1].rchar, uid.io[1].wchar, uid.io[1].read_bytes, uid.io[1].write_bytes,
+            uid.io[0].fsync, uid.io[1].fsync);
     }
     fflush(stdout);
 }
@@ -328,14 +230,3 @@ void log_event_disk_stats(struct disk_stats* stats, const char* type) {
         << LOG_ID_EVENTS;
 }
 
-void log_event_emmc_info(struct emmc_info* info) {
-    // skip if the input structure are all zeros
-    if (info == NULL) return;
-    struct emmc_info zero_cmp;
-    memset(&zero_cmp, 0, sizeof(zero_cmp));
-    if (memcmp(&zero_cmp, info, sizeof(struct emmc_info)) == 0) return;
-
-    android_log_event_list(EVENTLOGTAG_EMMCINFO)
-        << info->mmc_ver << info->eol << info->lifetime_a << info->lifetime_b
-        << LOG_ID_EVENTS;
-}

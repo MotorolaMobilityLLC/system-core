@@ -15,12 +15,17 @@
  */
 
 #include <ctype.h>
+#include <dirent.h>
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mount.h>
 #include <unistd.h>
+
+#include <android-base/file.h>
+#include <android-base/stringprintf.h>
+#include <android-base/strings.h>
 
 #include "fs_mgr_priv.h"
 
@@ -34,7 +39,8 @@ struct fs_mgr_flag_values {
     int max_comp_streams;
     unsigned int zram_size;
     uint64_t reserved_size;
-    unsigned int file_encryption_mode;
+    unsigned int file_contents_mode;
+    unsigned int file_names_mode;
     unsigned int erase_blk_size;
     unsigned int logical_blk_size;
 };
@@ -94,14 +100,50 @@ static struct flag_list fs_mgr_flags[] = {
     { 0,                    0 },
 };
 
-#define EM_SOFTWARE 1
-#define EM_ICE      2
+#define EM_AES_256_XTS  1
+#define EM_ICE          2
+#define EM_AES_256_CTS  3
+#define EM_AES_256_HEH  4
 
-static struct flag_list encryption_modes[] = {
-    {"software", EM_SOFTWARE},
-    {"ice", EM_ICE},
-    {0, 0}
+static const struct flag_list file_contents_encryption_modes[] = {
+    {"aes-256-xts", EM_AES_256_XTS},
+    {"software", EM_AES_256_XTS}, /* alias for backwards compatibility */
+    {"ice", EM_ICE}, /* hardware-specific inline cryptographic engine */
+    {0, 0},
 };
+
+static const struct flag_list file_names_encryption_modes[] = {
+    {"aes-256-cts", EM_AES_256_CTS},
+    {"aes-256-heh", EM_AES_256_HEH},
+    {0, 0},
+};
+
+static unsigned int encryption_mode_to_flag(const struct flag_list *list,
+                                            const char *mode, const char *type)
+{
+    const struct flag_list *j;
+
+    for (j = list; j->name; ++j) {
+        if (!strcmp(mode, j->name)) {
+            return j->flag;
+        }
+    }
+    LERROR << "Unknown " << type << " encryption mode: " << mode;
+    return 0;
+}
+
+static const char *flag_to_encryption_mode(const struct flag_list *list,
+                                           unsigned int flag)
+{
+    const struct flag_list *j;
+
+    for (j = list; j->name; ++j) {
+        if (flag == j->flag) {
+            return j->name;
+        }
+    }
+    return nullptr;
+}
 
 static uint64_t calculate_zram_size(unsigned int percentage)
 {
@@ -128,6 +170,24 @@ static uint64_t parse_size(const char *arg)
         size *= 1024LL * 1024LL * 1024LL;
 
     return size;
+}
+
+/* fills 'dt_value' with the underlying device tree value string without
+ * the trailing '\0'. Returns true if 'dt_value' has a valid string, 'false'
+ * otherwise.
+ */
+static bool read_dt_file(const std::string& file_name, std::string* dt_value)
+{
+    if (android::base::ReadFileToString(file_name, dt_value)) {
+        if (!dt_value->empty()) {
+            // trim the trailing '\0' out, otherwise the comparison
+            // will produce false-negatives.
+            dt_value->resize(dt_value->size() - 1);
+            return true;
+        }
+    }
+
+    return false;
 }
 
 static int parse_flags(char *flags, struct flag_list *fl,
@@ -183,20 +243,28 @@ static int parse_flags(char *flags, struct flag_list *fl,
                      * location of the keys.  Get it and return it.
                      */
                     flag_vals->key_loc = strdup(strchr(p, '=') + 1);
-                    flag_vals->file_encryption_mode = EM_SOFTWARE;
+                    flag_vals->file_contents_mode = EM_AES_256_XTS;
+                    flag_vals->file_names_mode = EM_AES_256_CTS;
                 } else if ((fl[i].flag == MF_FILEENCRYPTION) && flag_vals) {
-                    /* The fileencryption flag is followed by an = and the
-                     * type of the encryption.  Get it and return it.
+                    /* The fileencryption flag is followed by an = and
+                     * the mode of contents encryption, then optionally a
+                     * : and the mode of filenames encryption (defaults
+                     * to aes-256-cts).  Get it and return it.
                      */
-                    const struct flag_list *j;
-                    const char *mode = strchr(p, '=') + 1;
-                    for (j = encryption_modes; j->name; ++j) {
-                        if (!strcmp(mode, j->name)) {
-                            flag_vals->file_encryption_mode = j->flag;
-                        }
+                    char *mode = strchr(p, '=') + 1;
+                    char *colon = strchr(mode, ':');
+                    if (colon) {
+                        *colon = '\0';
                     }
-                    if (flag_vals->file_encryption_mode == 0) {
-                        LERROR << "Unknown file encryption mode: " << mode;
+                    flag_vals->file_contents_mode =
+                        encryption_mode_to_flag(file_contents_encryption_modes,
+                                                mode, "file contents");
+                    if (colon) {
+                        flag_vals->file_names_mode =
+                            encryption_mode_to_flag(file_names_encryption_modes,
+                                                    colon + 1, "file names");
+                    } else {
+                        flag_vals->file_names_mode = EM_AES_256_CTS;
                     }
                 } else if ((fl[i].flag == MF_LENGTH) && flag_vals) {
                     /* The length flag is followed by an = and the
@@ -290,7 +358,98 @@ static int parse_flags(char *flags, struct flag_list *fl,
     return f;
 }
 
-struct fstab *fs_mgr_read_fstab_file(FILE *fstab_file)
+static bool is_dt_fstab_compatible() {
+    std::string dt_value;
+    std::string file_name = kAndroidDtDir + "/fstab/compatible";
+    if (read_dt_file(file_name, &dt_value)) {
+        if (dt_value == "android,fstab") {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static std::string read_fstab_from_dt() {
+    std::string fstab;
+    if (!is_dt_compatible() || !is_dt_fstab_compatible()) {
+        return fstab;
+    }
+
+    std::string fstabdir_name = kAndroidDtDir + "/fstab";
+    std::unique_ptr<DIR, int (*)(DIR*)> fstabdir(opendir(fstabdir_name.c_str()), closedir);
+    if (!fstabdir) return fstab;
+
+    dirent* dp;
+    while ((dp = readdir(fstabdir.get())) != NULL) {
+        // skip over name and compatible
+        if (dp->d_type != DT_DIR) {
+            continue;
+        }
+
+        // skip if its not 'vendor', 'odm' or 'system'
+        if (strcmp(dp->d_name, "odm") && strcmp(dp->d_name, "system") &&
+            strcmp(dp->d_name, "vendor")) {
+            continue;
+        }
+
+        // create <dev> <mnt_point>  <type>  <mnt_flags>  <fsmgr_flags>\n
+        std::vector<std::string> fstab_entry;
+        std::string file_name;
+        std::string value;
+        file_name = android::base::StringPrintf("%s/%s/dev", fstabdir_name.c_str(), dp->d_name);
+        if (!read_dt_file(file_name, &value)) {
+            LERROR << "dt_fstab: Failed to find device for partition " << dp->d_name;
+            fstab.clear();
+            break;
+        }
+        fstab_entry.push_back(value);
+        fstab_entry.push_back(android::base::StringPrintf("/%s", dp->d_name));
+
+        file_name = android::base::StringPrintf("%s/%s/type", fstabdir_name.c_str(), dp->d_name);
+        if (!read_dt_file(file_name, &value)) {
+            LERROR << "dt_fstab: Failed to find type for partition " << dp->d_name;
+            fstab.clear();
+            break;
+        }
+        fstab_entry.push_back(value);
+
+        file_name = android::base::StringPrintf("%s/%s/mnt_flags", fstabdir_name.c_str(), dp->d_name);
+        if (!read_dt_file(file_name, &value)) {
+            LERROR << "dt_fstab: Failed to find type for partition " << dp->d_name;
+            fstab.clear();
+            break;
+        }
+        fstab_entry.push_back(value);
+
+        file_name = android::base::StringPrintf("%s/%s/fsmgr_flags", fstabdir_name.c_str(), dp->d_name);
+        if (!read_dt_file(file_name, &value)) {
+            LERROR << "dt_fstab: Failed to find type for partition " << dp->d_name;
+            fstab.clear();
+            break;
+        }
+        fstab_entry.push_back(value);
+
+        fstab += android::base::Join(fstab_entry, " ");
+        fstab += '\n';
+    }
+
+    return fstab;
+}
+
+bool is_dt_compatible() {
+    std::string file_name = kAndroidDtDir + "/compatible";
+    std::string dt_value;
+    if (read_dt_file(file_name, &dt_value)) {
+        if (dt_value == "android,firmware") {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static struct fstab *fs_mgr_read_fstab_file(FILE *fstab_file)
 {
     int cnt, entries;
     ssize_t len;
@@ -406,7 +565,8 @@ struct fstab *fs_mgr_read_fstab_file(FILE *fstab_file)
         fstab->recs[cnt].max_comp_streams = flag_vals.max_comp_streams;
         fstab->recs[cnt].zram_size = flag_vals.zram_size;
         fstab->recs[cnt].reserved_size = flag_vals.reserved_size;
-        fstab->recs[cnt].file_encryption_mode = flag_vals.file_encryption_mode;
+        fstab->recs[cnt].file_contents_mode = flag_vals.file_contents_mode;
+        fstab->recs[cnt].file_names_mode = flag_vals.file_names_mode;
         fstab->recs[cnt].erase_blk_size = flag_vals.erase_blk_size;
         fstab->recs[cnt].logical_blk_size = flag_vals.logical_blk_size;
         cnt++;
@@ -426,6 +586,41 @@ err:
     return NULL;
 }
 
+/* merges fstab entries from both a and b, then returns the merged result.
+ * note that the caller should only manage the return pointer without
+ * doing further memory management for the two inputs, i.e. only need to
+ * frees up memory of the return value without touching a and b. */
+static struct fstab *in_place_merge(struct fstab *a, struct fstab *b)
+{
+    if (!a) return b;
+    if (!b) return a;
+
+    int total_entries = a->num_entries + b->num_entries;
+    a->recs = static_cast<struct fstab_rec *>(realloc(
+        a->recs, total_entries * (sizeof(struct fstab_rec))));
+    if (!a->recs) {
+        LERROR << __FUNCTION__ << "(): failed to allocate fstab recs";
+        // If realloc() fails the original block is left untouched;
+        // it is not freed or moved. So we have to free both a and b here.
+        fs_mgr_free_fstab(a);
+        fs_mgr_free_fstab(b);
+        return nullptr;
+    }
+
+    for (int i = a->num_entries, j = 0; i < total_entries; i++, j++) {
+        // copy the pointer directly *without* malloc and memcpy
+        a->recs[i] = b->recs[j];
+    }
+
+    // Frees up b, but don't free b->recs[X] to make sure they are
+    // accessible through a->recs[X].
+    free(b->fstab_filename);
+    free(b);
+
+    a->num_entries = total_entries;
+    return a;
+}
+
 struct fstab *fs_mgr_read_fstab(const char *fstab_path)
 {
     FILE *fstab_file;
@@ -433,15 +628,80 @@ struct fstab *fs_mgr_read_fstab(const char *fstab_path)
 
     fstab_file = fopen(fstab_path, "r");
     if (!fstab_file) {
-        LERROR << "Cannot open file " << fstab_path;
-        return NULL;
+        PERROR << __FUNCTION__<< "(): cannot open file: '" << fstab_path << "'";
+        return nullptr;
     }
+
     fstab = fs_mgr_read_fstab_file(fstab_file);
     if (fstab) {
         fstab->fstab_filename = strdup(fstab_path);
+    } else {
+        LERROR << __FUNCTION__ << "(): failed to load fstab from : '" << fstab_path << "'";
     }
+
     fclose(fstab_file);
     return fstab;
+}
+
+/* Returns fstab entries parsed from the device tree if they
+ * exist
+ */
+struct fstab *fs_mgr_read_fstab_dt()
+{
+    std::string fstab_buf = read_fstab_from_dt();
+    if (fstab_buf.empty()) {
+        LINFO << __FUNCTION__ << "(): failed to read fstab from dt";
+        return nullptr;
+    }
+
+    std::unique_ptr<FILE, decltype(&fclose)> fstab_file(
+        fmemopen(static_cast<void*>(const_cast<char*>(fstab_buf.c_str())),
+                 fstab_buf.length(), "r"), fclose);
+    if (!fstab_file) {
+        PERROR << __FUNCTION__ << "(): failed to create a file stream for fstab dt";
+        return nullptr;
+    }
+
+    struct fstab *fstab = fs_mgr_read_fstab_file(fstab_file.get());
+    if (!fstab) {
+        LERROR << __FUNCTION__ << "(): failed to load fstab from kernel:"
+               << std::endl << fstab_buf;
+    }
+
+    return fstab;
+}
+
+/* combines fstab entries passed in from device tree with
+ * the ones found from fstab_path
+ */
+struct fstab *fs_mgr_read_fstab_with_dt(const char *fstab_path)
+{
+    struct fstab *fstab_dt = fs_mgr_read_fstab_dt();
+    struct fstab *fstab = fs_mgr_read_fstab(fstab_path);
+
+    return in_place_merge(fstab_dt, fstab);
+}
+
+/*
+ * tries to load default fstab.<hardware> file from /odm/etc, /vendor/etc
+ * or /. loads the first one found and also combines fstab entries passed
+ * in from device tree.
+ */
+struct fstab *fs_mgr_read_fstab_default()
+{
+    std::string hw;
+    std::string default_fstab;
+
+    if (fs_mgr_get_boot_config("hardware", &hw)) {
+        for (const char *prefix : {"/odm/etc/fstab.","/vendor/etc/fstab.", "/fstab."}) {
+            default_fstab = prefix + hw;
+            if (access(default_fstab.c_str(), F_OK) == 0) break;
+        }
+    } else {
+        LWARNING << __FUNCTION__ << "(): failed to find device hardware name";
+    }
+
+    return fs_mgr_read_fstab_with_dt(default_fstab.c_str());
 }
 
 void fs_mgr_free_fstab(struct fstab *fstab)
@@ -557,6 +817,11 @@ int fs_mgr_is_verified(const struct fstab_rec *fstab)
     return fstab->fs_mgr_flags & MF_VERIFY;
 }
 
+int fs_mgr_is_verifyatboot(const struct fstab_rec *fstab)
+{
+    return fstab->fs_mgr_flags & MF_VERIFYATBOOT;
+}
+
 int fs_mgr_is_encryptable(const struct fstab_rec *fstab)
 {
     return fstab->fs_mgr_flags & (MF_CRYPT | MF_FORCECRYPT | MF_FORCEFDEORFBE);
@@ -567,15 +832,14 @@ int fs_mgr_is_file_encrypted(const struct fstab_rec *fstab)
     return fstab->fs_mgr_flags & MF_FILEENCRYPTION;
 }
 
-const char* fs_mgr_get_file_encryption_mode(const struct fstab_rec *fstab)
+void fs_mgr_get_file_encryption_modes(const struct fstab_rec *fstab,
+                                      const char **contents_mode_ret,
+                                      const char **filenames_mode_ret)
 {
-    const struct flag_list *j;
-    for (j = encryption_modes; j->name; ++j) {
-        if (fstab->file_encryption_mode == j->flag) {
-            return j->name;
-        }
-    }
-    return NULL;
+    *contents_mode_ret = flag_to_encryption_mode(file_contents_encryption_modes,
+                                                 fstab->file_contents_mode);
+    *filenames_mode_ret = flag_to_encryption_mode(file_names_encryption_modes,
+                                                  fstab->file_names_mode);
 }
 
 int fs_mgr_is_convertible_to_fbe(const struct fstab_rec *fstab)

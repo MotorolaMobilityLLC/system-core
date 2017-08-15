@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -49,6 +50,7 @@
 
 #include <fs_mgr.h>
 #include <android-base/file.h>
+#include <android-base/stringprintf.h>
 #include <android-base/strings.h>
 #include "bootimg.h"
 
@@ -57,8 +59,9 @@
 #include "util.h"
 #include "log.h"
 
+using android::base::StringPrintf;
+
 #define PERSISTENT_PROPERTY_DIR  "/data/property"
-#define FSTAB_PREFIX "/fstab."
 #define RECOVERY_MOUNT_POINT "/recovery"
 
 static int persistent_properties_loaded = 0;
@@ -245,6 +248,13 @@ class SocketConnection {
       return true;
     }
 
+    // http://b/35166374: don't allow init to make arbitrarily large allocations.
+    if (len > 0xffff) {
+      LOG(ERROR) << "sys_prop: RecvString asked to read huge string: " << len;
+      errno = ENOMEM;
+      return false;
+    }
+
     std::vector<char> chars(len);
     if (!RecvChars(&chars[0], len, timeout_ms)) {
       return false;
@@ -386,12 +396,11 @@ static void handle_property_set_fd() {
         return;
     }
 
-    /* Check socket options here */
     struct ucred cr;
     socklen_t cr_size = sizeof(cr);
     if (getsockopt(s, SOL_SOCKET, SO_PEERCRED, &cr, &cr_size) < 0) {
         close(s);
-        PLOG(ERROR) << "Unable to receive socket options";
+        PLOG(ERROR) << "sys_prop: unable to get SO_PEERCRED";
         return;
     }
 
@@ -399,14 +408,13 @@ static void handle_property_set_fd() {
     uint32_t timeout_ms = kDefaultSocketTimeout;
 
     uint32_t cmd = 0;
-
     if (!socket.RecvUint32(&cmd, &timeout_ms)) {
         PLOG(ERROR) << "sys_prop: error while reading command from the socket";
         socket.SendUint32(PROP_ERROR_READ_CMD);
         return;
     }
 
-    switch(cmd) {
+    switch (cmd) {
     case PROP_MSG_SETPROP: {
         char prop_name[PROP_NAME_MAX];
         char prop_value[PROP_VALUE_MAX];
@@ -437,7 +445,9 @@ static void handle_property_set_fd() {
         handle_property_set(socket, name, value, false);
         break;
       }
+
     default:
+        LOG(ERROR) << "sys_prop: invalid command " << cmd;
         socket.SendUint32(PROP_ERROR_INVALID_CMD);
         break;
     }
@@ -598,24 +608,18 @@ void load_persist_props(void) {
     load_override_properties();
     /* Read persistent properties after all default values have been loaded. */
     load_persistent_properties();
+    property_set("ro.persistent_properties.ready", "true");
 }
 
 void load_recovery_id_prop() {
-    std::string ro_hardware = property_get("ro.hardware");
-    if (ro_hardware.empty()) {
-        LOG(ERROR) << "ro.hardware not set - unable to load recovery id";
-        return;
-    }
-    std::string fstab_filename = FSTAB_PREFIX + ro_hardware;
-
-    std::unique_ptr<fstab, void(*)(fstab*)> tab(fs_mgr_read_fstab(fstab_filename.c_str()),
-                                                fs_mgr_free_fstab);
-    if (!tab) {
-        PLOG(ERROR) << "unable to read fstab " << fstab_filename;
+    std::unique_ptr<fstab, decltype(&fs_mgr_free_fstab)> fstab(fs_mgr_read_fstab_default(),
+                                                               fs_mgr_free_fstab);
+    if (!fstab) {
+        PLOG(ERROR) << "unable to read default fstab";
         return;
     }
 
-    fstab_rec* rec = fs_mgr_get_entry_for_mount_point(tab.get(), RECOVERY_MOUNT_POINT);
+    fstab_rec* rec = fs_mgr_get_entry_for_mount_point(fstab.get(), RECOVERY_MOUNT_POINT);
     if (rec == NULL) {
         LOG(ERROR) << "/recovery not specified in fstab";
         return;

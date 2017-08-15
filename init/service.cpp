@@ -180,12 +180,6 @@ void Service::NotifyStateChange(const std::string& new_state) const {
     }
 
     std::string prop_name = StringPrintf("init.svc.%s", name_.c_str());
-    if (prop_name.length() >= PROP_NAME_MAX) {
-        // If the property name would be too long, we can't set it.
-        LOG(ERROR) << "Property name \"init.svc." << name_ << "\" too long; not setting to " << new_state;
-        return;
-    }
-
     property_set(prop_name.c_str(), new_state.c_str());
 
     if (new_state == "running") {
@@ -636,6 +630,28 @@ bool Service::Start() {
         std::for_each(descriptors_.begin(), descriptors_.end(),
                       std::bind(&DescriptorInfo::CreateAndPublish, std::placeholders::_1, scon));
 
+        // See if there were "writepid" instructions to write to files under /dev/cpuset/.
+        auto cpuset_predicate = [](const std::string& path) {
+            return android::base::StartsWith(path, "/dev/cpuset/");
+        };
+        auto iter = std::find_if(writepid_files_.begin(), writepid_files_.end(), cpuset_predicate);
+        if (iter == writepid_files_.end()) {
+            // There were no "writepid" instructions for cpusets, check if the system default
+            // cpuset is specified to be used for the process.
+            std::string default_cpuset = property_get("ro.cpuset.default");
+            if (!default_cpuset.empty()) {
+                // Make sure the cpuset name starts and ends with '/'.
+                // A single '/' means the 'root' cpuset.
+                if (default_cpuset.front() != '/') {
+                    default_cpuset.insert(0, 1, '/');
+                }
+                if (default_cpuset.back() != '/') {
+                    default_cpuset.push_back('/');
+                }
+                writepid_files_.push_back(
+                    StringPrintf("/dev/cpuset%stasks", default_cpuset.c_str()));
+            }
+        }
         std::string pid_str = StringPrintf("%d", getpid());
         for (const auto& file : writepid_files_) {
             if (!WriteStringToFile(pid_str, file)) {
@@ -1040,5 +1056,9 @@ void ServiceParser::EndSection() {
 }
 
 bool ServiceParser::IsValidName(const std::string& name) const {
-    return is_legal_property_name("init.svc." + name);
+    // Property names can be any length, but may only contain certain characters.
+    // Property values can contain any characters, but may only be a certain length.
+    // (The latter restriction is needed because `start` and `stop` work by writing
+    // the service name to the "ctl.start" and "ctl.stop" properties.)
+    return is_legal_property_name("init.svc." + name) && name.size() <= PROP_VALUE_MAX;
 }

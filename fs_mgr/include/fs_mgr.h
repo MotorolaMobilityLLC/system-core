@@ -76,7 +76,8 @@ struct fstab_rec {
     int max_comp_streams;
     unsigned int zram_size;
     uint64_t reserved_size;
-    unsigned int file_encryption_mode;
+    unsigned int file_contents_mode;
+    unsigned int file_names_mode;
     unsigned int erase_blk_size;
     unsigned int logical_blk_size;
 };
@@ -85,8 +86,10 @@ struct fstab_rec {
 typedef void (*fs_mgr_verity_state_callback)(struct fstab_rec *fstab,
         const char *mount_point, int mode, int status);
 
-struct fstab *fs_mgr_read_fstab_file(FILE *fstab_file);
+struct fstab *fs_mgr_read_fstab_default();
+struct fstab *fs_mgr_read_fstab_dt();
 struct fstab *fs_mgr_read_fstab(const char *fstab_path);
+struct fstab *fs_mgr_read_fstab_with_dt(const char *fstab_path);
 void fs_mgr_free_fstab(struct fstab *fstab);
 
 #define FS_MGR_MNTALL_DEV_FILE_ENCRYPTED 5
@@ -103,7 +106,8 @@ int fs_mgr_mount_all(struct fstab *fstab, int mount_mode);
 
 int fs_mgr_do_mount(struct fstab *fstab, const char *n_name, char *n_blk_device,
                     char *tmp_mount_point);
-int fs_mgr_do_tmpfs_mount(char *n_name);
+int fs_mgr_do_mount_one(struct fstab_rec *rec);
+int fs_mgr_do_tmpfs_mount(const char *n_name);
 int fs_mgr_unmount_all(struct fstab *fstab);
 int fs_mgr_get_crypt_info(struct fstab *fstab, char *key_loc,
                           char *real_blk_device, int size);
@@ -116,13 +120,17 @@ struct fstab_rec *fs_mgr_get_entry_for_mount_point(struct fstab *fstab, const ch
 int fs_mgr_is_voldmanaged(const struct fstab_rec *fstab);
 int fs_mgr_is_nonremovable(const struct fstab_rec *fstab);
 int fs_mgr_is_verified(const struct fstab_rec *fstab);
+int fs_mgr_is_verifyatboot(const struct fstab_rec *fstab);
 int fs_mgr_is_encryptable(const struct fstab_rec *fstab);
 int fs_mgr_is_file_encrypted(const struct fstab_rec *fstab);
-const char* fs_mgr_get_file_encryption_mode(const struct fstab_rec *fstab);
+void fs_mgr_get_file_encryption_modes(const struct fstab_rec *fstab,
+                                      const char **contents_mode_ret,
+                                      const char **filenames_mode_ret);
 int fs_mgr_is_convertible_to_fbe(const struct fstab_rec *fstab);
 int fs_mgr_is_noemulatedsd(const struct fstab_rec *fstab);
 int fs_mgr_is_notrim(struct fstab_rec *fstab);
 int fs_mgr_is_formattable(struct fstab_rec *fstab);
+int fs_mgr_is_slotselect(struct fstab_rec *fstab);
 int fs_mgr_is_nofail(struct fstab_rec *fstab);
 int fs_mgr_is_latemount(struct fstab_rec *fstab);
 int fs_mgr_is_quota(struct fstab_rec *fstab);
@@ -130,10 +138,10 @@ int fs_mgr_swapon_all(struct fstab *fstab);
 
 int fs_mgr_do_format(struct fstab_rec *fstab, bool reserve_footer);
 
-#define FS_MGR_EARLY_SETUP_VERITY_NO_VERITY -2
-#define FS_MGR_EARLY_SETUP_VERITY_FAIL -1
-#define FS_MGR_EARLY_SETUP_VERITY_SUCCESS 0
-int fs_mgr_early_setup_verity(struct fstab_rec *fstab);
+#define FS_MGR_SETUP_VERITY_DISABLED (-2)
+#define FS_MGR_SETUP_VERITY_FAIL (-1)
+#define FS_MGR_SETUP_VERITY_SUCCESS 0
+int fs_mgr_setup_verity(struct fstab_rec *fstab, bool wait_for_verity_dev);
 
 #ifdef __cplusplus
 }

@@ -17,9 +17,12 @@ cc_library_headers {
     host_supported: true,
     export_include_dirs: ["include"],
     target: {
+        linux_bionic: {
+            enabled: true,
+        },
         windows: {
-           enabled: true,
-      },
+            enabled: true,
+        },
     },
 }
 
@@ -31,7 +34,6 @@ cc_library {
         "CallStack.cpp",
         "FileMap.cpp",
         "JenkinsHash.cpp",
-        "LinearTransform.cpp",
         "Log.cpp",
         "NativeHandle.cpp",
         "Printer.cpp",
@@ -42,6 +44,7 @@ cc_library {
         "StopWatch.cpp",
         "String8.cpp",
         "String16.cpp",
+        "StrongPointer.cpp",
         "SystemClock.cpp",
         "Threads.cpp",
         "Timers.cpp",
@@ -65,7 +68,6 @@ cc_library {
     target: {
         android: {
             srcs: [
-                "BlobCache.cpp",
                 "Looper.cpp",
                 "ProcessCallStack.cpp",
                 "Trace.cpp",

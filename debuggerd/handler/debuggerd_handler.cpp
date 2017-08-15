@@ -62,6 +62,21 @@
 
 #define CRASH_DUMP_PATH "/system/bin/" CRASH_DUMP_NAME
 
+class ErrnoRestorer {
+ public:
+  ErrnoRestorer() : saved_errno_(errno) {
+  }
+
+  ~ErrnoRestorer() {
+    errno = saved_errno_;
+  }
+
+ private:
+  int saved_errno_;
+};
+
+extern "C" void debuggerd_fallback_handler(siginfo_t*, ucontext_t*, void*);
+
 static debuggerd_callbacks_t g_callbacks;
 
 // Mutex to ensure only one crashing thread dumps itself.
@@ -81,7 +96,7 @@ static void __noreturn __printflike(1, 2) fatal_errno(const char* fmt, ...) {
   va_start(args, fmt);
 
   char buf[4096];
-  vsnprintf(buf, sizeof(buf), fmt, args);
+  __libc_format_buffer_va_list(buf, sizeof(buf), fmt, args);
   fatal("%s: %s", buf, strerror(err));
 }
 
@@ -174,6 +189,41 @@ static bool have_siginfo(int signum) {
   return (old_action.sa_flags & SA_SIGINFO) != 0;
 }
 
+static void raise_caps() {
+  // Raise CapInh to match CapPrm, so that we can set the ambient bits.
+  __user_cap_header_struct capheader;
+  memset(&capheader, 0, sizeof(capheader));
+  capheader.version = _LINUX_CAPABILITY_VERSION_3;
+  capheader.pid = 0;
+
+  __user_cap_data_struct capdata[2];
+  if (capget(&capheader, &capdata[0]) == -1) {
+    fatal_errno("capget failed");
+  }
+
+  if (capdata[0].permitted != capdata[0].inheritable ||
+      capdata[1].permitted != capdata[1].inheritable) {
+    capdata[0].inheritable = capdata[0].permitted;
+    capdata[1].inheritable = capdata[1].permitted;
+
+    if (capset(&capheader, &capdata[0]) == -1) {
+      __libc_format_log(ANDROID_LOG_ERROR, "libc", "capset failed: %s", strerror(errno));
+    }
+  }
+
+  // Set the ambient capability bits so that crash_dump gets all of our caps and can ptrace us.
+  uint64_t capmask = capdata[0].inheritable;
+  capmask |= static_cast<uint64_t>(capdata[1].inheritable) << 32;
+  for (unsigned long i = 0; i < 64; ++i) {
+    if (capmask & (1ULL << i)) {
+      if (prctl(PR_CAP_AMBIENT, PR_CAP_AMBIENT_RAISE, i, 0, 0) != 0) {
+        __libc_format_log(ANDROID_LOG_ERROR, "libc", "failed to raise ambient capability %lu: %s",
+                          i, strerror(errno));
+      }
+    }
+  }
+}
+
 struct debugger_thread_info {
   bool crash_dump_started;
   pid_t crashing_tid;
@@ -217,14 +267,14 @@ static int debuggerd_dispatch_pseudothread(void* arg) {
     close(pipefds[0]);
     close(pipefds[1]);
 
-    // Set all of the ambient capability bits we can, so that crash_dump can ptrace us.
-    for (unsigned long i = 0; prctl(PR_CAPBSET_READ, i, 0, 0, 0) != -1; ++i) {
-      prctl(PR_CAP_AMBIENT, PR_CAP_AMBIENT_RAISE, i, 0, 0);
-    }
+    raise_caps();
 
-    char buf[10];
-    snprintf(buf, sizeof(buf), "%d", thread_info->crashing_tid);
-    execl(CRASH_DUMP_PATH, CRASH_DUMP_NAME, buf, nullptr);
+    char main_tid[10];
+    char pseudothread_tid[10];
+    __libc_format_buffer(main_tid, sizeof(main_tid), "%d", thread_info->crashing_tid);
+    __libc_format_buffer(pseudothread_tid, sizeof(pseudothread_tid), "%d", thread_info->pseudothread_tid);
+
+    execl(CRASH_DUMP_PATH, CRASH_DUMP_NAME, main_tid, pseudothread_tid, nullptr);
 
     fatal_errno("exec failed");
   } else {
@@ -249,7 +299,7 @@ static int debuggerd_dispatch_pseudothread(void* arg) {
 
     // Don't leave a zombie child.
     int status;
-    if (TEMP_FAILURE_RETRY(waitpid(forkpid, &status, __WCLONE)) == -1 && errno != ECHILD) {
+    if (TEMP_FAILURE_RETRY(waitpid(forkpid, &status, 0)) == -1) {
       __libc_format_log(ANDROID_LOG_FATAL, "libc", "failed to wait for crash_dump helper: %s",
                         strerror(errno));
     } else if (WIFSTOPPED(status) || WIFSIGNALED(status)) {
@@ -286,20 +336,14 @@ static void resend_signal(siginfo_t* info, bool crash_dump_started) {
       fatal_errno("failed to resend signal during crash");
     }
   }
-
-  if (info->si_signo == DEBUGGER_SIGNAL) {
-    pthread_mutex_unlock(&crash_mutex);
-  }
 }
 
 // Handler that does crash dumping by forking and doing the processing in the child.
 // Do this by ptracing the relevant thread, and then execing debuggerd to do the actual dump.
-static void debuggerd_signal_handler(int signal_number, siginfo_t* info, void*) {
-  int ret = pthread_mutex_lock(&crash_mutex);
-  if (ret != 0) {
-    __libc_format_log(ANDROID_LOG_INFO, "libc", "pthread_mutex_lock failed: %s", strerror(ret));
-    return;
-  }
+static void debuggerd_signal_handler(int signal_number, siginfo_t* info, void* context) {
+  // Make sure we don't change the value of errno, in case a signal comes in between the process
+  // making a syscall and checking errno.
+  ErrnoRestorer restorer;
 
   // It's possible somebody cleared the SA_SIGINFO flag, which would mean
   // our "info" arg holds an undefined value.
@@ -322,20 +366,29 @@ static void debuggerd_signal_handler(int signal_number, siginfo_t* info, void*) 
     // check to allow all si_code values in calls coming from inside the house.
   }
 
-  log_signal_summary(signal_number, info);
-
-  if (prctl(PR_GET_NO_NEW_PRIVS, 0, 0, 0, 0) == 1) {
-    // The process has NO_NEW_PRIVS enabled, so we can't transition to the crash_dump context.
-    __libc_format_log(ANDROID_LOG_INFO, "libc",
-                      "Suppressing debuggerd output because prctl(PR_GET_NO_NEW_PRIVS)==1");
-    resend_signal(info, false);
-    return;
-  }
-
   void* abort_message = nullptr;
   if (g_callbacks.get_abort_message) {
     abort_message = g_callbacks.get_abort_message();
   }
+
+  if (prctl(PR_GET_NO_NEW_PRIVS, 0, 0, 0, 0) == 1) {
+    // This check might be racy if another thread sets NO_NEW_PRIVS, but this should be unlikely,
+    // you can only set NO_NEW_PRIVS to 1, and the effect should be at worst a single missing
+    // ANR trace.
+    debuggerd_fallback_handler(info, static_cast<ucontext_t*>(context), abort_message);
+    resend_signal(info, false);
+    return;
+  }
+
+  // Only allow one thread to handle a signal at a time.
+  int ret = pthread_mutex_lock(&crash_mutex);
+  if (ret != 0) {
+    __libc_format_log(ANDROID_LOG_INFO, "libc", "pthread_mutex_lock failed: %s", strerror(ret));
+    return;
+  }
+
+  log_signal_summary(signal_number, info);
+
   // Populate si_value with the abort message address, if found.
   if (abort_message) {
     info->si_value.sival_ptr = abort_message;
@@ -348,6 +401,12 @@ static void debuggerd_signal_handler(int signal_number, siginfo_t* info, void*) 
     .signal_number = signal_number,
     .info = info
   };
+
+  // Set PR_SET_DUMPABLE to 1, so that crash_dump can ptrace us.
+  int orig_dumpable = prctl(PR_GET_DUMPABLE);
+  if (prctl(PR_SET_DUMPABLE, 1) != 0) {
+    fatal_errno("failed to set dumpable");
+  }
 
   // Essentially pthread_create without CLONE_FILES (see debuggerd_dispatch_pseudothread).
   pid_t child_pid =
@@ -364,6 +423,11 @@ static void debuggerd_signal_handler(int signal_number, siginfo_t* info, void*) 
   // and then wait for it to finish.
   __futex_wait(&thread_info.pseudothread_tid, child_pid, nullptr);
 
+  // Restore PR_SET_DUMPABLE to its original value.
+  if (prctl(PR_SET_DUMPABLE, orig_dumpable) != 0) {
+    fatal_errno("failed to restore dumpable");
+  }
+
   // Signals can either be fatal or nonfatal.
   // For fatal signals, crash_dump will PTRACE_CONT us with the signal we
   // crashed with, so that processes using waitpid on us will see that we
@@ -375,6 +439,11 @@ static void debuggerd_signal_handler(int signal_number, siginfo_t* info, void*) 
   }
 
   resend_signal(info, thread_info.crash_dump_started);
+  if (info->si_signo == DEBUGGER_SIGNAL) {
+    // If the signal is fatal, don't unlock the mutex to prevent other crashing threads from
+    // starting to dump right before our death.
+    pthread_mutex_unlock(&crash_mutex);
+  }
 }
 
 void debuggerd_init(debuggerd_callbacks_t* callbacks) {

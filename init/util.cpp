@@ -49,6 +49,7 @@
 #include "init.h"
 #include "log.h"
 #include "property_service.h"
+#include "reboot.h"
 #include "util.h"
 
 static unsigned int do_decode_uid(const char *s)
@@ -163,7 +164,7 @@ out_unlink:
 bool read_file(const char* path, std::string* content) {
     content->clear();
 
-    int fd = TEMP_FAILURE_RETRY(open(path, O_RDONLY|O_NOFOLLOW|O_CLOEXEC));
+    android::base::unique_fd fd(TEMP_FAILURE_RETRY(open(path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)));
     if (fd == -1) {
         return false;
     }
@@ -176,17 +177,16 @@ bool read_file(const char* path, std::string* content) {
         return false;
     }
     if ((sb.st_mode & (S_IWGRP | S_IWOTH)) != 0) {
-        PLOG(ERROR) << "skipping insecure file '" << path << "'";
+        LOG(ERROR) << "skipping insecure file '" << path << "'";
         return false;
     }
 
-    bool okay = android::base::ReadFdToString(fd, content);
-    close(fd);
-    return okay;
+    return android::base::ReadFdToString(fd, content);
 }
 
 bool write_file(const char* path, const char* content) {
-    int fd = TEMP_FAILURE_RETRY(open(path, O_WRONLY|O_CREAT|O_NOFOLLOW|O_CLOEXEC, 0600));
+    android::base::unique_fd fd(
+        TEMP_FAILURE_RETRY(open(path, O_WRONLY | O_CREAT | O_NOFOLLOW | O_CLOEXEC, 0600)));
     if (fd == -1) {
         PLOG(ERROR) << "write_file: Unable to open '" << path << "'";
         return false;
@@ -195,7 +195,6 @@ bool write_file(const char* path, const char* content) {
     if (!success) {
         PLOG(ERROR) << "write_file: Unable to write to '" << path << "'";
     }
-    close(fd);
     return success;
 }
 
@@ -412,18 +411,9 @@ bool expand_props(const std::string& src, std::string* dst) {
     return true;
 }
 
-void reboot(const char* destination) {
-    android_reboot(ANDROID_RB_RESTART2, 0, destination);
-    // We're init, so android_reboot will actually have been a syscall so there's nothing
-    // to wait for. If android_reboot returns, just abort so that the kernel will reboot
-    // itself when init dies.
-    PLOG(FATAL) << "reboot failed";
-    abort();
-}
-
 void panic() {
     LOG(ERROR) << "panic: rebooting to bootloader";
-    reboot("bootloader");
+    DoReboot(ANDROID_RB_RESTART2, "reboot", "bootloader", false);
 }
 
 std::ostream& operator<<(std::ostream& os, const Timer& t) {

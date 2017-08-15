@@ -26,7 +26,7 @@ message is logged.
 Init .rc Files
 --------------
 The init language is used in plain text files that take the .rc file
-extension.  These are typically multiple of these in multiple
+extension.  There are typically multiple of these in multiple
 locations on the system, described below.
 
 /init.rc is the primary .rc file and is loaded by the init executable
@@ -203,7 +203,9 @@ runs the service.
 
 `writepid <file...>`
 > Write the child's pid to the given files when it forks. Meant for
-  cgroup/cpuset usage.
+  cgroup/cpuset usage. If no files under /dev/cpuset/ are specified, but the
+  system property 'ro.cpuset.default' is set to a non-empty cpuset name (e.g.
+  '/foreground'), then the pid is written to file /dev/cpuset/_cpuset\_name_/tasks.
 
 `priority <priority>`
 > Scheduling priority of the service process. This value has to be in range
