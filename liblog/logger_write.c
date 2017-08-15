@@ -423,6 +423,9 @@ LIBLOG_ABI_PUBLIC int __android_log_buf_write(int bufID, int prio,
     if (!tag)
         tag = "";
 
+     if (!__android_log_is_loggable(prio, tag, ANDROID_LOG_VERBOSE))
+        return 0;
+
     /* XXX: This needs to go! */
     if ((bufID != LOG_ID_RADIO) &&
          (!strcmp(tag, "HTC_RIL") ||

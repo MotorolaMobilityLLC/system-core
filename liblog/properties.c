@@ -178,7 +178,8 @@ static int __android_log_level(const char* tag, size_t len, int default_prio)
         strncpy(key + sizeof(log_namespace) - 1, tag, len);
         key[sizeof(log_namespace) - 1 + len] = '\0';
 
-        kp = key;
+        /* kp = key; */
+        kp = key + base_offset;
         for (i = 0; i < (sizeof(tag_cache) / sizeof(tag_cache[0])); ++i) {
             struct cache_char* cache = &tag_cache[i];
             struct cache_char temp_cache;
@@ -196,8 +197,8 @@ static int __android_log_level(const char* tag, size_t len, int default_prio)
                 c = cache->c;
                 break;
             }
-
-            kp = key + base_offset;
+            kp = key;
+            /* kp = key + base_offset; */
         }
     }
 
@@ -216,7 +217,8 @@ static int __android_log_level(const char* tag, size_t len, int default_prio)
         /* clear '.' after log.tag */
         key[sizeof(log_namespace) - 2] = '\0';
 
-        kp = key;
+        /* kp = key; */
+        kp = key + base_offset;
         for (i = 0; i < (sizeof(global_cache) / sizeof(global_cache[0])); ++i) {
             struct cache_char* cache = &global_cache[i];
             struct cache_char temp_cache;
@@ -237,8 +239,8 @@ static int __android_log_level(const char* tag, size_t len, int default_prio)
                 c = cache->c;
                 break;
             }
-
-            kp = key + base_offset;
+            kp = key;
+            /* kp = key + base_offset; */
         }
         break;
     }
