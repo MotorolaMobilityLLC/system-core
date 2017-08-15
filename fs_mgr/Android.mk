@@ -45,6 +45,40 @@ LOCAL_CFLAGS += -DALLOW_ADBD_DISABLE_VERITY=1
 endif
 include $(BUILD_STATIC_LIBRARY)
 
+# ========================================================
+# Shared library
+# ========================================================
+include $(CLEAR_VARS)
+LOCAL_CLANG := true
+LOCAL_SANITIZE := integer
+LOCAL_SRC_FILES:= \
+    fs_mgr.cpp \
+    fs_mgr_dm_ioctl.cpp \
+    fs_mgr_format.cpp \
+    fs_mgr_fstab.cpp \
+    fs_mgr_slotselect.cpp \
+    fs_mgr_verity.cpp \
+    fs_mgr_avb.cpp \
+    fs_mgr_avb_ops.cpp
+LOCAL_C_INCLUDES := \
+    $(LOCAL_PATH)/include \
+    system/vold \
+    system/extras/ext4_utils \
+    bootable/recovery
+LOCAL_MODULE:= libfs_mgr
+LOCAL_STATIC_LIBRARIES := $(common_static_libraries)
+LOCAL_EXPORT_C_INCLUDE_DIRS := $(LOCAL_PATH)/include
+LOCAL_CFLAGS := -Werror
+ifeq ($(TARGET_USERIMAGES_USE_EXT4), true)
+  ifeq ($(TARGET_USES_MKE2FS), true)
+    LOCAL_CFLAGS += -DTARGET_USES_MKE2FS
+  endif
+endif
+ifneq (,$(filter userdebug,$(TARGET_BUILD_VARIANT)))
+LOCAL_CFLAGS += -DALLOW_ADBD_DISABLE_VERITY=1
+endif
+include $(BUILD_SHARED_LIBRARY)
+
 include $(CLEAR_VARS)
 LOCAL_CLANG := true
 LOCAL_SANITIZE := integer
