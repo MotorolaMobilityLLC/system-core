@@ -14,6 +14,26 @@
 // limitations under the License.
 //
 
+bootstrap_go_package {
+    name: "soon-logenhance-mediatek",
+    pkgPath: "android/soong/logenhance-mediatek",
+    deps: [
+        "blueprint",
+        "blueprint-pathtools",
+        "soong",
+        "soong-android",
+        "soong-cc",
+        "soong-genrule",
+    ],
+    srcs: [
+        "liblog.go",
+    ],
+    pluginFor: ["soong_build"],
+}
+mtk_log_enhance_defaults {
+    name: "mtk_log_enhance_defaults",
+}
+
 liblog_sources = [
     "config_read.c",
     "config_write.c",
@@ -45,6 +65,7 @@ liblog_target_sources = [
 // Shared and static library for host and device
 // ========================================================
 cc_library {
+    defaults: ["mtk_log_enhance_defaults"],
     name: "liblog",
     host_supported: true,
 
@@ -94,7 +115,6 @@ cc_library {
         // so make sure we do not regret hard-coding it as follows:
         "-DLIBLOG_LOG_TAG=1006",
         "-DSNET_EVENT_LOG_TAG=1397638484",
-        "-DMTK_LOGD_ENHANCE",
     ],
     product_variables: {
         debuggable: {
