@@ -751,7 +751,7 @@ int fs_mgr_setup_verity(struct fstab_rec *fstab, bool wait_for_verity_dev)
     if (fec_verity_get_metadata(f, &verity) < 0) {
         PERROR << "Failed to get verity metadata '" << fstab->blk_device << "'";
         // Allow verity disabled when the device is unlocked without metadata
-        if ("0" == android::base::GetProperty("ro.boot.flash.locked", "")) {
+        if (fs_mgr_is_device_unlocked()) {
             retval = FS_MGR_SETUP_VERITY_DISABLED;
             LWARNING << "Allow invalid metadata when the device is unlocked";
         }
