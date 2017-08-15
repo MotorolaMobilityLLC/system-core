@@ -186,6 +186,14 @@ static int logdWrite(log_id_t logId, struct timespec* ts, struct iovec* vec,
   size_t i, payloadSize;
   static atomic_int_fast32_t dropped;
   static atomic_int_fast32_t droppedSecurity;
+#if defined(MTK_LOGD_ENHANCE) && defined(ANDROID_LOG_MUCH_COUNT)
+  bool tag_add = false;
+
+  if ((logId != LOG_ID_EVENTS) && (nr == 3) && strstr(vec[1].iov_base, "-0x")) {
+      tag_add = true;
+  }
+
+#endif
 
   sock = atomic_load(&logdLoggerWrite.context.sock);
   if (sock < 0) switch (sock) {
@@ -278,7 +286,23 @@ static int logdWrite(log_id_t logId, struct timespec* ts, struct iovec* vec,
   for (payloadSize = 0, i = headerLength; i < nr + headerLength; i++) {
     newVec[i].iov_base = vec[i - headerLength].iov_base;
     payloadSize += newVec[i].iov_len = vec[i - headerLength].iov_len;
-
+#if defined(MTK_LOGD_ENHANCE) && defined(ANDROID_LOG_MUCH_COUNT)
+    if (tag_add == true) {
+      if (payloadSize > (size_t)(LOGGER_ENTRY_MAX_PAYLOAD + tag_add_size)) {
+        newVec[i].iov_len -= payloadSize - (size_t)(LOGGER_ENTRY_MAX_PAYLOAD + tag_add_size);
+        if (newVec[i].iov_len) {
+          ++i;
+        }
+        break;
+      }
+    } else if (payloadSize > LOGGER_ENTRY_MAX_PAYLOAD) {
+      newVec[i].iov_len -= payloadSize - LOGGER_ENTRY_MAX_PAYLOAD;
+      if (newVec[i].iov_len) {
+        ++i;
+      }
+      break;
+    }
+#else
     if (payloadSize > LOGGER_ENTRY_MAX_PAYLOAD) {
       newVec[i].iov_len -= payloadSize - LOGGER_ENTRY_MAX_PAYLOAD;
       if (newVec[i].iov_len) {
@@ -286,6 +310,7 @@ static int logdWrite(log_id_t logId, struct timespec* ts, struct iovec* vec,
       }
       break;
     }
+#endif
   }
 
   /*
@@ -337,6 +362,10 @@ static int logdWrite(log_id_t logId, struct timespec* ts, struct iovec* vec,
       atomic_fetch_add_explicit(&droppedSecurity, 1, memory_order_relaxed);
     }
   }
-
+#if defined(MTK_LOGD_ENHANCE) && defined(ANDROID_LOG_MUCH_COUNT)
+  if (tag_add) {
+    ret -= tag_add_size;
+  }
+#endif
   return ret;
 }
