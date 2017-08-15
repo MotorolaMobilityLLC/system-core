@@ -555,16 +555,15 @@ char** get_block_device_symlinks(struct uevent* uevent) {
         return NULL;
     memset(links, 0, sizeof(char *) * 4);
 
-    LOG(WARNING) << "found " << type << " device " << device;
+    LOG(VERBOSE) << "found " << type << " device " << device;
 
     snprintf(link_path, sizeof(link_path), "/dev/block/%s/%s", type, device);
 
     if (uevent->partition_name) {
-        LOG(WARNING) << "partition_name = " << uevent->partition_name;
         p = strdup(uevent->partition_name);
         sanitize(p);
         if (strcmp(uevent->partition_name, p)) {
-            LOG(WARNING) << "Linking partition '" << uevent->partition_name << "' as '" << p << "'";
+            LOG(VERBOSE) << "Linking partition '" << uevent->partition_name << "' as '" << p << "'";
         }
         if (asprintf(&links[link_num], "%s/by-name/%s", link_path, p) > 0)
             link_num++;
@@ -574,7 +573,6 @@ char** get_block_device_symlinks(struct uevent* uevent) {
     }
 
     if (uevent->partition_num >= 0) {
-        LOG(WARNING) << "partition_num = " << uevent->partition_num;
         if (asprintf(&links[link_num], "%s/by-num/p%d", link_path, uevent->partition_num) > 0)
             link_num++;
         else
