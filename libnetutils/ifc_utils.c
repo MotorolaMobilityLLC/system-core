@@ -726,6 +726,41 @@ ifc_configure(const char *ifname,
 
     return 0;
 }
+static int ifc_netd_sock_init(void)
+{
+    int ifc_netd_sock;
+    const int one = 1;
+    struct sockaddr_un netd_addr;
+    int res = 0;
+
+        ifc_netd_sock = socket(AF_UNIX, SOCK_STREAM, 0);
+        if (ifc_netd_sock < 0) {
+            printerr("ifc_netd_sock_init: create socket failed");
+            return -1;
+        }
+
+        res = setsockopt(ifc_netd_sock, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
+        if (res < 0) {
+           printerr("setsockopt failed\n");
+           close(ifc_netd_sock);
+           return -1;
+        }
+        memset(&netd_addr, 0, sizeof(netd_addr));
+        netd_addr.sun_family = AF_UNIX;
+        strlcpy(netd_addr.sun_path, "/dev/socket/netd",
+            sizeof(netd_addr.sun_path));
+        if (TEMP_FAILURE_RETRY(connect(ifc_netd_sock,
+                     (const struct sockaddr*) &netd_addr,
+                     sizeof(netd_addr))) != 0) {
+            printerr("ifc_netd_sock_init: connect to netd failed, fd=%d, err: %d(%s)",
+                ifc_netd_sock, errno, strerror(errno));
+            close(ifc_netd_sock);
+            return -1;
+        }
+
+    if (DBG) printerr("ifc_netd_sock_init fd=%d", ifc_netd_sock);
+    return ifc_netd_sock;
+}
 /*do not call this function in netd*/
 int ifc_set_throttle(const char *ifname, int rxKbps, int txKbps)
 {
