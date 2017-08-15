@@ -7,6 +7,7 @@
 import /init.environ.rc
 import /init.usb.rc
 import /init.${ro.hardware}.rc
+import /vendor/etc/init/hw/init.${ro.hardware}.rc
 import /init.usb.configfs.rc
 import /init.${ro.zygote}.rc
 
@@ -656,12 +657,6 @@ on property:vold.decrypt=trigger_shutdown_framework
 
 on property:sys.boot_completed=1
     bootchart stop
-
-on property:sys.boot_completed=1 && property:ro.build.type=user
-    write /proc/sys/kernel/modules_disabled 1
-
-on property:sys.boot_completed=1 && property:ro.build.type=userdebug
-    write /proc/sys/kernel/modules_disabled 1
 
 # system server cannot write to /proc/sys files,
 # and chown/chmod does not work for /proc/sys/ entries.
