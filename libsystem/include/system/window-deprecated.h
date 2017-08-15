@@ -340,6 +340,10 @@ enum {
      * with GRALLOC_USAGE_PROTECTED usage bits on.
      */
     NATIVE_WINDOW_CONSUMER_IS_PROTECTED = 19,
+
+#ifdef MTK_AOSP_ENHANCEMENT
+    NATIVE_WINDOW_CONSUMER_PID = 100,
+#endif
 };
 
 /* Valid operations for the (*perform)() hook.
