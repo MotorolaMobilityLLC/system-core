@@ -430,11 +430,11 @@ LIBLOG_ABI_PUBLIC int __android_log_buf_write(int bufID, int prio,
 #if defined(MTK_LOGD_ENHANCE) && defined(ANDROID_LOG_MUCH_COUNT)
   if (strstr(tag, "-0x") == NULL) {
       caller = __builtin_return_address(0);
-      size = sprintf(new_tag, "%s", tag);
-      snprintf(new_tag+size, sizeof(new_tag)-size, "-%p", caller);
-      new_tag[strlen(new_tag) - 1] = '0';
+      size = sprintf(new_tag, "%p", caller);
+      new_tag[strlen(new_tag) - 1] = 'x';
       new_tag[strlen(new_tag) - 2] = '0';
-      new_tag[strlen(new_tag) - 3] = '0';
+      new_tag[strlen(new_tag) - 3] = '-';
+      snprintf(new_tag+size, sizeof(new_tag)-size, "%s", tag);
       tag = new_tag;
     }
 #endif
@@ -480,12 +480,12 @@ LIBLOG_ABI_PUBLIC int __android_log_print(int prio, const char* tag,
   va_end(ap);
 
 #if defined(MTK_LOGD_ENHANCE) && defined(ANDROID_LOG_MUCH_COUNT)
-    caller = __builtin_return_address(0);
-    size = sprintf(new_tag, "%s", tag);
-    snprintf(new_tag+size, sizeof(new_tag)-size, "-%p", caller);
-    new_tag[strlen(new_tag) - 1] = '0';
-    new_tag[strlen(new_tag) - 2] = '0';
-    new_tag[strlen(new_tag) - 3] = '0';
+  caller = __builtin_return_address(0);
+  size = sprintf(new_tag, "%p", caller);
+  new_tag[strlen(new_tag) - 1] = 'x';
+  new_tag[strlen(new_tag) - 2] = '0';
+  new_tag[strlen(new_tag) - 3] = '-';
+  snprintf(new_tag+size, sizeof(new_tag)-size, "%s", tag);
   tag = new_tag;
 #endif
 
@@ -509,11 +509,12 @@ LIBLOG_ABI_PUBLIC int __android_log_buf_print(int bufID, int prio,
 
 #if defined(MTK_LOGD_ENHANCE) && defined(ANDROID_LOG_MUCH_COUNT)
   caller = __builtin_return_address(0);
-  size = sprintf(new_tag, "%s", tag);
-  snprintf(new_tag+size, sizeof(new_tag)-size, "-%p", caller);
-  new_tag[strlen(new_tag) - 1] = '0';
+  size = sprintf(new_tag, "%p", caller);
+  new_tag[strlen(new_tag) - 1] = 'x';
   new_tag[strlen(new_tag) - 2] = '0';
-  new_tag[strlen(new_tag) - 3] = '0';
+  new_tag[strlen(new_tag) - 3] = '-';
+  snprintf(new_tag+size, sizeof(new_tag)-size, "%s", tag);
+
   tag = new_tag;
 #endif
 

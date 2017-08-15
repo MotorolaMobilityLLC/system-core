@@ -281,17 +281,11 @@ LIBLOG_ABI_PUBLIC int __android_log_is_loggable_len(int prio, const char* tag,
                                                     size_t len,
                                                     int default_prio) {
 #if defined(MTK_LOGD_ENHANCE) && defined(ANDROID_LOG_MUCH_COUNT)
-  char new_tag[1024];
   char* ptr = NULL;
 
-  if (tag != NULL && strstr(tag, "-0x") != NULL) {
-    strcpy(new_tag, tag);
-    ptr = strstr(new_tag, "-0x");
-    if (ptr != NULL) {
-      *ptr = 0;
-      tag = new_tag;
+  if (tag != NULL && (ptr = strstr(tag, "-0x")) != NULL) {
+      tag = ptr + 3;
       len = strlen(tag);
-    }
   }
 #endif
 
@@ -302,17 +296,12 @@ LIBLOG_ABI_PUBLIC int __android_log_is_loggable_len(int prio, const char* tag,
 LIBLOG_ABI_PUBLIC int __android_log_is_loggable(int prio, const char* tag,
                                                 int default_prio) {
 #if defined(MTK_LOGD_ENHANCE) && defined(ANDROID_LOG_MUCH_COUNT)
-  char new_tag[1024];
   char* ptr = NULL;
 
-  if (tag != NULL && strstr(tag, "-0x") != NULL) {
-    strcpy(new_tag, tag);
-    ptr = strstr(new_tag, "-0x");
-    if (ptr != NULL) {
-      *ptr = 0;
-      tag = new_tag;
-    }
+  if (tag != NULL && (ptr = strstr(tag, "-0x")) != NULL) {
+      tag = ptr + 3;
   }
+
 #endif
 
   int logLevel =
