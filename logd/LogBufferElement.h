@@ -47,7 +47,7 @@ class LogBufferElement {
         uint16_t mDropped;       // mMsg == NULL
     };
     const uint8_t mLogId;
-
+    const uint64_t mSequence;
     static atomic_int_fast64_t sequence;
 
     // assumption: mMsg == NULL
@@ -92,6 +92,8 @@ class LogBufferElement {
     unsigned short getMsgLen() const {
         return mMsg ? mMsgLen : 0;
     }
+    uint64_t getSequence(void) const { return mSequence; }
+    static uint64_t getCurrentSequence(void) { return sequence.load(memory_order_relaxed); }
     const char* getMsg() const {
         return mMsg;
     }
@@ -99,8 +101,8 @@ class LogBufferElement {
         return mRealTime;
     }
 
-    static const log_time FLUSH_ERROR;
-    log_time flushTo(SocketClient* writer, LogBuffer* parent, bool privileged,
+    static const uint64_t FLUSH_ERROR;
+    uint64_t flushTo(SocketClient* writer, LogBuffer* parent, bool privileged,
                      bool lastSame);
 };
 

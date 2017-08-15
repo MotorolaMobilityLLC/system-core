@@ -27,7 +27,8 @@
 #include "LogUtils.h"
 
 FlushCommand::FlushCommand(LogReader& reader, bool nonBlock, unsigned long tail,
-                           unsigned int logMask, pid_t pid, log_time start,
+                           unsigned int logMask, pid_t pid,
+                           uint64_t start,
                            uint64_t timeout)
     : mReader(reader),
       mNonBlock(nonBlock),
@@ -35,7 +36,7 @@ FlushCommand::FlushCommand(LogReader& reader, bool nonBlock, unsigned long tail,
       mLogMask(logMask),
       mPid(pid),
       mStart(start),
-      mTimeout((start != log_time::EPOCH) ? timeout : 0) {
+        mTimeout((start > 1) ? timeout : 0) {
 }
 
 // runSocketCommand is called once for every open client on the
@@ -61,6 +62,7 @@ void FlushCommand::runSocketCommand(SocketClient* client) {
                     LogTimeEntry::unlock();
                     return;
                 }
+				/*
                 // If the user changes the time in a gross manner that
                 // invalidates the timeout, fall through and trigger.
                 log_time now(CLOCK_REALTIME);
@@ -68,7 +70,7 @@ void FlushCommand::runSocketCommand(SocketClient* client) {
                     (now > entry->mEnd)) {
                     LogTimeEntry::unlock();
                     return;
-                }
+                }*/
             }
             entry->triggerReader_Locked();
             if (entry->runningReader_Locked()) {

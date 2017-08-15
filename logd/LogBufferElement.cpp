@@ -30,7 +30,8 @@
 #include "LogReader.h"
 #include "LogUtils.h"
 
-const log_time LogBufferElement::FLUSH_ERROR((uint32_t)-1, (uint32_t)-1);
+
+const uint64_t LogBufferElement::FLUSH_ERROR(0);
 atomic_int_fast64_t LogBufferElement::sequence(1);
 
 LogBufferElement::LogBufferElement(log_id_t log_id, log_time realtime,
@@ -41,7 +42,8 @@ LogBufferElement::LogBufferElement(log_id_t log_id, log_time realtime,
       mTid(tid),
       mRealTime(realtime),
       mMsgLen(len),
-      mLogId(log_id) {
+      mLogId(log_id),
+      mSequence(sequence.fetch_add(1, memory_order_relaxed)){
     mMsg = new char[len];
     memcpy(mMsg, msg, len);
     mTag = (isBinary() && (mMsgLen >= sizeof(uint32_t)))
@@ -56,7 +58,8 @@ LogBufferElement::LogBufferElement(const LogBufferElement& elem)
       mTid(elem.mTid),
       mRealTime(elem.mRealTime),
       mMsgLen(elem.mMsgLen),
-      mLogId(elem.mLogId) {
+      mLogId(elem.mLogId),
+      mSequence(elem.mSequence){
     mMsg = new char[mMsgLen];
     memcpy(mMsg, elem.mMsg, mMsgLen);
 }
@@ -204,7 +207,7 @@ size_t LogBufferElement::populateDroppedMessage(char*& buffer, LogBuffer* parent
     return retval;
 }
 
-log_time LogBufferElement::flushTo(SocketClient* reader, LogBuffer* parent,
+uint64_t LogBufferElement::flushTo(SocketClient* reader, LogBuffer* parent,
                                    bool privileged, bool lastSame) {
     struct logger_entry_v4 entry;
 
@@ -227,7 +230,9 @@ log_time LogBufferElement::flushTo(SocketClient* reader, LogBuffer* parent,
 
     if (!mMsg) {
         entry.len = populateDroppedMessage(buffer, parent, lastSame);
-        if (!entry.len) return mRealTime;
+        if (!entry.len) {
+            return mSequence;
+        }
         iovec[1].iov_base = buffer;
     } else {
         entry.len = mMsgLen;
@@ -235,9 +240,10 @@ log_time LogBufferElement::flushTo(SocketClient* reader, LogBuffer* parent,
     }
     iovec[1].iov_len = entry.len;
 
-    log_time retval = reader->sendDatav(iovec, 1 + (entry.len != 0))
+ uint64_t retval = reader->sendDatav(iovec, 1 + (entry.len != 0))
                           ? FLUSH_ERROR
-                          : mRealTime;
+                          : mSequence;
+
 
     if (buffer) free(buffer);
 

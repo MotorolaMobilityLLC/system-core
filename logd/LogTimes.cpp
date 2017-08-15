@@ -29,9 +29,9 @@ pthread_mutex_t LogTimeEntry::timesLock = PTHREAD_MUTEX_INITIALIZER;
 
 LogTimeEntry::LogTimeEntry(LogReader& reader, SocketClient* client,
                            bool nonBlock, unsigned long tail,
-                           unsigned int logMask, pid_t pid, log_time start,
-                           uint64_t timeout)
-    : mRefCount(1),
+                           unsigned int logMask, pid_t pid,
+                           uint64_t start, uint64_t timeout) :
+    mRefCount(1),
       mRelease(false),
       mError(false),
       threadRunning(false),
@@ -45,7 +45,7 @@ LogTimeEntry::LogTimeEntry(LogReader& reader, SocketClient* client,
       mClient(client),
       mStart(start),
       mNonBlock(nonBlock),
-      mEnd(log_time(android_log_clockid())) {
+        mEnd(LogBufferElement::getCurrentSequence()) {
     mTimeout.tv_sec = timeout / NS_PER_SEC;
     mTimeout.tv_nsec = timeout % NS_PER_SEC;
     memset(mLastTid, 0, sizeof(mLastTid));
@@ -141,7 +141,7 @@ void* LogTimeEntry::threadStart(void* obj) {
 #endif
     lock();
 
-    log_time start = me->mStart;
+    uint64_t start = me->mStart;
 
     while (me->threadRunning && !me->isError_Locked()) {
         if (me->mTimeout.tv_sec || me->mTimeout.tv_nsec) {
@@ -172,7 +172,7 @@ void* LogTimeEntry::threadStart(void* obj) {
             break;
         }
 
-        me->mStart = start + log_time(0, 1);
+        me->mStart = start + 1;
 
         if (me->mNonBlock || !me->threadRunning || me->isError_Locked()) {
             break;
@@ -213,7 +213,7 @@ int LogTimeEntry::FilterFirstPass(const LogBufferElement* element, void* obj) {
     }
 
     if (me->mCount == 0) {
-        me->mStart = element->getRealTime();
+        me->mStart = element->getSequence();
     }
 
     if ((!me->mPid || (me->mPid == element->getPid())) &&
@@ -232,7 +232,7 @@ int LogTimeEntry::FilterSecondPass(const LogBufferElement* element, void* obj) {
 
     LogTimeEntry::lock();
 
-    me->mStart = element->getRealTime();
+    me->mStart = element->getSequence();
 
     if (me->skipAhead[element->getLogId()]) {
         me->skipAhead[element->getLogId()]--;
