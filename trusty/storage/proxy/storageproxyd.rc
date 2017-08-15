@@ -1,0 +1,11 @@
+on post-fs-data
+    write /proc/bootprof "start trusty sec storage"
+    mkdir /data/trusty 0775 system system
+    start storageproxyd
+
+# Start storageproxyd Daemon
+service storageproxyd /system/bin/storageproxyd -d /dev/trusty-ipc-dev0 -p /data/trusty -r /dev/block/mmcblk0rpmb
+    user root
+    group root
+    class core
+    oneshot
