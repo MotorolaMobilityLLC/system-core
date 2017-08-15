@@ -67,6 +67,13 @@ LOCAL_C_INCLUDES := \
     bootable/recovery
 LOCAL_MODULE:= libfs_mgr
 LOCAL_STATIC_LIBRARIES := $(common_static_libraries)
+LOCAL_STATIC_LIBRARIES += \
+    libcutils \
+    liblog \
+    libsparse \
+    libz \
+    libselinux
+
 LOCAL_EXPORT_C_INCLUDE_DIRS := $(LOCAL_PATH)/include
 LOCAL_CFLAGS := -Werror
 ifeq ($(TARGET_USERIMAGES_USE_EXT4), true)
