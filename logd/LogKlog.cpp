@@ -293,9 +293,6 @@ void LogKlog::calculateCorrection(const log_time& monotonic,
     }
 }
 
-static const char suspendStr[] = "PM: suspend entry ";
-static const char resumeStr[] = "PM: suspend exit ";
-static const char suspendedStr[] = "Suspended for ";
 
 const char* android::strnstr(const char* s, size_t len, const char* needle) {
     char c;
