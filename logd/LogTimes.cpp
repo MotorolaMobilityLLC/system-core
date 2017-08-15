@@ -131,13 +131,12 @@ void* LogTimeEntry::threadStart(void* obj) {
     bool security = FlushCommand::hasSecurityLogs(client);
 
     me->leadingDropped = true;
-
+#ifdef MTK_LOGD_ENHANCE
 #if defined(MTK_LOGD_FILTER)
     logd_reader_add();
 #endif
-
     android::prdebug("logd: logd.reader.per thread start.\n");
-
+#endif
     lock();
 
     log_time start = me->mStart;
@@ -187,13 +186,12 @@ void* LogTimeEntry::threadStart(void* obj) {
     unlock();
 
     pthread_cleanup_pop(true);
-
+#ifdef MTK_LOGD_ENHANCE
 #if defined(MTK_LOGD_FILTER)
     logd_reader_del();
 #endif
-
     android::prdebug("logd: logd.reader.per thread stop.\n");
-
+#endif
     return NULL;
 }
 

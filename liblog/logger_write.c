@@ -403,33 +403,29 @@ LIBLOG_ABI_PUBLIC int __android_log_write(int prio, const char* tag,
 }
 
 LIBLOG_ABI_PUBLIC int __android_log_buf_write(int bufID, int prio,
-                                              const char *tag, const char *msg)
-{
-    struct iovec vec[3];
-    char tmp_tag[32];
+                                              const char* tag, const char* msg) {
+  struct iovec vec[3];
+  char tmp_tag[32];
 
-    if (!tag)
-        tag = "";
+  if (!tag) tag = "";
 
+#ifdef MTK_LOGD_ENHANCE
      if (!__android_log_is_loggable(prio, tag, ANDROID_LOG_VERBOSE))
         return 0;
+#endif
 
-    /* XXX: This needs to go! */
-    if ((bufID != LOG_ID_RADIO) &&
-         (!strcmp(tag, "HTC_RIL") ||
-        !strncmp(tag, "RIL", 3) || /* Any log tag with "RIL" as the prefix */
-        !strncmp(tag, "IMS", 3) || /* Any log tag with "IMS" as the prefix */
-        !strcmp(tag, "AT") ||
-        !strcmp(tag, "GSM") ||
-        !strcmp(tag, "STK") ||
-        !strcmp(tag, "CDMA") ||
-        !strcmp(tag, "PHONE") ||
-        !strcmp(tag, "SMS"))) {
-            bufID = LOG_ID_RADIO;
-            /* Inform third party apps/ril/radio.. to use Rlog or RLOG */
-            snprintf(tmp_tag, sizeof(tmp_tag), "use-Rlog/RLOG-%s", tag);
-            tag = tmp_tag;
-    }
+  /* XXX: This needs to go! */
+  if ((bufID != LOG_ID_RADIO) &&
+      (!strcmp(tag, "HTC_RIL") ||
+       !strncmp(tag, "RIL", 3) || /* Any log tag with "RIL" as the prefix */
+       !strncmp(tag, "IMS", 3) || /* Any log tag with "IMS" as the prefix */
+       !strcmp(tag, "AT") || !strcmp(tag, "GSM") || !strcmp(tag, "STK") ||
+       !strcmp(tag, "CDMA") || !strcmp(tag, "PHONE") || !strcmp(tag, "SMS"))) {
+    bufID = LOG_ID_RADIO;
+    /* Inform third party apps/ril/radio.. to use Rlog or RLOG */
+    snprintf(tmp_tag, sizeof(tmp_tag), "use-Rlog/RLOG-%s", tag);
+    tag = tmp_tag;
+  }
 
 #if __BIONIC__
   if (prio == ANDROID_LOG_FATAL) {

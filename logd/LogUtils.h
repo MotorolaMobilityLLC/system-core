@@ -23,7 +23,7 @@
 #include <private/android_logger.h>
 #include <sysutils/SocketClient.h>
 #include <utils/FastStrcmp.h>
-
+#ifdef MTK_LOGD_ENHANCE
 #if defined(HAVE_AEE_FEATURE) && defined(ANDROID_LOG_MUCH_COUNT)
 extern int log_detect_value;
 extern int log_much_delay_detect;
@@ -35,6 +35,7 @@ extern int detect_time;
 #if defined(MTK_LOGD_FILTER)
 void logd_reader_del(void);
 void logd_reader_add(void);
+#endif
 #endif
 
 // Hijack this header as a common include file used by most all sources

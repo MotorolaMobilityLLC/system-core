@@ -25,11 +25,13 @@
 #include <sys/user.h>
 #include <time.h>
 #include <unistd.h>
+#ifdef MTK_LOGD_ENHANCE
 #include <sys/prctl.h>
 #include <cutils/sched_policy.h>
 #include <utils/threads.h>
 #ifdef HAVE_AEE_FEATURE
 #include "aee.h"
+#endif
 #endif
 #include <unordered_map>
 
@@ -48,8 +50,7 @@
 // Default
 #define log_buffer_size(id) mMaxSize[id]
 
-#define DEBUG_DETECT_LOG_COUNT  5000
-#define DEBUG_LOG_PERFORMANCE_TIME  1000000     // each log time 1ms
+#ifdef MTK_LOGD_ENHANCE
 #if defined(HAVE_AEE_FEATURE) && defined(ANDROID_LOG_MUCH_COUNT)
 #include <cutils/sockets.h>
 
@@ -94,23 +95,34 @@ static void *logd_performance_issue_thread_start(void * /*obj*/) {
     return NULL;
 }
 #endif
+#endif
+
 void LogBuffer::init() {
+#if defined(MTK_LOGD_ENHANCE) && defined(ANDROID_LOG_MUCH_COUNT) && defined(HAVE_AEE_FEATURE)
     unsigned long default_size;
 
     log_id_for_each(i) {
         mLastSet[i] = false;
         mLast[i] = mLogElements.begin();
         default_size = __android_logger_get_buffer_size(i);
-#if defined(HAVE_AEE_FEATURE) && defined(ANDROID_LOG_MUCH_COUNT)
         if (i == LOG_ID_MAIN || i == LOG_ID_RADIO) {
             default_size = 5 * default_size;
         }
-#endif
 
         if (setSize(i, default_size)) {
             setSize(i, LOG_BUFFER_MIN_SIZE);
         }
     }
+#else
+    log_id_for_each(i) {
+        mLastSet[i] = false;
+        mLast[i] = mLogElements.begin();
+
+        if (setSize(i, __android_logger_get_buffer_size(i))) {
+            setSize(i, LOG_BUFFER_MIN_SIZE);
+        }
+    }
+#endif
     bool lastMonotonic = monotonic;
     monotonic = android_log_clockid() == CLOCK_MONOTONIC;
     if (lastMonotonic != monotonic) {
@@ -251,10 +263,9 @@ static enum match_type identical(LogBufferElement* elem,
     return SAME;
 }
 
-int LogBuffer::log(log_id_t log_id, log_time realtime,
-                   uid_t uid, pid_t pid, pid_t tid,
-                   const char *msg, unsigned short len) {
-#if defined(HAVE_AEE_FEATURE) && defined(ANDROID_LOG_MUCH_COUNT)
+int LogBuffer::log(log_id_t log_id, log_time realtime, uid_t uid, pid_t pid,
+                   pid_t tid, const char* msg, unsigned short len) {
+#if defined(MTK_LOGD_ENHANCE) && defined(HAVE_AEE_FEATURE) && defined(ANDROID_LOG_MUCH_COUNT)
         static int line_count = 0;
         time_t logs_time, now_time;
         static time_t old_time;
@@ -288,6 +299,7 @@ int LogBuffer::log(log_id_t log_id, log_time realtime,
     if (log_id != LOG_ID_SECURITY) {
         int prio = ANDROID_LOG_INFO;
         const char* tag = NULL;
+#ifdef MTK_LOGD_ENHANCE
         if (log_id == LOG_ID_EVENTS) {
             tag = tagToName(elem->getTag());
             if (!__android_log_is_loggable(prio, tag, ANDROID_LOG_VERBOSE)) {
@@ -302,10 +314,27 @@ int LogBuffer::log(log_id_t log_id, log_time realtime,
             prio = *msg;
             tag = msg + 1;
         }
+#else
+        if (log_id == LOG_ID_EVENTS) {
+            tag = tagToName(elem->getTag());
+        } else {
+            prio = *msg;
+            tag = msg + 1;
+        }
+        if (!__android_log_is_loggable(prio, tag, ANDROID_LOG_VERBOSE)) {
+            // Log traffic received to total
+            pthread_mutex_lock(&mLogElementsLock);
+            stats.add(elem);
+            stats.subtract(elem);
+            pthread_mutex_unlock(&mLogElementsLock);
+            delete elem;
+            return -EACCES;
+        }
+#endif
     }
 
     pthread_mutex_lock(&mLogElementsLock);
-#if defined(HAVE_AEE_FEATURE) && defined(ANDROID_LOG_MUCH_COUNT)
+#if defined(MTK_LOGD_ENHANCE) && defined(HAVE_AEE_FEATURE) && defined(ANDROID_LOG_MUCH_COUNT)
     if (log_detect_value == 0) {
         pause_detect = 0;
         delay_time = 0;
@@ -978,7 +1007,6 @@ bool LogBuffer::prune(log_id_t id, unsigned long pruneRows, uid_t caller_uid) {
     LogTimeEntry* oldest = NULL;
     bool busy = false;
     bool clearAll = pruneRows == ULONG_MAX;
-    int Times_count = 0;
 
     LogTimeEntry::lock();
 
@@ -993,11 +1021,10 @@ bool LogBuffer::prune(log_id_t id, unsigned long pruneRows, uid_t caller_uid) {
             oldest = entry;
         }
         times++;
-        Times_count++;
     }
 
     LogBufferElementCollection::iterator it;
-
+#ifdef MTK_LOGD_ENHANCE
     if (stats.sizes(id) > (100 * log_buffer_size(id))) {
 #if defined(__LP64__)
         android::prdebug("logd: the %d log size is %lu.\n", id, stats.sizes(id));
@@ -1015,7 +1042,6 @@ times = mTimes.begin();
                 entry->release_Locked();
             }
             times++;
-            Times_count++;
         }
         it = mLogElements.begin();
         while ((it != mLogElements.end()) && (pruneRows > 0)) {
@@ -1030,13 +1056,6 @@ times = mTimes.begin();
             pruneRows--;
         }
 
-#if defined(__LP64__)
-        android::prdebug("logd: have %d read thread, the %d log size is %lu.\n",
-            Times_count, id, stats.sizes(id));
-#else
-        android::prdebug("logd: have %d read thread, the %d log size is %d.\n",
-            Times_count, id, stats.sizes(id));
-#endif
 
         LogTimeEntry::unlock();
 #if defined(HAVE_AEE_FEATURE) && defined(MTK_LOGD_DEBUG)
@@ -1068,7 +1087,7 @@ times = mTimes.begin();
         LogTimeEntry::unlock();
         return false;
     }
-
+#endif
     if (__predict_false(caller_uid != AID_ROOT)) { // unlikely
         // Only here if clear all request from non system source, so chatty
         // filter logistics is not required.
@@ -1108,7 +1127,7 @@ times = mTimes.begin();
 
     // prune by worst offenders; by blacklist, UID, and by PID of system UID
     bool hasBlacklist = (id != LOG_ID_SECURITY) && mPrune.naughty();
-#if 0
+#ifndef MTK_LOGD_ENHANCE
     while (!clearAll && (pruneRows > 0)) {
         // recalculate the worst offender on every batched pass
         int worst = -1;  // not valid for getUid() or getKey()

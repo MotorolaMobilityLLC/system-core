@@ -94,6 +94,7 @@ cc_library {
         // so make sure we do not regret hard-coding it as follows:
         "-DLIBLOG_LOG_TAG=1006",
         "-DSNET_EVENT_LOG_TAG=1397638484",
+        "-DMTK_LOGD_ENHANCE",
     ],
     logtags: ["event.logtags"],
     compile_multilib: "both",

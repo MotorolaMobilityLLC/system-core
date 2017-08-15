@@ -319,10 +319,11 @@ const char* android::strnstr(const char* s, size_t len, const char* needle) {
     }
     return s;
 }
-
+#ifdef MTK_LOGD_ENHANCE
 char nowtimestr[64] = {0};
-void LogKlog::sniffTime(log_time &now,
-                        const char **buf, size_t len,
+#endif
+
+void LogKlog::sniffTime(log_time& now, const char** buf, size_t len,
                         bool reverse) {
     const char* cp = now.strptime(*buf, "[ %s.%q]");
     if (cp && (cp >= &(*buf)[len])) {
@@ -331,10 +332,10 @@ void LogKlog::sniffTime(log_time &now,
     if (cp) {
         static const char healthd[] = "healthd";
         static const char battery[] = ": battery ";
-
+#ifdef MTK_LOGD_ENHANCE
         snprintf(nowtimestr, sizeof(nowtimestr), "[%5lu.%06lu]",
                (unsigned long)now.tv_sec, (unsigned long)now.tv_nsec/1000);
-
+#endif
         len -= cp - *buf;
         if (len && isspace(*cp)) {
             ++cp;
@@ -393,12 +394,16 @@ void LogKlog::sniffTime(log_time &now,
     } else {
         if (isMonotonic()) {
             now = log_time(CLOCK_MONOTONIC);
+#ifdef MTK_LOGD_ENHANCE
             snprintf(nowtimestr, sizeof(nowtimestr), "[%5lu.%06lu]",
                  (unsigned long)now.tv_sec, (unsigned long)now.tv_nsec/1000);
+#endif
         } else {
             now = log_time(CLOCK_REALTIME);
+#ifdef MTK_LOGD_ENHANCE
             snprintf(nowtimestr, sizeof(nowtimestr), "[%5lu.%06lu]",
                  (unsigned long)now.tv_sec, (unsigned long)now.tv_nsec/1000);
+#endif
         }
     }
 }
@@ -620,11 +625,12 @@ int LogKlog::log(const char* buf, size_t len) {
     // Some may view the following as an ugly heuristic, the desire is to
     // beautify the kernel logs into an Android Logging format; the goal is
     // admirable but costly.
-    // Comment By MTK: Do not skip the space before the cpu id
-    /*while ((p < &buf[len]) && (isspace(*p) || !*p)) {
+#ifndef MTK_LOGD_ENHANCE  // Comment By MTK: Do not skip the space before the cpu id
+    while ((p < &buf[len]) && (isspace(*p) || !*p)) {
         ++p;
-    }*/
-    if (p >= &buf[len]) { // timestamp, no content
+    }
+#endif
+    if (p >= &buf[len]) {  // timestamp, no content
         return 0;
     }
     start = p;
@@ -764,13 +770,7 @@ int LogKlog::log(const char* buf, size_t len) {
     //   eg: [143:healthd]healthd -> [143:healthd]
     taglen = etag - tag;
     // Mediatek-special printk induced stutter
-    /*const char* mp = strnrchr(tag, taglen, ']');
-    if (mp && (++mp < etag)) {
-        size_t s = etag - mp;
-        if (((s + s) < taglen) && !fast<memcmp>(mp, mp - 1 - s, s)) {
-            taglen = mp - tag;
-        }
-    }*/
+#ifdef MTK_LOGD_ENHANCE
 
     /*Add by MTK*/
     if (!taglen) {
@@ -807,7 +807,15 @@ int LogKlog::log(const char* buf, size_t len) {
             }
         }
     } /*end of if*/
-
+#else
+    const char* mp = strnrchr(tag, taglen, ']');
+    if (mp && (++mp < etag)) {
+        size_t s = etag - mp;
+        if (((s + s) < taglen) && !fastcmp<memcmp>(mp, mp - 1 - s, s)) {
+            taglen = mp - tag;
+        }
+    }
+#endif
     // Deal with sloppy and simplistic harmless p = cp + 1 etc above.
     if (len < (size_t)(p - buf)) {
         p = &buf[len];
@@ -840,22 +848,28 @@ int LogKlog::log(const char* buf, size_t len) {
         return -EINVAL;
     }
 
-    int timelen = strlen(nowtimestr);
     // Careful.
     // We are using the stack to house the log buffer for speed reasons.
     // If we malloc'd this buffer, we could get away without n's USHRT_MAX
     // test above, but we would then required a max(n, USHRT_MAX) as
     // truncating length argument to logbuf->log() below. Gain is protection
     // of stack sanity and speedup, loss is truncated long-line content.
+#ifdef MTK_LOGD_ENHANCE
+    int timelen = strlen(nowtimestr);
     char newstr[n + timelen];
-    char *np = newstr;
+#else
+    char newstr[n];
+#endif
+    char* np = newstr;
 
     // Convert priority into single-byte Android logger priority
     *np = convertKernelPrioToAndroidPrio(pri);
     ++np;
 
+#ifdef MTK_LOGD_ENHANCE
     memcpy(np, nowtimestr, timelen);
     np += timelen;
+#endif
     // Copy parsed tag following priority
     memcpy(np, tag, taglen);
     np += taglen;
@@ -892,9 +906,13 @@ int LogKlog::log(const char* buf, size_t len) {
     }
 
     // Log message
+#ifdef MTK_LOGD_ENHANCE
     int rc = logbuf->log(LOG_ID_KERNEL, now, uid, pid, tid, newstr,
                          (unsigned short) (n + timelen));
-
+#else
+    int rc = logbuf->log(LOG_ID_KERNEL, now, uid, pid, tid, newstr,
+                         (unsigned short)n);
+#endif
     // notify readers
     if (!rc) {
         reader->notifyNewLog();

@@ -114,6 +114,7 @@ void LogStatistics::add(LogBufferElement* element) {
         }
     }
 }
+#ifdef MTK_LOGD_ENHANCE
 void LogStatistics::add_total_size(LogBufferElement *e) {
     log_id_t log_id = e->getLogId();
     unsigned short size = e->getMsgLen();
@@ -121,7 +122,7 @@ void LogStatistics::add_total_size(LogBufferElement *e) {
     mSizesTotal[log_id] += size;
     ++mElementsTotal[log_id];
 }
-
+#endif
 void LogStatistics::subtract(LogBufferElement* element) {
     log_id_t log_id = element->getLogId();
     unsigned short size = element->getMsgLen();

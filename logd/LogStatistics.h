@@ -576,9 +576,11 @@ class LogStatistics {
         enable = true;
     }
 
-    void add(LogBufferElement *entry);
+    void add(LogBufferElement* entry);
+#ifdef MTK_LOGD_ENHANCE
     void add_total_size(LogBufferElement *entry);
-    void subtract(LogBufferElement *entry);
+#endif
+    void subtract(LogBufferElement* entry);
     // entry->setDropped(1) must follow this call
     void drop(LogBufferElement* entry);
     // Correct for coalescing two entries referencing dropped content
