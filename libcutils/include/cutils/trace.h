@@ -1,4 +1,9 @@
 /*
+* Copyright (C) 2014 MediaTek Inc.
+* Modification based on code covered by the mentioned copyright
+* and/or permission notice(s).
+*/
+/*
  * Copyright (C) 2012 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -60,18 +65,20 @@ __BEGIN_DECLS
 #define ATRACE_TAG_AUDIO            (1<<8)
 #define ATRACE_TAG_VIDEO            (1<<9)
 #define ATRACE_TAG_CAMERA           (1<<10)
-#define ATRACE_TAG_HAL              (1<<11)
-#define ATRACE_TAG_APP              (1<<12)
-#define ATRACE_TAG_RESOURCES        (1<<13)
-#define ATRACE_TAG_DALVIK           (1<<14)
-#define ATRACE_TAG_RS               (1<<15)
-#define ATRACE_TAG_BIONIC           (1<<16)
-#define ATRACE_TAG_POWER            (1<<17)
-#define ATRACE_TAG_PACKAGE_MANAGER  (1<<18)
-#define ATRACE_TAG_SYSTEM_SERVER    (1<<19)
-#define ATRACE_TAG_DATABASE         (1<<20)
-#define ATRACE_TAG_NETWORK          (1<<21)
-#define ATRACE_TAG_ADB              (1<<22)
+#define ATRACE_TAG_HWUI             (1<<11)
+#define ATRACE_TAG_PERF             (1<<12)
+#define ATRACE_TAG_HAL              (1<<13)
+#define ATRACE_TAG_APP              (1<<14)
+#define ATRACE_TAG_RESOURCES        (1<<15)
+#define ATRACE_TAG_DALVIK           (1<<16)
+#define ATRACE_TAG_RS               (1<<17)
+#define ATRACE_TAG_BIONIC           (1<<18)
+#define ATRACE_TAG_POWER            (1<<19)
+#define ATRACE_TAG_PACKAGE_MANAGER  (1<<20)
+#define ATRACE_TAG_SYSTEM_SERVER    (1<<21)
+#define ATRACE_TAG_DATABASE         (1<<22)
+#define ATRACE_TAG_NETWORK          (1<<23)
+#define ATRACE_TAG_ADB              (1<<24)
 #define ATRACE_TAG_LAST             ATRACE_TAG_ADB
 
 // Reserved for initialization.
