@@ -61,6 +61,7 @@ void printerr(char *fmt, ...);
 #define DBG 0
 #define INET_ADDRLEN 4
 #define INET6_ADDRLEN 16
+const char ipv6_proc_path[] = "/proc/sys/net/ipv6/conf";
 
 in_addr_t prefixLengthToIpv4Netmask(int prefix_length)
 {
@@ -837,7 +838,7 @@ static int setEnableIPv6(char* ifname, int on) {
         return -1;
     }
 
-    if (write(fd, value, size) != size) {
+    if (write(fd, value, size) != (ssize_t)size) {
         ALOGE("Failed to write %s: %s", path, strerror(errno));
         close(fd);
         return -1;
@@ -861,7 +862,7 @@ static int setIPv6DefaultRoute(char* ifname, int on) {
         return -1;
     }
 
-    if (write(fd, value, size) != size) {
+    if (write(fd, value, size) != (ssize_t)size) {
         ALOGE("Failed to write %s: %s", path, strerror(errno));
         close(fd);
         return -1;
