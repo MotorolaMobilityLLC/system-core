@@ -56,6 +56,7 @@ ifeq ($(HAVE_AEE_FEATURE), yes)
     LOCAL_C_INCLUDES += $(MTK_ROOT)/external/aee/binary/inc
 endif
 
+ifneq ($(wildcard vendor/mediatek/internal/mtklog_enable),)
 ifneq ($(MTK_ANDROID_LOG_MUCH_COUNT), )
 ifeq ($(TARGET_BUILD_VARIANT),eng)
     LOCAL_CFLAGS += -DANDROID_LOG_MUCH_COUNT=$(MTK_ANDROID_LOG_MUCH_COUNT)
@@ -63,6 +64,7 @@ else
     LOCAL_CFLAGS += -DANDROID_LOG_MUCH_COUNT=500
 endif
     LOCAL_INIT_RC := logd_e.rc
+endif
 endif
 
 LOCAL_CFLAGS += -DMTK_LOGD_FILTER
