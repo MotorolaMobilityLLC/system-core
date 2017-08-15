@@ -284,7 +284,7 @@ LIBLOG_ABI_PUBLIC int __android_log_is_loggable_len(int prio, const char* tag,
   char new_tag[1024];
   char* ptr = NULL;
 
-  if (strstr(tag, "-0x") != NULL) {
+  if (tag != NULL && strstr(tag, "-0x") != NULL) {
     strcpy(new_tag, tag);
     ptr = strstr(new_tag, "-0x");
     if (ptr != NULL) {
@@ -305,7 +305,7 @@ LIBLOG_ABI_PUBLIC int __android_log_is_loggable(int prio, const char* tag,
   char new_tag[1024];
   char* ptr = NULL;
 
-  if (strstr(tag, "-0x") != NULL) {
+  if (tag != NULL && strstr(tag, "-0x") != NULL) {
     strcpy(new_tag, tag);
     ptr = strstr(new_tag, "-0x");
     if (ptr != NULL) {
