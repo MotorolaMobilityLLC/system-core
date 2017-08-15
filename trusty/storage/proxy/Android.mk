@@ -37,5 +37,7 @@ LOCAL_STATIC_LIBRARIES := \
 	libtrustystorageinterface \
 	libtrusty
 
+LOCAL_INIT_RC := storageproxyd.rc
+
 include $(BUILD_EXECUTABLE)
 
