@@ -581,7 +581,20 @@ LIBLOG_ABI_PUBLIC int android_log_processLogBuffer(struct logger_entry* buf,
 
   entry->priority = msg[0];
   entry->tag = msg + 1;
+#if defined(MTK_LOGD_ENHANCE) && defined(ANDROID_LOG_MUCH_COUNT)
+  char* ptr = NULL;
+
   entry->tagLen = msgStart - 1;
+  if (entry->tag != NULL) {
+      ptr = strstr(entry->tag, "-0x");
+      if (ptr != NULL) {
+          entry->tag = ptr + 3;
+          entry->tagLen = msgStart - (ptr - msg + 3);
+      }
+  }
+#else
+  entry->tagLen = msgStart - 1;
+#endif
   entry->message = msg + msgStart;
   entry->messageLen = (msgEnd < msgStart) ? 0 : (msgEnd - msgStart);
 
