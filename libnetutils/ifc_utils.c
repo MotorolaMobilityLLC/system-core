@@ -35,6 +35,7 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <linux/un.h>
 
 #ifdef ANDROID
 #define LOG_TAG "NetUtils"
