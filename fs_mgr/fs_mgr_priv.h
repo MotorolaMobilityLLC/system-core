@@ -19,6 +19,7 @@
 
 #include <android-base/logging.h>
 #include <fs_mgr.h>
+#include "fs_mgr_priv_boot_config.h"
 
 /* The CHECK() in logging.h will use program invocation name as the tag.
  * Thus, the log will have prefix "init: " when libfs_mgr is statically
@@ -114,6 +115,8 @@ __BEGIN_DECLS
 int fs_mgr_set_blk_ro(const char *blockdev);
 int fs_mgr_test_access(const char *device);
 int fs_mgr_update_for_slotselect(struct fstab *fstab);
+bool is_dt_compatible();
+bool is_device_secure();
 
 __END_DECLS
 

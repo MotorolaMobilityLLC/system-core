@@ -44,6 +44,9 @@ cc_library {
                 "properties.cpp",
             ],
             cppflags: ["-Wexit-time-destructors"],
+            sanitize: {
+                misc_undefined: ["integer"],
+            },
         },
         darwin: {
             srcs: ["errors_unix.cpp"],
@@ -75,6 +78,7 @@ cc_test {
     host_supported: true,
     clang: true,
     srcs: [
+        "endian_test.cpp",
         "errors_test.cpp",
         "file_test.cpp",
         "logging_test.cpp",
@@ -89,6 +93,9 @@ cc_test {
     target: {
         android: {
             srcs: ["properties_test.cpp"],
+            sanitize: {
+                misc_undefined: ["integer"],
+            },
         },
         windows: {
             srcs: ["utf8_test.cpp"],

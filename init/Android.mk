@@ -5,9 +5,15 @@ LOCAL_PATH:= $(call my-dir)
 # --
 
 ifneq (,$(filter userdebug eng,$(TARGET_BUILD_VARIANT)))
-init_options += -DALLOW_LOCAL_PROP_OVERRIDE=1 -DALLOW_PERMISSIVE_SELINUX=1
+init_options += \
+    -DALLOW_LOCAL_PROP_OVERRIDE=1 \
+    -DALLOW_PERMISSIVE_SELINUX=1 \
+    -DREBOOT_BOOTLOADER_ON_PANIC=1
 else
-init_options += -DALLOW_LOCAL_PROP_OVERRIDE=0 -DALLOW_PERMISSIVE_SELINUX=0
+init_options += \
+    -DALLOW_LOCAL_PROP_OVERRIDE=0 \
+    -DALLOW_PERMISSIVE_SELINUX=0 \
+    -DREBOOT_BOOTLOADER_ON_PANIC=0
 endif
 
 init_options += -DLOG_UEVENTS=0
@@ -17,6 +23,7 @@ init_cflags += \
     -Wall -Wextra \
     -Wno-unused-parameter \
     -Werror \
+    -std=gnu++1z \
 
 # --
 
@@ -70,6 +77,7 @@ LOCAL_SRC_FILES:= \
     init.cpp \
     keychords.cpp \
     property_service.cpp \
+    reboot.cpp \
     signal_handler.cpp \
     ueventd.cpp \
     ueventd_parser.cpp \
@@ -107,6 +115,34 @@ LOCAL_STATIC_LIBRARIES := \
     libnl \
     libavb
 
+# Include SELinux policy. We do this here because different modules
+# need to be included based on the value of PRODUCT_FULL_TREBLE. This
+# type of conditional inclusion cannot be done in top-level files such
+# as build/target/product/embedded.mk.
+# This conditional inclusion closely mimics the conditional logic
+# inside init/init.cpp for loading SELinux policy from files.
+ifeq ($(PRODUCT_FULL_TREBLE),true)
+# Use split SELinux policy
+LOCAL_REQUIRED_MODULES += \
+    mapping_sepolicy.cil \
+    nonplat_sepolicy.cil \
+    plat_sepolicy.cil \
+    plat_sepolicy.cil.sha256 \
+    secilc \
+    nonplat_file_contexts \
+    plat_file_contexts
+
+# Include precompiled policy, unless told otherwise
+ifneq ($(PRODUCT_PRECOMPILED_SEPOLICY),false)
+LOCAL_REQUIRED_MODULES += precompiled_sepolicy precompiled_sepolicy.plat.sha256
+endif
+
+else
+# Use monolithic SELinux policy
+LOCAL_REQUIRED_MODULES += sepolicy \
+    file_contexts.bin
+endif
+
 # Create symlinks.
 LOCAL_POST_INSTALL_CMD := $(hide) mkdir -p $(TARGET_ROOT_OUT)/sbin; \
     ln -sf ../init $(TARGET_ROOT_OUT)/sbin/ueventd; \
@@ -123,6 +159,7 @@ include $(CLEAR_VARS)
 LOCAL_MODULE := init_tests
 LOCAL_SRC_FILES := \
     init_parser_test.cpp \
+    property_service_test.cpp \
     util_test.cpp \
 
 LOCAL_SHARED_LIBRARIES += \
@@ -134,3 +171,8 @@ LOCAL_SANITIZE := integer
 LOCAL_CLANG := true
 LOCAL_CPPFLAGS := -Wall -Wextra -Werror
 include $(BUILD_NATIVE_TEST)
+
+
+# Include targets in subdirs.
+# =========================================================
+include $(call all-makefiles-under,$(LOCAL_PATH))

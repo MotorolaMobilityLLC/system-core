@@ -21,23 +21,17 @@
 #include <log/log_time.h>
 
 TEST(liblog, log_time) {
-#ifdef __ANDROID__
-
 #ifdef _SYSTEM_CORE_INCLUDE_PRIVATE_ANDROID_LOGGER_H_
-    log_time(CLOCK_MONOTONIC);
+  log_time(CLOCK_MONOTONIC);
 
-    EXPECT_EQ(log_time, log_time::EPOCH);
+  EXPECT_EQ(log_time, log_time::EPOCH);
 #endif
 
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    log_time tl(ts);
+  struct timespec ts;
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+  log_time tl(ts);
 
-    EXPECT_EQ(tl, ts);
-    EXPECT_GE(tl, ts);
-    EXPECT_LE(tl, ts);
-
-#else
-    GTEST_LOG_(INFO) << "This test does nothing.\n";
-#endif
+  EXPECT_EQ(tl, ts);
+  EXPECT_GE(tl, ts);
+  EXPECT_LE(tl, ts);
 }

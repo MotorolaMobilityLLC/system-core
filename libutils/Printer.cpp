@@ -21,8 +21,6 @@
 #include <utils/String8.h>
 #include <utils/Log.h>
 
-#include <string.h>
-#include <stdio.h>
 #include <stdlib.h>
 
 namespace android {

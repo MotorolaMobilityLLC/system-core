@@ -18,6 +18,8 @@
 
 #include <vector>
 
+#include <android-base/parseint.h>
+#include <android-base/parsedouble.h>
 #include <binder/IBinder.h>
 #include <binder/IInterface.h>
 
@@ -28,6 +30,8 @@
 
 #include <storaged.h>
 #include <storaged_service.h>
+
+using namespace android::base;
 
 extern storaged_t storaged;
 
@@ -88,34 +92,67 @@ status_t Storaged::dump(int fd, const Vector<String16>& args) {
         return PERMISSION_DENIED;
     }
 
-    int hours = 0;
+    double hours = 0;
+    int time_window = 0;
+    uint64_t threshold = 0;
+    bool force_report = false;
     for (size_t i = 0; i < args.size(); i++) {
         const auto& arg = args[i];
         if (arg == String16("--hours")) {
             if (++i >= args.size())
                 break;
-            hours = stoi(String16::std_string(args[i]));
+            if(!ParseDouble(String8(args[i]).c_str(), &hours))
+                return BAD_VALUE;
+            continue;
+        }
+        if (arg == String16("--time_window")) {
+            if (++i >= args.size())
+                break;
+            if(!ParseInt(String8(args[i]).c_str(), &time_window))
+                return BAD_VALUE;
+            continue;
+        }
+        if (arg == String16("--threshold")) {
+            if (++i >= args.size())
+                break;
+            if(!ParseUint(String8(args[i]).c_str(), &threshold))
+                return BAD_VALUE;
+            continue;
+        }
+        if (arg == String16("--force")) {
+            force_report = true;
             continue;
         }
     }
 
-    const std::map<uint64_t, std::vector<struct uid_record>>& records =
-                storaged.get_uid_records(hours);
+    uint64_t last_ts = 0;
+    const std::map<uint64_t, struct uid_records>& records =
+                storaged.get_uid_records(hours, threshold, force_report);
     for (const auto& it : records) {
-        dprintf(fd, "%llu\n", (unsigned long long)it.first);
-        for (const auto& record : it.second) {
-            dprintf(fd, "%s %llu %llu %llu %llu %llu %llu %llu %llu\n",
+        if (last_ts != it.second.start_ts) {
+            dprintf(fd, "%llu", (unsigned long long)it.second.start_ts);
+        }
+        dprintf(fd, ",%llu\n", (unsigned long long)it.first);
+        last_ts = it.first;
+
+        for (const auto& record : it.second.entries) {
+            dprintf(fd, "%s %ju %ju %ju %ju %ju %ju %ju %ju\n",
                 record.name.c_str(),
-                (unsigned long long)record.ios.bytes[READ][FOREGROUND][CHARGER_OFF],
-                (unsigned long long)record.ios.bytes[WRITE][FOREGROUND][CHARGER_OFF],
-                (unsigned long long)record.ios.bytes[READ][BACKGROUND][CHARGER_OFF],
-                (unsigned long long)record.ios.bytes[WRITE][BACKGROUND][CHARGER_OFF],
-                (unsigned long long)record.ios.bytes[READ][FOREGROUND][CHARGER_ON],
-                (unsigned long long)record.ios.bytes[WRITE][FOREGROUND][CHARGER_ON],
-                (unsigned long long)record.ios.bytes[READ][BACKGROUND][CHARGER_ON],
-                (unsigned long long)record.ios.bytes[WRITE][BACKGROUND][CHARGER_ON]);
+                record.ios.bytes[READ][FOREGROUND][CHARGER_OFF],
+                record.ios.bytes[WRITE][FOREGROUND][CHARGER_OFF],
+                record.ios.bytes[READ][BACKGROUND][CHARGER_OFF],
+                record.ios.bytes[WRITE][BACKGROUND][CHARGER_OFF],
+                record.ios.bytes[READ][FOREGROUND][CHARGER_ON],
+                record.ios.bytes[WRITE][FOREGROUND][CHARGER_ON],
+                record.ios.bytes[READ][BACKGROUND][CHARGER_ON],
+                record.ios.bytes[WRITE][BACKGROUND][CHARGER_ON]);
         }
     }
+
+    if (time_window) {
+        storaged.update_uid_io_interval(time_window);
+    }
+
     return NO_ERROR;
 }
 

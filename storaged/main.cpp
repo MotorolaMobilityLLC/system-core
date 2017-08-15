@@ -43,46 +43,7 @@
 #include <storaged_utils.h>
 
 storaged_t storaged;
-
-static int drop_privs() {
-    // privilege setting
-    struct sched_param param;
-    memset(&param, 0, sizeof(param));
-
-    if (set_sched_policy(0, SP_BACKGROUND) < 0) return -1;
-
-    if (sched_setscheduler((pid_t) 0, SCHED_BATCH, &param) < 0) return -1;
-
-    if (setpriority(PRIO_PROCESS, 0, ANDROID_PRIORITY_BACKGROUND) < 0) return -1;
-
-    if (prctl(PR_SET_KEEPCAPS, 1) < 0) return -1;
-
-    std::unique_ptr<struct _cap_struct, int(*)(void *)> caps(cap_init(), cap_free);
-    if (cap_clear(caps.get()) < 0) return -1;
-    cap_value_t cap_value[] = {
-        CAP_SETGID,
-        CAP_SETUID
-    };
-    if (cap_set_flag(caps.get(), CAP_PERMITTED,
-                     arraysize(cap_value), cap_value,
-                     CAP_SET) < 0) return -1;
-    if (cap_set_flag(caps.get(), CAP_EFFECTIVE,
-                     arraysize(cap_value), cap_value,
-                     CAP_SET) < 0) return -1;
-    if (cap_set_proc(caps.get()) < 0)
-        return -1;
-
-    if (setgid(AID_SYSTEM) != 0) return -1;
-
-    if (setuid(AID_SYSTEM) != 0) return -1;
-
-    if (cap_set_flag(caps.get(), CAP_PERMITTED, 2, cap_value, CAP_CLEAR) < 0) return -1;
-    if (cap_set_flag(caps.get(), CAP_EFFECTIVE, 2, cap_value, CAP_CLEAR) < 0) return -1;
-    if (cap_set_proc(caps.get()) < 0)
-        return -1;
-
-    return 0;
-}
+emmc_info_t emmc_info;
 
 // Function of storaged's main thread
 void* storaged_main(void* s) {
@@ -109,7 +70,6 @@ static void help_message(void) {
 int main(int argc, char** argv) {
     int flag_main_service = 0;
     int flag_dump_uid = 0;
-    int fd_emmc = -1;
     int opt;
 
     for (;;) {
@@ -154,16 +114,9 @@ int main(int argc, char** argv) {
     }
 
     if (flag_main_service) { // start main thread
-        static const char mmc0_ext_csd[] = "/d/mmc0/mmc0:0001/ext_csd";
-        fd_emmc = android_get_control_file(mmc0_ext_csd);
-        if (fd_emmc < 0)
-            fd_emmc = TEMP_FAILURE_RETRY(open(mmc0_ext_csd, O_RDONLY));
-
-        if (drop_privs() != 0) {
-            return -1;
+        if (emmc_info.init()) {
+            storaged.set_storage_info(&emmc_info);
         }
-
-        storaged.set_privileged_fds(fd_emmc);
 
         // Start the main thread of storaged
         pthread_t storaged_main_thread;
@@ -177,8 +130,6 @@ int main(int argc, char** argv) {
         android::ProcessState::self()->startThreadPool();
         IPCThreadState::self()->joinThreadPool();
         pthread_join(storaged_main_thread, NULL);
-
-        close(fd_emmc);
 
         return 0;
     }

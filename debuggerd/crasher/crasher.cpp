@@ -26,11 +26,14 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
+#include <sys/prctl.h>
 #include <unistd.h>
 
 // We test both kinds of logging.
 #include <android-base/logging.h>
 #include <log/log.h>
+
+#include "seccomp_policy.h"
 
 #if defined(STATIC_CRASHER)
 #include "debuggerd/handler.h"
@@ -188,6 +191,9 @@ static int usage() {
     fprintf(stderr, "  fprintf-NULL          pass a null pointer to fprintf\n");
     fprintf(stderr, "  readdir-NULL          pass a null pointer to readdir\n");
     fprintf(stderr, "  strlen-NULL           pass a null pointer to strlen\n");
+    fprintf(stderr, "  pthread_join-NULL     pass a null pointer to pthread_join\n");
+    fprintf(stderr, "\n");
+    fprintf(stderr, "  no_new_privs          set PR_SET_NO_NEW_PRIVS and then abort\n");
     fprintf(stderr, "\n");
     fprintf(stderr, "prefix any of the above with 'thread-' to run on a new thread\n");
     fprintf(stderr, "prefix any of the above with 'exhaustfd-' to exhaust\n");
@@ -255,6 +261,8 @@ noinline int do_action(const char* arg) {
         readdir_null();
     } else if (!strcasecmp(arg, "strlen-NULL")) {
         return strlen_null();
+    } else if (!strcasecmp(arg, "pthread_join-NULL")) {
+        return pthread_join(0, nullptr);
     } else if (!strcasecmp(arg, "heap-usage")) {
         abuse_heap();
     } else if (!strcasecmp(arg, "SIGSEGV-unmapped")) {
@@ -263,6 +271,7 @@ noinline int do_action(const char* arg) {
         munmap(map, sizeof(int));
         map[0] = '8';
     } else if (!strcasecmp(arg, "seccomp")) {
+        set_seccomp_filter();
         syscall(99999);
 #if defined(__arm__)
     } else if (!strcasecmp(arg, "kuser_helper_version")) {
@@ -276,6 +285,12 @@ noinline int do_action(const char* arg) {
     } else if (!strcasecmp(arg, "kuser_cmpxchg64")) {
         return __kuser_cmpxchg64(0, 0, 0);
 #endif
+    } else if (!strcasecmp(arg, "no_new_privs")) {
+        if (prctl(PR_SET_NO_NEW_PRIVS, 1) != 0) {
+          fprintf(stderr, "prctl(PR_SET_NO_NEW_PRIVS, 1) failed: %s\n", strerror(errno));
+          return EXIT_SUCCESS;
+        }
+        abort();
     } else {
         return usage();
     }

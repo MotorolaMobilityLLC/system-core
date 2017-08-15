@@ -20,7 +20,8 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <sys/types.h>
-#include <set>
+
+#include <map>
 #include <string>
 
 #include "open_files_list.h"
@@ -34,9 +35,19 @@ class BacktraceMap;
 int open_tombstone(std::string* path);
 
 /* Creates a tombstone file and writes the crash dump to it. */
-void engrave_tombstone(int tombstone_fd, BacktraceMap* map,
-                       const OpenFilesList& open_files, pid_t pid, pid_t tid,
-                       const std::set<pid_t>& siblings, uintptr_t abort_msg_address,
+void engrave_tombstone(int tombstone_fd, BacktraceMap* map, const OpenFilesList* open_files,
+                       pid_t pid, pid_t tid, const std::string& process_name,
+                       const std::map<pid_t, std::string>& threads, uintptr_t abort_msg_address,
                        std::string* amfd_data);
+
+void engrave_tombstone_ucontext(int tombstone_fd, uintptr_t abort_msg_address, siginfo_t* siginfo,
+                                ucontext_t* ucontext);
+
+// Compatibility shim.
+__attribute__((__unused__))
+static void engrave_tombstone_ucontext(int tombstone_fd, pid_t, pid_t, uintptr_t abort_msg_address,
+                                       siginfo_t* siginfo, ucontext_t* ucontext) {
+  engrave_tombstone_ucontext(tombstone_fd, abort_msg_address, siginfo, ucontext);
+}
 
 #endif // _DEBUGGERD_TOMBSTONE_H

@@ -48,17 +48,15 @@
 #include <utils/threads.h>
 
 #include "CommandListener.h"
-#include "LogBuffer.h"
-#include "LogListener.h"
 #include "LogAudit.h"
+#include "LogBuffer.h"
 #include "LogKlog.h"
+#include "LogListener.h"
 #include "LogUtils.h"
 
-#define KMSG_PRIORITY(PRI)                            \
-    '<',                                              \
-    '0' + LOG_MAKEPRI(LOG_DAEMON, LOG_PRI(PRI)) / 10, \
-    '0' + LOG_MAKEPRI(LOG_DAEMON, LOG_PRI(PRI)) % 10, \
-    '>'
+#define KMSG_PRIORITY(PRI)                                 \
+    '<', '0' + LOG_MAKEPRI(LOG_DAEMON, LOG_PRI(PRI)) / 10, \
+        '0' + LOG_MAKEPRI(LOG_DAEMON, LOG_PRI(PRI)) % 10, '>'
 
 //
 // The service is designed to be run by init, it does not respond well
@@ -92,7 +90,8 @@
 static int drop_privs(bool klogd, bool auditd) {
     // Tricky, if ro.build.type is "eng" then this is true because of the
     // side effect that ro.debuggable == 1 as well, else it is false.
-    bool eng = __android_logger_property_get_bool("ro.build.type", BOOL_DEFAULT_FALSE);
+    bool eng =
+        __android_logger_property_get_bool("ro.build.type", BOOL_DEFAULT_FALSE);
 
     struct sched_param param;
     memset(&param, 0, sizeof(param));
@@ -122,21 +121,24 @@ static int drop_privs(bool klogd, bool auditd) {
         if (!eng) return -1;
     }
 
-    std::unique_ptr<struct _cap_struct, int(*)(void *)> caps(cap_init(), cap_free);
+    std::unique_ptr<struct _cap_struct, int (*)(void*)> caps(cap_init(),
+                                                             cap_free);
     if (cap_clear(caps.get()) < 0) return -1;
-    cap_value_t cap_value[] = {
-        CAP_SETGID, // must be first for below
-        klogd ? CAP_SYSLOG : CAP_SETGID,
-        auditd ? CAP_AUDIT_CONTROL : CAP_SETGID
-    };
-    if (cap_set_flag(caps.get(), CAP_PERMITTED,
-                     arraysize(cap_value), cap_value,
-                     CAP_SET) < 0) return -1;
-    if (cap_set_flag(caps.get(), CAP_EFFECTIVE,
-                     arraysize(cap_value), cap_value,
-                     CAP_SET) < 0) return -1;
+    cap_value_t cap_value[] = { CAP_SETGID,  // must be first for below
+                                klogd ? CAP_SYSLOG : CAP_SETGID,
+                                auditd ? CAP_AUDIT_CONTROL : CAP_SETGID };
+    if (cap_set_flag(caps.get(), CAP_PERMITTED, arraysize(cap_value), cap_value,
+                     CAP_SET) < 0) {
+        return -1;
+    }
+    if (cap_set_flag(caps.get(), CAP_EFFECTIVE, arraysize(cap_value), cap_value,
+                     CAP_SET) < 0) {
+        return -1;
+    }
     if (cap_set_proc(caps.get()) < 0) {
-        android::prdebug("failed to set CAP_SETGID, CAP_SYSLOG or CAP_AUDIT_CONTROL (%d)", errno);
+        android::prdebug(
+            "failed to set CAP_SETGID, CAP_SYSLOG or CAP_AUDIT_CONTROL (%d)",
+            errno);
         if (!eng) return -1;
     }
 
@@ -157,8 +159,12 @@ static int drop_privs(bool klogd, bool auditd) {
         if (!eng) return -1;
     }
 
-    if (cap_set_flag(caps.get(), CAP_PERMITTED, 1, cap_value, CAP_CLEAR) < 0) return -1;
-    if (cap_set_flag(caps.get(), CAP_EFFECTIVE, 1, cap_value, CAP_CLEAR) < 0) return -1;
+    if (cap_set_flag(caps.get(), CAP_PERMITTED, 1, cap_value, CAP_CLEAR) < 0) {
+        return -1;
+    }
+    if (cap_set_flag(caps.get(), CAP_EFFECTIVE, 1, cap_value, CAP_CLEAR) < 0) {
+        return -1;
+    }
     if (cap_set_proc(caps.get()) < 0) {
         android::prdebug("failed to clear CAP_SETGID (%d)", errno);
         if (!eng) return -1;
@@ -168,8 +174,8 @@ static int drop_privs(bool klogd, bool auditd) {
 }
 
 // Property helper
-static bool check_flag(const char *prop, const char *flag) {
-    const char *cp = strcasestr(prop, flag);
+static bool check_flag(const char* prop, const char* flag) {
+    const char* cp = strcasestr(prop, flag);
     if (!cp) {
         return false;
     }
@@ -183,7 +189,7 @@ static bool check_flag(const char *prop, const char *flag) {
 }
 
 static int fdDmesg = -1;
-void android::prdebug(const char *fmt, ...) {
+void android::prdebug(const char* fmt, ...) {
     if (fdDmesg < 0) {
         return;
     }
@@ -211,14 +217,13 @@ void android::prdebug(const char *fmt, ...) {
 
 static sem_t uidName;
 static uid_t uid;
-static char *name;
+static char* name;
 
 static sem_t reinit;
 static bool reinit_running = false;
-static LogBuffer *logBuf = NULL;
+static LogBuffer* logBuf = NULL;
 
-static bool package_list_parser_cb(pkg_info *info, void * /* userdata */) {
-
+static bool package_list_parser_cb(pkg_info* info, void* /* userdata */) {
     bool rc = true;
     if (info->uid == uid) {
         name = strdup(info->name);
@@ -287,7 +292,6 @@ static void *reinit_thread_start(void * /*obj*/) {
 #endif
 
     while (reinit_running && !sem_wait(&reinit) && reinit_running) {
-
         // uidToName Privileged Worker
         if (uid) {
             name = NULL;
@@ -301,8 +305,26 @@ static void *reinit_thread_start(void * /*obj*/) {
 
         if (fdDmesg >= 0) {
             static const char reinit_message[] = { KMSG_PRIORITY(LOG_INFO),
-                'l', 'o', 'g', 'd', '.', 'd', 'a', 'e', 'm', 'o', 'n', ':',
-                ' ', 'r', 'e', 'i', 'n', 'i', 't', '\n' };
+                                                   'l',
+                                                   'o',
+                                                   'g',
+                                                   'd',
+                                                   '.',
+                                                   'd',
+                                                   'a',
+                                                   'e',
+                                                   'm',
+                                                   'o',
+                                                   'n',
+                                                   ':',
+                                                   ' ',
+                                                   'r',
+                                                   'e',
+                                                   'i',
+                                                   'n',
+                                                   'i',
+                                                   't',
+                                                   '\n' };
             write(fdDmesg, reinit_message, sizeof(reinit_message));
         }
 
@@ -377,7 +399,7 @@ static void *reinit_thread_start(void * /*obj*/) {
 
 static sem_t sem_name;
 
-char *android::uidToName(uid_t u) {
+char* android::uidToName(uid_t u) {
     if (!u || !reinit_running) {
         return NULL;
     }
@@ -390,7 +412,7 @@ char *android::uidToName(uid_t u) {
     name = NULL;
     sem_post(&reinit);
     sem_wait(&uidName);
-    char *ret = name;
+    char* ret = name;
 
     sem_post(&sem_name);
 
@@ -403,7 +425,7 @@ void reinit_signal_handler(int /*signal*/) {
     sem_post(&reinit);
 }
 
-static void readDmesg(LogAudit *al, LogKlog *kl) {
+static void readDmesg(LogAudit* al, LogKlog* kl) {
     if (!al && !kl) {
         return;
     }
@@ -413,8 +435,8 @@ static void readDmesg(LogAudit *al, LogKlog *kl) {
         return;
     }
 
-    size_t len = rc + 1024; // Margin for additional input race or trailing nul
-    std::unique_ptr<char []> buf(new char[len]);
+    size_t len = rc + 1024;  // Margin for additional input race or trailing nul
+    std::unique_ptr<char[]> buf(new char[len]);
 
     rc = klogctl(KLOG_READ_ALL, buf.get(), len);
     if (rc <= 0) {
@@ -449,10 +471,8 @@ static int issueReinit() {
     (void)cap_set_proc(caps);
     (void)cap_free(caps);
 
-    int sock = TEMP_FAILURE_RETRY(
-        socket_local_client("logd",
-                            ANDROID_SOCKET_NAMESPACE_RESERVED,
-                            SOCK_STREAM));
+    int sock = TEMP_FAILURE_RETRY(socket_local_client(
+        "logd", ANDROID_SOCKET_NAMESPACE_RESERVED, SOCK_STREAM));
     if (sock < 0) return -errno;
 
     static const char reinitStr[] = "reinit";
@@ -482,7 +502,7 @@ static int issueReinit() {
 // controlling the user space logger, and for any additional
 // logging plugins like auditd and restart control. Additional
 // transitory per-client threads are created for each reader.
-int main(int argc, char *argv[]) {
+int main(int argc, char* argv[]) {
     // issue reinit command. KISS argument parsing.
     if ((argc > 1) && argv[1] && !strcmp(argv[1], "--reinit")) {
         return issueReinit();
@@ -495,17 +515,15 @@ int main(int argc, char *argv[]) {
     }
 
     int fdPmesg = -1;
-    bool klogd = __android_logger_property_get_bool("logd.kernel",
-                                                    BOOL_DEFAULT_TRUE |
-                                                    BOOL_DEFAULT_FLAG_PERSIST |
-                                                    BOOL_DEFAULT_FLAG_ENG |
-                                                    BOOL_DEFAULT_FLAG_SVELTE);
+    bool klogd = __android_logger_property_get_bool(
+        "logd.kernel", BOOL_DEFAULT_TRUE | BOOL_DEFAULT_FLAG_PERSIST |
+                           BOOL_DEFAULT_FLAG_ENG | BOOL_DEFAULT_FLAG_SVELTE);
     if (klogd) {
         static const char proc_kmsg[] = "/proc/kmsg";
         fdPmesg = android_get_control_file(proc_kmsg);
         if (fdPmesg < 0) {
-            fdPmesg = TEMP_FAILURE_RETRY(open(proc_kmsg,
-                                              O_RDONLY | O_NDELAY | O_CLOEXEC));
+            fdPmesg = TEMP_FAILURE_RETRY(
+                open(proc_kmsg, O_RDONLY | O_NDELAY | O_CLOEXEC));
         }
         if (fdPmesg < 0) android::prdebug("Failed to open %s\n", proc_kmsg);
     }
@@ -521,8 +539,7 @@ int main(int argc, char *argv[]) {
         memset(&param, 0, sizeof(param));
         pthread_attr_setschedparam(&attr, &param);
         pthread_attr_setschedpolicy(&attr, SCHED_BATCH);
-        if (!pthread_attr_setdetachstate(&attr,
-                                         PTHREAD_CREATE_DETACHED)) {
+        if (!pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED)) {
             pthread_t thread;
             reinit_running = true;
             if (pthread_create(&thread, &attr, reinit_thread_start, NULL)) {
@@ -532,8 +549,8 @@ int main(int argc, char *argv[]) {
         pthread_attr_destroy(&attr);
     }
 
-    bool auditd = __android_logger_property_get_bool("ro.logd.auditd",
-                                                     BOOL_DEFAULT_TRUE);
+    bool auditd =
+        __android_logger_property_get_bool("ro.logd.auditd", BOOL_DEFAULT_TRUE);
     if (drop_privs(klogd, auditd) != 0) {
         return -1;
     }
@@ -542,7 +559,7 @@ int main(int argc, char *argv[]) {
     // socket connection, and as a reader lock on a range of log
     // entries.
 
-    LastLogTimes *times = new LastLogTimes();
+    LastLogTimes* times = new LastLogTimes();
 
     // LogBuffer is the object which is responsible for holding all
     // log entries.
@@ -551,18 +568,17 @@ int main(int argc, char *argv[]) {
 
     signal(SIGHUP, reinit_signal_handler);
 
-    if (__android_logger_property_get_bool("logd.statistics",
-                                           BOOL_DEFAULT_TRUE |
-                                           BOOL_DEFAULT_FLAG_PERSIST |
-                                           BOOL_DEFAULT_FLAG_ENG |
-                                           BOOL_DEFAULT_FLAG_SVELTE)) {
+    if (__android_logger_property_get_bool(
+            "logd.statistics", BOOL_DEFAULT_TRUE | BOOL_DEFAULT_FLAG_PERSIST |
+                                   BOOL_DEFAULT_FLAG_ENG |
+                                   BOOL_DEFAULT_FLAG_SVELTE)) {
         logBuf->enableStatistics();
     }
 
     // LogReader listens on /dev/socket/logdr. When a client
     // connects, log entries in the LogBuffer are written to the client.
 
-    LogReader *reader = new LogReader(logBuf);
+    LogReader* reader = new LogReader(logBuf);
     if (reader->startListener()) {
         exit(1);
     }
@@ -571,7 +587,7 @@ int main(int argc, char *argv[]) {
     // initiated log messages. New log entries are added to LogBuffer
     // and LogReader is notified to send updates to connected clients.
 
-    LogListener *swl = new LogListener(logBuf, reader);
+    LogListener* swl = new LogListener(logBuf, reader);
     // Backlog and /proc/sys/net/unix/max_dgram_qlen set to large value
     if (swl->startListener(600)) {
         exit(1);
@@ -580,7 +596,7 @@ int main(int argc, char *argv[]) {
     // Command listener listens on /dev/socket/logd for incoming logd
     // administrative commands.
 
-    CommandListener *cl = new CommandListener(logBuf, reader, swl);
+    CommandListener* cl = new CommandListener(logBuf, reader, swl);
     if (cl->startListener()) {
         exit(1);
     }
@@ -589,17 +605,16 @@ int main(int argc, char *argv[]) {
     // initiated log messages. New log entries are added to LogBuffer
     // and LogReader is notified to send updates to connected clients.
 
-    LogAudit *al = NULL;
+    LogAudit* al = NULL;
     if (auditd) {
         al = new LogAudit(logBuf, reader,
                           __android_logger_property_get_bool(
-                              "ro.logd.auditd.dmesg",
-                              BOOL_DEFAULT_TRUE)
-                                  ? fdDmesg
-                                  : -1);
+                              "ro.logd.auditd.dmesg", BOOL_DEFAULT_TRUE)
+                              ? fdDmesg
+                              : -1);
     }
 
-    LogKlog *kl = NULL;
+    LogKlog* kl = NULL;
     if (klogd) {
         kl = new LogKlog(logBuf, reader, fdDmesg, fdPmesg, al != NULL);
     }

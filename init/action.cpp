@@ -146,8 +146,7 @@ bool Action::ParsePropertyTrigger(const std::string& trigger, std::string* err) 
     std::string prop_value(prop_name.substr(equal_pos + 1));
     prop_name.erase(equal_pos);
 
-    auto res = property_triggers_.emplace(prop_name, prop_value);
-    if (res.second == false) {
+    if (auto [it, inserted] = property_triggers_.emplace(prop_name, prop_value); !inserted) {
         *err = "multiple property triggers found for same property";
         return false;
     }
@@ -212,9 +211,7 @@ bool Action::CheckPropertyTriggers(const std::string& name,
     }
 
     bool found = name.empty();
-    for (const auto& t : property_triggers_) {
-        const auto& trigger_name = t.first;
-        const auto& trigger_value = t.second;
+    for (const auto& [trigger_name, trigger_value] : property_triggers_) {
         if (trigger_name == name) {
             if (trigger_value != "*" && trigger_value != value) {
                 return false;
@@ -249,20 +246,16 @@ bool Action::TriggersEqual(const Action& other) const {
 }
 
 std::string Action::BuildTriggersString() const {
-    std::string result;
+    std::vector<std::string> triggers;
 
-    for (const auto& t : property_triggers_) {
-        result += t.first;
-        result += '=';
-        result += t.second;
-        result += ' ';
+    for (const auto& [trigger_name, trigger_value] : property_triggers_) {
+        triggers.emplace_back(trigger_name + '=' + trigger_value);
     }
     if (!event_trigger_.empty()) {
-        result += event_trigger_;
-        result += ' ';
+        triggers.emplace_back(event_trigger_);
     }
-    result.pop_back();
-    return result;
+
+    return Join(triggers, " && ");
 }
 
 void Action::DumpState() const {
@@ -271,7 +264,7 @@ void Action::DumpState() const {
 
     for (const auto& c : commands_) {
         std::string cmd_str = c.BuildCommandString();
-        LOG(INFO) << "  %s" << cmd_str;
+        LOG(INFO) << "  " << cmd_str;
     }
 }
 

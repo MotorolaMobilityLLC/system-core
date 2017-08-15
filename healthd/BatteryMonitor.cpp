@@ -129,7 +129,7 @@ int BatteryMonitor::getBatteryHealth(const char* status) {
 }
 
 int BatteryMonitor::readFromFile(const String8& path, std::string* buf) {
-    if (android::base::ReadFileToString(String8::std_string(path), buf)) {
+    if (android::base::ReadFileToString(path.c_str(), buf)) {
         *buf = android::base::Trim(*buf);
     }
     return buf->length();
@@ -141,7 +141,6 @@ BatteryMonitor::PowerSupplyType BatteryMonitor::readPowerSupplyType(const String
     struct sysfsStringEnumMap supplyTypeMap[] = {
             { "Unknown", ANDROID_POWER_SUPPLY_TYPE_UNKNOWN },
             { "Battery", ANDROID_POWER_SUPPLY_TYPE_BATTERY },
-            { "BMS", ANDROID_POWER_SUPPLY_TYPE_BATTERY },
             { "UPS", ANDROID_POWER_SUPPLY_TYPE_AC },
             { "Mains", ANDROID_POWER_SUPPLY_TYPE_AC },
             { "USB", ANDROID_POWER_SUPPLY_TYPE_USB },
