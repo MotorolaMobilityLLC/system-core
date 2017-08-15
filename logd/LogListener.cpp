@@ -40,9 +40,13 @@ bool LogListener::onDataAvailable(SocketClient* cli) {
         prctl(PR_SET_NAME, "logd.writer");
         name_set = true;
     }
-
+#if defined(MTK_LOGD_ENHANCE) && defined(ANDROID_LOG_MUCH_COUNT)
+    char buffer[sizeof_log_id_t + sizeof(uint16_t) + sizeof(log_time) +
+                LOGGER_ENTRY_MAX_PAYLOAD + 18];   // tag address: 64bit 16 char number, 0x 2 char
+#else
     char buffer[sizeof_log_id_t + sizeof(uint16_t) + sizeof(log_time) +
                 LOGGER_ENTRY_MAX_PAYLOAD];
+#endif
     struct iovec iov = { buffer, sizeof(buffer) };
 
     alignas(4) char control[CMSG_SPACE(sizeof(struct ucred))];
