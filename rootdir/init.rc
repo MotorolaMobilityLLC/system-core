@@ -299,6 +299,10 @@ on late-init
 
 on post-fs
     start logd
+    start servicemanager
+    start hwservicemanager
+    start vndservicemanager
+
     # once everything is setup, no need to modify /
     mount rootfs rootfs / ro remount
     # Mount shared so changes propagate into child namespaces
@@ -348,7 +352,8 @@ on post-fs
     mkdir /cache/lost+found 0770 root root
 
 on late-fs
-    start hwservicemanager
+    # HALs required before storage encryption can get unlocked (FBE/FDE)
+    class_start early_hal
 
 on post-fs-data
     # We chown/chmod /data again so because mount is run as root + defaults
@@ -404,13 +409,16 @@ on post-fs-data
     mkdir /data/misc/boottrace 0771 system shell
     mkdir /data/misc/update_engine 0700 root root
     mkdir /data/misc/trace 0700 root root
-    mkdir /data/misc/reboot 0700 root root
+    mkdir /data/misc/reboot 0700 system system
     # profile file layout
     mkdir /data/misc/profiles 0771 system system
     mkdir /data/misc/profiles/cur 0771 system system
     mkdir /data/misc/profiles/ref 0771 system system
     mkdir /data/misc/profman 0770 system shell
     mkdir /data/misc/gcov 0770 root root
+
+    mkdir /data/vendor 0771 root root
+    mkdir /data/vendor/hardware 0771 root root
 
     # For security reasons, /data/local/tmp should always be empty.
     # Do not place files or directories in /data/local/tmp
@@ -597,7 +605,7 @@ on boot
 
 on nonencrypted
     # A/B update verifier that marks a successful boot.
-    exec - root cache -- /system/bin/update_verifier nonencrypted
+    exec_start update_verifier_nonencrypted
     class_start main
     class_start late_start
 
@@ -620,12 +628,12 @@ on property:vold.decrypt=trigger_post_fs_data
 
 on property:vold.decrypt=trigger_restart_min_framework
     # A/B update verifier that marks a successful boot.
-    exec - root cache -- /system/bin/update_verifier trigger_restart_min_framework
+    exec_start update_verifier
     class_start main
 
 on property:vold.decrypt=trigger_restart_framework
     # A/B update verifier that marks a successful boot.
-    exec - root cache -- /system/bin/update_verifier trigger_restart_framework
+    exec_start update_verifier
     class_start main
     class_start late_start
 
@@ -638,6 +646,12 @@ on property:sys.powerctl=*
 
 on property:sys.boot_completed=1
     bootchart stop
+
+on property:sys.boot_completed=1 && property:ro.build.type=user
+    write /proc/sys/kernel/modules_disabled 1
+
+on property:sys.boot_completed=1 && property:ro.build.type=userdebug
+    write /proc/sys/kernel/modules_disabled 1
 
 # system server cannot write to /proc/sys files,
 # and chown/chmod does not work for /proc/sys/ entries.

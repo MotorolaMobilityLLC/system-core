@@ -386,15 +386,18 @@ static int32_t ParseZipArchive(ZipArchive* archive) {
   const uint8_t* const cd_end = cd_ptr + cd_length;
   const uint8_t* ptr = cd_ptr;
   for (uint16_t i = 0; i < num_entries; i++) {
+    if (ptr > cd_end - sizeof(CentralDirectoryRecord)) {
+      ALOGW("Zip: ran off the end (at %" PRIu16 ")", i);
+#if defined(__ANDROID__)
+      android_errorWriteLog(0x534e4554, "36392138");
+#endif
+      return -1;
+    }
+
     const CentralDirectoryRecord* cdr =
         reinterpret_cast<const CentralDirectoryRecord*>(ptr);
     if (cdr->record_signature != CentralDirectoryRecord::kSignature) {
       ALOGW("Zip: missed a central dir sig (at %" PRIu16 ")", i);
-      return -1;
-    }
-
-    if (ptr + sizeof(CentralDirectoryRecord) > cd_end) {
-      ALOGW("Zip: ran off the end (at %" PRIu16 ")", i);
       return -1;
     }
 
@@ -573,6 +576,17 @@ static int32_t FindEntry(const ZipArchive* archive, const int ent,
 
   // Paranoia: Match the values specified in the local file header
   // to those specified in the central directory.
+
+  // Verify that the central directory and local file header have the same general purpose bit
+  // flags set.
+  if (lfh->gpb_flags != cdr->gpb_flags) {
+    ALOGW("Zip: gpb flag mismatch. expected {%04" PRIx16 "}, was {%04" PRIx16 "}",
+          cdr->gpb_flags, lfh->gpb_flags);
+    return kInconsistentInformation;
+  }
+
+  // If there is no trailing data descriptor, verify that the central directory and local file
+  // header agree on the crc, compressed, and uncompressed sizes of the entry.
   if ((lfh->gpb_flags & kGPBDDFlagMask) == 0) {
     data->has_data_descriptor = 0;
     if (data->compressed_length != lfh->compressed_size

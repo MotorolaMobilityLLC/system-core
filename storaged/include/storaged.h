@@ -27,6 +27,7 @@
 #include <vector>
 
 #include <batteryservice/IBatteryPropertiesListener.h>
+#include <batteryservice/IBatteryPropertiesRegistrar.h>
 
 #include "storaged_info.h"
 #include "storaged_uid_monitor.h"
@@ -230,7 +231,6 @@ public:
 // Periodic chores intervals in seconds
 #define DEFAULT_PERIODIC_CHORES_INTERVAL_UNIT ( 60 )
 #define DEFAULT_PERIODIC_CHORES_INTERVAL_DISK_STATS_PUBLISH ( 3600 )
-#define DEFAULT_PERIODIC_CHORES_INTERVAL_EMMC_INFO_PUBLISH ( 86400 )
 #define DEFAULT_PERIODIC_CHORES_INTERVAL_UID_IO ( 3600 )
 #define DEFAULT_PERIODIC_CHORES_INTERVAL_UID_IO_LIMIT (300)
 
@@ -240,22 +240,22 @@ public:
 struct storaged_config {
     int periodic_chores_interval_unit;
     int periodic_chores_interval_disk_stats_publish;
-    int periodic_chores_interval_emmc_info_publish;
     int periodic_chores_interval_uid_io;
     bool proc_uid_io_available;      // whether uid_io is accessible
     bool diskstats_available;   // whether diskstats is accessible
     int event_time_check_usec;  // check how much cputime spent in event loop
 };
 
-class storaged_t : public BnBatteryPropertiesListener {
+class storaged_t : public BnBatteryPropertiesListener,
+                   public IBinder::DeathRecipient {
 private:
     time_t mTimer;
     storaged_config mConfig;
     disk_stats_publisher mDiskStats;
     disk_stats_monitor mDsm;
-    storage_info_t *info = nullptr;
     uid_monitor mUidm;
     time_t mStarttime;
+    sp<IBatteryPropertiesRegistrar> battery_properties;
 public:
     storaged_t(void);
     ~storaged_t() {}
@@ -263,9 +263,6 @@ public:
     void event_checked(void);
     void pause(void) {
         sleep(mConfig.periodic_chores_interval_unit);
-    }
-    void set_storage_info(storage_info_t *storage_info) {
-        info = storage_info;
     }
 
     time_t get_starttime(void) {
@@ -287,6 +284,7 @@ public:
 
     void init_battery_service();
     virtual void batteryPropertiesChanged(struct BatteryProperties props);
+    void binderDied(const wp<IBinder>& who);
 };
 
 // Eventlog tag

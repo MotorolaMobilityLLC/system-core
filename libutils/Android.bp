@@ -14,9 +14,18 @@
 
 cc_library_headers {
     name: "libutils_headers",
+    vendor_available: true,
     host_supported: true,
+
+    header_libs: ["libsystem_headers",],
+    export_header_lib_headers: ["libsystem_headers",],
     export_include_dirs: ["include"],
+
     target: {
+        android: {
+            header_libs: ["libbacktrace_headers"],
+            export_header_lib_headers: ["libbacktrace_headers"],
+        },
         linux_bionic: {
             enabled: true,
         },
@@ -28,6 +37,7 @@ cc_library_headers {
 
 cc_library {
     name: "libutils",
+    vendor_available: true,
     host_supported: true,
 
     srcs: [
@@ -56,8 +66,12 @@ cc_library {
 
     cflags: ["-Werror"],
     include_dirs: ["external/safe-iop/include"],
-    header_libs: ["libutils_headers"],
-    export_header_lib_headers: ["libutils_headers"],
+    header_libs: [
+        "libutils_headers",
+    ],
+    export_header_lib_headers: [
+        "libutils_headers",
+    ],
 
     arch: {
         mips: {
