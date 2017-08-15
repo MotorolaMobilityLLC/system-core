@@ -294,22 +294,6 @@ void LogKlog::calculateCorrection(const log_time& monotonic,
 }
 
 
-const char* android::strnstr(const char* s, size_t len, const char* needle) {
-    char c;
-
-    if (!len) return NULL;
-    if ((c = *needle++) != 0) {
-        size_t needleLen = strlen(needle);
-        do {
-            do {
-                if (len <= needleLen) return NULL;
-                --len;
-            } while (*s++ != c);
-        } while (fastcmp<memcmp>(s, needle, needleLen));
-        s--;
-    }
-    return s;
-}
 #ifdef MTK_LOGD_ENHANCE
 char nowtimestr[64] = {0};
 #endif
@@ -324,13 +308,11 @@ void LogKlog::sniffTime(log_time& now, const char*& buf, ssize_t len,
         if (cp && (cp > &buf[len - 1])) cp = nullptr;
     }
     if (cp) {
-        static const char healthd[] = "healthd";
-        static const char battery[] = ": battery ";
 #ifdef MTK_LOGD_ENHANCE
         snprintf(nowtimestr, sizeof(nowtimestr), "[%5lu.%06lu]",
                (unsigned long)now.tv_sec, (unsigned long)now.tv_nsec/1000);
 #endif
-        len -= cp - *buf;
+        len -= cp - buf;
         if (len && isspace(*cp)) {
             ++cp;
             --len;
