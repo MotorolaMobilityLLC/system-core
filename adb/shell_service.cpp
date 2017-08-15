@@ -652,6 +652,9 @@ void Subprocess::WaitForExit() {
         int status;
         if (pid_ == waitpid(pid_, &status, 0)) {
             D("post waitpid (pid=%d) status=%04x", pid_, status);
+#if !ADB_HOST
+            ADBLOG("post waitpid (pid=%d) status=%04x", pid_, status);
+#endif
             if (WIFSIGNALED(status)) {
                 exit_code = 0x80 | WTERMSIG(status);
                 D("subprocess killed by signal %d", WTERMSIG(status));

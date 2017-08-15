@@ -19,6 +19,7 @@
 
 #include <android-base/logging.h>
 #include <android-base/stringprintf.h>
+#include <log/log.h>
 
 /* IMPORTANT: if you change the following list, don't
  * forget to update the corresponding 'tags' table in
@@ -53,6 +54,10 @@ enum AdbTrace {
 #define D(...) \
     VLOG(TRACE_TAG) << android::base::StringPrintf(__VA_ARGS__)
 
+#if !ADB_HOST
+#define ADBLOG(...) \
+    __android_log_print(ANDROID_LOG_INFO, "ADB_SERVICES", __VA_ARGS__ );
+#endif
 
 extern int adb_trace_mask;
 void adb_trace_init(char**);

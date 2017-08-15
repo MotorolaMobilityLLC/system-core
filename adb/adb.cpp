@@ -350,6 +350,10 @@ void handle_packet(apacket *p, atransport *t)
 
     switch(p->msg.command){
     case A_SYNC:
+#if !ADB_HOST
+        ADBLOG("%s: %s %08x %08x %04x \n",
+            "recv", "SYNC", p->msg.arg0, p->msg.arg1, p->msg.data_length);
+#endif
         if (p->msg.arg0){
             send_packet(p, t);
 #if ADB_HOST
@@ -363,6 +367,10 @@ void handle_packet(apacket *p, atransport *t)
         return;
 
     case A_CNXN:  // CONNECT(version, maxdata, "system-id-string")
+#if !ADB_HOST
+        ADBLOG("%s: %s %08x %08x %04x %s\n",
+            "recv", "CNXN", p->msg.arg0, p->msg.arg1, p->msg.data_length, p->data);
+#endif
         handle_new_connection(t, p);
         break;
 

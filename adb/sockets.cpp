@@ -35,6 +35,14 @@
 #include <log/log_properties.h>
 #endif
 
+#if !ADB_HOST //Debug purpose
+clock_t read_time = 0;
+int read_data = 0;
+clock_t write_time = 0;
+int write_data = 0;
+clock_t curr_time = 0;
+#endif
+
 #include "adb.h"
 #include "adb_io.h"
 #include "transport.h"
@@ -143,8 +151,16 @@ static int local_socket_enqueue(asocket* s, apacket* p) {
         if (r > 0) {
             p->len -= r;
             p->ptr += r;
+#if !ADB_HOST //Debug purpose
+            write_data += r;
+#endif
             continue;
         }
+#if !ADB_HOST //Debug purpose
+        if (r <= 0) {
+            ADBLOG("LS(%d): not ready, errno=%d: %s", s->id, errno, strerror(errno));
+        }
+#endif
         if ((r == 0) || (errno != EAGAIN)) {
             D("LS(%d): not ready, errno=%d: %s", s->id, errno, strerror(errno));
             put_apacket(p);
@@ -155,6 +171,15 @@ static int local_socket_enqueue(asocket* s, apacket* p) {
             break;
         }
     }
+
+#if !ADB_HOST //Debug purpose
+    curr_time = clock();
+    if ( (((double) (curr_time - write_time)) / CLOCKS_PER_SEC) > 20.0 ) {
+        ADBLOG("+LS_write_data=%d\n", write_data);
+        write_time = curr_time;
+        write_data = 0;
+    }
+#endif
 
     if (p->len == 0) {
         put_apacket(p);
@@ -269,6 +294,9 @@ static void local_socket_event_func(int fd, unsigned ev, void* _s) {
                 } else if (r > 0) {
                     p->ptr += r;
                     p->len -= r;
+#if !ADB_HOST //Debug purpose
+                    write_data += r;
+#endif
                     continue;
                 }
 
@@ -277,7 +305,14 @@ static void local_socket_event_func(int fd, unsigned ev, void* _s) {
                 s->close(s);
                 return;
             }
-
+#if !ADB_HOST //Debug purpose
+            clock_t curr_time = clock();
+            if ( (((double) (curr_time - write_time)) / CLOCKS_PER_SEC) > 20.0 ) {
+                ADBLOG("+EV_write_data=%d\n", write_data);
+                write_time = curr_time;
+                write_data = 0;
+            }
+#endif
             if (p->len == 0) {
                 s->pkt_first = p->next;
                 if (s->pkt_first == 0) {
@@ -323,6 +358,9 @@ static void local_socket_event_func(int fd, unsigned ev, void* _s) {
             } else if (r > 0) {
                 avail -= r;
                 x += r;
+#if !ADB_HOST //Debug purpose
+                read_data += r;
+#endif
                 continue;
             }
 
@@ -330,6 +368,14 @@ static void local_socket_event_func(int fd, unsigned ev, void* _s) {
             is_eof = 1;
             break;
         }
+#if !ADB_HOST //Debug purpose
+        clock_t curr_time = clock();
+        if ( (((double) (curr_time - read_time)) / CLOCKS_PER_SEC) > 20.0 ) {
+            ADBLOG("+read_data=%d\n", read_data);
+            read_time = curr_time;
+            read_data = 0;
+        }
+#endif
         D("LS(%d): fd=%d post avail loop. r=%d is_eof=%d forced_eof=%d", s->id, s->fd, r, is_eof,
           s->fde.force_eof);
         if ((avail == max_payload) || (s->peer == 0)) {
