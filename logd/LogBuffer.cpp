@@ -63,7 +63,7 @@ int log_much_alloc_size;
 
 static void *logmuchaee_thread_start(void * /*obj*/) {
     prctl(PR_SET_NAME, "logd.logmuch");
-    android::prdebug("logd:logmuch file total size %d.\n", log_much_used_size);
+    android::prdebug("logmuch file total size %d.\n", log_much_used_size);
     if (log_much_used_size < log_much_alloc_size)
         log_much_buf[log_much_used_size] = 0;
     set_sched_policy(0, SP_FOREGROUND);
@@ -124,6 +124,9 @@ void LogBuffer::init() {
             setSize(i, LOG_BUFFER_MIN_SIZE);
         }
     }
+#if defined(MTK_LOGD_ENHANCE)
+    setSize(LOG_ID_KERNEL, 512 * 1024);
+#endif
 #endif
     bool lastMonotonic = monotonic;
     monotonic = android_log_clockid() == CLOCK_MONOTONIC;
@@ -274,7 +277,7 @@ int LogBuffer::log(log_id_t log_id, log_time realtime, uid_t uid, pid_t pid,
         static int delay_time = 3*60;
         int file_count = 0;
         char *buff = NULL;
-        char log_type[7];
+        const char *log_type;
         const char *log_tag = NULL;
         const char *log_msg;
         int log_prio = ANDROID_LOG_INFO;
@@ -348,7 +351,7 @@ int LogBuffer::log(log_id_t log_id, log_time realtime, uid_t uid, pid_t pid,
             delay_time = 0;
             log_detect_value = original_detect_value;
             original_detect_value = 0;
-            android::prdebug("logd: detect delay end:level %d,old level %d.\n",
+            android::prdebug("detect delay end:level %d,old level %d.\n",
             log_detect_value, original_detect_value);
         }
     }
@@ -384,7 +387,7 @@ int LogBuffer::log(log_id_t log_id, log_time realtime, uid_t uid, pid_t pid,
             log_detect_value = original_detect_value;
         }
         log_detect_value = 2 * log_detect_value;
-        android::prdebug("logd: detect delay:time %d, level %d,old level %d.\n",
+        android::prdebug("detect delay:time %d, level %d,old level %d.\n",
             delay_time, log_detect_value, original_detect_value);
      }
 
@@ -431,7 +434,7 @@ int LogBuffer::log(log_id_t log_id, log_time realtime, uid_t uid, pid_t pid,
 #endif
         strftime(buff, 1024, "%m-%d %H:%M:%S", ptm);
 
-        android::prdebug("logd: android log much:line %d, time %d, %lu.\n",
+        android::prdebug("android log much:line %d, time %d, %lu.\n",
             line_count, realtime.tv_sec, old_time);
 
         LogTimeEntry::lock();
@@ -453,35 +456,20 @@ int LogBuffer::log(log_id_t log_id, log_time realtime, uid_t uid, pid_t pid,
                     goto next_log;
 
                 case LOG_ID_EVENTS:
-                    strcpy(log_type, "EVENTS");
-                    log_tag = android::tagToName((*test)->getTag());
+                    log_type = android_log_id_to_name((*test)->getLogId());
+                    log_tag = tagToName((*test)->getTag());
+                    // log_tag = android::tagToName((*test)->getTag());
                     log_msg = NULL;
                     break;
 
                 case LOG_ID_MAIN:
-                    strcpy(log_type, "MAIN");
-                    log_prio = (*test)->getMsg()[0];
-                    log_tag = (*test)->getMsg() + 1;
-                    log_msg = (*test)->getMsg() + strlen(log_tag) + 2;
-                    break;
-
                 case LOG_ID_SYSTEM:
-                    strcpy(log_type, "SYSTEM");
-                    log_prio = (*test)->getMsg()[0];
-                    log_tag = (*test)->getMsg() + 1;
-                    log_msg = (*test)->getMsg() + strlen(log_tag) + 2;
-                    break;
-
                 case LOG_ID_CRASH:
-                    strcpy(log_type, "CRASH");
-                    log_prio = (*test)->getMsg()[0];
-                    log_tag = (*test)->getMsg() + 1;
-                    log_msg = (*test)->getMsg() + strlen(log_tag) + 2;
-                    break;
-
                 case LOG_ID_RADIO:
-                    strcpy(log_type, "RADIO");
-                    log_prio = (*test)->getMsg()[0];
+                    log_type = android_log_id_to_name((*test)->getLogId());
+                    if ((*test)->getMsgLen() == 0)
+                        goto next_log;
+                    log_prio = *((*test)->getMsg());
                     log_tag = (*test)->getMsg() + 1;
                     log_msg = (*test)->getMsg() + strlen(log_tag) + 2;
                     break;
@@ -525,13 +513,13 @@ next_log:
                 test_last = test;
         }
         LogTimeEntry::unlock();
-        /* close(fd_file); */
+
         pthread_attr_t attr;
         if ((file_count / 8 > (log_detect_value * detect_time) / 10) && !pthread_attr_init(&attr)) {
             struct sched_param param;
 
             memset(aee_string, 0, 70);
-            android::prdebug("logd:logmuch file total size %d.\n", log_much_used_size);
+            android::prdebug("logmuch file total size %d.\n", log_much_used_size);
             sprintf(aee_string, "Android log much: %d, %d.detect time %d.level %d.",
                 line_count, file_count, detect_time, log_detect_value);
             memset(&param, 0, sizeof(param));
@@ -1027,9 +1015,9 @@ bool LogBuffer::prune(log_id_t id, unsigned long pruneRows, uid_t caller_uid) {
 #ifdef MTK_LOGD_ENHANCE
     if (stats.sizes(id) > (100 * log_buffer_size(id))) {
 #if defined(__LP64__)
-        android::prdebug("logd: the %d log size is %lu.\n", id, stats.sizes(id));
+        android::prdebug("the %d log size is %lu.\n", id, stats.sizes(id));
 #else
-        android::prdebug("logd: the %d log size is %d.\n", id, stats.sizes(id));
+        android::prdebug("the %d log size is %d.\n", id, stats.sizes(id));
 #endif
     if (pruneRows == maxPrune) {
         pruneRows = stats.realElements(id) * (stats.sizes(id) - log_buffer_size(id)) / stats.sizes(id);

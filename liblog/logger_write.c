@@ -407,12 +407,13 @@ LIBLOG_ABI_PUBLIC int __android_log_buf_write(int bufID, int prio,
   struct iovec vec[3];
   char tmp_tag[32];
 
-  if (!tag) tag = "";
-
-#ifdef MTK_LOGD_ENHANCE
-     if (!__android_log_is_loggable(prio, tag, ANDROID_LOG_VERBOSE))
-        return 0;
+#if defined(MTK_LOGD_ENHANCE) && defined(ANDROID_LOG_MUCH_COUNT)
+  char new_tag[LOG_BUF_SIZE];
+  void* caller = NULL;
+  int size;
 #endif
+
+  if (!tag) tag = "";
 
   /* XXX: This needs to go! */
   if ((bufID != LOG_ID_RADIO) &&
@@ -426,6 +427,17 @@ LIBLOG_ABI_PUBLIC int __android_log_buf_write(int bufID, int prio,
     snprintf(tmp_tag, sizeof(tmp_tag), "use-Rlog/RLOG-%s", tag);
     tag = tmp_tag;
   }
+#if defined(MTK_LOGD_ENHANCE) && defined(ANDROID_LOG_MUCH_COUNT)
+  if (strstr(tag, "-0x") == NULL) {
+      caller = __builtin_return_address(0);
+      size = sprintf(new_tag, "%s", tag);
+      snprintf(new_tag+size, sizeof(new_tag)-size, "-%p", caller);
+      new_tag[strlen(new_tag) - 1] = '0';
+      new_tag[strlen(new_tag) - 2] = '0';
+      new_tag[strlen(new_tag) - 3] = '0';
+      tag = new_tag;
+    }
+#endif
 
 #if __BIONIC__
   if (prio == ANDROID_LOG_FATAL) {
@@ -456,10 +468,26 @@ LIBLOG_ABI_PUBLIC int __android_log_print(int prio, const char* tag,
                                           const char* fmt, ...) {
   va_list ap;
   char buf[LOG_BUF_SIZE];
+#if defined(MTK_LOGD_ENHANCE) && defined(ANDROID_LOG_MUCH_COUNT)
+  char new_tag[LOG_BUF_SIZE];
+  void* caller = NULL;
+  int size;
+#endif
+
 
   va_start(ap, fmt);
   vsnprintf(buf, LOG_BUF_SIZE, fmt, ap);
   va_end(ap);
+
+#if defined(MTK_LOGD_ENHANCE) && defined(ANDROID_LOG_MUCH_COUNT)
+    caller = __builtin_return_address(0);
+    size = sprintf(new_tag, "%s", tag);
+    snprintf(new_tag+size, sizeof(new_tag)-size, "-%p", caller);
+    new_tag[strlen(new_tag) - 1] = '0';
+    new_tag[strlen(new_tag) - 2] = '0';
+    new_tag[strlen(new_tag) - 3] = '0';
+  tag = new_tag;
+#endif
 
   return __android_log_write(prio, tag, buf);
 }
@@ -469,10 +497,25 @@ LIBLOG_ABI_PUBLIC int __android_log_buf_print(int bufID, int prio,
                                               ...) {
   va_list ap;
   char buf[LOG_BUF_SIZE];
+#if defined(MTK_LOGD_ENHANCE) && defined(ANDROID_LOG_MUCH_COUNT)
+  char new_tag[LOG_BUF_SIZE];
+  void* caller = NULL;
+  int size;
+#endif
 
   va_start(ap, fmt);
   vsnprintf(buf, LOG_BUF_SIZE, fmt, ap);
   va_end(ap);
+
+#if defined(MTK_LOGD_ENHANCE) && defined(ANDROID_LOG_MUCH_COUNT)
+  caller = __builtin_return_address(0);
+  size = sprintf(new_tag, "%s", tag);
+  snprintf(new_tag+size, sizeof(new_tag)-size, "-%p", caller);
+  new_tag[strlen(new_tag) - 1] = '0';
+  new_tag[strlen(new_tag) - 2] = '0';
+  new_tag[strlen(new_tag) - 3] = '0';
+  tag = new_tag;
+#endif
 
   return __android_log_buf_write(bufID, prio, tag, buf);
 }

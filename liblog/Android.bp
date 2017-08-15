@@ -96,6 +96,13 @@ cc_library {
         "-DSNET_EVENT_LOG_TAG=1397638484",
         "-DMTK_LOGD_ENHANCE",
     ],
+    product_variables: {
+        debuggable: {
+            cflags: [
+               "-DCONFIG_MT_DEBUG_BUILD",
+            ],
+        },
+    },
     logtags: ["event.logtags"],
     compile_multilib: "both",
 }
