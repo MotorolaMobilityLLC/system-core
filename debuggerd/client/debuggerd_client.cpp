@@ -19,12 +19,14 @@
 #include <fcntl.h>
 #include <signal.h>
 #include <stdlib.h>
+#include <sys/poll.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
 
 #include <chrono>
 
+#include <android-base/file.h>
 #include <android-base/logging.h>
 #include <android-base/stringprintf.h>
 #include <android-base/unique_fd.h>
@@ -32,6 +34,8 @@
 #include <debuggerd/handler.h>
 #include <debuggerd/protocol.h>
 #include <debuggerd/util.h>
+
+using namespace std::chrono_literals;
 
 using android::base::unique_fd;
 
@@ -45,37 +49,44 @@ static bool send_signal(pid_t pid, bool backtrace) {
   return true;
 }
 
+template <typename Duration>
+static void populate_timeval(struct timeval* tv, const Duration& duration) {
+  auto seconds = std::chrono::duration_cast<std::chrono::seconds>(duration);
+  auto microseconds = std::chrono::duration_cast<std::chrono::microseconds>(duration - seconds);
+  tv->tv_sec = static_cast<long>(seconds.count());
+  tv->tv_usec = static_cast<long>(microseconds.count());
+}
+
 bool debuggerd_trigger_dump(pid_t pid, unique_fd output_fd, DebuggerdDumpType dump_type,
-                            int timeout_ms) {
+                            unsigned int timeout_ms) {
   LOG(INFO) << "libdebuggerd_client: started dumping process " << pid;
   unique_fd sockfd;
   const auto end = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
-  auto set_timeout = [timeout_ms, &sockfd, &end]() {
+  auto time_left = [&end]() { return end - std::chrono::steady_clock::now(); };
+  auto set_timeout = [timeout_ms, &time_left](int sockfd) {
     if (timeout_ms <= 0) {
-      return true;
+      return sockfd;
     }
 
-    auto now = std::chrono::steady_clock::now();
-    if (now > end) {
-      return false;
+    auto remaining = time_left();
+    if (remaining < decltype(remaining)::zero()) {
+      LOG(ERROR) << "libdebuggerd_client: timeout expired";
+      return -1;
     }
 
-    auto time_left = std::chrono::duration_cast<std::chrono::microseconds>(end - now);
-    auto seconds = std::chrono::duration_cast<std::chrono::seconds>(time_left);
-    auto microseconds = std::chrono::duration_cast<std::chrono::microseconds>(time_left - seconds);
-    struct timeval timeout = {
-      .tv_sec = static_cast<long>(seconds.count()),
-      .tv_usec = static_cast<long>(microseconds.count()),
-    };
+    struct timeval timeout;
+    populate_timeval(&timeout, remaining);
 
     if (setsockopt(sockfd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) != 0) {
-      return false;
+      PLOG(ERROR) << "libdebuggerd_client: failed to set receive timeout";
+      return -1;
     }
     if (setsockopt(sockfd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout)) != 0) {
-      return false;
+      PLOG(ERROR) << "libdebuggerd_client: failed to set send timeout";
+      return -1;
     }
 
-    return true;
+    return sockfd;
   };
 
   sockfd.reset(socket(AF_LOCAL, SOCK_SEQPACKET, 0));
@@ -84,36 +95,54 @@ bool debuggerd_trigger_dump(pid_t pid, unique_fd output_fd, DebuggerdDumpType du
     return false;
   }
 
-  if (!set_timeout()) {
-    PLOG(ERROR) << "libdebugger_client: failed to set timeout";
-    return false;
-  }
-
-  if (socket_local_client_connect(sockfd.get(), kTombstonedInterceptSocketName,
+  if (socket_local_client_connect(set_timeout(sockfd.get()), kTombstonedInterceptSocketName,
                                   ANDROID_SOCKET_NAMESPACE_RESERVED, SOCK_SEQPACKET) == -1) {
     PLOG(ERROR) << "libdebuggerd_client: failed to connect to tombstoned";
     return false;
   }
 
   InterceptRequest req = {.pid = pid };
-  if (!set_timeout()) {
+  if (!set_timeout(sockfd)) {
     PLOG(ERROR) << "libdebugger_client: failed to set timeout";
+    return false;
   }
 
-  if (send_fd(sockfd.get(), &req, sizeof(req), std::move(output_fd)) != sizeof(req)) {
+  // Create an intermediate pipe to pass to the other end.
+  unique_fd pipe_read, pipe_write;
+  if (!Pipe(&pipe_read, &pipe_write)) {
+    PLOG(ERROR) << "libdebuggerd_client: failed to create pipe";
+    return false;
+  }
+
+  if (send_fd(set_timeout(sockfd), &req, sizeof(req), std::move(pipe_write)) != sizeof(req)) {
     PLOG(ERROR) << "libdebuggerd_client: failed to send output fd to tombstoned";
+    return false;
+  }
+
+  // Check to make sure we've successfully registered.
+  InterceptResponse response;
+  ssize_t rc =
+      TEMP_FAILURE_RETRY(recv(set_timeout(sockfd.get()), &response, sizeof(response), MSG_TRUNC));
+  if (rc == 0) {
+    LOG(ERROR) << "libdebuggerd_client: failed to read response from tombstoned: timeout reached?";
+    return false;
+  } else if (rc != sizeof(response)) {
+    LOG(ERROR)
+        << "libdebuggerd_client: received packet of unexpected length from tombstoned: expected "
+        << sizeof(response) << ", received " << rc;
+    return false;
+  }
+
+  if (response.status != InterceptStatus::kRegistered) {
+    LOG(ERROR) << "libdebuggerd_client: unexpected registration response: "
+               << static_cast<int>(response.status);
     return false;
   }
 
   bool backtrace = dump_type == kDebuggerdBacktrace;
   send_signal(pid, backtrace);
 
-  if (!set_timeout()) {
-    PLOG(ERROR) << "libdebugger_client: failed to set timeout";
-  }
-
-  InterceptResponse response;
-  ssize_t rc = TEMP_FAILURE_RETRY(recv(sockfd.get(), &response, sizeof(response), MSG_TRUNC));
+  rc = TEMP_FAILURE_RETRY(recv(set_timeout(sockfd.get()), &response, sizeof(response), MSG_TRUNC));
   if (rc == 0) {
     LOG(ERROR) << "libdebuggerd_client: failed to read response from tombstoned: timeout reached?";
     return false;
@@ -124,9 +153,53 @@ bool debuggerd_trigger_dump(pid_t pid, unique_fd output_fd, DebuggerdDumpType du
     return false;
   }
 
-  if (response.success != 1) {
+  if (response.status != InterceptStatus::kStarted) {
     response.error_message[sizeof(response.error_message) - 1] = '\0';
     LOG(ERROR) << "libdebuggerd_client: tombstoned reported failure: " << response.error_message;
+    return false;
+  }
+
+  // Forward output from the pipe to the output fd.
+  while (true) {
+    auto remaining_ms = std::chrono::duration_cast<std::chrono::milliseconds>(time_left()).count();
+    if (timeout_ms <= 0) {
+      remaining_ms = -1;
+    } else if (remaining_ms < 0) {
+      LOG(ERROR) << "libdebuggerd_client: timeout expired";
+      return false;
+    }
+
+    struct pollfd pfd = {
+        .fd = pipe_read.get(), .events = POLLIN, .revents = 0,
+    };
+
+    rc = poll(&pfd, 1, remaining_ms);
+    if (rc == -1) {
+      if (errno == EINTR) {
+        continue;
+      } else {
+        PLOG(ERROR) << "libdebuggerd_client: error while polling";
+        return false;
+      }
+    } else if (rc == 0) {
+      LOG(ERROR) << "libdebuggerd_client: timeout expired";
+      return false;
+    }
+
+    char buf[1024];
+    rc = TEMP_FAILURE_RETRY(read(pipe_read.get(), buf, sizeof(buf)));
+    if (rc == 0) {
+      // Done.
+      break;
+    } else if (rc == -1) {
+      PLOG(ERROR) << "libdebuggerd_client: error while reading";
+      return false;
+    }
+
+    if (!android::base::WriteFully(output_fd.get(), buf, rc)) {
+      PLOG(ERROR) << "libdebuggerd_client: error while writing";
+      return false;
+    }
   }
 
   LOG(INFO) << "libdebuggerd_client: done dumping process " << pid;

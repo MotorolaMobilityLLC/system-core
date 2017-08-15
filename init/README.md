@@ -192,16 +192,24 @@ runs the service.
 `oneshot`
 > Do not restart the service when it exits.
 
-`class <name>`
-> Specify a class name for the service.  All services in a
+`class <name> [ <name>\* ]`
+> Specify class names for the service.  All services in a
   named class may be started or stopped together.  A service
   is in the class "default" if one is not specified via the
-  class option.
+  class option. Additional classnames beyond the (required) first
+  one are used to group services.
+`animation class`
+> 'animation' class should include all services necessary for both
+  boot animation and shutdown animation. As these services can be
+  launched very early during bootup and can run until the last stage
+  of shutdown, access to /data partition is not guaranteed. These
+  services can check files under /data but it should not keep files opened
+  and should work when /data is not available.
 
 `onrestart`
 > Execute a Command (see below) when service restarts.
 
-`writepid <file...>`
+`writepid <file> [ <file>\* ]`
 > Write the child's pid to the given files when it forks. Meant for
   cgroup/cpuset usage. If no files under /dev/cpuset/ are specified, but the
   system property 'ro.cpuset.default' is set to a non-empty cpuset name (e.g.
@@ -279,6 +287,9 @@ Commands
   currently running, without disabling them. They can be restarted
   later using `class_start`.
 
+`class_restart <serviceclass>`
+> Restarts all services of the specified class.
+
 `copy <src> <dst>`
 > Copies a file. Similar to write, but useful for binary/large
   amounts of data.
@@ -302,6 +313,12 @@ Commands
   groups can be provided. No other commands will be run until this one
   finishes. _seclabel_ can be a - to denote default. Properties are expanded
   within _argument_.
+  Init halts executing commands until the forked process exits.
+
+`exec_start <service>`
+> Start service a given service and halt processing of additional init commands
+  until it returns.  It functions similarly to the `exec` command, but uses an
+  existing service definition instead of providing them as arguments.
 
 `export <name> <value>`
 > Set the environment variable _name_ equal to _value_ in the
@@ -353,7 +370,8 @@ Commands
   "sys.powerctl" system property, used to implement rebooting.
 
 `restart <service>`
-> Like stop, but doesn't disable the service.
+> Stops and restarts a running service, does nothing if the service is currently
+  restarting, otherwise, it just starts the service.
 
 `restorecon <path> [ <path>\* ]`
 > Restore the file named by _path_ to the security context specified

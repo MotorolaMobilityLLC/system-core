@@ -572,7 +572,7 @@ static struct fstab *fs_mgr_read_fstab_file(FILE *fstab_file)
         cnt++;
     }
     /* If an A/B partition, modify block device to be the real block device */
-    if (fs_mgr_update_for_slotselect(fstab) != 0) {
+    if (!fs_mgr_update_for_slotselect(fstab)) {
         LERROR << "Error updating for slotselect";
         goto err;
     }
@@ -671,17 +671,6 @@ struct fstab *fs_mgr_read_fstab_dt()
     return fstab;
 }
 
-/* combines fstab entries passed in from device tree with
- * the ones found from fstab_path
- */
-struct fstab *fs_mgr_read_fstab_with_dt(const char *fstab_path)
-{
-    struct fstab *fstab_dt = fs_mgr_read_fstab_dt();
-    struct fstab *fstab = fs_mgr_read_fstab(fstab_path);
-
-    return in_place_merge(fstab_dt, fstab);
-}
-
 /*
  * tries to load default fstab.<hardware> file from /odm/etc, /vendor/etc
  * or /. loads the first one found and also combines fstab entries passed
@@ -692,7 +681,10 @@ struct fstab *fs_mgr_read_fstab_default()
     std::string hw;
     std::string default_fstab;
 
-    if (fs_mgr_get_boot_config("hardware", &hw)) {
+    // Use different fstab paths for normal boot and recovery boot, respectively
+    if (access("/sbin/recovery", F_OK) == 0) {
+        default_fstab = "/etc/recovery.fstab";
+    } else if (fs_mgr_get_boot_config("hardware", &hw)) {  // normal boot
         for (const char *prefix : {"/odm/etc/fstab.","/vendor/etc/fstab.", "/fstab."}) {
             default_fstab = prefix + hw;
             if (access(default_fstab.c_str(), F_OK) == 0) break;
@@ -701,7 +693,12 @@ struct fstab *fs_mgr_read_fstab_default()
         LWARNING << __FUNCTION__ << "(): failed to find device hardware name";
     }
 
-    return fs_mgr_read_fstab_with_dt(default_fstab.c_str());
+    // combines fstab entries passed in from device tree with
+    // the ones found from default_fstab file
+    struct fstab *fstab_dt = fs_mgr_read_fstab_dt();
+    struct fstab *fstab = fs_mgr_read_fstab(default_fstab.c_str());
+
+    return in_place_merge(fstab_dt, fstab);
 }
 
 void fs_mgr_free_fstab(struct fstab *fstab)
@@ -815,6 +812,11 @@ int fs_mgr_is_nonremovable(const struct fstab_rec *fstab)
 int fs_mgr_is_verified(const struct fstab_rec *fstab)
 {
     return fstab->fs_mgr_flags & MF_VERIFY;
+}
+
+int fs_mgr_is_avb(const struct fstab_rec *fstab)
+{
+    return fstab->fs_mgr_flags & MF_AVB;
 }
 
 int fs_mgr_is_verifyatboot(const struct fstab_rec *fstab)

@@ -45,16 +45,16 @@
 #include <selinux/selinux.h>
 #include <selinux/label.h>
 
-#include <fs_mgr.h>
 #include <android-base/file.h>
 #include <android-base/parseint.h>
-#include <android-base/strings.h>
+#include <android-base/properties.h>
 #include <android-base/stringprintf.h>
+#include <android-base/strings.h>
 #include <bootloader_message/bootloader_message.h>
-#include <cutils/partition_utils.h>
 #include <cutils/android_reboot.h>
 #include <ext4_utils/ext4_crypt.h>
 #include <ext4_utils/ext4_crypt_init_extensions.h>
+#include <fs_mgr.h>
 #include <logwrap/logwrap.h>
 
 #include "action.h"
@@ -148,6 +148,12 @@ static int do_class_reset(const std::vector<std::string>& args) {
     return 0;
 }
 
+static int do_class_restart(const std::vector<std::string>& args) {
+    ServiceManager::GetInstance().
+        ForEachServiceInClass(args[1], [] (Service* s) { s->Restart(); });
+    return 0;
+}
+
 static int do_domainname(const std::vector<std::string>& args) {
     return write_file("/proc/sys/kernel/domainname", args[1].c_str()) ? 0 : 1;
 }
@@ -161,19 +167,11 @@ static int do_enable(const std::vector<std::string>& args) {
 }
 
 static int do_exec(const std::vector<std::string>& args) {
-    Service* svc = ServiceManager::GetInstance().MakeExecOneshotService(args);
-    if (!svc) {
-        return -1;
-    }
-    if (!start_waiting_for_exec()) {
-        return -1;
-    }
-    if (!svc->Start()) {
-        stop_waiting_for_exec();
-        ServiceManager::GetInstance().RemoveService(*svc);
-        return -1;
-    }
-    return 0;
+    return ServiceManager::GetInstance().Exec(args) ? 0 : -1;
+}
+
+static int do_exec_start(const std::vector<std::string>& args) {
+    return ServiceManager::GetInstance().ExecStart(args[1]) ? 0 : -1;
 }
 
 static int do_export(const std::vector<std::string>& args) {
@@ -680,11 +678,11 @@ static int do_sysclktz(const std::vector<std::string>& args) {
 
 static int do_verity_load_state(const std::vector<std::string>& args) {
     int mode = -1;
-    int rc = fs_mgr_load_verity_state(&mode);
-    if (rc == 0 && mode != VERITY_MODE_DEFAULT) {
+    bool loaded = fs_mgr_load_verity_state(&mode);
+    if (loaded && mode != VERITY_MODE_DEFAULT) {
         ActionManager::GetInstance().QueueEventTrigger("verity-logging");
     }
-    return rc;
+    return loaded ? 0 : 1;
 }
 
 static void verity_update_property(fstab_rec *fstab, const char *mount_point,
@@ -694,7 +692,7 @@ static void verity_update_property(fstab_rec *fstab, const char *mount_point,
 }
 
 static int do_verity_update_state(const std::vector<std::string>& args) {
-    return fs_mgr_update_verity_state(verity_update_property);
+    return fs_mgr_update_verity_state(verity_update_property) ? 0 : 1;
 }
 
 static int do_write(const std::vector<std::string>& args) {
@@ -704,45 +702,38 @@ static int do_write(const std::vector<std::string>& args) {
 }
 
 static int do_copy(const std::vector<std::string>& args) {
-    char *buffer = NULL;
+    char* buffer = NULL;
     int rc = 0;
     int fd1 = -1, fd2 = -1;
     struct stat info;
     int brtw, brtr;
-    char *p;
+    char* p;
 
-    if (stat(args[1].c_str(), &info) < 0)
-        return -1;
+    if (stat(args[1].c_str(), &info) < 0) return -1;
 
-    if ((fd1 = open(args[1].c_str(), O_RDONLY|O_CLOEXEC)) < 0)
+    if ((fd1 = open(args[1].c_str(), O_RDONLY | O_CLOEXEC)) < 0) goto out_err;
+
+    if ((fd2 = open(args[2].c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0660)) < 0)
         goto out_err;
 
-    if ((fd2 = open(args[2].c_str(), O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0660)) < 0)
-        goto out_err;
-
-    if (!(buffer = (char*) malloc(info.st_size)))
-        goto out_err;
+    if (!(buffer = (char*)malloc(info.st_size))) goto out_err;
 
     p = buffer;
     brtr = info.st_size;
-    while(brtr) {
+    while (brtr) {
         rc = read(fd1, p, brtr);
-        if (rc < 0)
-            goto out_err;
-        if (rc == 0)
-            break;
+        if (rc < 0) goto out_err;
+        if (rc == 0) break;
         p += rc;
         brtr -= rc;
     }
 
     p = buffer;
     brtw = info.st_size;
-    while(brtw) {
+    while (brtw) {
         rc = write(fd2, p, brtw);
-        if (rc < 0)
-            goto out_err;
-        if (rc == 0)
-            break;
+        if (rc < 0) goto out_err;
+        if (rc == 0) break;
         p += rc;
         brtw -= rc;
     }
@@ -752,12 +743,9 @@ static int do_copy(const std::vector<std::string>& args) {
 out_err:
     rc = -1;
 out:
-    if (buffer)
-        free(buffer);
-    if (fd1 >= 0)
-        close(fd1);
-    if (fd2 >= 0)
-        close(fd2);
+    if (buffer) free(buffer);
+    if (fd1 >= 0) close(fd1);
+    if (fd2 >= 0) close(fd2);
     return rc;
 }
 
@@ -924,16 +912,21 @@ static int do_installkeys_ensure_dir_exists(const char* dir) {
 }
 
 static bool is_file_crypto() {
-    std::string value = property_get("ro.crypto.type");
-    return value == "file";
+    return android::base::GetProperty("ro.crypto.type", "") == "file";
 }
 
 static int do_installkey(const std::vector<std::string>& args) {
     if (!is_file_crypto()) {
         return 0;
     }
-    return e4crypt_create_device_key(args[1].c_str(),
-                                     do_installkeys_ensure_dir_exists);
+    auto unencrypted_dir = args[1] + e4crypt_unencrypted_folder;
+    if (do_installkeys_ensure_dir_exists(unencrypted_dir.c_str())) {
+        PLOG(ERROR) << "Failed to create " << unencrypted_dir;
+        return -1;
+    }
+    std::vector<std::string> exec_args = {"exec", "/system/bin/vdc", "--wait", "cryptfs",
+                                          "enablefilecrypto"};
+    return do_exec(exec_args);
 }
 
 static int do_init_user0(const std::vector<std::string>& args) {
@@ -942,17 +935,20 @@ static int do_init_user0(const std::vector<std::string>& args) {
 
 BuiltinFunctionMap::Map& BuiltinFunctionMap::map() const {
     constexpr std::size_t kMax = std::numeric_limits<std::size_t>::max();
+    // clang-format off
     static const Map builtin_functions = {
         {"bootchart",               {1,     1,    do_bootchart}},
         {"chmod",                   {2,     2,    do_chmod}},
         {"chown",                   {2,     3,    do_chown}},
         {"class_reset",             {1,     1,    do_class_reset}},
+        {"class_restart",           {1,     1,    do_class_restart}},
         {"class_start",             {1,     1,    do_class_start}},
         {"class_stop",              {1,     1,    do_class_stop}},
         {"copy",                    {2,     2,    do_copy}},
         {"domainname",              {1,     1,    do_domainname}},
         {"enable",                  {1,     1,    do_enable}},
         {"exec",                    {1,     kMax, do_exec}},
+        {"exec_start",              {1,     1,    do_exec_start}},
         {"export",                  {2,     2,    do_export}},
         {"hostname",                {1,     1,    do_hostname}},
         {"ifup",                    {1,     1,    do_ifup}},
@@ -986,5 +982,6 @@ BuiltinFunctionMap::Map& BuiltinFunctionMap::map() const {
         {"wait_for_prop",           {2,     2,    do_wait_for_prop}},
         {"write",                   {2,     2,    do_write}},
     };
+    // clang-format on
     return builtin_functions;
 }

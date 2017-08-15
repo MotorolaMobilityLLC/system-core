@@ -180,11 +180,11 @@ void LogBuffer::init() {
 
 LogBuffer::LogBuffer(LastLogTimes* times)
     : monotonic(android_log_clockid() == CLOCK_MONOTONIC), mTimes(*times) {
-    pthread_mutex_init(&mLogElementsLock, NULL);
+    pthread_mutex_init(&mLogElementsLock, nullptr);
 
     log_id_for_each(i) {
-        lastLoggedElements[i] = NULL;
-        droppedElements[i] = NULL;
+        lastLoggedElements[i] = nullptr;
+        droppedElements[i] = nullptr;
     }
 
     init();
@@ -203,11 +203,11 @@ static enum match_type identical(LogBufferElement* elem,
                                  LogBufferElement* last) {
     // is it mostly identical?
     //  if (!elem) return DIFFERENT;
-    unsigned short lenl = elem->getMsgLen();
-    if (!lenl) return DIFFERENT;
+    ssize_t lenl = elem->getMsgLen();
+    if (lenl <= 0) return DIFFERENT;  // value if this represents a chatty elem
     //  if (!last) return DIFFERENT;
-    unsigned short lenr = last->getMsgLen();
-    if (!lenr) return DIFFERENT;
+    ssize_t lenr = last->getMsgLen();
+    if (lenr <= 0) return DIFFERENT;  // value if this represents a chatty elem
     //  if (elem->getLogId() != last->getLogId()) return DIFFERENT;
     if (elem->getUid() != last->getUid()) return DIFFERENT;
     if (elem->getPid() != last->getPid()) return DIFFERENT;
@@ -234,8 +234,6 @@ static enum match_type identical(LogBufferElement* elem,
     }
 
     // audit message (except sequence number) identical?
-    static const char avc[] = "): avc: ";
-
     if (last->isBinary()) {
         if (fastcmp<memcmp>(msgl, msgr, sizeof(android_log_event_string_t) -
                                             sizeof(int32_t))) {
@@ -246,6 +244,7 @@ static enum match_type identical(LogBufferElement* elem,
         msgr += sizeof(android_log_event_string_t);
         lenr -= sizeof(android_log_event_string_t);
     }
+    static const char avc[] = "): avc: ";
     const char* avcl = android::strnstr(msgl, lenl, avc);
     if (!avcl) return DIFFERENT;
     lenl -= avcl - msgl;
@@ -253,10 +252,7 @@ static enum match_type identical(LogBufferElement* elem,
     if (!avcr) return DIFFERENT;
     lenr -= avcr - msgr;
     if (lenl != lenr) return DIFFERENT;
-    // TODO: After b/35468874 is addressed, revisit "lenl > strlen(avc)"
-    // condition, it might become superfluous.
-    if (lenl > strlen(avc) &&
-        fastcmp<memcmp>(avcl + strlen(avc), avcr + strlen(avc),
+    if (fastcmp<memcmp>(avcl + strlen(avc), avcr + strlen(avc),
                         lenl - strlen(avc))) {
         return DIFFERENT;
     }
@@ -298,7 +294,7 @@ int LogBuffer::log(log_id_t log_id, log_time realtime, uid_t uid, pid_t pid,
         new LogBufferElement(log_id, realtime, uid, pid, tid, msg, len);
     if (log_id != LOG_ID_SECURITY) {
         int prio = ANDROID_LOG_INFO;
-        const char* tag = NULL;
+        const char* tag = nullptr;
 #ifdef MTK_LOGD_ENHANCE
         if (log_id == LOG_ID_EVENTS) {
             tag = tagToName(elem->getTag());
@@ -572,24 +568,24 @@ log_much_exit:
         //
         // State Init
         //     incoming:
-        //         dropped = NULL
-        //         currentLast = NULL;
+        //         dropped = nullptr
+        //         currentLast = nullptr;
         //         elem = incoming message
         //     outgoing:
-        //         dropped = NULL -> State 0
+        //         dropped = nullptr -> State 0
         //         currentLast = copy of elem
         //         log elem
         // State 0
         //     incoming:
         //         count = 0
-        //         dropped = NULL
+        //         dropped = nullptr
         //         currentLast = copy of last message
         //         elem = incoming message
         //     outgoing: if match != DIFFERENT
         //         dropped = copy of first identical message -> State 1
         //         currentLast = reference to elem
         //     break: if match == DIFFERENT
-        //         dropped = NULL -> State 0
+        //         dropped = nullptr -> State 0
         //         delete copy of last message (incoming currentLast)
         //         currentLast = copy of elem
         //         log elem
@@ -616,7 +612,7 @@ log_much_exit:
         //             currentLast = reference to elem, sum liblog.
         //     break: if match == DIFFERENT
         //         delete dropped
-        //         dropped = NULL -> State 0
+        //         dropped = nullptr -> State 0
         //         log reference to last held-back (currentLast)
         //         currentLast = copy of elem
         //         log elem
@@ -635,7 +631,7 @@ log_much_exit:
         //         currentLast = reference to elem
         //     break: if match == DIFFERENT
         //         log dropped (chatty message)
-        //         dropped = NULL -> State 0
+        //         dropped = nullptr -> State 0
         //         log reference to last held-back (currentLast)
         //         currentLast = copy of elem
         //         log elem
@@ -700,7 +696,7 @@ log_much_exit:
             } else {           // State 1
                 delete dropped;
             }
-            droppedElements[log_id] = NULL;
+            droppedElements[log_id] = nullptr;
             log(currentLast);  // report last message in the series
         } else {               // State 0
             delete currentLast;
@@ -1004,7 +1000,7 @@ class LogBufferElementLast {
 // mLogElementsLock must be held when this function is called.
 //
 bool LogBuffer::prune(log_id_t id, unsigned long pruneRows, uid_t caller_uid) {
-    LogTimeEntry* oldest = NULL;
+    LogTimeEntry* oldest = nullptr;
     bool busy = false;
     bool clearAll = pruneRows == ULONG_MAX;
 
@@ -1490,9 +1486,11 @@ unsigned long LogBuffer::getSize(log_id_t id) {
     return retval;
 }
 
-log_time LogBuffer::flushTo(
-    SocketClient* reader, const log_time& start, bool privileged, bool security,
-    int (*filter)(const LogBufferElement* element, void* arg), void* arg) {
+log_time LogBuffer::flushTo(SocketClient* reader, const log_time& start,
+                            pid_t* lastTid, bool privileged, bool security,
+                            int (*filter)(const LogBufferElement* element,
+                                          void* arg),
+                            void* arg) {
     LogBufferElementCollection::iterator it;
     uid_t uid = reader->getUid();
 
@@ -1502,18 +1500,20 @@ log_time LogBuffer::flushTo(
         // client wants to start from the beginning
         it = mLogElements.begin();
     } else {
-        LogBufferElementCollection::iterator last = mLogElements.begin();
-        // 30 second limit to continue search for out-of-order entries.
-        log_time min = start - log_time(30, 0);
+        LogBufferElementCollection::iterator last;
+        // 3 second limit to continue search for out-of-order entries.
+        log_time min = start - log_time(3, 0);
+        // Cap to 300 iterations we look back for out-of-order entries.
+        size_t count = 300;
         // Client wants to start from some specified time. Chances are
         // we are better off starting from the end of the time sorted list.
-        for (it = mLogElements.end(); it != mLogElements.begin();
+        for (last = it = mLogElements.end(); it != mLogElements.begin();
              /* do nothing */) {
             --it;
             LogBufferElement* element = *it;
             if (element->getRealTime() > start) {
                 last = it;
-            } else if (element->getRealTime() < min) {
+            } else if (!--count || (element->getRealTime() < min)) {
                 break;
             }
         }
@@ -1521,9 +1521,6 @@ log_time LogBuffer::flushTo(
     }
 
     log_time max = start;
-    // Help detect if the valid message before is from the same source so
-    // we can differentiate chatty filter types.
-    pid_t lastTid[LOG_ID_MAX] = { 0 };
 
     for (; it != mLogElements.end(); ++it) {
         LogBufferElement* element = *it;
@@ -1551,14 +1548,17 @@ log_time LogBuffer::flushTo(
             }
         }
 
-        bool sameTid = lastTid[element->getLogId()] == element->getTid();
-        // Dropped (chatty) immediately following a valid log from the
-        // same source in the same log buffer indicates we have a
-        // multiple identical squash.  chatty that differs source
-        // is due to spam filter.  chatty to chatty of different
-        // source is also due to spam filter.
-        lastTid[element->getLogId()] =
-            (element->getDropped() && !sameTid) ? 0 : element->getTid();
+        bool sameTid = false;
+        if (lastTid) {
+            sameTid = lastTid[element->getLogId()] == element->getTid();
+            // Dropped (chatty) immediately following a valid log from the
+            // same source in the same log buffer indicates we have a
+            // multiple identical squash.  chatty that differs source
+            // is due to spam filter.  chatty to chatty of different
+            // source is also due to spam filter.
+            lastTid[element->getLogId()] =
+                (element->getDropped() && !sameTid) ? 0 : element->getTid();
+        }
 
         pthread_mutex_unlock(&mLogElementsLock);
 

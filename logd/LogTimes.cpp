@@ -15,6 +15,7 @@
  */
 
 #include <errno.h>
+#include <string.h>
 #include <sys/prctl.h>
 
 #include <private/android_logger.h>
@@ -47,7 +48,8 @@ LogTimeEntry::LogTimeEntry(LogReader& reader, SocketClient* client,
       mEnd(log_time(android_log_clockid())) {
     mTimeout.tv_sec = timeout / NS_PER_SEC;
     mTimeout.tv_nsec = timeout % NS_PER_SEC;
-    pthread_cond_init(&threadTriggeredCondition, NULL);
+    memset(mLastTid, 0, sizeof(mLastTid));
+    pthread_cond_init(&threadTriggeredCondition, nullptr);
     cleanSkip_Locked();
 }
 
@@ -98,7 +100,7 @@ void LogTimeEntry::threadStop(void* obj) {
             it++;
         }
 
-        me->mClient = NULL;
+        me->mClient = nullptr;
         reader.release(client);
     }
 
@@ -122,7 +124,7 @@ void* LogTimeEntry::threadStart(void* obj) {
     SocketClient* client = me->mClient;
     if (!client) {
         me->error();
-        return NULL;
+        return nullptr;
     }
 
     LogBuffer& logbuf = me->mReader.logbuf();
@@ -156,12 +158,12 @@ void* LogTimeEntry::threadStart(void* obj) {
         unlock();
 
         if (me->mTail) {
-            logbuf.flushTo(client, start, privileged, security, FilterFirstPass,
-                           me);
+            logbuf.flushTo(client, start, nullptr, privileged, security,
+                           FilterFirstPass, me);
             me->leadingDropped = true;
         }
-        start = logbuf.flushTo(client, start, privileged, security,
-                               FilterSecondPass, me);
+        start = logbuf.flushTo(client, start, me->mLastTid, privileged,
+                               security, FilterSecondPass, me);
 
         lock();
 
@@ -186,13 +188,14 @@ void* LogTimeEntry::threadStart(void* obj) {
     unlock();
 
     pthread_cleanup_pop(true);
+
 #ifdef MTK_LOGD_ENHANCE
 #if defined(MTK_LOGD_FILTER)
     logd_reader_del();
 #endif
     android::prdebug("logd: logd.reader.per thread stop.\n");
 #endif
-    return NULL;
+    return nullptr;
 }
 
 // A first pass to count the number of elements
@@ -291,7 +294,5 @@ stop:
 }
 
 void LogTimeEntry::cleanSkip_Locked(void) {
-    for (log_id_t i = LOG_ID_MIN; i < LOG_ID_MAX; i = (log_id_t)(i + 1)) {
-        skipAhead[i] = 0;
-    }
+    memset(skipAhead, 0, sizeof(skipAhead));
 }

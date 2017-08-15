@@ -41,13 +41,10 @@
 #include <selinux/android.h>
 
 #include <android-base/file.h>
+#include <android-base/properties.h>
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
 #include <android-base/unique_fd.h>
-#include <cutils/fs.h>
-#include <cutils/iosched_policy.h>
-#include <cutils/list.h>
-#include <cutils/sockets.h>
 #include <libavb/libavb.h>
 #include <private/android_filesystem_config.h>
 
@@ -60,6 +57,7 @@
 #include "bootchart.h"
 #include "devices.h"
 #include "fs_mgr.h"
+#include "fs_mgr_avb.h"
 #include "import_parser.h"
 #include "init.h"
 #include "init_parser.h"
@@ -72,6 +70,7 @@
 #include "util.h"
 #include "watchdogd.h"
 
+using android::base::GetProperty;
 using android::base::StringPrintf;
 
 struct selabel_handle *sehandle;
@@ -85,8 +84,6 @@ std::string default_console = "/dev/console";
 static time_t process_needs_restart_at;
 
 const char *ENV[32];
-
-static std::unique_ptr<Timer> waiting_for_exec(nullptr);
 
 static int epoll_fd = -1;
 
@@ -135,29 +132,12 @@ int add_environment(const char *key, const char *val)
     return -1;
 }
 
-bool start_waiting_for_exec()
-{
-    if (waiting_for_exec) {
-        return false;
-    }
-    waiting_for_exec.reset(new Timer());
-    return true;
-}
-
-void stop_waiting_for_exec()
-{
-    if (waiting_for_exec) {
-        LOG(INFO) << "Wait for exec took " << *waiting_for_exec;
-        waiting_for_exec.reset();
-    }
-}
-
 bool start_waiting_for_property(const char *name, const char *value)
 {
     if (waiting_for_prop) {
         return false;
     }
-    if (property_get(name) != value) {
+    if (GetProperty(name, "") != value) {
         // Current property value is not equal to expected value
         wait_prop_name = name;
         wait_prop_value = value;
@@ -445,7 +425,7 @@ static int keychord_init_action(const std::vector<std::string>& args)
 
 static int console_init_action(const std::vector<std::string>& args)
 {
-    std::string console = property_get("ro.boot.console");
+    std::string console = GetProperty("ro.boot.console", "");
     if (!console.empty()) {
         default_console = "/dev/" + console;
     }
@@ -469,11 +449,11 @@ static void import_kernel_nv(const std::string& key, const std::string& value, b
 }
 
 static void export_oem_lock_status() {
-    if (property_get("ro.oem_unlock_supported") != "1") {
+    if (!android::base::GetBoolProperty("ro.oem_unlock_supported", false)) {
         return;
     }
 
-    std::string value = property_get("ro.boot.verifiedbootstate");
+    std::string value = GetProperty("ro.boot.verifiedbootstate", "");
 
     if (!value.empty()) {
         property_set("ro.boot.flash.locked", value == "orange" ? "0" : "1");
@@ -494,47 +474,78 @@ static void export_kernel_boot_props() {
         { "ro.boot.revision",   "ro.revision",   "0", },
     };
     for (size_t i = 0; i < arraysize(prop_map); i++) {
-        std::string value = property_get(prop_map[i].src_prop);
+        std::string value = GetProperty(prop_map[i].src_prop, "");
         property_set(prop_map[i].dst_prop, (!value.empty()) ? value.c_str() : prop_map[i].default_value);
     }
 }
 
-static constexpr char android_dt_dir[] = "/proc/device-tree/firmware/android";
-
-static bool is_dt_compatible() {
-    std::string dt_value;
-    std::string file_name = StringPrintf("%s/compatible", android_dt_dir);
-
-    if (android::base::ReadFileToString(file_name, &dt_value)) {
-        // trim the trailing '\0' out, otherwise the comparison
-        // will produce false-negatives.
-        dt_value.resize(dt_value.size() - 1);
-        if (dt_value == "android,firmware") {
+/* Reads the content of device tree file into dt_value.
+ * Returns true if the read is success, false otherwise.
+ */
+static bool read_dt_file(const std::string& file_name, std::string* dt_value) {
+    if (android::base::ReadFileToString(file_name, dt_value)) {
+        if (!dt_value->empty()) {
+            dt_value->pop_back();  // Trim the trailing '\0' out.
             return true;
         }
     }
-
     return false;
 }
 
-static bool is_dt_fstab_compatible() {
-    std::string dt_value;
-    std::string file_name = StringPrintf("%s/%s/compatible", android_dt_dir, "fstab");
+static const std::string kAndroidDtDir("/proc/device-tree/firmware/android/");
 
-    if (android::base::ReadFileToString(file_name, &dt_value)) {
-        dt_value.resize(dt_value.size() - 1);
-        if (dt_value == "android,fstab") {
+static bool is_dt_value_expected(const std::string& dt_file_suffix,
+                                 const std::string& expected_value) {
+    std::string dt_value;
+    std::string file_name = kAndroidDtDir + dt_file_suffix;
+
+    if (read_dt_file(file_name, &dt_value)) {
+        if (dt_value == expected_value) {
             return true;
         }
     }
-
     return false;
+}
+
+static inline bool is_dt_compatible() {
+    return is_dt_value_expected("compatible", "android,firmware");
+}
+
+static inline bool is_dt_fstab_compatible() {
+    return is_dt_value_expected("fstab/compatible", "android,fstab");
+}
+
+static inline bool is_dt_vbmeta_compatible() {
+    return is_dt_value_expected("vbmeta/compatible", "android,vbmeta");
+}
+
+// Gets the vbmeta config from device tree. Specifically, the 'parts' and 'by_name_prefix'.
+// /{
+//     firmware {
+//         android {
+//             vbmeta {
+//                 compatible = "android,vbmeta";
+//                 parts = "vbmeta,boot,system,vendor"
+//                 by_name_prefix="/dev/block/platform/soc.0/f9824900.sdhci/by-name/"
+//             };
+//         };
+//     };
+//  }
+static bool get_vbmeta_config_from_dt(std::string* vbmeta_partitions,
+                                      std::string* device_file_by_name_prefix) {
+    std::string file_name = kAndroidDtDir + "vbmeta/parts";
+    if (!read_dt_file(file_name, vbmeta_partitions)) return false;
+
+    file_name = kAndroidDtDir + "vbmeta/by_name_prefix";
+    if (!read_dt_file(file_name, device_file_by_name_prefix)) return false;
+
+    return true;
 }
 
 static void process_kernel_dt() {
     if (!is_dt_compatible()) return;
 
-    std::unique_ptr<DIR, int(*)(DIR*)>dir(opendir(android_dt_dir), closedir);
+    std::unique_ptr<DIR, int (*)(DIR*)> dir(opendir(kAndroidDtDir.c_str()), closedir);
     if (!dir) return;
 
     std::string dt_file;
@@ -544,7 +555,7 @@ static void process_kernel_dt() {
             continue;
         }
 
-        std::string file_name = StringPrintf("%s/%s", android_dt_dir, dp->d_name);
+        std::string file_name = kAndroidDtDir + dp->d_name;
 
         android::base::ReadFileToString(file_name, &dt_file);
         std::replace(dt_file.begin(), dt_file.end(), ',', '.');
@@ -735,14 +746,18 @@ static bool selinux_find_precompiled_split_policy(std::string* file) {
         return false;
     }
     std::string actual_plat_id;
-    if (!read_first_line("/system/etc/selinux/plat_sepolicy.cil.sha256", &actual_plat_id)) {
-        PLOG(INFO) << "Failed to read /system/etc/selinux/plat_sepolicy.cil.sha256";
+    if (!read_first_line("/system/etc/selinux/plat_and_mapping_sepolicy.cil.sha256",
+                         &actual_plat_id)) {
+        PLOG(INFO) << "Failed to read "
+                      "/system/etc/selinux/plat_and_mapping_sepolicy.cil.sha256";
         return false;
     }
     std::string precompiled_plat_id;
-    if (!read_first_line("/vendor/etc/selinux/precompiled_sepolicy.plat.sha256",
+    if (!read_first_line("/vendor/etc/selinux/precompiled_sepolicy.plat_and_mapping.sha256",
                          &precompiled_plat_id)) {
-        PLOG(INFO) << "Failed to read /vendor/etc/selinux/precompiled_sepolicy.plat.sha256";
+        PLOG(INFO) << "Failed to read "
+                      "/vendor/etc/selinux/"
+                      "precompiled_sepolicy.plat_and_mapping.sha256";
         return false;
     }
     if ((actual_plat_id.empty()) || (actual_plat_id != precompiled_plat_id)) {
@@ -750,6 +765,18 @@ static bool selinux_find_precompiled_split_policy(std::string* file) {
     }
 
     *file = precompiled_sepolicy;
+    return true;
+}
+
+static bool selinux_get_vendor_mapping_version(std::string* plat_vers) {
+    if (!read_first_line("/vendor/etc/selinux/plat_sepolicy_vers.txt", plat_vers)) {
+        PLOG(ERROR) << "Failed to read /vendor/etc/selinux/plat_sepolicy_vers.txt";
+        return false;
+    }
+    if (plat_vers->empty()) {
+        LOG(ERROR) << "No version present in plat_sepolicy_vers.txt";
+        return false;
+    }
     return true;
 }
 
@@ -807,14 +834,20 @@ static bool selinux_load_split_policy() {
         return false;
     }
 
+    // Determine which mapping file to include
+    std::string vend_plat_vers;
+    if (!selinux_get_vendor_mapping_version(&vend_plat_vers)) {
+        return false;
+    }
+    std::string mapping_file("/system/etc/selinux/mapping/" + vend_plat_vers + ".cil");
     // clang-format off
     const char* compile_args[] = {
         "/system/bin/secilc",
         plat_policy_cil_file,
-        "-M", "true",
+        "-M", "true", "-G",
         // Target the highest policy language version supported by the kernel
         "-c", std::to_string(max_policy_version).c_str(),
-        "/vendor/etc/selinux/mapping_sepolicy.cil",
+        mapping_file.c_str(),
         "/vendor/etc/selinux/nonplat_sepolicy.cil",
         "-o", compiled_sepolicy,
         // We don't care about file_contexts output by the compiler
@@ -896,6 +929,37 @@ static void selinux_initialize(bool in_kernel_domain) {
     }
 }
 
+// The files and directories that were created before initial sepolicy load
+// need to have their security context restored to the proper value.
+// This must happen before /dev is populated by ueventd.
+static void selinux_restore_context() {
+    LOG(INFO) << "Running restorecon...";
+    restorecon("/dev");
+    restorecon("/dev/kmsg");
+    restorecon("/dev/socket");
+    restorecon("/dev/random");
+    restorecon("/dev/urandom");
+    restorecon("/dev/__properties__");
+
+    restorecon("/file_contexts.bin");
+    restorecon("/plat_file_contexts");
+    restorecon("/nonplat_file_contexts");
+    restorecon("/plat_property_contexts");
+    restorecon("/nonplat_property_contexts");
+    restorecon("/plat_seapp_contexts");
+    restorecon("/nonplat_seapp_contexts");
+    restorecon("/plat_service_contexts");
+    restorecon("/nonplat_service_contexts");
+    restorecon("/plat_hwservice_contexts");
+    restorecon("/nonplat_hwservice_contexts");
+    restorecon("/sepolicy");
+    restorecon("/vndservice_contexts");
+
+    restorecon("/sys", SELINUX_ANDROID_RESTORECON_RECURSE);
+    restorecon("/dev/block", SELINUX_ANDROID_RESTORECON_RECURSE);
+    restorecon("/dev/device-mapper");
+}
+
 // Set the UDC controller for the ConfigFS USB Gadgets.
 // Read the UDC controller in use from "/sys/class/udc".
 // In case of multiple UDC controllers select the first one.
@@ -912,36 +976,98 @@ static void set_usb_controller() {
     }
 }
 
-static bool early_mount_one(struct fstab_rec* rec) {
-    if (rec && fs_mgr_is_verified(rec)) {
-        // setup verity and create the dm-XX block device
-        // needed to mount this partition
-        int ret = fs_mgr_setup_verity(rec, false);
-        if (ret == FS_MGR_SETUP_VERITY_FAIL) {
-            PLOG(ERROR) << "early_mount: Failed to setup verity for '" << rec->mount_point << "'";
+// Creates "/dev/block/dm-XX" for dm-verity by running coldboot on /sys/block/dm-XX.
+static void device_init_dm_device(const std::string& dm_device) {
+    const std::string device_name(basename(dm_device.c_str()));
+    const std::string syspath = "/sys/block/" + device_name;
+
+    device_init(syspath.c_str(), [&](uevent* uevent) -> coldboot_action_t {
+        if (uevent->device_name && device_name == uevent->device_name) {
+            LOG(VERBOSE) << "early_mount: creating dm-verity device : " << dm_device;
+            return COLDBOOT_STOP;
+        }
+        return COLDBOOT_CONTINUE;
+    });
+    device_close();
+}
+
+static bool vboot_1_0_mount_partitions(const std::vector<fstab_rec*>& fstab_recs) {
+    if (fstab_recs.empty()) return false;
+
+    for (auto rec : fstab_recs) {
+        bool need_create_dm_device = false;
+        if (fs_mgr_is_verified(rec)) {
+            // setup verity and create the dm-XX block device
+            // needed to mount this partition
+            int ret = fs_mgr_setup_verity(rec, false /* wait_for_verity_dev */);
+            if (ret == FS_MGR_SETUP_VERITY_DISABLED) {
+                LOG(INFO) << "verity disabled for '" << rec->mount_point << "'";
+            } else if (ret == FS_MGR_SETUP_VERITY_SUCCESS) {
+                need_create_dm_device = true;
+            } else {
+                PLOG(ERROR) << "early_mount: failed to setup verity for '" << rec->mount_point
+                            << "'";
+                return false;
+            }
+        }
+        if (need_create_dm_device) {
+            // The exact block device name (rec->blk_device) is changed to "/dev/block/dm-XX".
+            // Need to create it because ueventd isn't started during early mount.
+            device_init_dm_device(rec->blk_device);
+        }
+        if (fs_mgr_do_mount_one(rec)) {
+            PLOG(ERROR) << "early_mount: failed to mount '" << rec->mount_point << "'";
             return false;
         }
-
-        // The exact block device name is added as a mount source by
-        // fs_mgr_setup_verity() in ->blk_device as "/dev/block/dm-XX"
-        // We create that device by running coldboot on /sys/block/dm-XX
-        std::string dm_device(basename(rec->blk_device));
-        std::string syspath = StringPrintf("/sys/block/%s", dm_device.c_str());
-        device_init(syspath.c_str(), [&](uevent* uevent) -> coldboot_action_t {
-            if (uevent->device_name && !strcmp(dm_device.c_str(), uevent->device_name)) {
-                LOG(VERBOSE) << "early_mount: creating dm-verity device : " << dm_device;
-                return COLDBOOT_STOP;
-            }
-            return COLDBOOT_CONTINUE;
-        });
-    }
-
-    if (rec && fs_mgr_do_mount_one(rec)) {
-        PLOG(ERROR) << "early_mount: Failed to mount '" << rec->mount_point << "'";
-        return false;
     }
 
     return true;
+}
+
+static bool vboot_2_0_mount_partitions(const std::vector<fstab_rec*>& fstab_recs,
+                                       const std::string& device_file_by_name_prefix) {
+    if (fstab_recs.empty()) return false;
+
+    FsManagerAvbUniquePtr avb_handle = FsManagerAvbHandle::Open(device_file_by_name_prefix);
+    if (!avb_handle) {
+        LOG(INFO) << "Failed to Open FsManagerAvbHandle";
+        return false;
+    }
+
+    for (auto rec : fstab_recs) {
+        bool need_create_dm_device = false;
+        if (fs_mgr_is_avb(rec)) {
+            if (avb_handle->AvbHashtreeDisabled()) {
+                LOG(INFO) << "avb hashtree disabled for '" << rec->mount_point << "'";
+            } else if (avb_handle->SetUpAvb(rec, false /* wait_for_verity_dev */)) {
+                need_create_dm_device = true;
+            } else {
+                PLOG(ERROR) << "early_mount: failed to set up AVB on partition: '"
+                            << rec->mount_point << "'";
+                return false;
+            }
+        }
+        if (need_create_dm_device) {
+            // The exact block device name (rec->blk_device) is changed to "/dev/block/dm-XX".
+            // Need to create it because ueventd isn't started during early mount.
+            device_init_dm_device(rec->blk_device);
+        }
+        if (fs_mgr_do_mount_one(rec)) {
+            PLOG(ERROR) << "early_mount: failed to mount '" << rec->mount_point << "'";
+            return false;
+        }
+    }
+
+    return true;
+}
+
+static bool mount_early_partitions(const std::vector<fstab_rec*>& fstab_recs,
+                                   const std::string& device_file_by_name_prefix) {
+    if (is_dt_vbmeta_compatible()) {  // AVB (external/avb) is used to setup dm-verity.
+        return vboot_2_0_mount_partitions(fstab_recs, device_file_by_name_prefix);
+    } else {
+        return vboot_1_0_mount_partitions(fstab_recs);
+    }
 }
 
 // Creates devices with uevent->partition_name matching one in the in/out
@@ -986,12 +1112,10 @@ static void early_device_init(std::set<std::string>* partition_names) {
     });
 }
 
-static bool get_early_partitions(const std::vector<fstab_rec*>& early_fstab_recs,
-                                 std::set<std::string>* out_partitions, bool* out_need_verity) {
+static bool vboot_1_0_early_partitions(const std::vector<fstab_rec*>& early_fstab_recs,
+                                       std::set<std::string>* out_partitions,
+                                       bool* out_need_verity) {
     std::string meta_partition;
-    out_partitions->clear();
-    *out_need_verity = false;
-
     for (auto fstab_rec : early_fstab_recs) {
         // don't allow verifyatboot for early mounted partitions
         if (fs_mgr_is_verifyatboot(fstab_rec)) {
@@ -1030,6 +1154,40 @@ static bool get_early_partitions(const std::vector<fstab_rec*>& early_fstab_recs
     return true;
 }
 
+// a.k.a. AVB (external/avb)
+static bool vboot_2_0_early_partitions(std::set<std::string>* out_partitions, bool* out_need_verity,
+                                       std::string* out_device_file_by_name_prefix) {
+    std::string vbmeta_partitions;
+    if (!get_vbmeta_config_from_dt(&vbmeta_partitions, out_device_file_by_name_prefix)) {
+        return false;
+    }
+    // libavb verifies AVB metadata on all verified partitions at once.
+    // e.g., The vbmeta_partitions will be "vbmeta,boot,system,vendor"
+    // for libavb to verify metadata, even if we only need to early mount /vendor.
+    std::vector<std::string> partitions = android::base::Split(vbmeta_partitions, ",");
+    std::string ab_suffix = fs_mgr_get_slot_suffix();
+    for (const auto& partition : partitions) {
+        out_partitions->emplace(partition + ab_suffix);
+    }
+    *out_need_verity = true;
+    return true;
+}
+
+static bool get_early_partitions(const std::vector<fstab_rec*>& early_fstab_recs,
+                                 std::set<std::string>* out_partitions, bool* out_need_verity,
+                                 std::string* out_device_file_by_name_prefix) {
+    *out_need_verity = false;
+    out_partitions->clear();
+    out_device_file_by_name_prefix->clear();
+
+    if (is_dt_vbmeta_compatible()) {  // AVB (external/avb) is used to setup dm-verity.
+        return vboot_2_0_early_partitions(out_partitions, out_need_verity,
+                                          out_device_file_by_name_prefix);
+    } else {
+        return vboot_1_0_early_partitions(early_fstab_recs, out_partitions, out_need_verity);
+    }
+}
+
 /* Early mount vendor and ODM partitions. The fstab is read from device-tree. */
 static bool early_mount() {
     // skip early mount if we're in recovery mode
@@ -1064,9 +1222,11 @@ static bool early_mount() {
     if (early_fstab_recs.empty()) return true;
 
     bool need_verity;
+    std::string device_file_by_name_prefix;
     std::set<std::string> partition_names;
     // partition_names MUST have A/B suffix when A/B is used
-    if (!get_early_partitions(early_fstab_recs, &partition_names, &need_verity)) {
+    if (!get_early_partitions(early_fstab_recs, &partition_names, &need_verity,
+                              &device_file_by_name_prefix)) {
         return false;
     }
 
@@ -1089,10 +1249,9 @@ static bool early_mount() {
                     [&](uevent* uevent) -> coldboot_action_t { return COLDBOOT_STOP; });
     }
 
-    for (auto fstab_rec : early_fstab_recs) {
-        if (!early_mount_one(fstab_rec)) goto done;
+    if (mount_early_partitions(early_fstab_recs, device_file_by_name_prefix)) {
+        success = true;
     }
-    success = true;
 
 done:
     device_close();
@@ -1234,22 +1393,7 @@ int main(int argc, char** argv) {
 
     // Now set up SELinux for second stage.
     selinux_initialize(false);
-
-    // These directories were necessarily created before initial policy load
-    // and therefore need their security context restored to the proper value.
-    // This must happen before /dev is populated by ueventd.
-    LOG(INFO) << "Running restorecon...";
-    restorecon("/dev");
-    restorecon("/dev/kmsg");
-    restorecon("/dev/socket");
-    restorecon("/dev/random");
-    restorecon("/dev/urandom");
-    restorecon("/dev/__properties__");
-    restorecon("/plat_property_contexts");
-    restorecon("/nonplat_property_contexts");
-    restorecon("/sys", SELINUX_ANDROID_RESTORECON_RECURSE);
-    restorecon("/dev/block", SELINUX_ANDROID_RESTORECON_RECURSE);
-    restorecon("/dev/device-mapper");
+    selinux_restore_context();
 
     epoll_fd = epoll_create1(EPOLL_CLOEXEC);
     if (epoll_fd == -1) {
@@ -1271,7 +1415,7 @@ int main(int argc, char** argv) {
     parser.AddSectionParser("service",std::make_unique<ServiceParser>());
     parser.AddSectionParser("on", std::make_unique<ActionParser>());
     parser.AddSectionParser("import", std::make_unique<ImportParser>());
-    std::string bootscript = property_get("ro.boot.init_rc");
+    std::string bootscript = GetProperty("ro.boot.init_rc", "");
     if (bootscript.empty()) {
         parser.ParseConfig("/init.rc");
         parser.set_is_system_etc_init_loaded(
@@ -1311,7 +1455,7 @@ int main(int argc, char** argv) {
     am.QueueBuiltinAction(mix_hwrng_into_linux_rng_action, "mix_hwrng_into_linux_rng");
 
     // Don't mount filesystems or start core system services in charger mode.
-    std::string bootmode = property_get("ro.bootmode");
+    std::string bootmode = GetProperty("ro.bootmode", "");
     if (bootmode == "charger") {
         am.QueueEventTrigger("charger");
     } else {
@@ -1322,22 +1466,24 @@ int main(int argc, char** argv) {
     am.QueueBuiltinAction(queue_property_triggers_action, "queue_property_triggers");
 
     while (true) {
-        if (!(waiting_for_exec || waiting_for_prop)) {
-            am.ExecuteOneCommand();
-            restart_processes();
-        }
-
         // By default, sleep until something happens.
         int epoll_timeout_ms = -1;
 
-        // If there's a process that needs restarting, wake up in time for that.
-        if (process_needs_restart_at != 0) {
-            epoll_timeout_ms = (process_needs_restart_at - time(nullptr)) * 1000;
-            if (epoll_timeout_ms < 0) epoll_timeout_ms = 0;
+        if (!(waiting_for_prop || ServiceManager::GetInstance().IsWaitingForExec())) {
+            am.ExecuteOneCommand();
         }
+        if (!(waiting_for_prop || ServiceManager::GetInstance().IsWaitingForExec())) {
+            restart_processes();
 
-        // If there's more work to do, wake up again immediately.
-        if (am.HasMoreCommands()) epoll_timeout_ms = 0;
+            // If there's a process that needs restarting, wake up in time for that.
+            if (process_needs_restart_at != 0) {
+                epoll_timeout_ms = (process_needs_restart_at - time(nullptr)) * 1000;
+                if (epoll_timeout_ms < 0) epoll_timeout_ms = 0;
+            }
+
+            // If there's more work to do, wake up again immediately.
+            if (am.HasMoreCommands()) epoll_timeout_ms = 0;
+        }
 
         epoll_event ev;
         int nr = TEMP_FAILURE_RETRY(epoll_wait(epoll_fd, &ev, 1, epoll_timeout_ms));
