@@ -717,7 +717,7 @@ void LogBuffer::log(LogBufferElement* elem) {
                         ((*it)->getLogId() != LOG_ID_KERNEL))) {
         mLogElements.push_back(elem);
     } else {
-        log_time end = log_time::EPOCH;
+        uint64_t end = 1;
         bool end_set = false;
         bool end_always = false;
 
@@ -740,7 +740,8 @@ void LogBuffer::log(LogBufferElement* elem) {
             times++;
         }
 
-        if (end_always || (end_set && (end > (*it)->getRealTime()))) {
+        if (end_always
+                || (end_set && (end >= (*last)->getSequence()))) {
             mLogElements.push_back(elem);
         } else {
             // should be short as timestamps are localized near end()
@@ -751,7 +752,7 @@ void LogBuffer::log(LogBufferElement* elem) {
                 }
                 --it;
             } while (((*it)->getRealTime() > elem->getRealTime()) &&
-                     (!end_set || (end <= (*it)->getRealTime())));
+                     (!end_set || (end <= (*it)->getSequence())));
             mLogElements.insert(last, elem);
         }
         LogTimeEntry::unlock();
@@ -1009,7 +1010,7 @@ bool LogBuffer::prune(log_id_t id, unsigned long pruneRows, uid_t caller_uid) {
         times++;
     }
     log_time watermark(log_time::tv_sec_max, log_time::tv_nsec_max);
-    if (oldest) watermark = oldest->mStart - pruneMargin;
+    //if (oldest) watermark = oldest->mStart - pruneMargin;
 
     LogBufferElementCollection::iterator it;
 #ifdef MTK_LOGD_ENHANCE
@@ -1094,7 +1095,7 @@ times = mTimes.begin();
                 mLastSet[id] = true;
             }
 
-            if (oldest && (watermark <= element->getRealTime())) {
+            if (oldest && (oldest->mStart <= element->getSequence())) {
                 busy = true;
                 if (oldest->mTimeout.tv_sec || oldest->mTimeout.tv_nsec) {
                     oldest->triggerReader_Locked();
@@ -1341,7 +1342,7 @@ times = mTimes.begin();
             mLastSet[id] = true;
         }
 
-        if (oldest && (watermark <= element->getRealTime())) {
+        if (oldest && (oldest->mStart <= element->getSequence())) {
             busy = true;
             if (whitelist) {
                 break;
@@ -1385,7 +1386,7 @@ times = mTimes.begin();
                 mLastSet[id] = true;
             }
 
-            if (oldest && (watermark <= element->getRealTime())) {
+            if (oldest && (oldest->mStart <= element->getSequence())) {
                 busy = true;
                 if (stats.sizes(id) > (2 * log_buffer_size(id))) {
                     // kick a misbehaving log reader client off the island
@@ -1478,43 +1479,34 @@ unsigned long LogBuffer::getSize(log_id_t id) {
     return retval;
 }
 
-log_time LogBuffer::flushTo(SocketClient* reader, const log_time& start,
+uint64_t LogBuffer::flushTo(
+        SocketClient *reader, const uint64_t start,
                             pid_t* lastTid, bool privileged, bool security,
                             int (*filter)(const LogBufferElement* element,
                                           void* arg),
                             void* arg) {
     LogBufferElementCollection::iterator it;
+    uint64_t max = start;
     uid_t uid = reader->getUid();
 
     pthread_mutex_lock(&mLogElementsLock);
 
-    if (start == log_time::EPOCH) {
+    if (start <= 1) {
         // client wants to start from the beginning
         it = mLogElements.begin();
     } else {
-        // 3 second limit to continue search for out-of-order entries.
-        log_time min = start - pruneMargin;
-
-        // Cap to 300 iterations we look back for out-of-order entries.
-        size_t count = 300;
-
         // Client wants to start from some specified time. Chances are
         // we are better off starting from the end of the time sorted list.
-        LogBufferElementCollection::iterator last;
-        for (last = it = mLogElements.end(); it != mLogElements.begin();
-             /* do nothing */) {
+        for (it = mLogElements.end(); it != mLogElements.begin(); /* do nothing */) {
             --it;
-            LogBufferElement* element = *it;
-            if (element->getRealTime() > start) {
-                last = it;
-            } else if (!--count || (element->getRealTime() < min)) {
+            LogBufferElement *element = *it;
+            if (element->getSequence() <= start) {
+                it++;
                 break;
             }
         }
-        it = last;
     }
 
-    log_time max = start;
 
     LogBufferElement* lastElement = nullptr;  // iterator corruption paranoia
     static const size_t maxSkip = 4194304;    // maximum entries to skip
@@ -1540,10 +1532,9 @@ log_time LogBuffer::flushTo(SocketClient* reader, const log_time& start,
             continue;
         }
 
-        if (element->getRealTime() <= start) {
+        if (element->getSequence() <= start) {
             continue;
         }
-
         // NB: calling out to another object with mLogElementsLock held (safe)
         if (filter) {
             int ret = (*filter)(element, arg);

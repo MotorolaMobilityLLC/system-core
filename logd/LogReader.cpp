@@ -116,7 +116,8 @@ bool LogReader::onDataAvailable(SocketClient* cli) {
         nonBlock = true;
     }
 
-    log_time sequence = start;
+    uint64_t sequence = 1;
+
     //
     // This somewhat expensive data validation operation is required
     // for non-blocking, with timeout.  The incoming timestamp must be
@@ -129,24 +130,24 @@ bool LogReader::onDataAvailable(SocketClient* cli) {
     // Exit in the check loop ASAP as you find a transition from older to
     // newer, but use the last entry found to ensure overlap.
     //
-    if (nonBlock && (sequence != log_time::EPOCH) && timeout) {
+    if (nonBlock && (start != log_time::EPOCH) && timeout) {
         class LogFindStart {  // A lambda by another name
            private:
             const pid_t mPid;
             const unsigned mLogMask;
             bool mStartTimeSet;
-            log_time mStart;
-            log_time& mSequence;
-            log_time mLast;
+            log_time &mStart;
+            uint64_t &mSequence;
+            uint64_t mLast;
             bool mIsMonotonic;
 
            public:
-            LogFindStart(pid_t pid, unsigned logMask, log_time& sequence,
+            LogFindStart(pid_t pid, unsigned logMask, log_time &start, uint64_t & sequence,
                          bool isMonotonic)
                 : mPid(pid),
                   mLogMask(logMask),
                   mStartTimeSet(false),
-                  mStart(sequence),
+                  mStart(start),
                   mSequence(sequence),
                   mLast(sequence),
                   mIsMonotonic(isMonotonic) {
@@ -158,7 +159,7 @@ bool LogReader::onDataAvailable(SocketClient* cli) {
                     (me->mLogMask & (1 << element->getLogId()))) {
                     log_time real = element->getRealTime();
                     if (me->mStart == real) {
-                        me->mSequence = real;
+                        me->mSequence = element->getSequence();
                         me->mStartTimeSet = true;
                         return -1;
                     } else if (!me->mIsMonotonic || android::isMonotonic(real)) {
@@ -167,9 +168,9 @@ bool LogReader::onDataAvailable(SocketClient* cli) {
                             me->mStartTimeSet = true;
                             return -1;
                         }
-                        me->mLast = real;
+                        me->mLast = element->getSequence();
                     } else {
-                        me->mLast = real;
+                        me->mLast = element->getSequence();
                     }
                 }
                 return false;
@@ -179,7 +180,7 @@ bool LogReader::onDataAvailable(SocketClient* cli) {
                 return mStartTimeSet;
             }
 
-        } logFindStart(pid, logMask, sequence,
+        } logFindStart(pid, logMask, start, sequence,
                        logbuf().isMonotonic() && android::isMonotonic(start));
 
         logbuf().flushTo(cli, sequence, nullptr, FlushCommand::hasReadLogs(cli),
