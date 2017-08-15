@@ -219,13 +219,17 @@ static void notify_aed(int tombstone_fd)
     return;
   }
 
+  ssize_t ret = -1;
   char buf[256];
   char tombstone_path[1024];
 
   snprintf(buf, sizeof(buf), "/proc/%d/task/%d/fd/%d", getpid(), gettid(), tombstone_fd);
-  readlink(buf, tombstone_path, sizeof(tombstone_path));
+  ret = readlink(buf, tombstone_path, sizeof(tombstone_path));
+  if (ret != -1)
+    notify_fptr(tombstone_path);
+  else
+    PLOG(ERROR) << "readlink fail: " << strerror(errno);
 
-  notify_fptr(tombstone_path);
   dlclose(handle);
 }
 
