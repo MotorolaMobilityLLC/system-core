@@ -208,7 +208,7 @@ bool debuggerd_trigger_dump(pid_t pid, unique_fd output_fd, DebuggerdDumpType du
 }
 
 int dump_backtrace_to_file(pid_t tid, int fd) {
-  return dump_backtrace_to_file_timeout(tid, fd, 0);
+  return dump_backtrace_to_file_timeout(tid, fd, 5);
 }
 
 int dump_backtrace_to_file_timeout(pid_t tid, int fd, int timeout_secs) {
