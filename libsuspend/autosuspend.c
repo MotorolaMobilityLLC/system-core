@@ -28,6 +28,9 @@ static struct autosuspend_ops *autosuspend_ops;
 static bool autosuspend_enabled;
 static bool autosuspend_inited;
 
+// add for wakeup_source debugger
+static struct autosuspend_ops *autosuspend_debugger_ops;
+
 static int autosuspend_init(void)
 {
     if (autosuspend_inited) {
@@ -46,6 +49,12 @@ static int autosuspend_init(void)
 
 out:
     autosuspend_inited = true;
+
+    // add for wakeup_source debugger
+    autosuspend_debugger_ops = autosuspend_debugger_init();
+    if (!autosuspend_debugger_ops) {
+        ALOGE("failed to initialize autosuspend debugger\n");
+    }
 
     ALOGV("autosuspend initialized\n");
     return 0;
@@ -71,6 +80,11 @@ int autosuspend_enable(void)
         return ret;
     }
 
+    // add for wakeup_source debugger
+    if (autosuspend_debugger_ops) {
+        autosuspend_debugger_ops->enable();
+    }
+
     autosuspend_enabled = true;
     return 0;
 }
@@ -93,6 +107,11 @@ int autosuspend_disable(void)
     ret = autosuspend_ops->disable();
     if (ret) {
         return ret;
+    }
+
+    // add for wakeup_source debugger
+    if (autosuspend_debugger_ops) {
+        autosuspend_debugger_ops->disable();
     }
 
     autosuspend_enabled = false;
