@@ -58,6 +58,7 @@
 #include "property_service.h"
 
 #define SYSFS_PREFIX    "/sys"
+#define ARRAY_SIZE(x) (sizeof(x)/sizeof(x[0]))
 static const char *firmware_dirs[] = { "/etc/firmware",
                                        "/vendor/firmware",
                                        "/firmware/image" };
@@ -1071,7 +1072,7 @@ static int load_from_extended(uevent* uevent, int loading_fd, int data_fd)
     size_t i;
 
     /* Loop through all possible extended folders unless we find a firmware */
-    for (i = 0; i < arraysize(extended_paths); i++)
+    for (i = 0; i < ARRAY_SIZE(extended_paths); i++)
         if (load_one_extended(uevent, loading_fd, data_fd, i) == -1)
             return -1;
 
