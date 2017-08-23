@@ -792,7 +792,7 @@ void load_recovery_id_prop() {
 
 void load_system_props() {
     /* needs to be called prior loading the rest of properties */
-    process_hw_mappings("/system/etc/vhw.xml");
+    process_hw_mappings("/vendor/etc/vhw.xml");
 
     load_properties_from_file("/system/build.prop", NULL);
     load_properties_from_file("/odm/build.prop", NULL);
