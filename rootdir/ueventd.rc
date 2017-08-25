@@ -137,16 +137,3 @@ subsystem sound
 
 # DVB API device nodes
 /dev/dvb*                 0660   root       system
-
-# IIO
-/sys/devices/iio_sysfs_trigger/add_trigger          0220    system      system
-/sys/devices/iio_sysfs_trigger/remove_trigger       0220    system      system
-
-/sys/devices/iio:device* buffer/*                   0664    system      system
-/sys/devices/iio:device* scan_elements/in_*_en      0664    system      system
-/sys/devices/iio:device* trigger/current_trigger    0664    system      system
-/sys/devices/iio:device* in_sampling_frequency      0664    system      system
-/sys/devices/iio:device* max_latency_ns             0664    system      system
-/sys/devices/iio:device* flush                      0220    system      system
-
-/dev/iio:device*                                    0600    system      system
