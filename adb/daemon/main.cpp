@@ -88,34 +88,9 @@ static bool should_drop_privileges() {
     if (adb_unroot) {
         drop = true;
     }
-
-    // BEGIN Motorola, Darren Shu - w36016, July 31,2012, IKSECURITY-199 */
-    // Observe Motorola Access Token properties */
-    if (drop) {
-        prop = android::base::GetProperty("persist.atvc.adb", "");
-        if (prop == "1") {
-            drop = false;
-        }
-        prop = android::base::GetProperty("ro.boot.adb_root", "");
-        if (prop == "enable") {
-            drop = false;
-        }
-    }
-    /* END IKSECURITY-199 */
     return drop;
 #else
-    // BEGIN Motorola, Darren Shu - w36016, July 31,2012, IKSECURITY-199
-    // Observe Motorola Access Token properties
-    bool drop = true;
-    std::string prop = android::base::GetProperty("persist.atvc.adb", "");
-    if (prop == "1") {
-        drop = false;
-    }
-    prop = android::base::GetProperty("ro.boot.adb_root", "");
-    if (prop == "enable") {
-        drop = false;
-    }
-    return drop; // "adb root" not allowed, always drop privileges.
+    return true; // "adb root" not allowed, always drop privileges.
 #endif // ALLOW_ADBD_ROOT
 }
 
