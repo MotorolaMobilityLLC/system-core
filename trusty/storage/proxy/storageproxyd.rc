@@ -1,5 +1,6 @@
-on post-fs-data
-    write /proc/bootprof "start trusty sec storage"
+#on post-fs-data
+on property:vold.decrypt=trigger_restart_framework
+    write /proc/bootprof "start trusty secure storage"
     mkdir /data/trusty 0775 system system
     start storageproxyd
 
@@ -7,5 +8,5 @@ on post-fs-data
 service storageproxyd /system/bin/storageproxyd -d /dev/trusty-ipc-dev0 -p /data/trusty -r /dev/block/mmcblk0rpmb
     user root
     group root
-    class core
+    class late_start
     oneshot
