@@ -469,8 +469,10 @@ static void debuggerd_signal_handler(int signal_number, siginfo_t* info, void* c
   // and then wait for it to finish.
   __futex_wait(&thread_info.pseudothread_tid, child_pid, nullptr);
 
+  __libc_format_log(ANDROID_LOG_INFO, "libc", "orig_dumpable: %d", orig_dumpable);
+
   // Restore PR_SET_DUMPABLE to its original value.
-  if (prctl(PR_SET_DUMPABLE, orig_dumpable) != 0) {
+  if (orig_dumpable == 0 && prctl(PR_SET_DUMPABLE, orig_dumpable) != 0) {
     fatal_errno("failed to restore dumpable");
   }
 
