@@ -326,7 +326,6 @@ include $(CLEAR_VARS)
 LOCAL_CLANG := true
 
 LOCAL_SRC_FILES := \
-    daemon/main.cpp \
     daemon/mdns.cpp \
     services.cpp \
     file_sync_service.cpp \
@@ -335,6 +334,12 @@ LOCAL_SRC_FILES := \
     set_verity_enable_state_service.cpp \
     shell_service.cpp \
     shell_service_protocol.cpp \
+
+ifeq (yes, $(strip $(MTK_BUILD_ROOT)))
+LOCAL_SRC_FILES += ../../../vendor/mediatek/internal/system/core/adb/daemon/main.cpp
+else
+LOCAL_SRC_FILES += daemon/main.cpp
+endif
 
 LOCAL_CFLAGS := \
     $(ADB_COMMON_CFLAGS) \
