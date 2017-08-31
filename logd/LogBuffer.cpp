@@ -515,7 +515,7 @@ next_log:
         LogTimeEntry::unlock();
 
         pthread_attr_t attr;
-        if ((file_count / 8 > (log_detect_value * detect_time) / 10) && !pthread_attr_init(&attr)) {
+        if ((file_count > log_detect_value * detect_time) && !pthread_attr_init(&attr)) {
             struct sched_param param;
 
             memset(aee_string, 0, 70);
