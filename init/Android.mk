@@ -11,11 +11,19 @@ init_options += \
     -DREBOOT_BOOTLOADER_ON_PANIC=1 \
     -DDUMP_ON_UMOUNT_FAILURE=1
 else
+ifeq ($(strip $(MTK_BUILD_ROOT)),yes)
+init_options += \
+    -DALLOW_LOCAL_PROP_OVERRIDE=1 \
+    -DALLOW_PERMISSIVE_SELINUX=1 \
+    -DREBOOT_BOOTLOADER_ON_PANIC=1 \
+    -DDUMP_ON_UMOUNT_FAILURE=1
+else
 init_options += \
     -DALLOW_LOCAL_PROP_OVERRIDE=0 \
     -DALLOW_PERMISSIVE_SELINUX=0 \
     -DREBOOT_BOOTLOADER_ON_PANIC=0 \
     -DDUMP_ON_UMOUNT_FAILURE=0
+endif
 endif
 
 ifneq (,$(filter eng,$(TARGET_BUILD_VARIANT)))
