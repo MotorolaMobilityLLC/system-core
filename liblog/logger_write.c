@@ -484,7 +484,7 @@ LIBLOG_ABI_PUBLIC int __android_log_print(int prio, const char* tag,
 
 #if defined(MTK_LOGD_ENHANCE) && defined(ANDROID_LOG_MUCH_COUNT)
   if (((__android_log_transport == LOGGER_DEFAULT) || (__android_log_transport & LOGGER_LOGD))
-        && ((tag != NULL) && (strlen(tag) < LOG_BUF_SIZE))) {
+        && (tag == NULL || ((tag != NULL) && (strlen(tag) < LOG_BUF_SIZE)))) {
   caller = __builtin_return_address(0);
   size = sprintf(new_tag, "%p", caller);
   new_tag[strlen(new_tag) - 1] = 'x';
@@ -517,7 +517,7 @@ LIBLOG_ABI_PUBLIC int __android_log_buf_print(int bufID, int prio,
 
 #if defined(MTK_LOGD_ENHANCE) && defined(ANDROID_LOG_MUCH_COUNT)
   if (((__android_log_transport == LOGGER_DEFAULT) || (__android_log_transport & LOGGER_LOGD))
-        && ((tag != NULL) && (strlen(tag) < LOG_BUF_SIZE))) {
+        && (tag == NULL || ((tag != NULL) && (strlen(tag) < LOG_BUF_SIZE)))) {
   caller = __builtin_return_address(0);
   size = sprintf(new_tag, "%p", caller);
   new_tag[strlen(new_tag) - 1] = 'x';
