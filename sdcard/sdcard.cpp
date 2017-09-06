@@ -209,7 +209,8 @@ static int usage() {
                << "    -U: specify user ID that owns device"
                << "    -m: source_path is multi-user"
                << "    -w: runtime write mount has full write access"
-               << "    -P  preserve owners on the lower file system";
+               << "    -P  preserve owners on the lower file system"
+               << "    -G: preserve owners on the lower file system";
     return 1;
 }
 
