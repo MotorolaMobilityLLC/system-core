@@ -662,22 +662,6 @@ static bool load_properties_from_file(const char* filename, const char* filter) 
     return true;
 }
 
-// persist.sys.usb.config values can't be combined on build-time when property
-// files are split into each partition.
-// So we need to apply the same rule of build/make/tools/post_process_props.py
-// on runtime.
-static void update_sys_usb_config() {
-    bool is_debuggable = android::base::GetBoolProperty("ro.debuggable", false);
-    std::string config = android::base::GetProperty("persist.sys.usb.config", "");
-    if (config.empty()) {
-        property_set("persist.sys.usb.config", is_debuggable ? "adb" : "none");
-    } else if (is_debuggable && config.find("adb") == std::string::npos &&
-               config.length() + 4 < PROP_VALUE_MAX) {
-        config.append(",adb");
-        property_set("persist.sys.usb.config", config);
-    }
-}
-
 void property_load_boot_defaults() {
     if (!load_properties_from_file("/system/etc/prop.default", NULL)) {
         // Try recovery path
@@ -689,8 +673,6 @@ void property_load_boot_defaults() {
     load_properties_from_file("/product/build.prop", NULL);
     load_properties_from_file("/odm/default.prop", NULL);
     load_properties_from_file("/vendor/default.prop", NULL);
-
-    update_sys_usb_config();
 }
 
 static void load_override_properties() {
