@@ -8,6 +8,7 @@ LOCAL_INIT_RC := logd.rc
 
 LOCAL_SRC_FILES := \
     main.cpp \
+    LogMuchControl.cpp \
     LogCommand.cpp \
     CommandListener.cpp \
     LogListener.cpp \

@@ -50,6 +50,11 @@ CommandListener::CommandListener(LogBuffer* buf, LogReader* /*reader*/,
     registerCmd(new GetPruneListCmd(buf));
     registerCmd(new GetEventTagCmd(buf));
     registerCmd(new ReinitCmd());
+#ifdef MTK_LOGD_ENHANCE
+#if defined(HAVE_AEE_FEATURE) && defined(ANDROID_LOG_MUCH_COUNT)
+    registerCmd(new LogmuchCmd());
+#endif
+#endif
     registerCmd(new ExitCmd(this));
 }
 
@@ -339,6 +344,24 @@ int CommandListener::ReinitCmd::runCommand(SocketClient* cli, int /*argc*/,
 
     return 0;
 }
+
+#ifdef MTK_LOGD_ENHANCE
+#if defined(HAVE_AEE_FEATURE) && defined(ANDROID_LOG_MUCH_COUNT)
+CommandListener::LogmuchCmd::LogmuchCmd() : LogCommand("logmuch") {
+}
+
+int CommandListener::LogmuchCmd::runCommand(SocketClient* cli, int /*argc*/,
+                                           char** /*argv*/) {
+    setname();
+
+    trigger_logmuch_adjust();
+
+    cli->sendMsg("success");
+
+    return 0;
+}
+#endif
+#endif
 
 CommandListener::ExitCmd::ExitCmd(CommandListener* parent)
     : LogCommand("EXIT"), mParent(*parent) {

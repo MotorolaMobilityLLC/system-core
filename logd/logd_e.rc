@@ -13,6 +13,12 @@ service logd-reinit /system/bin/logd --reinit
     user logd
     group logd
 
+service logd-adjust /system/bin/logd --logmuch
+    oneshot
+    disabled
+    user logd
+    group logd
+
 on fs
     write /dev/event-log-tags "# content owned by logd
 "
@@ -21,10 +27,10 @@ on fs
     restorecon /dev/event-log-tags
 
 on property:persist.logmuch.detect=*
-    start logd-reinit
+    start logd-adjust
 
 on property:logmuch.detect.value=*
-    start logd-reinit
+    start logd-adjust
 
 on property:logmuch.detect.delay=1
-    start logd-reinit
+    start logd-adjust
