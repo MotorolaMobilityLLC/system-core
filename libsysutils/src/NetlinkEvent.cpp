@@ -321,6 +321,37 @@ bool NetlinkEvent::parseNfPacketMessage(struct nlmsghdr *nh) {
         uid = ntohl(nlAttrU32(uid_attr));
     }
 
+#if defined(FEATURE_SAFE_URL)
+    #define HTTP_FILTER_PREFIX "httpfilter"
+    char* prefix_str = NULL;
+    struct nlattr *prefix = findNlAttr(nh, sizeof(struct genlmsghdr), NFULA_PREFIX);
+    if (prefix) {
+        len = nlAttrLen(prefix);
+        prefix_str = (char*) nlAttrData(prefix);
+    }
+
+    if (prefix_str != NULL &&
+        !strncmp(prefix_str, HTTP_FILTER_PREFIX, strlen(HTTP_FILTER_PREFIX))) {
+        struct nlattr *payload = findNlAttr(nh, sizeof(struct genlmsghdr), NFULA_PAYLOAD);
+        if (payload) {
+            const char *httpReqParaName = "HTTPREQ=";
+            const int httpReqParaNameLen = strlen(httpReqParaName);
+            len = nlAttrLen(payload);
+            raw = (char*) nlAttrData(payload);
+            if (len > 0) {
+                char* data = (char*) calloc(1, httpReqParaNameLen + len + 1);
+                strcpy(data, httpReqParaName);
+                memcpy(data + httpReqParaNameLen, raw, len);
+
+                asprintf(&mParams[0], "UID=%d", uid);
+                asprintf(&mParams[1], "LEN=%d", len);
+                mParams[2] = data;
+                mSubsystem = strdup(HTTP_FILTER_PREFIX);
+                mAction = Action::kChange;
+            }
+        }
+    } else {
+#endif
     struct nlattr* payload = findNlAttr(nh, sizeof(struct genlmsghdr), NFULA_PAYLOAD);
     if (payload) {
         /* First 256 bytes is plenty */
@@ -331,15 +362,19 @@ bool NetlinkEvent::parseNfPacketMessage(struct nlmsghdr *nh) {
 
     char* hex = (char*) calloc(1, 5 + (len * 2));
     strcpy(hex, "HEX=");
-    for (int i = 0; i < len; i++) {
-        hex[4 + (i * 2)] = "0123456789abcdef"[(raw[i] >> 4) & 0xf];
-        hex[5 + (i * 2)] = "0123456789abcdef"[raw[i] & 0xf];
+    if (raw) {
+        for (int i = 0; i < len; i++) {
+            hex[4 + (i * 2)] = "0123456789abcdef"[(raw[i] >> 4) & 0xf];
+            hex[5 + (i * 2)] = "0123456789abcdef"[raw[i] & 0xf];
+        }
     }
-
     asprintf(&mParams[0], "UID=%d", uid);
     mParams[1] = hex;
     mSubsystem = strdup("strict");
     mAction = Action::kChange;
+#if defined(FEATURE_SAFE_URL)
+    }
+#endif
     return true;
 }
 
