@@ -20,6 +20,8 @@ include $(CLEAR_VARS)
 
 LOCAL_MODULE := storageproxyd
 
+LOCAL_PROPRIETARY_MODULE := true
+
 LOCAL_C_INCLUDES += bionic/libc/kernel/uapi
 
 LOCAL_SRC_FILES := \

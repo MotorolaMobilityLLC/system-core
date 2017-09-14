@@ -30,6 +30,7 @@ include $(CLEAR_VARS)
 # and ECDSA keys.
 ###
 LOCAL_MODULE := trusty_keymaster_tipc
+LOCAL_PROPRIETARY_MODULE := true
 LOCAL_SRC_FILES := \
 	trusty_keymaster_device.cpp \
 	trusty_keymaster_ipc.cpp \
@@ -52,6 +53,7 @@ include $(BUILD_EXECUTABLE)
 include $(CLEAR_VARS)
 
 LOCAL_MODULE := keystore.trusty
+LOCAL_PROPRIETARY_MODULE := true
 LOCAL_MODULE_RELATIVE_PATH := hw
 LOCAL_SRC_FILES := module.cpp \
 	trusty_keymaster_ipc.cpp \

@@ -20,6 +20,8 @@ include $(CLEAR_VARS)
 
 LOCAL_MODULE := libtrustystorage
 
+LOCAL_PROPRIETARY_MODULE := true
+
 LOCAL_SRC_FILES := \
 	storage.c \
 

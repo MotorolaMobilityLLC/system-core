@@ -1,12 +1,8 @@
-#on post-fs-data
-on property:vold.decrypt=trigger_restart_framework
+on post-fs-data
     write /proc/bootprof "start trusty secure storage"
     mkdir /data/trusty 0775 system system
-    start storageproxyd
 
 # Start storageproxyd Daemon
-service storageproxyd /system/bin/storageproxyd -d /dev/trusty-ipc-dev0 -p /data/trusty -r /dev/block/mmcblk0rpmb
-    user root
-    group root
+service storageproxyd /vendor/bin/storageproxyd -d /dev/trusty-ipc-dev0 -p /data/trusty -r /dev/block/mmcblk0rpmb
+    group system
     class late_start
-    oneshot

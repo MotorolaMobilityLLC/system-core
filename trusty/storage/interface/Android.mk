@@ -20,6 +20,8 @@ include $(CLEAR_VARS)
 
 LOCAL_MODULE := libtrustystorageinterface
 
+LOCAL_PROPRIETARY_MODULE := true
+
 LOCAL_EXPORT_C_INCLUDE_DIRS := $(LOCAL_PATH)/include
 
 include $(BUILD_STATIC_LIBRARY)
