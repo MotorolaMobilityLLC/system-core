@@ -281,7 +281,12 @@ int service_to_fd(const char* name, const atransport* transport) {
     int ret = -1;
 
 #if !ADB_HOST
-    ADBLOG("service_to_fd %s\n", name);
+    if(!strncmp(name, "shell:logcat", 12)||!strncmp(name, "shell,v2:logcat", 15)){
+        // Do not print logcat command because its parameter may contain keywords
+        // which lead to false alarm in some tests
+    } else {
+        ADBLOG("service_to_fd %s\n", name);
+    }
 #endif
 
     if (is_socket_spec(name)) {
