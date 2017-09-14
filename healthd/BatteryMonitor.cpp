@@ -438,6 +438,7 @@ bool BatteryMonitor::update(void) {
                  "battery none");
         }
 
+        len = strlen(dmesgline);
         snprintf(dmesgline + len, sizeof(dmesgline) - len, " chg=%s%s%s",
                  props.chargerAcOnline ? "a" : "",
                  props.chargerUsbOnline ? "u" : "",
