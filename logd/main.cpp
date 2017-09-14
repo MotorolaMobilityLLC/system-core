@@ -87,6 +87,18 @@
 //    logd
 //
 
+
+#ifdef MTK_LOGD_ENHANCE
+#if defined(MTK_LOGD_FILTER)
+extern int log_reader_count;
+#endif
+#if defined(HAVE_AEE_FEATURE) && defined(ANDROID_LOG_MUCH_COUNT)
+extern sem_t logmuch_sem;
+void* logmuch_adjust_thread_start(void* /*obj*/);
+int logmuch_adjust();
+#endif
+#endif
+
 static int drop_privs(bool klogd, bool auditd) {
     // Tricky, if ro.build.type is "eng" then this is true because of the
     // side effect that ro.debuggable == 1 as well, else it is false.
@@ -245,41 +257,6 @@ static bool package_list_parser_cb(pkg_info* info, void* /* userdata */) {
     return rc;
 }
 
-#ifdef MTK_LOGD_ENHANCE
-#if defined(MTK_LOGD_FILTER)
-static int log_reader_count = 0;
-void logd_reader_del(void) {
-    char property[PROPERTY_VALUE_MAX];
-
-    if (log_reader_count == 1) {
-        property_get("persist.log.tag", property, "I");
-        property_set("log.tag", property);
-        android::prdebug("logd no log reader, set log level to %s!\n", property);
-    }
-    log_reader_count--;
-}
-
-void logd_reader_add(void) {
-    char property[PROPERTY_VALUE_MAX];
-
-    if (log_reader_count == 0) {
-        property_get("persist.log.tag", property, "M");
-        property_set("log.tag", property);
-        android::prdebug("logd first log reader, set log level to %s!\n", property);
-    }
-    log_reader_count++;
-}
-
-#endif
-
-#if defined(HAVE_AEE_FEATURE) && defined(ANDROID_LOG_MUCH_COUNT)
-int log_detect_value;
-int log_much_delay_detect = 0;      // log much detect pause, may use double detect value
-int build_type;     // eng:0, userdebug:1 user:2
-int detect_time = 1;
-#endif
-#endif
-
 static void* reinit_thread_start(void* /*obj*/) {
     prctl(PR_SET_NAME, "logd.daemon");
 #ifdef MTK_LOGD_ENHANCE
@@ -299,14 +276,7 @@ static void* reinit_thread_start(void* /*obj*/) {
     // worth checking for error returns setting this thread's privileges.
     (void)setgid(AID_SYSTEM); // readonly access to /data/system/packages.list
     (void)setuid(AID_LOGD);   // access to everything logd, eg /data/misc/logd
-#ifdef MTK_LOGD_ENHANCE
-#if defined(HAVE_AEE_FEATURE) && defined(ANDROID_LOG_MUCH_COUNT)
-    char property[PROPERTY_VALUE_MAX];
-    bool value;
-    int count;
-    int delay;
-#endif
-#endif
+
     while (reinit_running && !sem_wait(&reinit) && reinit_running) {
         // uidToName Privileged Worker
         if (uid) {
@@ -351,58 +321,6 @@ static void* reinit_thread_start(void* /*obj*/) {
         }
         android::ReReadEventLogTags();
 #ifdef MTK_LOGD_ENHANCE
-#if defined(HAVE_AEE_FEATURE) && defined(ANDROID_LOG_MUCH_COUNT)
-        property_get("ro.aee.build.info", property, "");
-        value = !strcmp(property, "mtk");
-        if (value != true) {
-            log_detect_value = 0;
-            continue;
-        }
-
-        value = property_get_bool("persist.logmuch.detect", true);
-        if (value == true) {
-            property_get("ro.build.type", property, "");
-            if (!strcmp(property, "eng")) {
-                build_type = 0;
-            } else if (!strcmp(property, "userdebug")) {
-                build_type = 1;
-            } else {
-                build_type = 2;
-            }
-
-            if (log_detect_value == 0) {
-                log_detect_value = ANDROID_LOG_MUCH_COUNT;
-            }
-
-            property_get("logmuch.detect.value", property, "-1");
-            count = atoi(property);
-            if (count == 0) {
-                count = ANDROID_LOG_MUCH_COUNT;
-            }
-            android::prdebug("logmuch detect, build type %d, detect value %d:%d.\n",
-                build_type, count, log_detect_value);
-
-            if (count > 0 && count != log_detect_value) {  // set new log level
-                log_detect_value = count;
-                log_much_delay_detect = 1;
-            }
-            if (log_detect_value > 1000) {
-                detect_time = 1;
-            } else {
-                detect_time = 6;
-            }
-            property_get("logmuch.detect.delay", property, "");
-            delay = atoi(property);
-
-            if (delay > 0) {
-                log_much_delay_detect = 3*60;
-                property_set("logmuch.detect.delay", "0");
-            }
-        } else {
-            log_detect_value = 0;
-            android::prdebug("logmuch detect disable.");
-        }
-#endif
 #if defined(MTK_LOGD_FILTER)    /*for default status */
         if (log_reader_count == 0) {
             property_set("log.tag", "I");
@@ -516,6 +434,7 @@ static int issueReinit() {
     return strncmp(buffer, success, sizeof(success) - 1) != 0;
 }
 
+
 // Foreground waits for exit of the main persistent threads
 // that are started here. The threads are created to manage
 // UNIX domain client sockets for writing, reading and
@@ -527,6 +446,13 @@ int main(int argc, char* argv[]) {
     if ((argc > 1) && argv[1] && !strcmp(argv[1], "--reinit")) {
         return issueReinit();
     }
+#ifdef MTK_LOGD_ENHANCE
+#if defined(HAVE_AEE_FEATURE) && defined(ANDROID_LOG_MUCH_COUNT)
+    else if ((argc > 1) && argv[1] && !strcmp(argv[1], "--logmuch")) {
+        return logmuch_adjust();
+    }
+#endif
+#endif
 
     static const char dev_kmsg[] = "/dev/kmsg";
     fdDmesg = android_get_control_file(dev_kmsg);
@@ -568,6 +494,25 @@ int main(int argc, char* argv[]) {
         }
         pthread_attr_destroy(&attr);
     }
+
+#ifdef MTK_LOGD_ENHANCE
+#if defined(HAVE_AEE_FEATURE) && defined(ANDROID_LOG_MUCH_COUNT)
+    sem_init(&logmuch_sem, 0, 0);
+    pthread_attr_t attr1;
+    if (!pthread_attr_init(&attr1)) {
+        struct sched_param param;
+
+        memset(&param, 0, sizeof(param));
+        pthread_attr_setschedparam(&attr1, &param);
+        pthread_attr_setschedpolicy(&attr1, SCHED_BATCH);
+        if (!pthread_attr_setdetachstate(&attr1, PTHREAD_CREATE_DETACHED)) {
+            pthread_t thread;
+            pthread_create(&thread, &attr1, logmuch_adjust_thread_start, nullptr);
+        }
+        pthread_attr_destroy(&attr1);
+    }
+#endif
+#endif
 
     bool auditd =
         __android_logger_property_get_bool("ro.logd.auditd", BOOL_DEFAULT_TRUE);
