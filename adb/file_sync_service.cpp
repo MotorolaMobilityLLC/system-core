@@ -289,7 +289,7 @@ fail:
     ADBLOG("handle_send_file fail loop");
 #endif
     while (true) {
-        if (!ReadFdExactly(s, &msg.data, sizeof(msg.data))) goto fail;
+        if (!ReadFdExactly(s, &msg.data, sizeof(msg.data))) goto abort;
 
         if (msg.data.id == ID_DONE) {
             goto abort;
