@@ -21,7 +21,7 @@ int getfattr_main(int argc, char **argv)
 {
     int size;
     char *name = NULL, *path = NULL;
-    char value[128];
+    char value[512];
 
     for (;;) {
         int ret;
