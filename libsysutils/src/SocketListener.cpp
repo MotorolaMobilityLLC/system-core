@@ -47,6 +47,9 @@ SocketListener::SocketListener(const char *socketName, bool listen, bool useCmdN
 }
 
 void SocketListener::init(const char *socketName, int socketFd, bool listen, bool useCmdNum) {
+#if defined(FEATURE_ONLY_SEND_MSG)
+    mOnlySendMsg = false;
+#endif
     mListen = listen;
     mSocketName = socketName;
     mSock = socketFd;
@@ -290,9 +293,20 @@ void SocketListener::sendBroadcast(int code, const char *msg, bool addErrno) {
         SocketClient* c = *i;
         safeList.erase(i);
         // broadcasts are unsolicited and should not include a cmd number
+
+#if defined(FEATURE_ONLY_SEND_MSG)
+        if (mOnlySendMsg) {
+            if (c->sendData(msg, strlen(msg))) {
+                SLOGW("Error sending broadcast (%s)", strerror(errno));
+            }
+        } else {
+#endif
         if (c->sendMsg(code, msg, addErrno, false)) {
             SLOGW("Error sending broadcast (%s)", strerror(errno));
         }
+#if defined(FEATURE_ONLY_SEND_MSG)
+        }
+#endif
         c->decRef();
     }
 }
