@@ -31,6 +31,10 @@ class SocketListener {
     pthread_t               mThread;
     bool                    mUseCmdNum;
 
+#if defined(FEATURE_ONLY_SEND_MSG)
+    bool                    mOnlySendMsg;
+#endif
+
 public:
     SocketListener(const char *socketName, bool listen);
     SocketListener(const char *socketName, bool listen, bool useCmdNum);
@@ -47,6 +51,11 @@ public:
 
     bool release(SocketClient *c) { return release(c, true); }
 
+#if defined(FEATURE_ONLY_SEND_MSG)
+    inline void setOnlySendMsg(bool onlySendMsg) {
+        mOnlySendMsg = onlySendMsg;
+    }
+#endif
 protected:
     virtual bool onDataAvailable(SocketClient *c) = 0;
 
