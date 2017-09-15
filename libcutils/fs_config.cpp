@@ -172,7 +172,7 @@ static const struct fs_path_config android_files[] = {
     { 00600, AID_ROOT,      AID_ROOT,      0, "vendor/default.prop" },
     { 00444, AID_ROOT,      AID_ROOT,      0, ven_conf_dir + 1 },
     { 00444, AID_ROOT,      AID_ROOT,      0, ven_conf_file + 1 },
-    { 00750, AID_ROOT,      AID_ROOT,      0, "xbin/qe" },
+    { 00750, AID_ROOT,      AID_ROOT,      0, "vendor/xbin/qe" },
 
     /* the following file is INTENTIONALLY set-uid, and IS included
      * in user builds. */
