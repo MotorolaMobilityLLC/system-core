@@ -687,20 +687,22 @@ unsigned int mt_get_chip_hw_ver(void) {
     ERROR("read hw version fail, ret: %d\n", ret);
     return 0;
 }
-/* BEGIN IKJB42MAIN-6952, 03/13/2013, w60013, rename persist.sys.usb.config */
-void update_persistent_usb_property(void)
-{
-	char currPath[PATH_MAX];
-	char newPath[PATH_MAX];
 
-	snprintf(currPath, sizeof(currPath), "%s/persist.sys.usb.config",
-				PERSISTENT_PROPERTY_DIR);
-	snprintf(newPath, sizeof(newPath), "%s/persist.mot.usb.config",
-				PERSISTENT_PROPERTY_DIR);
-	if (rename(currPath, newPath)) {
-		ERROR("Unable to rename persistent prop file %s\n", currPath);
-	}
-}
+//IKANGEROW-7326,miaotao1, MUST NOT CALL THIS
+/* BEGIN IKJB42MAIN-6952, 03/13/2013, w60013, rename persist.sys.usb.config */
+// void update_persistent_usb_property(void)
+// {
+// 	char currPath[PATH_MAX];
+// 	char newPath[PATH_MAX];
+
+// 	snprintf(currPath, sizeof(currPath), "%s/persist.sys.usb.config",
+// 				PERSISTENT_PROPERTY_DIR);
+// 	snprintf(newPath, sizeof(newPath), "%s/persist.mot.usb.config",
+// 				PERSISTENT_PROPERTY_DIR);
+// 	if (rename(currPath, newPath)) {
+// 		ERROR("Unable to rename persistent prop file %s\n", currPath);
+// 	}
+// }
 /* END IKJB42MAIN-6952 */
 
 /* When booting an encrypted system, /data is not mounted when the
@@ -714,8 +716,10 @@ void load_persist_props(void) {
     NOTICE("ro.hardware: %s.\n", ro_hardware.c_str());
     load_override_properties();
 
+
+    // IKANGEROW-7326, miaotao1, MUST NOT CALL THIS
     /* IKVPREL1L-4680 - update usb properties after decryption */
-    update_persistent_usb_property();
+    //update_persistent_usb_property();
 
     /* Read persistent properties after all default values have been loaded. */
     load_persistent_properties();
