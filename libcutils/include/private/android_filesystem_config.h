@@ -168,6 +168,7 @@
 
 /* The range 5000-5999 is also reserved for OEM, and must never be used here. */
 #define AID_OEM_RESERVED_2_START 5000
+#define AID_BRIDGE_RW 5001    /* ATT_IQI_CHANGE: GID for iqi-bridge read/write */
 #define AID_OEM_RESERVED_2_END 5999
 #define AID_SENSORS       3011 /* access to /dev/socket/sensor_ctl_socket & QCCI/QCSI */
 

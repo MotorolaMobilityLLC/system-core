@@ -22,6 +22,9 @@ subsystem adf
 /dev/hwbinder             0666   root       root
 /dev/vndbinder            0666   root       root
 
+#For ATT IQI
+/dev/iqi_bridge           0660   system     bridge_rw
+
 # Anyone can read the logs, but if they're not in the "logs"
 # group, then they'll only see log entries for their UID.
 /dev/log/*                0666   root       log
