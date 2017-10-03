@@ -47,6 +47,9 @@ subsystem dma_heap
 /dev/dma_heap/system-uncached      0444   system     system
 /dev/dma_heap/system-secure        0444   system     system
 
+#For ATT IQI
+/dev/iqi_bridge           0660   system     vendor_bridge_rw
+
 # kms driver for drm based gpu
 /dev/dri/*                0666   root       graphics
 
