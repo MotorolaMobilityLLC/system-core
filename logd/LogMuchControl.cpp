@@ -39,6 +39,54 @@
 #include "LogUtils.h"
 
 #ifdef MTK_LOGD_ENHANCE
+#define INTERVAL      5LL
+#define MAX_COUNT     25
+void prdebug_ratelimit(const char* fmt, ...) {
+    static int cnt = 0;
+    static int miss_cnt = 0;
+    static struct timespec ts_0 = {0, 0};
+    struct timespec ts_1;
+    int64_t differ = 0;
+
+    if (cnt == 0) {
+        clock_gettime(CLOCK_MONOTONIC, &ts_0);
+    }
+
+    clock_gettime(CLOCK_MONOTONIC, &ts_1);
+
+    differ = ts_1.tv_sec - ts_0.tv_sec;
+
+    // if more than MAX_COUNT entry msg during  (INTERVAL - 1, INTERVAL + 1), then drop
+    if (cnt >= MAX_COUNT && differ < INTERVAL) {
+        miss_cnt++;
+        return;
+    }
+
+    char buffer[192];
+    va_list ap;
+    va_start(ap, fmt);
+    int n = vsnprintf(buffer, sizeof(buffer), fmt, ap);
+    va_end(ap);
+    if (n > 0) {
+        buffer[sizeof(buffer) - 1] = '\0';
+
+        if (cnt < MAX_COUNT) {
+            android::prdebug("%s", buffer);
+            cnt++;
+        } else if(differ >= INTERVAL) {
+            // write dropped statistic info
+            if (miss_cnt != 0)
+                android::prdebug("dropped %d its own logs by limitation.\n", miss_cnt);
+
+            // write normal log
+            android::prdebug("%s", buffer);
+            clock_gettime(CLOCK_MONOTONIC, &ts_0); // update ts_0
+            cnt  = 1;     // cnt = 1
+            miss_cnt = 0; // reset to Zero
+        }
+    }
+}
+
 #if defined(MTK_LOGD_FILTER)
 int log_reader_count = 0;
 void logd_reader_del(void) {
@@ -47,7 +95,7 @@ void logd_reader_del(void) {
     if (log_reader_count == 1) {
         property_get("persist.log.tag", property, "I");
         property_set("log.tag", property);
-        android::prdebug("logd no log reader, set log level to %s!\n", property);
+        prdebug_ratelimit("logd no log reader, set log level to %s!\n", property);
     }
     log_reader_count--;
 }
@@ -58,7 +106,7 @@ void logd_reader_add(void) {
     if (log_reader_count == 0) {
         property_get("persist.log.tag", property, "M");
         property_set("log.tag", property);
-        android::prdebug("logd first log reader, set log level to %s!\n", property);
+        prdebug_ratelimit("logd first log reader, set log level to %s!\n", property);
     }
     log_reader_count++;
 }

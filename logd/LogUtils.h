@@ -23,7 +23,10 @@
 #include <private/android_logger.h>
 #include <sysutils/SocketClient.h>
 #include <utils/FastStrcmp.h>
+
 #ifdef MTK_LOGD_ENHANCE
+void prdebug_ratelimit(const char* fmt, ...) __printflike(1, 2);
+
 #if defined(HAVE_AEE_FEATURE) && defined(ANDROID_LOG_MUCH_COUNT)
 extern int log_detect_value;
 extern int log_much_delay_detect;
