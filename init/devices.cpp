@@ -331,14 +331,12 @@ static void add_platform_device(const char *path)
     if (!strncmp(path, _PLATFORM_BASE, strlen(_PLATFORM_BASE)))
         name += strlen(_PLATFORM_BASE);
     else
-        return;
-#else
+#endif
     if (!strncmp(path, "/devices/", 9)) {
         name += 9;
         if (!strncmp(name, "platform/", 9))
             name += 9;
     }
-#endif
 
     LOG(VERBOSE) << "adding platform device " << name << " (" << path << ")";
 
