@@ -956,6 +956,19 @@ static void handle_device_event(struct uevent *uevent)
     if (!strcmp(uevent->action,"add") || !strcmp(uevent->action, "change") || !strcmp(uevent->action, "online"))
         fixup_sys_perms(uevent->path, uevent->subsystem);
 
+    /* specially handle uevent of "mods_interface" to fix race with ModManager */
+    if (!strcmp(uevent->subsystem,"mods_interfaces") && !strcmp(uevent->action, "online")) {
+        std::string uevent_path = android::base::StringPrintf("%s/%s/uevent", SYSFS_PREFIX, uevent->path);
+        int fd = open(uevent_path.c_str(), O_WRONLY);
+        if (fd >= 0) {
+            write(fd, "add\n", 4);
+            close(fd);
+            LOG(INFO) << "sent uevent \"add\" by " << uevent_path;
+        } else
+            LOG(ERROR) << "failed to open " << uevent_path;
+        return;
+    }
+
     if (!strncmp(uevent->subsystem, "block", 5)) {
         handle_block_device_event(uevent);
     } else if (!strncmp(uevent->subsystem, "platform", 8)) {
