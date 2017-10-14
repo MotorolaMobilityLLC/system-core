@@ -398,6 +398,19 @@ void DeviceHandler::HandleDeviceEvent(const Uevent& uevent) {
     std::vector<std::string> links;
     bool block = false;
 
+    /* specially handle uevent of "mods_interface" to fix race with ModManager */
+    if (uevent.subsystem == "mods_interfaces" && uevent.action == "online") {
+        std::string uevent_path = StringPrintf("%s/%s/uevent", "/sys", uevent.path);
+        int fd = open(uevent_path.c_str(), O_WRONLY);
+        if (fd >= 0) {
+            write(fd, "add\n", 4);
+            close(fd);
+            PLOG(INFO) << "sent uevent \"add\" by " << uevent_path;
+        } else
+            PLOG(ERROR) << "failed to open " << uevent_path;
+        return;
+    }
+
     if (uevent.subsystem == "block") {
         block = true;
         devpath = "/dev/block/" + Basename(uevent.path);
