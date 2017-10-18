@@ -271,7 +271,10 @@ xml_match_multiple_choices(element_t *head, map_outs_t *mouts)
 			name_to_return = NULL;
 	}
 
-	mouts->export_prop = name_to_return;
+	if (name_to_return)
+		mouts->export_prop = strdup(name_to_return);
+	else
+		mouts->export_prop = NULL;
 
 	for (int i = 0; i < MAX_PROPS_NUM; i++) {
 		tag_val_t *tval = &tagValuesTable[i];
