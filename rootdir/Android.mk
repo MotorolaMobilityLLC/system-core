@@ -129,6 +129,9 @@ endif
 # system before reboot.
 ifeq ($(AB_OTA_UPDATER),true)
   LOCAL_POST_INSTALL_CMD += ; mkdir -p $(TARGET_ROOT_OUT)/postinstall
+ifeq ($(BOARD_USES_OEM_OTHER_ODEX),true)
+  LOCAL_POST_INSTALL_CMD += ; mkdir -p $(TARGET_ROOT_OUT)/postinstall_oem
+endif
 endif
 
 include $(BUILD_SYSTEM)/base_rules.mk
