@@ -21,6 +21,7 @@ on early-init
 
     # Set the security context of /postinstall if present.
     restorecon /postinstall
+    restorecon /postinstall_oem
 
     chown system system /acct
     mkdir /acct/uid
