@@ -26,6 +26,7 @@ on early-init
 
     # Set the security context of /postinstall if present.
     restorecon /postinstall
+    restorecon /postinstall_oem
 
     start ueventd
 
