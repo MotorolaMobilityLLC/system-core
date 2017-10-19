@@ -565,9 +565,11 @@ xml_handle_mappings(parse_ctrl_t *info)
 	search_head = search_node(info->head, boot_prop, BY_NAME);
 	if (!search_head) {
 		PLOG(ERROR) << "No device section matching " << boot_prop << " found";
+		free(boot_prop);
 		return 1;
 	}
 	pr_debug("found section 'device name=\"%s\"'\n", search_head->name);
+	free(boot_prop);
 
 	/* search in device section */
 	search_head = search_node(search_head, "mappings", BY_TAG);
@@ -698,6 +700,10 @@ xml_free_list(element_t *head)
 		if (cur->count) {
 			for (i = 0; i < cur->count; i++) {
 				pr_debug("param[%d]: '%s'='%s'\n", i, cur->parameters[i]->pname, cur->parameters[i]->pdata);
+				if (cur->parameters[i]->pname)
+					free(cur->parameters[i]->pname);
+				if (cur->parameters[i]->pdata)
+					free(cur->parameters[i]->pdata);
 				free(cur->parameters[i]);
 			}
 			free(cur->parameters);
