@@ -77,18 +77,20 @@ int oem_ramdump_handler(const std::string& cmd, std::vector<std::string>* args)
 int oem_partition_handler(const std::string& cmd, std::vector<std::string>* args)
 {
     if (args->empty()) die("empty oem command");
-    if (args->size() < 3) die("Invalid command: fastboot oem partition dump <partition> [size] [offset]");
 
     int is_dump = 0;
 
-    if (args->at(1) == std::string("dump")) {
-        /* translate "pull" to "moto-pull" */
+    if (args->size() >= 2 && (args->at(1) == std::string("dump") || args->at(1) == std::string("moto-dump"))) {
+        if (args->size() < 3) die("Invalid command: fastboot oem partition dump <partition> [size] [offset]");
+        /* translate "dump" to "moto-dump" */
         args->at(1) = std::string("moto-dump");
         is_dump = 1;
     }
 
     std::string command(cmd);
-    std::string partition = args->at(2);
+    std::string partition;
+    if (is_dump)
+        partition = args->at(2);
     while (!args->empty()) {
         command += " " + next_arg(args);
     }
