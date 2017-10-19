@@ -55,7 +55,7 @@ int oem_ramdump_handler(const std::string& cmd, std::vector<std::string>* args)
 
     int is_pull = 0;
 
-    if (args->size() >= 2 && args->at(1) == std::string("pull")) {
+    if (args->size() >= 2 && (args->at(1) == std::string("pull") || args->at(1) == std::string("moto-pull"))) {
         /* translate "pull" to "moto-pull" */
         args->at(1) = std::string("moto-pull");
         is_pull = 1;
