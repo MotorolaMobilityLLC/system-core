@@ -114,23 +114,35 @@ static int remote_read(apacket *p, atransport *t)
 {
     if (usb_read(t->usb, &p->msg, sizeof(amessage))) {
         PLOG(ERROR) << "remote usb: read terminated (message)";
+#if defined(PATCH_RESET_ADBD)
+        exit(-1);
+#endif
         return -1;
     }
 
     if (!check_header(p, t)) {
         LOG(ERROR) << "remote usb: check_header failed";
+#if defined(PATCH_RESET_ADBD)
+        exit(-1);
+#endif
         return -1;
     }
 
     if (p->msg.data_length) {
         if (usb_read(t->usb, p->data, p->msg.data_length)) {
             PLOG(ERROR) << "remote usb: terminated (data)";
+#if defined(PATCH_RESET_ADBD)
+            exit(-1);
+#endif
             return -1;
         }
     }
 
     if (!check_data(p)) {
         LOG(ERROR) << "remote usb: check_data failed";
+#if defined(PATCH_RESET_ADBD)
+        exit(-1);
+#endif
         return -1;
     }
 
