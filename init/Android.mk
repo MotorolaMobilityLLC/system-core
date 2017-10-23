@@ -150,10 +150,6 @@ LOCAL_POST_INSTALL_CMD := $(hide) mkdir -p $(TARGET_ROOT_OUT)/sbin; \
     ln -sf ../init $(TARGET_ROOT_OUT)/sbin/ueventd; \
     ln -sf ../init $(TARGET_ROOT_OUT)/sbin/watchdogd
 
-ifneq ($(strip $(TARGET_PLATFORM_DEVICE_BASE)),)
-LOCAL_CFLAGS += -D_PLATFORM_BASE="\"$(TARGET_PLATFORM_DEVICE_BASE)\""
-endif
-
 LOCAL_SANITIZE := integer
 LOCAL_CLANG := true
 include $(BUILD_EXECUTABLE)
