@@ -127,6 +127,9 @@ include $(BUILD_STATIC_LIBRARY)
 include $(CLEAR_VARS)
 LOCAL_MODULE := libadbd
 LOCAL_CFLAGS := $(LIBADB_CFLAGS) -DADB_HOST=0
+ifeq ($(TARGET_DEVICE),payton)
+LOCAL_CFLAGS += -DPATCH_RESET_ADBD=1
+endif
 LOCAL_SRC_FILES := \
     $(LIBADB_SRC_FILES) \
     adbd_auth.cpp \
