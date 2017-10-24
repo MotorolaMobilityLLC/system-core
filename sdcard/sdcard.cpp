@@ -291,9 +291,13 @@ int main(int argc, char **argv) {
         PLOG(ERROR) << "setting RLIMIT_NOFILE failed";
     }
 
+    char bootmode[PROPERTY_VALUE_MAX];
+    property_get("ro.bootmode", bootmode, "");
+    if (!strcmp(bootmode, "normal")) {
     while ((fs_read_atomic_int("/data/.layout_version", &fs_version) == -1) || (fs_version < 3)) {
         LOG(ERROR) << "installd fs upgrade not yet complete; waiting...";
         sleep(1);
+    }
     }
 
     run_sdcardfs(source_path, label, uid, gid, userid, multi_user, full_write, derive_gid,
