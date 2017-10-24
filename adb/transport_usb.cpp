@@ -123,9 +123,6 @@ static int remote_read(apacket* p, usb_handle* usb) {
 static int remote_read(apacket* p, usb_handle* usb) {
     if (usb_read(usb, &p->msg, sizeof(amessage))) {
         PLOG(ERROR) << "remote usb: read terminated (message)";
-#if defined(PATCH_RESET_ADBD)
-        exit(-1);
-#endif
         return -1;
     }
 
