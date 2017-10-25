@@ -97,6 +97,9 @@ extern sem_t logmuch_sem;
 void* logmuch_adjust_thread_start(void* /*obj*/);
 int logmuch_adjust();
 #endif
+#if defined(LOGD_FORCE_DIRECTCOREDUMP)
+void directcoredump_init();
+#endif
 #endif
 
 static int drop_privs(bool klogd, bool auditd) {
@@ -133,10 +136,16 @@ static int drop_privs(bool klogd, bool auditd) {
         if (!eng) return -1;
     }
 #endif
+
+#if defined(MTK_LOGD_ENHANCE) && defined(LOGD_FORCE_DIRECTCOREDUMP)
+    if (prctl(PR_SET_DUMPABLE, 1) < 0)
+        android::prdebug("failed to set PR_SET_DUMPABLE\n");
+#else
     if (!eng && (prctl(PR_SET_DUMPABLE, 0) < 0)) {
         android::prdebug("failed to clear PR_SET_DUMPABLE");
         return -1;
     }
+#endif
 
     if (prctl(PR_SET_KEEPCAPS, 1) < 0) {
         android::prdebug("failed to set PR_SET_KEEPCAPS");
@@ -434,7 +443,6 @@ static int issueReinit() {
     return strncmp(buffer, success, sizeof(success) - 1) != 0;
 }
 
-
 // Foreground waits for exit of the main persistent threads
 // that are started here. The threads are created to manage
 // UNIX domain client sockets for writing, reading and
@@ -473,6 +481,12 @@ int main(int argc, char* argv[]) {
         }
         if (fdPmesg < 0) android::prdebug("Failed to open %s\n", proc_kmsg);
     }
+
+#ifdef MTK_LOGD_ENHANCE
+#if defined(LOGD_FORCE_DIRECTCOREDUMP)
+    directcoredump_init();
+#endif
+#endif
 
     // Reinit Thread
     sem_init(&reinit, 0, 0);
