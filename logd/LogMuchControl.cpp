@@ -241,5 +241,26 @@ int logmuch_adjust() {
     return strncmp(buffer, success, sizeof(success) - 1) != 0;
 }
 #endif
+
+#if defined(LOGD_FORCE_DIRECTCOREDUMP)
+#define SIGNUM 7
+
+// need sync with vendor\mediatek\proprietary\external\aee\direct-coredump\direct-coredump.c
+void directcoredump_init() {
+    int sigtype[SIGNUM] = {SIGABRT, SIGBUS, SIGFPE, SIGILL, SIGSEGV, SIGTRAP, SIGSYS};
+    char value[PROPERTY_VALUE_MAX] = {'\0'};
+
+    // eng&userdebug load direct-coredump default enable
+    // user load direct-coredump default disable due to libdirect-coredump.so will not be preloaded
+    property_get("persist.aee.core.direct", value, "default");
+    if (strncmp(value, "disable", sizeof("disable"))) {
+        int loop;
+        for (loop = 0; loop < SIGNUM; loop++) {
+            signal(sigtype[loop], SIG_DFL);
+        }
+    }
+    android::prdebug("init directcoredump done!\n");
+}
+#endif
 #endif
 
