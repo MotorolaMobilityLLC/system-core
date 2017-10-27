@@ -17,6 +17,7 @@
 cc_binary {
     name: "storageproxyd",
     vendor: true,
+    init_rc: ["storageproxyd.rc"],
 
     srcs: [
         "ipc.c",
