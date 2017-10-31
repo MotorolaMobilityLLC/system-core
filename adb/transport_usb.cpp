@@ -16,6 +16,10 @@
 
 #define TRACE_TAG TRANSPORT
 
+#if defined(PATCH_RESET_ADBD)
+#include "fdevent.h"
+#endif
+
 #include "sysdeps.h"
 #include "transport.h"
 
@@ -35,7 +39,7 @@ static int remote_read(apacket *p, atransport *t)
     if(check_header(p, t)) {
         D("remote usb: check_header failed");
 #if defined(PATCH_RESET_ADBD)
-        exit(-1);
+        fdevent_terminate_loop();
 #endif
         return -1;
     }
@@ -44,7 +48,7 @@ static int remote_read(apacket *p, atransport *t)
         if(usb_read(t->usb, p->data, p->msg.data_length)){
             D("remote usb: terminated (data)");
 #if defined(PATCH_RESET_ADBD)
-            exit(-1);
+            fdevent_terminate_loop();
 #endif
             return -1;
         }
@@ -53,7 +57,7 @@ static int remote_read(apacket *p, atransport *t)
     if(check_data(p)) {
         D("remote usb: check_data failed");
 #if defined(PATCH_RESET_ADBD)
-        exit(-1);
+        fdevent_terminate_loop();
 #endif
         return -1;
     }
