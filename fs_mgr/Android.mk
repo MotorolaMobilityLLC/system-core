@@ -33,6 +33,7 @@ LOCAL_C_INCLUDES := \
     system/extras/ext4_utils
 LOCAL_MODULE:= libfs_mgr
 LOCAL_STATIC_LIBRARIES := $(common_static_libraries)
+LOCAL_STATIC_LIBRARIES += libselinux
 LOCAL_EXPORT_C_INCLUDE_DIRS := $(LOCAL_PATH)/include
 LOCAL_CFLAGS := -Werror
 ifneq (,$(filter userdebug,$(TARGET_BUILD_VARIANT)))
