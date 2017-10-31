@@ -16,6 +16,10 @@
 
 #define TRACE_TAG TRANSPORT
 
+#if defined(PATCH_RESET_ADBD)
+#include "fdevent.h"
+#endif
+
 #include "sysdeps.h"
 #include "transport.h"
 
@@ -130,7 +134,7 @@ static int remote_read(apacket* p, usb_handle* usb) {
         if (p->msg.data_length > MAX_PAYLOAD) {
             PLOG(ERROR) << "remote usb: read overflow (data length = " << p->msg.data_length << ")";
 #if defined(PATCH_RESET_ADBD)
-            exit(-1);
+            fdevent_terminate_loop();
 #endif
             return -1;
         }
@@ -139,7 +143,7 @@ static int remote_read(apacket* p, usb_handle* usb) {
         if (usb_read(usb, &p->payload[0], p->payload.size())) {
             PLOG(ERROR) << "remote usb: terminated (data)";
 #if defined(PATCH_RESET_ADBD)
-            exit(-1);
+            fdevent_terminate_loop();
 #endif
             return -1;
         }
