@@ -60,12 +60,14 @@ static int bg_cpuset_fd = -1;
 static int fg_cpuset_fd = -1;
 static int ta_cpuset_fd = -1; // special cpuset for top app
 static int rs_cpuset_fd = -1;  // special cpuset for screen off restrictions
+static int aa_cpuset_fd = -1; // special cpuset for audio app
 
 // File descriptors open to /dev/stune/../tasks, setup by initialize, or -1 on error
 static int bg_schedboost_fd = -1;
 static int fg_schedboost_fd = -1;
 static int ta_schedboost_fd = -1;
 static int rt_schedboost_fd = -1;
+static int aa_schedboost_fd = -1;
 
 /* Add tid to the scheduling group defined by the policy */
 static int add_tid_to_cgroup(int tid, int fd)
@@ -156,8 +158,12 @@ static void __initialize() {
             ta_cpuset_fd = open(filename, O_WRONLY | O_CLOEXEC);
             filename = "/dev/cpuset/restricted/tasks";
             rs_cpuset_fd = open(filename, O_WRONLY | O_CLOEXEC);
+            filename = "/dev/cpuset/audio-app/tasks";
+            aa_cpuset_fd = open(filename, O_WRONLY | O_CLOEXEC);
 
             if (schedboost_enabled()) {
+                filename = "/dev/stune/audio-app/tasks";
+                aa_schedboost_fd = open(filename, O_WRONLY | O_CLOEXEC);
                 filename = "/dev/stune/top-app/tasks";
                 ta_schedboost_fd = open(filename, O_WRONLY | O_CLOEXEC);
                 filename = "/dev/stune/foreground/tasks";
@@ -273,7 +279,9 @@ int get_sched_policy(int tid, SchedPolicy *policy)
         *policy = SP_BACKGROUND;
     } else if (!strcmp(grpBuf, "top-app")) {
         *policy = SP_TOP_APP;
-    } else {
+    } else if (!strcmp(grpBuf, "audio-app")) {
+        *policy = SP_AUDIO_APP;
+    }else {
         errno = ERANGE;
         return -1;
     }
@@ -301,8 +309,6 @@ int set_cpuset_policy(int tid, SchedPolicy policy)
         boost_fd = bg_schedboost_fd;
         break;
     case SP_FOREGROUND:
-    case SP_AUDIO_APP:
-    case SP_AUDIO_SYS:
         fd = fg_cpuset_fd;
         boost_fd = fg_schedboost_fd;
         break;
@@ -315,6 +321,11 @@ int set_cpuset_policy(int tid, SchedPolicy policy)
         break;
     case SP_RESTRICTED:
         fd = rs_cpuset_fd;
+        break;
+    case SP_AUDIO_APP:
+    case SP_AUDIO_SYS:
+        fd = aa_cpuset_fd;
+        boost_fd = aa_schedboost_fd;
         break;
     default:
         boost_fd = fd = -1;
@@ -399,7 +410,7 @@ int set_sched_policy(int tid, SchedPolicy policy)
     case SP_AUDIO_APP:
     case SP_AUDIO_SYS:
     case SP_TOP_APP:
-        SLOGD("^^^ tid %d (%s)", tid, thread_name);
+        SLOGD("^^^ tid %d policy %d (%s)", tid, policy, thread_name);
         break;
     case SP_SYSTEM:
         SLOGD("/// tid %d (%s)", tid, thread_name);
@@ -420,8 +431,6 @@ int set_sched_policy(int tid, SchedPolicy policy)
             boost_fd = bg_schedboost_fd;
             break;
         case SP_FOREGROUND:
-        case SP_AUDIO_APP:
-        case SP_AUDIO_SYS:
             boost_fd = fg_schedboost_fd;
             break;
         case SP_TOP_APP:
@@ -430,6 +439,10 @@ int set_sched_policy(int tid, SchedPolicy policy)
         case SP_RT_APP:
 	    boost_fd = rt_schedboost_fd;
 	    break;
+        case SP_AUDIO_APP:
+        case SP_AUDIO_SYS:
+            boost_fd = aa_schedboost_fd;
+            break;
         default:
             boost_fd = -1;
             break;
