@@ -165,6 +165,7 @@ static void fixup_sys_perms(const char* upath, const char* subsystem) {
 
     listnode* node;
     list_for_each(node, &sys_perms) {
+        struct stat s;
         perms_* dp = &(node_to_item(node, perm_node, plist))->dp;
         if (match_subsystem(dp, SYSFS_PREFIX "/class/%s/%s", path.c_str(), subsystem)) {
             ; // matched
@@ -190,10 +191,15 @@ static void fixup_sys_perms(const char* upath, const char* subsystem) {
                 case FTS_D:
                 case FTS_F:
                     if (fnmatch(dp->attr, entp->fts_path + path.length() + 1, FNM_PATHNAME) == 0) {
-                        LOG(INFO) << "fixup " << entp->fts_path
-                                  << " " << dp->uid << " " << dp->gid << " " << std::oct << dp->perm;
-                        chown(entp->fts_path, dp->uid, dp->gid);
-                        chmod(entp->fts_path, dp->perm);
+                        if (stat(entp->fts_path, &s) == 0) {
+                            if ((s.st_uid != dp->uid) || (s.st_gid != dp->gid)
+                                || ((s.st_mode & 0xFFF) != dp->perm)) {
+                                LOG(INFO) << "fixup " << entp->fts_path
+                                          << " " << dp->uid << " " << dp->gid << " " << std::oct << dp->perm;
+                                chown(entp->fts_path, dp->uid, dp->gid);
+                                chmod(entp->fts_path, dp->perm);
+                            }
+                        }
                     }
                     break;
                 default:
@@ -204,10 +210,16 @@ static void fixup_sys_perms(const char* upath, const char* subsystem) {
 
         } else {
             std::string attr_file = path + "/" + dp->attr;
-            LOG(INFO) << "fixup " << attr_file
-                      << " " << dp->uid << " " << dp->gid << " " << std::oct << dp->perm;
-            chown(attr_file.c_str(), dp->uid, dp->gid);
-            chmod(attr_file.c_str(), dp->perm);
+
+            if (stat(attr_file.c_str(), &s) == 0) {
+                if ((s.st_uid != dp->uid) || (s.st_gid != dp->gid)
+                    || ((s.st_mode & 0xFFF) != dp->perm)) {
+                        LOG(INFO) << "fixup " << attr_file
+                                  << " " << dp->uid << " " << dp->gid << " " << std::oct << dp->perm;
+                        chown(attr_file.c_str(), dp->uid, dp->gid);
+                        chmod(attr_file.c_str(), dp->perm);
+               }
+            }
         }
     }
 
