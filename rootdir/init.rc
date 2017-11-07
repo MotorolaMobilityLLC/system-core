@@ -413,6 +413,10 @@ on post-fs-data
     mkdir /data/app-ephemeral 0771 system system
     mkdir /data/app-asec 0700 root root
     mkdir /data/app-lib 0771 system system
+    # Begin, lenovo-sw liyuan8 20171107, INDRIYAPRO-2983 for preload app
+    mkdir /data/app-lib2 0771 system system
+    # End, INDRIYAPRO-2983
+
     mkdir /data/app 0771 system system
     mkdir /data/property 0700 root root
     mkdir /data/tombstones 0771 system system
