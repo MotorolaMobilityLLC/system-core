@@ -16,9 +16,12 @@
 */
 #include <errno.h>
 #include <fcntl.h>
-#include <unistd.h>
-#include <sys/stat.h>
+#include <stdio.h>
+#include <string.h>
 #include <sys/mman.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
 #include <private/android_filesystem_config.h>
 #include "package.h"
 
@@ -128,7 +131,9 @@ map_file(const char* filename, size_t* filesize)
     }
 
     /* Memory-map the file now */
-    address = TEMP_FAILURE_RETRY(mmap(NULL, length, PROT_READ, MAP_PRIVATE, fd, 0));
+    do {
+        address = mmap(NULL, length, PROT_READ, MAP_PRIVATE, fd, 0);
+    } while (address == MAP_FAILED && errno == EINTR);
     if (address == MAP_FAILED) {
         address = NULL;
         goto EXIT;
@@ -176,6 +181,10 @@ check_directory_ownership(const char* path, uid_t uid)
 
     if (ret < 0)
         return -1;
+
+    /* /data/user/0 is a known safe symlink */
+    if (strcmp("/data/user/0", path) == 0)
+        return 0;
 
     /* must be a real directory, not a symlink */
     if (!S_ISDIR(st.st_mode))
@@ -408,10 +417,6 @@ parse_positive_decimal(const char** pp, const char* end)
         value = -1;
     }
     return value;
-
-BAD:
-    *pp = p;
-    return -1;
 }
 
 /* Read the system's package database and extract information about
@@ -421,7 +426,7 @@ BAD:
  * If the package database is corrupted, return -1 and set errno to EINVAL
  */
 int
-get_package_info(const char* pkgName, PackageInfo *info)
+get_package_info(const char* pkgName, uid_t userId, PackageInfo *info)
 {
     char*        buffer;
     size_t       buffer_len;
@@ -506,7 +511,20 @@ get_package_info(const char* pkgName, PackageInfo *info)
         if (q == p)
             goto BAD_FORMAT;
 
-        p = string_copy(info->dataDir, sizeof info->dataDir, p, q - p);
+        /* If userId == 0 (i.e. user is device owner) we can use dataDir value
+         * from packages.list, otherwise compose data directory as
+         * /data/user/$uid/$packageId
+         */
+        if (userId == 0) {
+            p = string_copy(info->dataDir, sizeof info->dataDir, p, q - p);
+        } else {
+            snprintf(info->dataDir,
+                     sizeof info->dataDir,
+                     "/data/user/%d/%s",
+                     userId,
+                     pkgName);
+            p = q;
+        }
 
         /* skip spaces */
         if (parse_spaces(&p, end) < 0)

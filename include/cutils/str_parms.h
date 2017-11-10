@@ -18,6 +18,9 @@
 #define __CUTILS_STR_PARMS_H
 
 #include <stdint.h>
+#include <sys/cdefs.h>
+
+__BEGIN_DECLS
 
 struct str_parms;
 
@@ -34,6 +37,12 @@ int str_parms_add_int(struct str_parms *str_parms, const char *key, int value);
 int str_parms_add_float(struct str_parms *str_parms, const char *key,
                         float value);
 
+// Returns non-zero if the str_parms contains the specified key.
+int str_parms_has_key(struct str_parms *str_parms, const char *key);
+
+// Gets value associated with the specified key (if present), placing it in the buffer
+// pointed to by the out_val parameter.  Returns the length of the returned string value.
+// If 'key' isn't in the parms, then return -ENOENT (-2) and leave 'out_val' untouched.
 int str_parms_get_str(struct str_parms *str_parms, const char *key,
                       char *out_val, int len);
 int str_parms_get_int(struct str_parms *str_parms, const char *key,
@@ -45,5 +54,7 @@ char *str_parms_to_str(struct str_parms *str_parms);
 
 /* debug */
 void str_parms_dump(struct str_parms *str_parms);
+
+__END_DECLS
 
 #endif /* __CUTILS_STR_PARMS_H */

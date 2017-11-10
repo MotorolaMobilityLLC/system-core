@@ -49,11 +49,9 @@ int wait_for_fb_wake(void)
 {
     int err = 0;
     char buf;
-    int fd = open(EARLYSUSPEND_WAIT_FOR_FB_WAKE, O_RDONLY, 0);
+    int fd = TEMP_FAILURE_RETRY(open(EARLYSUSPEND_WAIT_FOR_FB_WAKE, O_RDONLY, 0));
     // if the file doesn't exist, the error will be caught in read() below
-    do {
-        err = read(fd, &buf, 1);
-    } while (err < 0 && errno == EINTR);
+    err = TEMP_FAILURE_RETRY(read(fd, &buf, 1));
     ALOGE_IF(err < 0,
             "*** ANDROID_WAIT_FOR_FB_WAKE failed (%s)", strerror(errno));
     close(fd);
@@ -64,24 +62,17 @@ static int wait_for_fb_sleep(void)
 {
     int err = 0;
     char buf;
-    int fd = open(EARLYSUSPEND_WAIT_FOR_FB_SLEEP, O_RDONLY, 0);
+    int fd = TEMP_FAILURE_RETRY(open(EARLYSUSPEND_WAIT_FOR_FB_SLEEP, O_RDONLY, 0));
     // if the file doesn't exist, the error will be caught in read() below
-    do {
-        err = read(fd, &buf, 1);
-    } while (err < 0 && errno == EINTR);
+    err = TEMP_FAILURE_RETRY(read(fd, &buf, 1));
     ALOGE_IF(err < 0,
             "*** ANDROID_WAIT_FOR_FB_SLEEP failed (%s)", strerror(errno));
     close(fd);
     return err < 0 ? err : 0;
 }
 
-static void *earlysuspend_thread_func(void *arg)
+static void *earlysuspend_thread_func(void __unused *arg)
 {
-    char buf[80];
-    char wakeup_count[20];
-    int wakeup_count_len;
-    int ret;
-
     while (1) {
         if (wait_for_fb_sleep()) {
             ALOGE("Failed reading wait_for_fb_sleep, exiting earlysuspend thread\n");
@@ -139,7 +130,7 @@ static int autosuspend_earlysuspend_disable(void)
 
     ALOGV("autosuspend_earlysuspend_disable\n");
 
-    ret = write(sPowerStatefd, pwr_state_on, strlen(pwr_state_on));
+    ret = TEMP_FAILURE_RETRY(write(sPowerStatefd, pwr_state_on, strlen(pwr_state_on)));
     if (ret < 0) {
         strerror_r(errno, buf, sizeof(buf));
         ALOGE("Error writing to %s: %s\n", EARLYSUSPEND_SYS_POWER_STATE, buf);
@@ -200,7 +191,7 @@ struct autosuspend_ops *autosuspend_earlysuspend_init(void)
     char buf[80];
     int ret;
 
-    sPowerStatefd = open(EARLYSUSPEND_SYS_POWER_STATE, O_RDWR);
+    sPowerStatefd = TEMP_FAILURE_RETRY(open(EARLYSUSPEND_SYS_POWER_STATE, O_RDWR));
 
     if (sPowerStatefd < 0) {
         strerror_r(errno, buf, sizeof(buf));
@@ -208,7 +199,7 @@ struct autosuspend_ops *autosuspend_earlysuspend_init(void)
         return NULL;
     }
 
-    ret = write(sPowerStatefd, "on", 2);
+    ret = TEMP_FAILURE_RETRY(write(sPowerStatefd, "on", 2));
     if (ret < 0) {
         strerror_r(errno, buf, sizeof(buf));
         ALOGW("Error writing 'on' to %s: %s\n", EARLYSUSPEND_SYS_POWER_STATE, buf);

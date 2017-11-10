@@ -32,10 +32,12 @@ private:
     int mCommandCount;
     bool mWithSeq;
     FrameworkCommandCollection *mCommands;
+    bool mSkipToNextNullByte;
 
 public:
     FrameworkListener(const char *socketName);
     FrameworkListener(const char *socketName, bool withSeq);
+    FrameworkListener(int sock);
     virtual ~FrameworkListener() {}
 
 protected:

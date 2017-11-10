@@ -1,4 +1,9 @@
 /*
+* Copyright (C) 2014 MediaTek Inc.
+* Modification based on code covered by the mentioned copyright
+* and/or permission notice(s).
+*/
+/*
  * Copyright (C) 2007 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,16 +27,17 @@
 #ifndef _ANDROID_FILESYSTEM_CONFIG_H_
 #define _ANDROID_FILESYSTEM_CONFIG_H_
 
-#include <string.h>
-#include <sys/stat.h>
+#include <sys/cdefs.h>
 #include <sys/types.h>
 #include <stdint.h>
 
-#ifdef HAVE_ANDROID_OS
+#if defined(__ANDROID__)
 #include <linux/capability.h>
 #else
 #include "android_filesystem_capability.h"
 #endif
+
+#define CAP_MASK_LONG(cap_name)  (1ULL << (cap_name))
 
 /* This is the master Users and Groups config for the platform.
  * DO NOT EVER RENUMBER
@@ -76,10 +82,27 @@
 #define AID_SDCARD_PICS   1033  /* external storage photos access */
 #define AID_SDCARD_AV     1034  /* external storage audio/video access */
 #define AID_SDCARD_ALL    1035  /* access all users external storage */
+#define AID_LOGD          1036  /* log daemon */
+#define AID_SHARED_RELRO  1037  /* creator of shared GNU RELRO files */
+#define AID_DBUS          1038  /* dbus-daemon IPC broker process */
+#define AID_TLSDATE       1039  /* tlsdate unprivileged user */
+#define AID_MEDIA_EX      1040  /* mediaextractor process */
+#define AID_AUDIOSERVER   1041  /* audioserver process */
+#define AID_METRICS_COLL  1042  /* metrics_collector process */
+#define AID_METRICSD      1043  /* metricsd process */
+#define AID_WEBSERV       1044  /* webservd process */
+#define AID_DEBUGGERD     1045  /* debuggerd unprivileged user */
+#define AID_MEDIA_CODEC   1046  /* mediacodec process */
+#define AID_CAMERASERVER  1047  /* cameraserver process */
 
 #define AID_SHELL         2000  /* adb and debug shell user */
 #define AID_CACHE         2001  /* cache access */
 #define AID_DIAG          2002  /* access to diagnostic resources */
+
+/* The range 2900-2999 is reserved for OEM, and must never be
+ * used here */
+#define AID_OEM_RESERVED_START 2900
+#define AID_OEM_RESERVED_END   2999
 
 /* The 3000 series are intended for use as supplemental group id's only.
  * They indicate special Android capabilities that the kernel is aware of. */
@@ -91,23 +114,14 @@
 #define AID_NET_BW_STATS  3006  /* read bandwidth statistics */
 #define AID_NET_BW_ACCT   3007  /* change bandwidth statistics accounting */
 #define AID_NET_BT_STACK  3008  /* bluetooth: access config files */
-#define AID_QCOM_DIAG     3009  /* can read/write /dev/diag */
+#define AID_READPROC      3009  /* Allow /proc read access */
+#define AID_WAKELOCK      3010  /* Allow system wakelock read/write access */
 
-#define AID_MOT_ACCY      9000  /* access to accessory */
-#define AID_MOT_PWRIC     9001  /* power IC */
-#define AID_MOT_USB       9002  /* mot usb */
-#define AID_MOT_DRM       9003  /* can access DRM resource. */
-#define AID_MOT_TCMD      9004  /* mot_tcmd */
-#define AID_MOT_SEC_RTC   9005  /* mot cpcap rtc */
-#define AID_MOT_TOMBSTONE 9006
-#define AID_MOT_TPAPI     9007  /* mot_tpapi */
-#define AID_MOT_SECCLKD   9008  /* mot_secclkd */
-#define AID_MOT_WHISPER   9009  /* Whisper Protocol access */
-#define AID_MOT_CAIF      9010  /* can create CAIF sockets */
-#define AID_MOT_DLNA      9011  /*DLNA native */
-#define AID_MOT_ATVC      9012  /* mot_atvc - This is for use of the ATVC service ONLY */
-#define AID_SPRINT_EXTENSION 9013  /* IKASANTISPRINT-149 sprint extension service */
-#define AID_MOT_DBVC      9014  /* mot_dbvc - This group is used to access DataBlock feature */
+/* The range 5000-5999 is also reserved for OEM, and must never be used here. */
+#define AID_OEM_RESERVED_2_START 5000
+#define AID_OEM_RESERVED_2_END   5999
+
+#define AID_EVERYBODY     9997  /* shared between all apps in the same profile */
 #define AID_MISC          9998  /* access to misc storage */
 #define AID_NOBODY        9999
 
@@ -122,6 +136,14 @@
 #define AID_SHARED_GID_END   59999 /* start of gids for apps in each user to share */
 
 #if !defined(EXCLUDE_FS_CONFIG_STRUCTURES)
+/*
+ * Used in:
+ *  bionic/libc/bionic/stubs.cpp
+ *  external/libselinux/src/android.c
+ *  system/core/logd/LogStatistics.cpp
+ *  system/core/init/ueventd.cpp
+ *  system/core/init/util.cpp
+ */
 struct android_id_info {
     const char *name;
     unsigned aid;
@@ -167,6 +189,18 @@ static const struct android_id_info android_ids[] = {
     { "sdcard_pics",   AID_SDCARD_PICS, },
     { "sdcard_av",     AID_SDCARD_AV, },
     { "sdcard_all",    AID_SDCARD_ALL, },
+    { "logd",          AID_LOGD, },
+    { "shared_relro",  AID_SHARED_RELRO, },
+    { "dbus",          AID_DBUS, },
+    { "tlsdate",       AID_TLSDATE, },
+    { "mediaex",       AID_MEDIA_EX, },
+    { "audioserver",   AID_AUDIOSERVER, },
+    { "metrics_coll",  AID_METRICS_COLL },
+    { "metricsd",      AID_METRICSD },
+    { "webserv",       AID_WEBSERV },
+    { "debuggerd",     AID_DEBUGGERD, },
+    { "mediacodec",    AID_MEDIA_CODEC, },
+    { "cameraserver",  AID_CAMERASERVER, },
 
     { "shell",         AID_SHELL, },
     { "cache",         AID_CACHE, },
@@ -180,27 +214,12 @@ static const struct android_id_info android_ids[] = {
     { "net_bw_stats",  AID_NET_BW_STATS, },
     { "net_bw_acct",   AID_NET_BW_ACCT, },
     { "net_bt_stack",  AID_NET_BT_STACK, },
+    { "readproc",      AID_READPROC, },
+    { "wakelock",      AID_WAKELOCK, },
 
+    { "everybody",     AID_EVERYBODY, },
     { "misc",          AID_MISC, },
     { "nobody",        AID_NOBODY, },
-
-    { "qcom_diag", AID_QCOM_DIAG, },
-
-    { "mot_accy",	AID_MOT_ACCY, },
-    { "mot_pwric",	AID_MOT_PWRIC, },
-    { "mot_usb",	AID_MOT_USB, },
-    { "mot_drm",	AID_MOT_DRM, },
-    { "mot_tcmd",	AID_MOT_TCMD, },
-    { "mot_sec_rtc",	AID_MOT_SEC_RTC, },
-    { "mot_tombstone",	AID_MOT_TOMBSTONE, },
-    { "mot_tpapi",	AID_MOT_TPAPI, },
-    { "mot_secclkd",	AID_MOT_SECCLKD, },
-    { "mot_whisper",	AID_MOT_WHISPER, },
-    { "mot_caif",	AID_MOT_CAIF, },
-    { "mot_dlna",	AID_MOT_DLNA, },
-    { "sprint_extension", AID_SPRINT_EXTENSION, },
-    { "mot_dbvc",      AID_MOT_DBVC, },
-    { "mot_atvc",	AID_MOT_ATVC, },
 };
 
 #define android_id_count \
@@ -214,122 +233,30 @@ struct fs_path_config {
     const char *prefix;
 };
 
-/* Rules for directories.
-** These rules are applied based on "first match", so they
-** should start with the most specific path and work their
-** way up to the root.
-*/
 
-static const struct fs_path_config android_dirs[] = {
-    { 00770, AID_SYSTEM, AID_CACHE,  0, "cache" },
-    { 00771, AID_SYSTEM, AID_SYSTEM, 0, "data/app" },
-    { 00771, AID_SYSTEM, AID_SYSTEM, 0, "data/app-private" },
-    { 00771, AID_SYSTEM, AID_SYSTEM, 0, "data/dalvik-cache" },
-    { 00771, AID_SYSTEM, AID_SYSTEM, 0, "data/data" },
-    { 00771, AID_SHELL,  AID_SHELL,  0, "data/local/tmp" },
-    { 00771, AID_SHELL,  AID_SHELL,  0, "data/local" },
-    { 01771, AID_SYSTEM, AID_MISC,   0, "data/misc" },
-    { 00770, AID_DHCP,   AID_DHCP,   0, "data/misc/dhcp" },
-    { 00775, AID_MEDIA_RW, AID_MEDIA_RW, 0, "data/media" },
-    { 00775, AID_MEDIA_RW, AID_MEDIA_RW, 0, "data/media/Music" },
-    { 00771, AID_SYSTEM, AID_SYSTEM, 0, "data" },
-    { 00750, AID_ROOT,   AID_SHELL,  0, "sbin" },
-    { 00755, AID_ROOT,   AID_SHELL,  0, "system/bin" },
-    { 00755, AID_ROOT,   AID_SHELL,  0, "system/vendor" },
-    { 00755, AID_ROOT,   AID_SHELL,  0, "system/xbin" },
-    { 00755, AID_ROOT,   AID_ROOT,   0, "system/etc/ppp" },
-    { 00755, AID_ROOT,   AID_SHELL,  0, "vendor" },
-    { 00777, AID_ROOT,   AID_ROOT,   0, "sdcard" },
-    { 00755, AID_ROOT,   AID_ROOT,   0, 0 },
-};
+/* Rules for directories and files has moved to system/code/libcutils/fs_config.c */
 
-/* Rules for files.
-** These rules are applied based on "first match", so they
-** should start with the most specific path and work their
-** way up to the root. Prefixes ending in * denotes wildcard
-** and will allow partial matches.
-*/
-static const struct fs_path_config android_files[] = {
-    { 00440, AID_ROOT,      AID_SHELL,     0, "system/etc/init.goldfish.rc" },
-    { 00550, AID_ROOT,      AID_SHELL,     0, "system/etc/init.goldfish.sh" },
-    { 00440, AID_ROOT,      AID_SHELL,     0, "system/etc/init.trout.rc" },
-    { 00550, AID_ROOT,      AID_SHELL,     0, "system/etc/init.ril" },
-    { 00550, AID_ROOT,      AID_SHELL,     0, "system/etc/init.testmenu" },
-    { 00550, AID_DHCP,      AID_SHELL,     0, "system/etc/dhcpcd/dhcpcd-run-hooks" },
-    { 00444, AID_RADIO,     AID_AUDIO,     0, "system/etc/AudioPara4.csv" },
-    { 00555, AID_ROOT,      AID_ROOT,      0, "system/etc/ppp/*" },
-    { 00555, AID_ROOT,      AID_ROOT,      0, "system/etc/rc.*" },
-    { 00644, AID_SYSTEM,    AID_SYSTEM,    0, "data/app/*" },
-    { 00644, AID_MEDIA_RW,  AID_MEDIA_RW,  0, "data/media/*" },
-    { 00644, AID_SYSTEM,    AID_SYSTEM,    0, "data/app-private/*" },
-    { 00644, AID_APP,       AID_APP,       0, "data/data/*" },
-    { 00755, AID_ROOT,      AID_ROOT,      0, "system/bin/ping" },
 
-    /* the following file is INTENTIONALLY set-gid and not set-uid.
-     * Do not change. */
-    { 02750, AID_ROOT,      AID_INET,      0, "system/bin/netcfg" },
+__BEGIN_DECLS
 
-    /* the following five files are INTENTIONALLY set-uid, but they
-     * are NOT included on user builds. */
-    { 06755, AID_ROOT,      AID_ROOT,      0, "system/xbin/su" },
-    { 06755, AID_ROOT,      AID_ROOT,      0, "system/xbin/librank" },
-    { 06755, AID_ROOT,      AID_ROOT,      0, "system/xbin/procrank" },
-    { 06755, AID_ROOT,      AID_ROOT,      0, "system/xbin/procmem" },
-    { 06755, AID_ROOT,      AID_ROOT,      0, "system/xbin/tcpdump" },
-    { 04770, AID_ROOT,      AID_RADIO,     0, "system/bin/pppd-ril" },
 
-    /* the following files have enhanced capabilities and ARE included in user builds. */
-    { 00750, AID_ROOT,      AID_SHELL,     (1 << CAP_SETUID) | (1 << CAP_SETGID), "system/bin/run-as" },
+/*
+ * Used in:
+ *  build/tools/fs_config/fs_config.c
+ *  build/tools/fs_get_stats/fs_get_stats.c
+ *  system/extras/ext4_utils/make_ext4fs_main.c
+ *  external/squashfs-tools/squashfs-tools/android.c
+ *  system/core/cpio/mkbootfs.c
+ *  system/core/adb/file_sync_service.cpp
+ *  system/extras/ext4_utils/canned_fs_config.c
+ */
+void fs_config(const char *path, int dir, const char *target_out_path,
+               unsigned *uid, unsigned *gid, unsigned *mode, uint64_t *capabilities);
 
-    { 00755, AID_ROOT,      AID_SHELL,     0, "system/bin/*" },
-    { 00755, AID_ROOT,      AID_ROOT,      0, "system/lib/valgrind/*" },
-    { 00755, AID_ROOT,      AID_SHELL,     0, "system/xbin/*" },
-    { 00755, AID_ROOT,      AID_SHELL,     0, "system/vendor/bin/*" },
-    { 00755, AID_ROOT,      AID_SHELL,     0, "vendor/bin/*" },
-    { 00750, AID_ROOT,      AID_SHELL,     0, "sbin/*" },
-    { 00755, AID_ROOT,      AID_ROOT,      0, "bin/*" },
-    { 00750, AID_ROOT,      AID_SHELL,     0, "init*" },
-    { 00750, AID_ROOT,      AID_SHELL,     0, "charger*" },
-    { 00750, AID_ROOT,      AID_SHELL,     0, "sbin/fs_mgr" },
-    { 00640, AID_ROOT,      AID_SHELL,     0, "fstab.*" },
-    { 00644, AID_ROOT,      AID_ROOT,      0, 0 },
-};
 
-static inline void fs_config(const char *path, int dir,
-                             unsigned *uid, unsigned *gid, unsigned *mode, uint64_t *capabilities)
-{
-    const struct fs_path_config *pc;
-    int plen;
+ssize_t fs_config_generate(char *buffer, size_t length, const struct fs_path_config *pc);
 
-    if (path[0] == '/') {
-        path++;
-    }
+__END_DECLS
 
-    pc = dir ? android_dirs : android_files;
-    plen = strlen(path);
-    for(; pc->prefix; pc++){
-        int len = strlen(pc->prefix);
-        if (dir) {
-            if(plen < len) continue;
-            if(!strncmp(pc->prefix, path, len)) break;
-            continue;
-        }
-        /* If name ends in * then allow partial matches. */
-        if (pc->prefix[len -1] == '*') {
-            if(!strncmp(pc->prefix, path, len - 1)) break;
-        } else if (plen == len){
-            if(!strncmp(pc->prefix, path, len)) break;
-        }
-    }
-    *uid = pc->uid;
-    *gid = pc->gid;
-    *mode = (*mode & (~07777)) | pc->mode;
-    *capabilities = pc->capabilities;
-
-#if 0
-    fprintf(stderr,"< '%s' '%s' %d %d %o >\n",
-            path, pc->prefix ? pc->prefix : "", *uid, *gid, *mode);
-#endif
-}
 #endif
 #endif

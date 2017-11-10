@@ -14,15 +14,20 @@
  * limitations under the License.
  */
 
+#define __STDC_LIMIT_MACROS
+#include <stdint.h>
+
 #include <utils/String8.h>
 
+#include <utils/Compat.h>
 #include <utils/Log.h>
 #include <utils/Unicode.h>
-#include <utils/SharedBuffer.h>
 #include <utils/String16.h>
 #include <utils/threads.h>
 
 #include <ctype.h>
+
+#include "SharedBuffer.h"
 
 /*
  * Functions outside android is below the namespace android, since they use
@@ -78,6 +83,9 @@ void terminate_string8()
 static char* allocFromUTF8(const char* in, size_t len)
 {
     if (len > 0) {
+        if (len == SIZE_MAX) {
+            return NULL;
+        }
         SharedBuffer* buf = SharedBuffer::alloc(len+1);
         ALOG_ASSERT(buf, "Unable to allocate shared buffer");
         if (buf) {
@@ -96,20 +104,21 @@ static char* allocFromUTF16(const char16_t* in, size_t len)
 {
     if (len == 0) return getEmptyString();
 
-    const ssize_t bytes = utf16_to_utf8_length(in, len);
-    if (bytes < 0) {
+     // Allow for closing '\0'
+    const ssize_t resultStrLen = utf16_to_utf8_length(in, len) + 1;
+    if (resultStrLen < 1) {
         return getEmptyString();
     }
 
-    SharedBuffer* buf = SharedBuffer::alloc(bytes+1);
+    SharedBuffer* buf = SharedBuffer::alloc(resultStrLen);
     ALOG_ASSERT(buf, "Unable to allocate shared buffer");
     if (!buf) {
         return getEmptyString();
     }
 
-    char* str = (char*)buf->data();
-    utf16_to_utf8(in, len, str);
-    return str;
+    char* resultStr = (char*)buf->data();
+    utf16_to_utf8(in, len, resultStr, resultStrLen);
+    return resultStr;
 }
 
 static char* allocFromUTF32(const char32_t* in, size_t len)
@@ -118,21 +127,21 @@ static char* allocFromUTF32(const char32_t* in, size_t len)
         return getEmptyString();
     }
 
-    const ssize_t bytes = utf32_to_utf8_length(in, len);
-    if (bytes < 0) {
+    const ssize_t resultStrLen = utf32_to_utf8_length(in, len) + 1;
+    if (resultStrLen < 1) {
         return getEmptyString();
     }
 
-    SharedBuffer* buf = SharedBuffer::alloc(bytes+1);
+    SharedBuffer* buf = SharedBuffer::alloc(resultStrLen);
     ALOG_ASSERT(buf, "Unable to allocate shared buffer");
     if (!buf) {
         return getEmptyString();
     }
 
-    char* str = (char*) buf->data();
-    utf32_to_utf8(in, len, str);
+    char* resultStr = (char*) buf->data();
+    utf32_to_utf8(in, len, resultStr, resultStrLen);
 
-    return str;
+    return resultStr;
 }
 
 // ---------------------------------------------------------------------------
@@ -205,6 +214,11 @@ String8::String8(const char32_t* o, size_t len)
 String8::~String8()
 {
     SharedBuffer::bufferFromData(mString)->release();
+}
+
+size_t String8::length() const
+{
+    return SharedBuffer::sizeFromData(mString)-1;
 }
 
 String8 String8::format(const char* fmt, ...)
@@ -323,8 +337,17 @@ status_t String8::appendFormat(const char* fmt, ...)
 
 status_t String8::appendFormatV(const char* fmt, va_list args)
 {
-    int result = NO_ERROR;
-    int n = vsnprintf(NULL, 0, fmt, args);
+    int n, result = NO_ERROR;
+    va_list tmp_args;
+
+    /* args is undefined after vsnprintf.
+     * So we need a copy here to avoid the
+     * second vsnprintf access undefined args.
+     */
+    va_copy(tmp_args, args);
+    n = vsnprintf(NULL, 0, fmt, tmp_args);
+    va_end(tmp_args);
+
     if (n != 0) {
         size_t oldLength = length();
         char* buf = lockBuffer(oldLength + n);
@@ -397,6 +420,30 @@ ssize_t String8::find(const char* other, size_t start) const
     const char* s = mString+start;
     const char* p = strstr(s, other);
     return p ? p-mString : -1;
+}
+
+bool String8::removeAll(const char* other) {
+    ssize_t index = find(other);
+    if (index < 0) return false;
+
+    char* buf = lockBuffer(size());
+    if (!buf) return false; // out of memory
+
+    size_t skip = strlen(other);
+    size_t len = size();
+    size_t tail = index;
+    while (size_t(index) < len) {
+        ssize_t next = find(other, index + skip);
+        if (next < 0) {
+            next = len;
+        }
+
+        memmove(buf + tail, buf + index + skip, next - index - skip);
+        tail += next - index - skip;
+        index = next;
+    }
+    unlockBuffer(tail);
+    return true;
 }
 
 void String8::toLower()
@@ -542,7 +589,6 @@ char* String8::find_extension(void) const
 {
     const char* lastSlash;
     const char* lastDot;
-    int extLen;
     const char* const str = mString;
 
     // only look at the filename

@@ -1,4 +1,9 @@
 /*
+* Copyright (C) 2014 MediaTek Inc.
+* Modification based on code covered by the mentioned copyright
+* and/or permission notice(s).
+*/
+/*
  * Copyright (C) 2012 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,14 +33,14 @@
 #include <libgen.h>
 #include <time.h>
 #include <sys/swap.h>
-/* XXX These need to be obtained from kernel headers. See b/9336527 */
-#define SWAP_FLAG_PREFER        0x8000
-#define SWAP_FLAG_PRIO_MASK     0x7fff
-#define SWAP_FLAG_PRIO_SHIFT    0
-#define SWAP_FLAG_DISCARD       0x10000
+#include <dirent.h>
+#include <ext4.h>
+#include <ext4_sb.h>
+#include <ext4_crypt_init_extensions.h>
 
 #include <linux/loop.h>
 #include <private/android_filesystem_config.h>
+#include <cutils/android_reboot.h>
 #include <cutils/partition_utils.h>
 #include <cutils/properties.h>
 #include <logwrap/logwrap.h>
@@ -44,6 +49,9 @@
 #include "mincrypt/sha.h"
 #include "mincrypt/sha256.h"
 
+#include "ext4_utils.h"
+#include "wipe.h"
+
 #include "fs_mgr_priv.h"
 #include "fs_mgr_priv_verity.h"
 
@@ -51,7 +59,9 @@
 #define KEY_IN_FOOTER  "footer"
 
 #define E2FSCK_BIN      "/system/bin/e2fsck"
+#define F2FS_FSCK_BIN  "/system/bin/fsck.f2fs"
 #define MKSWAP_BIN      "/system/bin/mkswap"
+
 
 #define FSCK_LOG_FILE   "/dev/fscklogs/log"
 
@@ -59,54 +69,25 @@
 
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(*(a)))
 
-struct flag_list {
-    const char *name;
-    unsigned flag;
-};
+#ifdef MTK_FSTAB_FLAGS
+#define RESIZE_EXT4   "/vendor/bin/resize_ext4"
+#endif
+#define PROTECT_1_MNT_POINT "/protect_f"
+#define PROTECT_2_MNT_POINT "/protect_s"
 
-static struct flag_list mount_flags[] = {
-    { "noatime",    MS_NOATIME },
-    { "noexec",     MS_NOEXEC },
-    { "nosuid",     MS_NOSUID },
-    { "nodev",      MS_NODEV },
-    { "nodiratime", MS_NODIRATIME },
-    { "ro",         MS_RDONLY },
-    { "rw",         0 },
-    { "remount",    MS_REMOUNT },
-    { "bind",       MS_BIND },
-    { "rec",        MS_REC },
-    { "unbindable", MS_UNBINDABLE },
-    { "private",    MS_PRIVATE },
-    { "slave",      MS_SLAVE },
-    { "shared",     MS_SHARED },
-    { "defaults",   0 },
-    { 0,            0 },
-};
+#ifdef MTK_FSTAB_FLAGS
+static void resize_fs(char *blk_device, char *key_loc);
+#endif
 
-static struct flag_list fs_mgr_flags[] = {
-    { "wait",        MF_WAIT },
-    { "check",       MF_CHECK },
-    { "encryptable=",MF_CRYPT },
-    { "nonremovable",MF_NONREMOVABLE },
-    { "voldmanaged=",MF_VOLDMANAGED},
-    { "length=",     MF_LENGTH },
-    { "recoveryonly",MF_RECOVERYONLY },
-    { "swapprio=",   MF_SWAPPRIO },
-    { "zramsize=",   MF_ZRAMSIZE },
-    { "verify",      MF_VERIFY },
-    { "noemulatedsd", MF_NOEMULATEDSD },
-    { "defaults",    0 },
-    { 0,             0 },
-};
-
-struct fs_mgr_flag_values {
-    char *key_loc;
-    long long part_length;
-    char *label;
-    int partnum;
-    int swap_prio;
-    unsigned int zram_size;
-};
+#if defined(MTK_UBIFS_SUPPORT) || defined (MTK_FTL_SUPPORT)
+struct ubi_blkcreate_req {
+    __s8  padding[128];
+}  __packed;
+#define UBI_VOL_IOC_MAGIC 'O'
+#define UBI_IOCVOLCRBLK _IOW(UBI_VOL_IOC_MAGIC, 7, struct ubi_blkcreate_req)
+static int mtd_name_to_number(const char *name);
+static int ubi_attach_mtd(const char *name);
+#endif
 
 /*
  * gettime() - returns the time in seconds of the system's monotonic clock or
@@ -138,331 +119,15 @@ static int wait_for_file(const char *filename, int timeout)
     return ret;
 }
 
-static int parse_flags(char *flags, struct flag_list *fl,
-                       struct fs_mgr_flag_values *flag_vals,
-                       char *fs_options, int fs_options_len)
-{
-    int f = 0;
-    int i;
-    char *p;
-    char *savep;
-
-    /* initialize flag values.  If we find a relevant flag, we'll
-     * update the value */
-    if (flag_vals) {
-        memset(flag_vals, 0, sizeof(*flag_vals));
-        flag_vals->partnum = -1;
-        flag_vals->swap_prio = -1; /* negative means it wasn't specified. */
-    }
-
-    /* initialize fs_options to the null string */
-    if (fs_options && (fs_options_len > 0)) {
-        fs_options[0] = '\0';
-    }
-
-    p = strtok_r(flags, ",", &savep);
-    while (p) {
-        /* Look for the flag "p" in the flag list "fl"
-         * If not found, the loop exits with fl[i].name being null.
-         */
-        for (i = 0; fl[i].name; i++) {
-            if (!strncmp(p, fl[i].name, strlen(fl[i].name))) {
-                f |= fl[i].flag;
-                if ((fl[i].flag == MF_CRYPT) && flag_vals) {
-                    /* The encryptable flag is followed by an = and the
-                     * location of the keys.  Get it and return it.
-                     */
-                    flag_vals->key_loc = strdup(strchr(p, '=') + 1);
-                } else if ((fl[i].flag == MF_LENGTH) && flag_vals) {
-                    /* The length flag is followed by an = and the
-                     * size of the partition.  Get it and return it.
-                     */
-                    flag_vals->part_length = strtoll(strchr(p, '=') + 1, NULL, 0);
-                } else if ((fl[i].flag == MF_VOLDMANAGED) && flag_vals) {
-                    /* The voldmanaged flag is followed by an = and the
-                     * label, a colon and the partition number or the
-                     * word "auto", e.g.
-                     *   voldmanaged=sdcard:3
-                     * Get and return them.
-                     */
-                    char *label_start;
-                    char *label_end;
-                    char *part_start;
-
-                    label_start = strchr(p, '=') + 1;
-                    label_end = strchr(p, ':');
-                    if (label_end) {
-                        flag_vals->label = strndup(label_start,
-                                                   (int) (label_end - label_start));
-                        part_start = strchr(p, ':') + 1;
-                        if (!strcmp(part_start, "auto")) {
-                            flag_vals->partnum = -1;
-                        } else {
-                            flag_vals->partnum = strtol(part_start, NULL, 0);
-                        }
-                    } else {
-                        ERROR("Warning: voldmanaged= flag malformed\n");
-                    }
-                } else if ((fl[i].flag == MF_SWAPPRIO) && flag_vals) {
-                    flag_vals->swap_prio = strtoll(strchr(p, '=') + 1, NULL, 0);
-                } else if ((fl[i].flag == MF_ZRAMSIZE) && flag_vals) {
-                    flag_vals->zram_size = strtoll(strchr(p, '=') + 1, NULL, 0);
-                }
-                break;
-            }
-        }
-
-        if (!fl[i].name) {
-            if (fs_options) {
-                /* It's not a known flag, so it must be a filesystem specific
-                 * option.  Add it to fs_options if it was passed in.
-                 */
-                strlcat(fs_options, p, fs_options_len);
-                strlcat(fs_options, ",", fs_options_len);
-            } else {
-                /* fs_options was not passed in, so if the flag is unknown
-                 * it's an error.
-                 */
-                ERROR("Warning: unknown flag %s\n", p);
-            }
-        }
-        p = strtok_r(NULL, ",", &savep);
-    }
-
-out:
-    if (fs_options && fs_options[0]) {
-        /* remove the last trailing comma from the list of options */
-        fs_options[strlen(fs_options) - 1] = '\0';
-    }
-
-    return f;
-}
-
-/* Read a line of text till the next newline character.
- * If no newline is found before the buffer is full, continue reading till a new line is seen,
- * then return an empty buffer.  This effectively ignores lines that are too long.
- * On EOF, return null.
- */
-static char *fs_getline(char *buf, int size, FILE *file)
-{
-    int cnt = 0;
-    int eof = 0;
-    int eol = 0;
-    int c;
-
-    if (size < 1) {
-        return NULL;
-    }
-
-    while (cnt < (size - 1)) {
-        c = getc(file);
-        if (c == EOF) {
-            eof = 1;
-            break;
-        }
-
-        *(buf + cnt) = c;
-        cnt++;
-
-        if (c == '\n') {
-            eol = 1;
-            break;
-        }
-    }
-
-    /* Null terminate what we've read */
-    *(buf + cnt) = '\0';
-
-    if (eof) {
-        if (cnt) {
-            return buf;
-        } else {
-            return NULL;
-        }
-    } else if (eol) {
-        return buf;
-    } else {
-        /* The line is too long.  Read till a newline or EOF.
-         * If EOF, return null, if newline, return an empty buffer.
-         */
-        while(1) {
-            c = getc(file);
-            if (c == EOF) {
-                return NULL;
-            } else if (c == '\n') {
-                *buf = '\0';
-                return buf;
-            }
-        }
-    }
-}
-
-struct fstab *fs_mgr_read_fstab(const char *fstab_path)
-{
-    FILE *fstab_file;
-    int cnt, entries;
-    int len;
-    char line[256];
-    const char *delim = " \t";
-    char *save_ptr, *p;
-    struct fstab *fstab;
-    struct fstab_rec *recs;
-    struct fs_mgr_flag_values flag_vals;
-#define FS_OPTIONS_LEN 1024
-    char tmp_fs_options[FS_OPTIONS_LEN];
-
-    fstab_file = fopen(fstab_path, "r");
-    if (!fstab_file) {
-        ERROR("Cannot open file %s\n", fstab_path);
-        return 0;
-    }
-
-    entries = 0;
-    while (fs_getline(line, sizeof(line), fstab_file)) {
-        /* if the last character is a newline, shorten the string by 1 byte */
-        len = strlen(line);
-        if (line[len - 1] == '\n') {
-            line[len - 1] = '\0';
-        }
-        /* Skip any leading whitespace */
-        p = line;
-        while (isspace(*p)) {
-            p++;
-        }
-        /* ignore comments or empty lines */
-        if (*p == '#' || *p == '\0')
-            continue;
-        entries++;
-    }
-
-    if (!entries) {
-        ERROR("No entries found in fstab\n");
-        return 0;
-    }
-
-    /* Allocate and init the fstab structure */
-    fstab = calloc(1, sizeof(struct fstab));
-    fstab->num_entries = entries;
-    fstab->fstab_filename = strdup(fstab_path);
-    fstab->recs = calloc(fstab->num_entries, sizeof(struct fstab_rec));
-
-    fseek(fstab_file, 0, SEEK_SET);
-
-    cnt = 0;
-    while (fs_getline(line, sizeof(line), fstab_file)) {
-        /* if the last character is a newline, shorten the string by 1 byte */
-        len = strlen(line);
-        if (line[len - 1] == '\n') {
-            line[len - 1] = '\0';
-        }
-
-        /* Skip any leading whitespace */
-        p = line;
-        while (isspace(*p)) {
-            p++;
-        }
-        /* ignore comments or empty lines */
-        if (*p == '#' || *p == '\0')
-            continue;
-
-        /* If a non-comment entry is greater than the size we allocated, give an
-         * error and quit.  This can happen in the unlikely case the file changes
-         * between the two reads.
-         */
-        if (cnt >= entries) {
-            ERROR("Tried to process more entries than counted\n");
-            break;
-        }
-
-        if (!(p = strtok_r(line, delim, &save_ptr))) {
-            ERROR("Error parsing mount source\n");
-            return 0;
-        }
-        fstab->recs[cnt].blk_device = strdup(p);
-
-        if (!(p = strtok_r(NULL, delim, &save_ptr))) {
-            ERROR("Error parsing mount_point\n");
-            return 0;
-        }
-        fstab->recs[cnt].mount_point = strdup(p);
-
-        if (!(p = strtok_r(NULL, delim, &save_ptr))) {
-            ERROR("Error parsing fs_type\n");
-            return 0;
-        }
-        fstab->recs[cnt].fs_type = strdup(p);
-
-        if (!(p = strtok_r(NULL, delim, &save_ptr))) {
-            ERROR("Error parsing mount_flags\n");
-            return 0;
-        }
-        tmp_fs_options[0] = '\0';
-        fstab->recs[cnt].flags = parse_flags(p, mount_flags, NULL,
-                                       tmp_fs_options, FS_OPTIONS_LEN);
-
-        /* fs_options are optional */
-        if (tmp_fs_options[0]) {
-            fstab->recs[cnt].fs_options = strdup(tmp_fs_options);
-        } else {
-            fstab->recs[cnt].fs_options = NULL;
-        }
-
-        if (!(p = strtok_r(NULL, delim, &save_ptr))) {
-            ERROR("Error parsing fs_mgr_options\n");
-            return 0;
-        }
-        fstab->recs[cnt].fs_mgr_flags = parse_flags(p, fs_mgr_flags,
-                                                    &flag_vals, NULL, 0);
-        fstab->recs[cnt].key_loc = flag_vals.key_loc;
-        fstab->recs[cnt].length = flag_vals.part_length;
-        fstab->recs[cnt].label = flag_vals.label;
-        fstab->recs[cnt].partnum = flag_vals.partnum;
-        fstab->recs[cnt].swap_prio = flag_vals.swap_prio;
-        fstab->recs[cnt].zram_size = flag_vals.zram_size;
-        cnt++;
-    }
-    fclose(fstab_file);
-
-    return fstab;
-}
-
-void fs_mgr_free_fstab(struct fstab *fstab)
-{
-    int i;
-
-    if (!fstab) {
-        return;
-    }
-
-    for (i = 0; i < fstab->num_entries; i++) {
-        /* Free the pointers return by strdup(3) */
-        free(fstab->recs[i].blk_device);
-        free(fstab->recs[i].mount_point);
-        free(fstab->recs[i].fs_type);
-        free(fstab->recs[i].fs_options);
-        free(fstab->recs[i].key_loc);
-        free(fstab->recs[i].label);
-        i++;
-    }
-
-    /* Free the fstab_recs array created by calloc(3) */
-    free(fstab->recs);
-
-    /* Free the fstab filename */
-    free(fstab->fstab_filename);
-
-    /* Free fstab */
-    free(fstab);
-}
-
 static void check_fs(char *blk_device, char *fs_type, char *target)
 {
     int status;
     int ret;
     long tmpmnt_flags = MS_NOATIME | MS_NOEXEC | MS_NOSUID;
-    char *tmpmnt_opts = "nomblk_io_submit,errors=remount-ro";
+    char tmpmnt_opts[64] = "errors=remount-ro";
     char *e2fsck_argv[] = {
         E2FSCK_BIN,
+        "-f",
         "-y",
         blk_device
     };
@@ -482,24 +147,152 @@ static void check_fs(char *blk_device, char *fs_type, char *target)
          * filesytsem due to an error, e2fsck is still run to do a full check
          * fix the filesystem.
          */
+        errno = 0;
+        if (!strcmp(fs_type, "ext4")) {
+            // This option is only valid with ext4
+            strlcat(tmpmnt_opts, ",nomblk_io_submit", sizeof(tmpmnt_opts));
+        }
         ret = mount(blk_device, target, fs_type, tmpmnt_flags, tmpmnt_opts);
+        INFO("%s(): mount(%s,%s,%s)=%d: %s\n",
+             __func__, blk_device, target, fs_type, ret, strerror(errno));
         if (!ret) {
-            umount(target);
+            int i;
+            for (i = 0; i < 5; i++) {
+                // Try to umount 5 times before continuing on.
+                // Should we try rebooting if all attempts fail?
+                int result = umount(target);
+                if (result == 0) {
+                    INFO("%s(): unmount(%s) succeeded\n", __func__, target);
+                    break;
+                }
+                ERROR("%s(): umount(%s)=%d: %s\n", __func__, target, result, strerror(errno));
+                sleep(1);
+            }
         }
 
-        INFO("Running %s on %s\n", E2FSCK_BIN, blk_device);
+        /*
+         * Some system images do not have e2fsck for licensing reasons
+         * (e.g. recent SDK system images). Detect these and skip the check.
+         */
+        if (access(E2FSCK_BIN, X_OK)) {
+            INFO("Not running %s on %s (executable not in system image)\n",
+                 E2FSCK_BIN, blk_device);
+        } else {
+            INFO("Running %s on %s\n", E2FSCK_BIN, blk_device);
 
-        ret = android_fork_execvp_ext(ARRAY_SIZE(e2fsck_argv), e2fsck_argv,
+            ret = android_fork_execvp_ext(ARRAY_SIZE(e2fsck_argv), e2fsck_argv,
+                                          &status, true, LOG_KLOG | LOG_FILE,
+                                          true, FSCK_LOG_FILE, NULL, 0);
+
+            if (ret < 0) {
+                /* No need to check for error in fork, we can't really handle it now */
+                ERROR("Failed trying to run %s\n", E2FSCK_BIN);
+            }
+        }
+    } else if (!strcmp(fs_type, "f2fs")) {
+            char *f2fs_fsck_argv[] = {
+                    F2FS_FSCK_BIN,
+                    "-a",
+                    blk_device
+            };
+        INFO("Running %s -a %s\n", F2FS_FSCK_BIN, blk_device);
+
+        ret = android_fork_execvp_ext(ARRAY_SIZE(f2fs_fsck_argv), f2fs_fsck_argv,
                                       &status, true, LOG_KLOG | LOG_FILE,
-                                      true, FSCK_LOG_FILE);
-
+                                      true, FSCK_LOG_FILE, NULL, 0);
         if (ret < 0) {
             /* No need to check for error in fork, we can't really handle it now */
-            ERROR("Failed trying to run %s\n", E2FSCK_BIN);
+            ERROR("Failed trying to run %s\n", F2FS_FSCK_BIN);
         }
     }
 
     return;
+}
+
+int misc_set_phone_encrypt_state(const struct phone_encrypt_state *in, struct fstab *fstab) {
+#ifdef MTK_EMMC_SUPPORT
+    int dev = -1;
+    char dev_name[256];
+    int count;
+    struct fstab_rec* rec;
+
+    if ((rec = fs_mgr_get_entry_for_mount_point(fstab, "/misc"))) {
+       strcpy(dev_name, rec->blk_device);
+    }
+    else {
+       strcpy(dev_name, "/dev/misc");
+    }
+
+    dev = open(dev_name, O_WRONLY);
+    if (dev < 0)  {
+        ERROR("Can't open %s\n(%s)\n", dev_name, strerror(errno));
+        return -1;
+    }
+
+    if (lseek(dev, PHONE_ENCRYPT_OFFSET, SEEK_SET) == -1) {
+        ERROR("Failed seeking %s\n(%s)\n", dev_name, strerror(errno));
+        close(dev);
+        return -1;
+    }
+
+    count = write(dev, in, sizeof(*in));
+    if (count != sizeof(*in)) {
+        ERROR("Failed writing %s\n(%s)\n", dev_name, strerror(errno));
+        close(dev);
+        return -1;
+    }
+    if (close(dev) != 0) {
+        ERROR("Failed closing %s\n(%s)\n", dev_name, strerror(errno));
+        return -1;
+    }
+#else
+     (void*)in;
+     (void*)fstab;
+#endif
+    return 0;
+}
+
+int misc_get_phone_encrypt_state(struct phone_encrypt_state *in, struct fstab *fstab) {
+#ifdef MTK_EMMC_SUPPORT
+    int dev = -1;
+    char dev_name[256];
+    int count;
+    struct fstab_rec* rec;
+
+    if ((rec = fs_mgr_get_entry_for_mount_point(fstab, "/misc"))) {
+       strcpy(dev_name, rec->blk_device);
+    }
+    else {
+       strcpy(dev_name, "/dev/misc");
+    }
+
+    dev = open(dev_name, O_RDONLY);
+    if (dev < 0)  {
+        ERROR("Can't open %s\n(%s)\n", dev_name, strerror(errno));
+        return -1;
+    }
+
+    if (lseek(dev, PHONE_ENCRYPT_OFFSET, SEEK_SET) == -1) {
+        ERROR("Failed seeking %s\n(%s)\n", dev_name, strerror(errno));
+        close(dev);
+        return -1;
+    }
+
+    count = read(dev, in, sizeof(*in));
+    if (count != sizeof(*in)) {
+        ERROR("Failed reading %s\n(%s)\n", dev_name, strerror(errno));
+        close(dev);
+        return -1;
+    }
+    if (close(dev) != 0) {
+        ERROR("Failed closing %s\n(%s)\n", dev_name, strerror(errno));
+        return -1;
+    }
+#else
+     (void*)in;
+     (void*)fstab;
+#endif
+    return 0;
 }
 
 static void remove_trailing_slashes(char *n)
@@ -517,19 +310,22 @@ static void remove_trailing_slashes(char *n)
  * Mark the given block device as read-only, using the BLKROSET ioctl.
  * Return 0 on success, and -1 on error.
  */
-static void fs_set_blk_ro(const char *blockdev)
+int fs_mgr_set_blk_ro(const char *blockdev)
 {
     int fd;
+    int rc = -1;
     int ON = 1;
 
-    fd = open(blockdev, O_RDONLY);
+    fd = TEMP_FAILURE_RETRY(open(blockdev, O_RDONLY | O_CLOEXEC));
     if (fd < 0) {
         // should never happen
-        return;
+        return rc;
     }
 
-    ioctl(fd, BLKROSET, &ON);
+    rc = ioctl(fd, BLKROSET, &ON);
     close(fd);
+
+    return rc;
 }
 
 /*
@@ -537,16 +333,96 @@ static void fs_set_blk_ro(const char *blockdev)
  * sets the underlying block device to read-only if the mount is read-only.
  * See "man 2 mount" for return values.
  */
-static int __mount(const char *source, const char *target,
-                   const char *filesystemtype, unsigned long mountflags,
-                   const void *data)
+static int __mount(const char *source, const char *target, const struct fstab_rec *rec, int encryptable, struct fstab *fstab)
 {
-    int ret = mount(source, target, filesystemtype, mountflags, data);
+    unsigned long mountflags = rec->flags;
+    int ret;
+    int save_errno;
+    bool is_nvram_in_data = true;
 
-    if ((ret == 0) && (mountflags & MS_RDONLY) != 0) {
-        fs_set_blk_ro(source);
+    /* We need this because sometimes we have legacy symlinks
+     * that are lingering around and need cleaning up.
+     */
+    struct stat info;
+    if (!lstat(target, &info))
+        if ((info.st_mode & S_IFMT) == S_IFLNK)
+            unlink(target);
+    mkdir(target, 0755);
+
+    NOTICE("%s: target='%s, encryptable=%d \n", __FUNCTION__, target, encryptable);
+
+    if (fs_mgr_get_entry_for_mount_point(fstab, "/nvdata")) {
+         NOTICE("%s: 'nvdata' partition exists!", __FUNCTION__);
+         is_nvram_in_data = false;
     }
+    if(encryptable == FS_MGR_MNTALL_DEV_MIGHT_BE_ENCRYPTED && is_nvram_in_data && (!strcmp(target, PROTECT_1_MNT_POINT) || !strcmp(target, PROTECT_2_MNT_POINT))) {
+         NOTICE("encryptable is FS_MGR_MNTALL_DEV_MIGHT_BE_ENCRYPTED. Need to mount '%s' as tmpfs\n", target);
+         if ((ret = fs_mgr_do_tmpfs_mount((char *)target))) {
+             ERROR("Mount '%s' to tmpfs fail. \n", target);
+         }
+         else {
+             NOTICE("Try to copy modem nvram from emmc to the tmpfs of '%s'\n", target);
+             char tmp_mnt_point[256];
+             char cmd[256];
+             int status = 0;
 
+             snprintf(tmp_mnt_point, sizeof(tmp_mnt_point),  "/mnt%s", target);
+             snprintf(cmd, sizeof(cmd), "/system/bin/mkdir %s", tmp_mnt_point);
+             status = system(cmd);
+             if (status < 0) {
+                 NOTICE("Execute '%s', status(%d), WEXITSTATUS(%d) \n", cmd, status, WEXITSTATUS(status));
+             }
+
+             if (!access(tmp_mnt_point, F_OK) && (ret = mount(source, tmp_mnt_point, rec->fs_type, mountflags, rec->fs_options))) {
+                 ERROR("Fail: mount '%s', errno=%d \n", tmp_mnt_point, errno);
+             }
+             else {
+                snprintf(cmd, sizeof(cmd), "/system/bin/cp -Rp %s /", tmp_mnt_point);
+                status = system(cmd);
+                if (status < 0) {
+                    NOTICE("Execute '%s', status(%d), WEXITSTATUS(%d) \n", cmd, status, WEXITSTATUS(status));
+                }
+
+                if(!umount(target)){
+                    snprintf(cmd, sizeof(cmd), "/system/bin/rm -rf %s", tmp_mnt_point);
+                    status = system(cmd);
+                    if (status < 0) {
+                        NOTICE("Execute '%s', status(%d), WEXITSTATUS(%d) \n", cmd, status, WEXITSTATUS(status));
+                    }
+                }
+             }
+         }
+    }
+    else {
+        ret = mount(source, target, rec->fs_type, mountflags, rec->fs_options);
+        save_errno = errno;
+        INFO("%s(source=%s,target=%s,type=%s)=%d\n", __func__, source, target, rec->fs_type, ret);
+        if ((ret == 0) && (mountflags & MS_RDONLY) != 0) {
+            fs_mgr_set_blk_ro(source);
+        }
+
+        #ifdef MTK_EMMC_SUPPORT
+        if ((ret == 0) && rec->fs_mgr_flags & (MF_CRYPT | MF_FORCECRYPT)) {
+            struct phone_encrypt_state ps;
+            if (misc_get_phone_encrypt_state(&ps, fstab) < 0) {
+                ERROR("Failed to get encrypted status in MISC \n");
+            }
+            else {
+                NOTICE("Success: get encrypted status: 0x%x in MISC \n", ps.state);
+                if (ps.state == PHONE_ENCRYPTED) {
+                   ps.state = PHONE_UNCRYPTED;
+                   if (misc_set_phone_encrypt_state(&ps, fstab) < 0) {
+                       ERROR("Failed to set encrypted status to 0x%x in MISC \n", ps.state);
+                   }
+                   else {
+                       NOTICE("Success: Set encrypted status to 0x%x in MISC \n", ps.state);
+                   }
+                }
+            }
+        }
+        #endif
+        errno = save_errno;
+    }
     return ret;
 }
 
@@ -570,15 +446,282 @@ static int fs_match(char *in1, char *in2)
     return ret;
 }
 
+static int device_is_debuggable() {
+    int ret = -1;
+    char value[PROP_VALUE_MAX];
+    ret = __system_property_get("ro.debuggable", value);
+    if (ret < 0)
+        return ret;
+    return strcmp(value, "1") ? 0 : 1;
+}
+
+static int device_is_secure() {
+    int ret = -1;
+    char value[PROP_VALUE_MAX];
+    ret = __system_property_get("ro.secure", value);
+    /* If error, we want to fail secure */
+    if (ret < 0)
+        return 1;
+    return strcmp(value, "0") ? 1 : 0;
+}
+
+static int device_is_force_encrypted() {
+    int ret = -1;
+    char value[PROP_VALUE_MAX];
+    ret = __system_property_get("ro.vold.forceencryption", value);
+    if (ret < 0)
+        return 0;
+    return strcmp(value, "1") ? 0 : 1;
+}
+
+/*
+ * Tries to mount any of the consecutive fstab entries that match
+ * the mountpoint of the one given by fstab->recs[start_idx].
+ *
+ * end_idx: On return, will be the last rec that was looked at.
+ * attempted_idx: On return, will indicate which fstab rec
+ *     succeeded. In case of failure, it will be the start_idx.
+ * Returns
+ *   -1 on failure with errno set to match the 1st mount failure.
+ *   0 on success.
+ */
+static int mount_with_alternatives(struct fstab *fstab, int start_idx, int *end_idx, int *attempted_idx, int encryptable)
+{
+    int i;
+    int mount_errno = 0;
+    int mounted = 0;
+
+    if (!end_idx || !attempted_idx || start_idx >= fstab->num_entries) {
+      errno = EINVAL;
+      if (end_idx) *end_idx = start_idx;
+      if (attempted_idx) *end_idx = start_idx;
+      return -1;
+    }
+
+    /* Hunt down an fstab entry for the same mount point that might succeed */
+    for (i = start_idx;
+         /* We required that fstab entries for the same mountpoint be consecutive */
+         i < fstab->num_entries && !strcmp(fstab->recs[start_idx].mount_point, fstab->recs[i].mount_point);
+         i++) {
+            /*
+             * Don't try to mount/encrypt the same mount point again.
+             * Deal with alternate entries for the same point which are required to be all following
+             * each other.
+             */
+            if (mounted) {
+                ERROR("%s(): skipping fstab dup mountpoint=%s rec[%d].fs_type=%s already mounted as %s.\n", __func__,
+                     fstab->recs[i].mount_point, i, fstab->recs[i].fs_type, fstab->recs[*attempted_idx].fs_type);
+                continue;
+            }
+#ifdef MTK_FSTAB_FLAGS
+            if(fstab->recs[i].fs_mgr_flags & MF_RESIZE) {
+                check_fs(fstab->recs[i].blk_device, fstab->recs[i].fs_type,
+                         fstab->recs[i].mount_point);
+                resize_fs(fstab->recs[i].blk_device, fstab->recs[i].key_loc);
+            }
+#endif
+
+            if (fstab->recs[i].fs_mgr_flags & MF_CHECK) {
+                check_fs(fstab->recs[i].blk_device, fstab->recs[i].fs_type,
+                         fstab->recs[i].mount_point);
+            }
+            if (!__mount(fstab->recs[i].blk_device, fstab->recs[i].mount_point, &fstab->recs[i], encryptable, fstab)) {
+                *attempted_idx = i;
+                mounted = 1;
+                if (i != start_idx) {
+                    ERROR("%s(): Mounted %s on %s with fs_type=%s instead of %s\n", __func__,
+                         fstab->recs[i].blk_device, fstab->recs[i].mount_point, fstab->recs[i].fs_type,
+                         fstab->recs[start_idx].fs_type);
+                }
+            } else {
+                /* back up errno for crypto decisions */
+                mount_errno = errno;
+            }
+    }
+
+    /* Adjust i for the case where it was still withing the recs[] */
+    if (i < fstab->num_entries) --i;
+
+    *end_idx = i;
+    if (!mounted) {
+        *attempted_idx = start_idx;
+        errno = mount_errno;
+        return -1;
+    }
+    return 0;
+}
+
+static int translate_ext_labels(struct fstab_rec *rec)
+{
+    DIR *blockdir = NULL;
+    struct dirent *ent;
+    char *label;
+    size_t label_len;
+    int ret = -1;
+
+    if (strncmp(rec->blk_device, "LABEL=", 6))
+        return 0;
+
+    label = rec->blk_device + 6;
+    label_len = strlen(label);
+
+    if (label_len > 16) {
+        ERROR("FS label is longer than allowed by filesystem\n");
+        goto out;
+    }
+
+
+    blockdir = opendir("/dev/block");
+    if (!blockdir) {
+        ERROR("couldn't open /dev/block\n");
+        goto out;
+    }
+
+    while ((ent = readdir(blockdir))) {
+        int fd;
+        char super_buf[1024];
+        struct ext4_super_block *sb;
+
+        if (ent->d_type != DT_BLK)
+            continue;
+
+        fd = openat(dirfd(blockdir), ent->d_name, O_RDONLY);
+        if (fd < 0) {
+            ERROR("Cannot open block device /dev/block/%s\n", ent->d_name);
+            goto out;
+        }
+
+        if (TEMP_FAILURE_RETRY(lseek(fd, 1024, SEEK_SET)) < 0 ||
+            TEMP_FAILURE_RETRY(read(fd, super_buf, 1024)) != 1024) {
+            /* Probably a loopback device or something else without a readable
+             * superblock.
+             */
+            close(fd);
+            continue;
+        }
+
+        sb = (struct ext4_super_block *)super_buf;
+        if (sb->s_magic != EXT4_SUPER_MAGIC) {
+            INFO("/dev/block/%s not ext{234}\n", ent->d_name);
+            continue;
+        }
+
+        if (!strncmp(label, sb->s_volume_name, label_len)) {
+            char *new_blk_device;
+
+            if (asprintf(&new_blk_device, "/dev/block/%s", ent->d_name) < 0) {
+                ERROR("Could not allocate block device string\n");
+                goto out;
+            }
+
+            INFO("resolved label %s to %s\n", rec->blk_device, new_blk_device);
+
+            free(rec->blk_device);
+            rec->blk_device = new_blk_device;
+            ret = 0;
+            break;
+        }
+    }
+
+out:
+    closedir(blockdir);
+    return ret;
+}
+
+static bool needs_block_encryption(const struct fstab_rec* rec)
+{
+    if (device_is_force_encrypted() && fs_mgr_is_encryptable(rec)) return true;
+    if (rec->fs_mgr_flags & MF_FORCECRYPT) return true;
+    if (rec->fs_mgr_flags & MF_CRYPT) {
+        /* Check for existence of convert_fde breadcrumb file */
+        char convert_fde_name[PATH_MAX];
+        snprintf(convert_fde_name, sizeof(convert_fde_name),
+                 "%s/misc/vold/convert_fde", rec->mount_point);
+        if (access(convert_fde_name, F_OK) == 0) return true;
+    }
+    if (rec->fs_mgr_flags & MF_FORCEFDEORFBE) {
+        /* Check for absence of convert_fbe breadcrumb file */
+        char convert_fbe_name[PATH_MAX];
+        snprintf(convert_fbe_name, sizeof(convert_fbe_name),
+                 "%s/convert_fbe", rec->mount_point);
+        if (access(convert_fbe_name, F_OK) != 0) return true;
+    }
+    return false;
+}
+
+// Check to see if a mountable volume has encryption requirements
+static int handle_encryptable(const struct fstab_rec* rec)
+{
+    /* If this is block encryptable, need to trigger encryption */
+    if (needs_block_encryption(rec)) {
+        if (umount(rec->mount_point) == 0) {
+            return FS_MGR_MNTALL_DEV_NEEDS_ENCRYPTION;
+        } else {
+            WARNING("Could not umount %s (%s) - allow continue unencrypted\n",
+                    rec->mount_point, strerror(errno));
+            return FS_MGR_MNTALL_DEV_NOT_ENCRYPTED;
+        }
+    } else if (rec->fs_mgr_flags & (MF_FILEENCRYPTION | MF_FORCEFDEORFBE)) {
+    // Deal with file level encryption
+        INFO("%s is file encrypted\n", rec->mount_point);
+        return FS_MGR_MNTALL_DEV_FILE_ENCRYPTED;
+    } else if (fs_mgr_is_encryptable(rec)) {
+        return FS_MGR_MNTALL_DEV_NOT_ENCRYPTED;
+    } else {
+        return FS_MGR_MNTALL_DEV_NOT_ENCRYPTABLE;
+    }
+}
+
+#ifdef MTK_FTL_SUPPORT
+static int ftl_attach_ubi(int ubi_num, int vol_num)
+{
+    int err = 0;
+    int ubi_vol;
+    char tmp[25];
+    int n = sprintf(tmp, "/dev/ubi%d_%d", ubi_num, vol_num);
+    ubi_vol = open(tmp, O_RDWR);
+    err = ioctl(ubi_vol, UBI_IOCVOLCRBLK, NULL);
+
+    if (err) {
+        if (errno == EEXIST)
+            ERROR("Block device exists\n");
+        else {
+                if (errno == ENOSYS)
+                    ERROR("MTK FTL is not present in the system");
+                if (errno == ENOTTY)
+                    ERROR("MTK FTL not supported (check your kernel version)");
+
+                ERROR("cannot create block device %d\n", err);
+                goto out_close;
+        }
+    }
+
+    close(ubi_vol);
+    return 0;
+
+out_close:
+    close(ubi_vol);
+    return -1;
+
+}
+#endif
+
+/* When multiple fstab records share the same mount_point, it will
+ * try to mount each one in turn, and ignore any duplicates after a
+ * first successful mount.
+ * Returns -1 on error, and  FS_MGR_MNTALL_* otherwise.
+ */
 int fs_mgr_mount_all(struct fstab *fstab)
 {
     int i = 0;
-    int encrypted = 0;
-    int ret = -1;
-    int mret;
+    int encryptable = FS_MGR_MNTALL_DEV_NOT_ENCRYPTABLE;
+    int error_count = 0;
+    int mret = -1;
+    int mount_errno = 0;
+    int attempted_idx = -1;
 
     if (!fstab) {
-        return ret;
+        return -1;
     }
 
     for (i = 0; i < fstab->num_entries; i++) {
@@ -594,80 +737,223 @@ int fs_mgr_mount_all(struct fstab *fstab)
             continue;
         }
 
+        /* Skip mounting the root partition, as it will already have been mounted */
+        if (!strcmp(fstab->recs[i].mount_point, "/")) {
+            if ((fstab->recs[i].fs_mgr_flags & MS_RDONLY) != 0) {
+                fs_mgr_set_blk_ro(fstab->recs[i].blk_device);
+            }
+            continue;
+        }
+
+        /* Translate LABEL= file system labels into block devices */
+        if (!strcmp(fstab->recs[i].fs_type, "ext2") ||
+            !strcmp(fstab->recs[i].fs_type, "ext3") ||
+            !strcmp(fstab->recs[i].fs_type, "ext4")) {
+            int tret = translate_ext_labels(&fstab->recs[i]);
+            if (tret < 0) {
+                ERROR("Could not translate label to block device\n");
+                continue;
+            }
+        }
+       ERROR("blk device name %s\n", fstab->recs[i].blk_device);
+#if defined(MTK_UBIFS_SUPPORT) || defined (MTK_FTL_SUPPORT)
+    if (strcmp(fstab->recs[i].fs_type, "ubifs") == 0 && strncmp("ubi@", fstab->recs[i].blk_device, 4) == 0) {
+        char tmp[25];
+        int n = ubi_attach_mtd(fstab->recs[i].blk_device + 4);
+        if (n < 0) {
+            ERROR("ubi_attach_mtd fail device name %s\n", fstab->recs[i].blk_device+4);
+            return -1;
+        }
+        n = sprintf(tmp, "/dev/ubi%d_0", n);
+        free(fstab->recs[i].blk_device);
+        fstab->recs[i].blk_device = malloc(n+1);
+        sprintf(fstab->recs[i].blk_device, "%s", tmp);
+        ERROR("debug : ubifs blk_device %s", fstab->recs[i].blk_device);
+    } else if (!strcmp(fstab->recs[i].fs_type, "rawfs") || !strcmp(fstab->recs[i].fs_type, "yaffs2")) {
+        char tmp[25];
+        int n = mtd_name_to_number(fstab->recs[i].blk_device + 4);
+        if (n < 0) {
+            return -1;
+        }
+
+        n = sprintf(tmp, "/dev/block/mtdblock%d", n);
+        free(fstab->recs[i].blk_device);
+        fstab->recs[i].blk_device = malloc(n+1);
+        sprintf(fstab->recs[i].blk_device, "%s", tmp);
+        ERROR("debug : rawfs blk_device %s", fstab->recs[i].blk_device);
+    }
+#ifdef MTK_FTL_SUPPORT
+    else if (!strcmp(fstab->recs[i].fs_type, "ext4") && strstr(fstab->recs[i].blk_device, "ftl")) {
+        char tmp[30];
+        int err = 0;
+        int n = -1;
+        int ubi_num = fstab->recs[i].blk_device[21] - '0';
+        int vol_num = fstab->recs[i].blk_device[23] - '0';
+        ERROR("debug : mtk_ftl_blk %s ubi_num %d\n", fstab->recs[i].blk_device, ubi_num);
+        if(strstr(fstab->recs[i].mount_point, "system")){
+            n = ubi_attach_mtd("system");
+        }else if(strstr(fstab->recs[i].mount_point, "data")){
+            n = ubi_attach_mtd("userdata");
+        }else if(strstr(fstab->recs[i].mount_point, "cache")){
+            n = ubi_attach_mtd("cache");
+        }
+        if((n != ubi_num) && (n >= 0))
+        {
+            ERROR("ubi number: %d == %d\n", n, ubi_num);
+            ubi_num = n;
+        }
+        n = sprintf(tmp, "/dev/ubi%d_%d", ubi_num, vol_num);
+        if (fstab->recs[i].fs_mgr_flags & MF_WAIT) {
+            int ret = wait_for_file(tmp, WAIT_TIMEOUT);
+            ERROR("wait_for_file(%s) ret = %d\n", tmp, ret);
+            if (ret)
+                ERROR("errno = %s\n", strerror(errno));
+        }
+        err = ftl_attach_ubi(ubi_num, vol_num);
+        if (err < 0) {
+            return -1;
+        }
+    }
+#endif
+#endif
         if (fstab->recs[i].fs_mgr_flags & MF_WAIT) {
             wait_for_file(fstab->recs[i].blk_device, WAIT_TIMEOUT);
         }
 
-        if (fstab->recs[i].fs_mgr_flags & MF_CHECK) {
-            check_fs(fstab->recs[i].blk_device, fstab->recs[i].fs_type,
-                     fstab->recs[i].mount_point);
-        }
-
-        if (fstab->recs[i].fs_mgr_flags & MF_VERIFY) {
-            if (fs_mgr_setup_verity(&fstab->recs[i]) < 0) {
-                ERROR("Could not set up verified partition, skipping!");
+        if ((fstab->recs[i].fs_mgr_flags & MF_VERIFY) && device_is_secure()) {
+            int rc = fs_mgr_setup_verity(&fstab->recs[i]);
+            if (device_is_debuggable() && rc == FS_MGR_SETUP_VERITY_DISABLED) {
+                INFO("Verity disabled");
+            } else if (rc != FS_MGR_SETUP_VERITY_SUCCESS) {
+                ERROR("Could not set up verified partition, skipping!\n");
                 continue;
             }
         }
+        int last_idx_inspected;
+        int top_idx = i;
 
-        mret = __mount(fstab->recs[i].blk_device, fstab->recs[i].mount_point,
-                     fstab->recs[i].fs_type, fstab->recs[i].flags,
-                     fstab->recs[i].fs_options);
+        mret = mount_with_alternatives(fstab, i, &last_idx_inspected, &attempted_idx, encryptable);
+        i = last_idx_inspected;
+        mount_errno = errno;
 
+        /* Deal with encryptability. */
         if (!mret) {
+            int status = handle_encryptable(&fstab->recs[attempted_idx]);
+
+            if (status == FS_MGR_MNTALL_FAIL) {
+                /* Fatal error - no point continuing */
+                return status;
+            }
+
+            if (status != FS_MGR_MNTALL_DEV_NOT_ENCRYPTABLE) {
+                if (encryptable != FS_MGR_MNTALL_DEV_NOT_ENCRYPTABLE) {
+                    // Log and continue
+                    ERROR("Only one encryptable/encrypted partition supported\n");
+                }
+                encryptable = status;
+            }
+
             /* Success!  Go get the next one */
             continue;
         }
 
-        /* mount(2) returned an error, check if it's encrypted and deal with it */
-        if ((fstab->recs[i].fs_mgr_flags & MF_CRYPT) &&
-            !partition_wiped(fstab->recs[i].blk_device)) {
-            /* Need to mount a tmpfs at this mountpoint for now, and set
-             * properties that vold will query later for decrypting
+        /* mount(2) returned an error, handle the encryptable/formattable case */
+        bool wiped = partition_wiped(fstab->recs[top_idx].blk_device);
+        if (mret && mount_errno != EBUSY && mount_errno != EACCES &&
+            fs_mgr_is_formattable(&fstab->recs[top_idx]) && wiped) {
+            /* top_idx and attempted_idx point at the same partition, but sometimes
+             * at two different lines in the fstab.  Use the top one for formatting
+             * as that is the preferred one.
              */
-            if (mount("tmpfs", fstab->recs[i].mount_point, "tmpfs",
-                  MS_NOATIME | MS_NOSUID | MS_NODEV, CRYPTO_TMPFS_OPTIONS) < 0) {
-                ERROR("Cannot mount tmpfs filesystem for encrypted fs at %s\n",
-                        fstab->recs[i].mount_point);
-                goto out;
-            }
-            encrypted = 1;
-        } else {
-            ERROR("Cannot mount filesystem on %s at %s\n",
-                    fstab->recs[i].blk_device, fstab->recs[i].mount_point);
-            if (!strncmp(fstab->recs[i].mount_point, "/data", 5)) {
-                int rc;
-                rc = recover_userdata(fstab->recs[i].fs_type, fstab->recs[i].blk_device, fstab->recs[i].mount_point);
-                if (!rc) {
-                    /* Userdata recovery succeeded, retry this mount. */
-                    i--;
-                    continue;
+            ERROR("%s(): %s is wiped and %s %s is formattable. Format it.\n", __func__,
+                  fstab->recs[top_idx].blk_device, fstab->recs[top_idx].mount_point,
+                  fstab->recs[top_idx].fs_type);
+            if (fs_mgr_is_encryptable(&fstab->recs[top_idx]) &&
+                strcmp(fstab->recs[top_idx].key_loc, KEY_IN_FOOTER)) {
+                int fd = open(fstab->recs[top_idx].key_loc, O_WRONLY, 0644);
+                if (fd >= 0) {
+                    INFO("%s(): also wipe %s\n", __func__, fstab->recs[top_idx].key_loc);
+                    wipe_block_device(fd, get_file_size(fd));
+                    close(fd);
                 } else {
-                    ERROR("userdata format failed.\n");
+                    ERROR("%s(): %s wouldn't open (%s)\n", __func__,
+                          fstab->recs[top_idx].key_loc, strerror(errno));
                 }
-           }
-           goto out;
+            }
+            if (fs_mgr_do_format(&fstab->recs[top_idx]) == 0) {
+                /* Let's replay the mount actions. */
+                i = top_idx - 1;
+                continue;
+            } else {
+                ERROR("%s(): Format failed. Suggest recovery...\n", __func__);
+                encryptable = FS_MGR_MNTALL_DEV_NEEDS_RECOVERY;
+                continue;
+            }
+        }
+        if (mret && mount_errno != EBUSY && mount_errno != EACCES &&
+            fs_mgr_is_encryptable(&fstab->recs[attempted_idx])) {
+            if (wiped) {
+                ERROR("%s(): FDE %s is wiped and %s %s is encryptable. Suggest recovery...\n", __func__,
+                      fstab->recs[attempted_idx].blk_device, fstab->recs[attempted_idx].mount_point,
+                      fstab->recs[attempted_idx].fs_type);
+                encryptable = FS_MGR_MNTALL_DEV_NEEDS_RECOVERY;
+                continue;
+            } else {
+                /* Need to mount a tmpfs at this mountpoint for now, and set
+                 * properties that vold will query later for decrypting
+                 */
+                ERROR("%s(): possibly an encryptable blkdev %s for mount %s type %s )\n", __func__,
+                      fstab->recs[attempted_idx].blk_device, fstab->recs[attempted_idx].mount_point,
+                      fstab->recs[attempted_idx].fs_type);
+                if (fs_mgr_do_tmpfs_mount(fstab->recs[attempted_idx].mount_point) < 0) {
+                    ++error_count;
+                    continue;
+                }
+            }
+            encryptable = FS_MGR_MNTALL_DEV_MIGHT_BE_ENCRYPTED;
+        } else if(mret && mount_errno != EBUSY && mount_errno != EACCES &&
+            wiped && fs_mgr_is_file_encrypted(&fstab->recs[attempted_idx])){
+            ERROR("%s(): FBE %s is wiped and %s %s is encryptable. Suggest recovery...\n", __func__,
+                  fstab->recs[attempted_idx].blk_device, fstab->recs[attempted_idx].mount_point,
+                  fstab->recs[attempted_idx].fs_type);
+            encryptable = FS_MGR_MNTALL_DEV_NEEDS_RECOVERY;
+            continue;
+        } else {
+            if (fs_mgr_is_nofail(&fstab->recs[attempted_idx])) {
+                ERROR("Ignoring failure to mount an un-encryptable or wiped partition on"
+                       "%s at %s options: %s error: %s\n",
+                       fstab->recs[attempted_idx].blk_device, fstab->recs[attempted_idx].mount_point,
+                       fstab->recs[attempted_idx].fs_options, strerror(mount_errno));
+            } else {
+                ERROR("Failed to mount an un-encryptable or wiped partition on"
+                       "%s at %s options: %s error: %s\n",
+                       fstab->recs[attempted_idx].blk_device, fstab->recs[attempted_idx].mount_point,
+                       fstab->recs[attempted_idx].fs_options, strerror(mount_errno));
+                ++error_count;
+            }
+            continue;
         }
     }
 
-    if (encrypted) {
-        ret = 1;
+    if (error_count) {
+        return -1;
     } else {
-        ret = 0;
+        return encryptable;
     }
-
-out:
-    return ret;
 }
 
 /* If tmp_mount_point is non-null, mount the filesystem there.  This is for the
  * tmp mount we do to check the user password
+ * If multiple fstab entries are to be mounted on "n_name", it will try to mount each one
+ * in turn, and stop on 1st success, or no more match.
  */
 int fs_mgr_do_mount(struct fstab *fstab, char *n_name, char *n_blk_device,
                     char *tmp_mount_point)
 {
     int i = 0;
-    int ret = -1;
+    int ret = FS_MGR_DOMNT_FAILED;
+    int mount_errors = 0;
+    int first_mount_errno = 0;
     char *m;
 
     if (!fstab) {
@@ -689,6 +975,68 @@ int fs_mgr_do_mount(struct fstab *fstab, char *n_name, char *n_blk_device,
             goto out;
         }
 
+#if defined(MTK_UBIFS_SUPPORT) || defined (MTK_FTL_SUPPORT)
+       if (!strcmp(fstab->recs[i].blk_device, n_blk_device)) {
+           if (strcmp(fstab->recs[i].fs_type, "ubifs") == 0 && strncmp("ubi@", n_blk_device, 4) == 0) {
+               char tmp[25];
+               int n = ubi_attach_mtd(n_blk_device + 4);
+               if (n < 0) {
+                   ERROR("ubi_attach_mtd fail device name %s\n", fstab->recs[i].blk_device+4);
+                   return -1;
+               }
+
+               n = sprintf(tmp, "/dev/ubi%d_0", n);
+               free(n_blk_device);
+               n_blk_device = malloc(n+1);
+               sprintf(n_blk_device, "%s", tmp);
+               ERROR("debug : ubifs blk_device %s", n_blk_device);
+           } else if (!strcmp(fstab->recs[i].fs_type, "rawfs") || !strcmp(fstab->recs[i].fs_type, "yaffs2")) {
+               char tmp[25];
+               int n = mtd_name_to_number(n_blk_device + 4);
+               if (n < 0) {
+                   return -1;
+               }
+
+               n = sprintf(tmp, "/dev/block/mtdblock%d", n);
+               free(n_blk_device);
+               n_blk_device = malloc(n+1);
+               sprintf(n_blk_device, "%s", tmp);
+               ERROR("debug : rawfs blk_device %s", n_blk_device);
+           }
+#ifdef MTK_FTL_SUPPORT
+           else if (!strcmp(fstab->recs[i].fs_type, "ext4") && strstr(fstab->recs[i].blk_device, "ftl")) {
+               char tmp[30];
+               int err = 0;
+               int n = -1;
+               int ubi_num = n_blk_device[21] - '0';
+               int vol_num = n_blk_device[23] - '0';
+               ERROR("debug : mtk_ftl_blk %s ubi_num %d vol_num %d\n", n_blk_device, ubi_num, vol_num);
+               if (strstr(n_name, "system")) {
+                   n = ubi_attach_mtd("system");
+               } else if (strstr(n_name, "data")) {
+                   n = ubi_attach_mtd("userdata");
+               } else if (strstr(n_name, "cache")) {
+                   n = ubi_attach_mtd("cache");
+               }
+               if ((n != ubi_num) && (n >= 0)) {
+                   ERROR("ubi number: %d == %d\n", n, ubi_num);
+                   ubi_num = n;
+               }
+               n = sprintf(tmp, "/dev/ubi%d_%d", ubi_num, vol_num);
+               if (fstab->recs[i].fs_mgr_flags & MF_WAIT) {
+                   int ret = wait_for_file(tmp, WAIT_TIMEOUT);
+                   ERROR("wait_for_file(%s) ret = %d\n", tmp, ret);
+                   if (ret)
+                       ERROR("errno = %s\n", strerror(errno));
+               }
+               err = ftl_attach_ubi(ubi_num, vol_num);
+               if (err < 0)
+                   return -1;
+           }
+#endif
+       }
+#endif
+
         /* First check the filesystem if requested */
         if (fstab->recs[i].fs_mgr_flags & MF_WAIT) {
             wait_for_file(n_blk_device, WAIT_TIMEOUT);
@@ -699,9 +1047,12 @@ int fs_mgr_do_mount(struct fstab *fstab, char *n_name, char *n_blk_device,
                      fstab->recs[i].mount_point);
         }
 
-        if (fstab->recs[i].fs_mgr_flags & MF_VERIFY) {
-            if (fs_mgr_setup_verity(&fstab->recs[i]) < 0) {
-                ERROR("Could not set up verified partition, skipping!");
+        if ((fstab->recs[i].fs_mgr_flags & MF_VERIFY) && device_is_secure()) {
+            int rc = fs_mgr_setup_verity(&fstab->recs[i]);
+            if (device_is_debuggable() && rc == FS_MGR_SETUP_VERITY_DISABLED) {
+                INFO("Verity disabled");
+            } else if (rc != FS_MGR_SETUP_VERITY_SUCCESS) {
+                ERROR("Could not set up verified partition, skipping!\n");
                 continue;
             }
         }
@@ -712,19 +1063,27 @@ int fs_mgr_do_mount(struct fstab *fstab, char *n_name, char *n_blk_device,
         } else {
             m = fstab->recs[i].mount_point;
         }
-        if (__mount(n_blk_device, m, fstab->recs[i].fs_type,
-                    fstab->recs[i].flags, fstab->recs[i].fs_options)) {
-            ERROR("Cannot mount filesystem on %s at %s\n",
-                    n_blk_device, m);
-            goto out;
+        if (__mount(n_blk_device, m, &fstab->recs[i], FS_MGR_MNTALL_DEV_NOT_ENCRYPTED, fstab)) {
+            if (!first_mount_errno) first_mount_errno = errno;
+            mount_errors++;
+            continue;
         } else {
             ret = 0;
             goto out;
         }
     }
-
-    /* We didn't find a match, say so and return an error */
-    ERROR("Cannot find mount point %s in fstab\n", fstab->recs[i].mount_point);
+    if (mount_errors) {
+        ERROR("Cannot mount filesystem on %s at %s. error: %s\n",
+            n_blk_device, m, strerror(first_mount_errno));
+        if (first_mount_errno == EBUSY) {
+            ret = FS_MGR_DOMNT_BUSY;
+        } else {
+            ret = FS_MGR_DOMNT_FAILED;
+        }
+    } else {
+        /* We didn't find a match, say so and return an error */
+        ERROR("Cannot find mount point %s in fstab\n", fstab->recs[i].mount_point);
+    }
 
 out:
     return ret;
@@ -804,7 +1163,7 @@ int fs_mgr_swapon_all(struct fstab *fstab)
 
             zram_fp = fopen(ZRAM_CONF_DEV, "r+");
             if (zram_fp == NULL) {
-                ERROR("Unable to open zram conf device " ZRAM_CONF_DEV);
+                ERROR("Unable to open zram conf device %s\n", ZRAM_CONF_DEV);
                 ret = -1;
                 continue;
             }
@@ -819,7 +1178,8 @@ int fs_mgr_swapon_all(struct fstab *fstab)
         /* Initialize the swap area */
         mkswap_argv[1] = fstab->recs[i].blk_device;
         err = android_fork_execvp_ext(ARRAY_SIZE(mkswap_argv), mkswap_argv,
-                                      &status, true, LOG_KLOG, false, NULL);
+                                      &status, true, LOG_KLOG, false, NULL,
+                                      NULL, 0);
         if (err) {
             ERROR("mkswap failed for %s\n", fstab->recs[i].blk_device);
             ret = -1;
@@ -871,7 +1231,8 @@ int fs_mgr_get_crypt_info(struct fstab *fstab, char *key_loc, char *real_blk_dev
         if (fstab->recs[i].fs_mgr_flags & MF_VOLDMANAGED) {
             continue;
         }
-        if (!(fstab->recs[i].fs_mgr_flags & MF_CRYPT)) {
+        if (!(fstab->recs[i].fs_mgr_flags
+              & (MF_CRYPT | MF_FORCECRYPT | MF_FORCEFDEORFBE))) {
             continue;
         }
 
@@ -888,70 +1249,285 @@ int fs_mgr_get_crypt_info(struct fstab *fstab, char *key_loc, char *real_blk_dev
     return 0;
 }
 
-/* Add an entry to the fstab, and return 0 on success or -1 on error */
-int fs_mgr_add_entry(struct fstab *fstab,
-                     const char *mount_point, const char *fs_type,
-                     const char *blk_device, long long length)
+#ifdef MTK_FSTAB_FLAGS
+static void resize_fs(char *blk_device, char *key_loc)
 {
-    struct fstab_rec *new_fstab_recs;
-    int n = fstab->num_entries;
+    int status;
+    int ret;
 
-    new_fstab_recs = (struct fstab_rec *)
-                     realloc(fstab->recs, sizeof(struct fstab_rec) * (n + 1));
+    char *resize_ext4_argv[] = {
+            RESIZE_EXT4,
+            blk_device,
+            key_loc
+    };
+    if(key_loc == NULL) {
+        resize_ext4_argv[2] = strdup("dummy");
+    }
+    INFO("Running %s on %s\n", RESIZE_EXT4, blk_device);
 
-    if (!new_fstab_recs) {
+    ret = android_fork_execvp_ext(ARRAY_SIZE(resize_ext4_argv), resize_ext4_argv,
+            &status, true, LOG_NONE,
+            false, NULL, NULL, 0);
+    if (ret < 0) {
+        /* No need to check for error in fork, we can't really handle it now */
+        ERROR("Failed trying to run %s\n", RESIZE_EXT4);
+    }
+exit:
+    ERROR("Resize ext4 return %d\n", ret);
+}
+#endif
+
+#if defined(MTK_UBIFS_SUPPORT) || defined(MTK_FTL_SUPPORT)
+//#if 0
+#define MAX_MTD_PARTITIONS 40
+
+static struct {
+    char name[16];
+    int number;
+} mtd_part_map[MAX_MTD_PARTITIONS];
+
+static int mtd_part_count = -1;
+
+static void find_mtd_partitions(void)
+{
+    int fd;
+    char buf[1024];
+    char *pmtdbufp;
+    ssize_t pmtdsize;
+    int r;
+
+    fd = open("/proc/mtd", O_RDONLY);
+    if (fd < 0)
+        return;
+
+    buf[sizeof(buf) - 1] = '\0';
+    pmtdsize = read(fd, buf, sizeof(buf) - 1);
+    pmtdbufp = buf;
+    while (pmtdsize > 0) {
+        int mtdnum, mtdsize, mtderasesize;
+        char mtdname[16];
+        mtdname[0] = '\0';
+        mtdnum = -1;
+        r = sscanf(pmtdbufp, "mtd%d: %x %x %15s",
+                   &mtdnum, &mtdsize, &mtderasesize, mtdname);
+        if ((r == 4) && (mtdname[0] == '"')) {
+            char *x = strchr(mtdname + 1, '"');
+            if (x) {
+                *x = 0;
+            }
+            INFO("mtd partition %d, %s\n", mtdnum, mtdname + 1);
+            if (mtd_part_count < MAX_MTD_PARTITIONS) {
+                strcpy(mtd_part_map[mtd_part_count].name, mtdname + 1);
+                mtd_part_map[mtd_part_count].number = mtdnum;
+                mtd_part_count++;
+            } else {
+                ERROR("too many mtd partitions\n");
+            }
+        }
+        while (pmtdsize > 0 && *pmtdbufp != '\n') {
+            pmtdbufp++;
+            pmtdsize--;
+        }
+        if (pmtdsize > 0) {
+            pmtdbufp++;
+            pmtdsize--;
+        }
+    }
+    close(fd);
+}
+
+static int mtd_name_to_number(const char *name)
+{
+    int n;
+    if (mtd_part_count < 0) {
+        mtd_part_count = 0;
+        find_mtd_partitions();
+    }
+    for (n = 0; n < mtd_part_count; n++) {
+        if (!strcmp(name, mtd_part_map[n].name)) {
+            return mtd_part_map[n].number;
+        }
+    }
+    return -1;
+}
+
+#define UBI_CTRL_DEV "/dev/ubi_ctrl"
+#define UBI_SYS_PATH "/sys/class/ubi"
+static int ubi_dev_read_int(int dev, const char *file, int def)
+{
+    int fd, val = def;
+    char path[128], buf[64];
+
+    sprintf(path, UBI_SYS_PATH "/ubi%d/%s", dev, file);
+    wait_for_file(path, 5);
+    fd = open(path, O_RDONLY);
+    if (fd == -1) {
+        return val;
+    }
+
+    if (read(fd, buf, 64) > 0) {
+        val = atoi(buf);
+    }
+
+    close(fd);
+    return val;
+}
+
+// Should include kernel header include/mtd/ubi-user.h
+#include <linux/types.h>
+#include <asm/ioctl.h>
+#define UBI_CTRL_IOC_MAGIC 'o'
+#define UBI_IOC_MAGIC 'o'
+#define UBI_VOL_NUM_AUTO (-1)
+#define UBI_DEV_NUM_AUTO (-1)
+#define UBI_IOCATT _IOW(UBI_CTRL_IOC_MAGIC, 64, struct ubi_attach_req)
+#define UBI_IOCDET _IOW(UBI_CTRL_IOC_MAGIC, 65, __s32)
+#define UBI_IOCMKVOL _IOW(UBI_IOC_MAGIC, 0, struct ubi_mkvol_req)
+#define UBI_MAX_VOLUME_NAME 127
+#define UBI_VID_OFFSET_AUTO (0)
+struct ubi_attach_req {
+    __s32 ubi_num;
+    __s32 mtd_num;
+    __s32 vid_hdr_offset;
+    __s8 padding[12];
+};
+
+struct ubi_mkvol_req {
+    __s32 vol_id;
+    __s32 alignment;
+    __s64 bytes;
+    __s8 vol_type;
+    __s8 padding1;
+    __s16 name_len;
+    __s8 padding2[4];
+    char name[UBI_MAX_VOLUME_NAME + 1];
+} __packed;
+
+enum {
+    UBI_DYNAMIC_VOLUME = 3,
+    UBI_STATIC_VOLUME  = 4,
+};
+
+// Should include kernel header include/mtd/ubi-user.h
+
+static int ubi_attach_mtd(const char *name)
+{
+    int ret;
+    int mtd_num, ubi_num, vid_off;
+    int ubi_ctrl, ubi_dev;
+    int vols, avail_lebs, leb_size;
+    char path[128];
+    struct ubi_attach_req attach_req;
+    struct ubi_mkvol_req mkvol_req;
+    mtd_num = mtd_name_to_number(name);
+    if (mtd_num == -1) {
         return -1;
     }
 
-    /* A new entry was added, so initialize it */
-     memset(&new_fstab_recs[n], 0, sizeof(struct fstab_rec));
-     new_fstab_recs[n].mount_point = strdup(mount_point);
-     new_fstab_recs[n].fs_type = strdup(fs_type);
-     new_fstab_recs[n].blk_device = strdup(blk_device);
-     new_fstab_recs[n].length = 0;
-
-     /* Update the fstab struct */
-     fstab->recs = new_fstab_recs;
-     fstab->num_entries++;
-
-     return 0;
-}
-
-struct fstab_rec *fs_mgr_get_entry_for_mount_point(struct fstab *fstab, const char *path)
-{
-    int i;
-
-    if (!fstab) {
-        return NULL;
+    for (ubi_num = 0; ubi_num < 4; ubi_num++)
+    {
+      sprintf(path, "/sys/class/ubi/ubi%d/mtd_num", ubi_num);
+      ubi_dev = open(path, O_RDONLY);
+      if (ubi_dev != -1)
+      {
+        ret = read(ubi_dev, path, sizeof(path));
+        close(ubi_dev);
+        if (ret > 0 && mtd_num == atoi(path))
+          return ubi_num;
+      }
     }
 
-    for (i = 0; i < fstab->num_entries; i++) {
-        int len = strlen(fstab->recs[i].mount_point);
-        if (strncmp(path, fstab->recs[i].mount_point, len) == 0 &&
-            (path[len] == '\0' || path[len] == '/')) {
-            return &fstab->recs[i];
+    ret = wait_for_file(UBI_CTRL_DEV, 50);
+    ubi_ctrl = open(UBI_CTRL_DEV, O_RDONLY);
+    if (ubi_ctrl == -1) {
+        ERROR("open %s fail fail\n", UBI_CTRL_DEV);
+        return -1;
+    }
+
+    memset(&attach_req, 0, sizeof(struct ubi_attach_req));
+    attach_req.ubi_num = UBI_DEV_NUM_AUTO;
+    attach_req.mtd_num = mtd_num;
+    attach_req.vid_hdr_offset = UBI_VID_OFFSET_AUTO;
+
+    ret = ioctl(ubi_ctrl, UBI_IOCATT, &attach_req);
+    if (ret == -1) {
+        ERROR("attach mtd fail mtd num %d\n", mtd_num);
+        close(ubi_ctrl);
+        return -1;
+    }
+
+    ubi_num = attach_req.ubi_num;
+   vid_off = attach_req.vid_hdr_offset;
+    vols = ubi_dev_read_int(ubi_num, "volumes_count", -1);
+    if (vols == 0) {
+        long long data_vol_size = 0;
+        sprintf(path, "/dev/ubi%d", ubi_num);
+        ret = wait_for_file(path, 50);
+        ubi_dev = open(path, O_RDONLY);
+        if (ubi_dev == -1) {
+            close(ubi_ctrl);
+            return ubi_num;
         }
+        avail_lebs = ubi_dev_read_int(ubi_num, "avail_eraseblocks", 0);
+        leb_size = ubi_dev_read_int(ubi_num, "eraseblock_size", 0);
+        data_vol_size = (long long)avail_lebs * leb_size;
+#if defined(MTK_SLC_BUFFER_SUPPORT)
+        if (!strcmp(name, "userdata")) {
+            data_vol_size -= BOARD_UBIFS_CACHE_VOLUME_SIZE;
+#if defined(MTK_IPOH_SUPPORT)
+            data_vol_size -= BOARD_UBIFS_IPOH_VOLUME_SIZE;
+#endif
+        }
+#endif
+        memset(&mkvol_req, 0, sizeof(struct ubi_mkvol_req));
+        mkvol_req.vol_id = UBI_VOL_NUM_AUTO;
+        mkvol_req.alignment = 1;
+        mkvol_req.bytes = data_vol_size;
+        mkvol_req.vol_type = UBI_DYNAMIC_VOLUME;
+        ret = snprintf(mkvol_req.name, UBI_MAX_VOLUME_NAME + 1, "%s", name);
+        mkvol_req.name_len = ret;
+        ioctl(ubi_dev, UBI_IOCMKVOL, &mkvol_req);
+#if defined(MTK_SLC_BUFFER_SUPPORT)
+        if (!strcmp(name, "userdata")) {
+                memset(&mkvol_req, 0, sizeof(struct ubi_mkvol_req));
+                mkvol_req.vol_id = 1;
+                mkvol_req.alignment = 1;
+                mkvol_req.bytes = (long long)BOARD_UBIFS_CACHE_VOLUME_SIZE;
+                mkvol_req.vol_type = UBI_DYNAMIC_VOLUME;
+                ret = snprintf(mkvol_req.name, UBI_MAX_VOLUME_NAME + 1, "%s", "cache");
+                mkvol_req.name_len = ret;
+                ioctl(ubi_dev, UBI_IOCMKVOL, &mkvol_req);
+#if defined(MTK_IPOH_SUPPORT)
+                memset(&mkvol_req, 0, sizeof(struct ubi_mkvol_req));
+                mkvol_req.vol_id = UBI_VOL_NUM_AUTO;
+                mkvol_req.alignment = 1;
+                mkvol_req.bytes = (long long)BOARD_UBIFS_IPOH_VOLUME_SIZE;
+                mkvol_req.vol_type = UBI_DYNAMIC_VOLUME;
+                ret = snprintf(mkvol_req.name, UBI_MAX_VOLUME_NAME + 1, "%s", "ipoh");
+                mkvol_req.name_len = ret;
+                ioctl(ubi_dev, UBI_IOCMKVOL, &mkvol_req);
+#endif
+        }
+#endif
+        close(ubi_dev);
     }
 
-    return NULL;
+    close(ubi_ctrl);
+    return ubi_num;
 }
 
-int fs_mgr_is_voldmanaged(struct fstab_rec *fstab)
+static int ubi_detach_dev(int dev)
 {
-    return fstab->fs_mgr_flags & MF_VOLDMANAGED;
-}
+    int ret, ubi_ctrl;
 
-int fs_mgr_is_nonremovable(struct fstab_rec *fstab)
-{
-    return fstab->fs_mgr_flags & MF_NONREMOVABLE;
-}
+    ubi_ctrl = open(UBI_CTRL_DEV, O_RDONLY);
+    if (ubi_ctrl == -1) {
+        return -1;
+    }
 
-int fs_mgr_is_encryptable(struct fstab_rec *fstab)
-{
-    return fstab->fs_mgr_flags & MF_CRYPT;
+    ret = ioctl(ubi_ctrl, UBI_IOCDET, &dev);
+    close(ubi_ctrl);
+    return ret;
 }
+#endif
 
-int fs_mgr_is_noemulatedsd(struct fstab_rec *fstab)
-{
-    return fstab->fs_mgr_flags & MF_NOEMULATEDSD;
-}

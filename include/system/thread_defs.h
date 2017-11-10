@@ -1,4 +1,9 @@
 /*
+* Copyright (C) 2014 MediaTek Inc.
+* Modification based on code covered by the mentioned copyright
+* and/or permission notice(s).
+*/
+/*
  * Copyright (C) 2013 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -59,7 +64,7 @@ enum {
     ANDROID_PRIORITY_AUDIO          = -16,
 
     /* service audio threads (uncommon) */
-    ANDROID_PRIORITY_URGENT_AUDIO   = -19,
+    ANDROID_PRIORITY_URGENT_AUDIO   = -18,
 
     /* should never be used in practice. regular process might not
      * be allowed to use this level */

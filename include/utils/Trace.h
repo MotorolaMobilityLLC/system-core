@@ -1,4 +1,9 @@
 /*
+* Copyright (C) 2014 MediaTek Inc.
+* Modification based on code covered by the mentioned copyright
+* and/or permission notice(s).
+*/
+/*
  * Copyright (C) 2012 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,7 +22,7 @@
 #ifndef ANDROID_TRACE_H
 #define ANDROID_TRACE_H
 
-#ifdef HAVE_ANDROID_OS
+#if defined(__ANDROID__)
 
 #include <fcntl.h>
 #include <stdint.h>
@@ -40,6 +45,11 @@
 // ATRACE_CALL is an ATRACE_NAME that uses the current function name.
 #define ATRACE_CALL() ATRACE_NAME(__FUNCTION__)
 
+/*
+ * M: Performance tracer to reduce Systrace overhead
+ */
+#define ATRACE_CALL_PERF() android::ScopedTrace ___tracer(ATRACE_TAG|ATRACE_TAG_PERF, __FUNCTION__)
+
 namespace android {
 
 class ScopedTrace {
@@ -59,11 +69,11 @@ private:
 
 }; // namespace android
 
-#else // HAVE_ANDROID_OS
+#else // !__ANDROID__
 
 #define ATRACE_NAME(...)
 #define ATRACE_CALL()
 
-#endif // HAVE_ANDROID_OS
+#endif // __ANDROID__
 
 #endif // ANDROID_TRACE_H

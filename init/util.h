@@ -20,15 +20,36 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
+#include <string>
+#include <functional>
+
 #define ARRAY_SIZE(x) (sizeof(x)/sizeof(x[0]))
 
-static const char *coldboot_done = "/dev/.coldboot_done";
+#define COLDBOOT_DONE "/dev/.coldboot_done"
 
 int mtd_name_to_number(const char *name);
 int create_socket(const char *name, int type, mode_t perm,
-                  uid_t uid, gid_t gid);
-void *read_file(const char *fn, unsigned *_sz);
-time_t gettime(void);
+                  uid_t uid, gid_t gid, const char *socketcon);
+
+bool read_file(const char* path, std::string* content);
+int write_file(const char* path, const char* content);
+
+time_t gettime();
+uint64_t gettime_ns();
+
+class Timer {
+ public:
+  Timer() : t0(gettime_ns()) {
+  }
+
+  double duration() {
+    return static_cast<double>(gettime_ns() - t0) / 1000000000.0;
+  }
+
+ private:
+  uint64_t t0;
+};
+
 unsigned int decode_uid(const char *s);
 
 int mkdir_recursive(const char *pathname, mode_t mode);
@@ -37,9 +58,19 @@ void make_link_init(const char *oldpath, const char *newpath);
 void remove_link(const char *oldpath, const char *newpath);
 int wait_for_file(const char *filename, int timeout);
 void open_devnull_stdio(void);
-void get_hardware_name(char *hardware, unsigned int *revision);
-void import_kernel_cmdline(int in_qemu, void (*import_kernel_nv)(char *name, int in_qemu));
+void import_kernel_cmdline(bool in_qemu,
+                           std::function<void(const std::string&, const std::string&, bool)>);
 int make_dir(const char *path, mode_t mode);
 int restorecon(const char *pathname);
 int restorecon_recursive(const char *pathname);
+std::string bytes_to_hex(const uint8_t *bytes, size_t bytes_len);
+bool is_dir(const char* pathname);
+bool expand_props(const std::string& src, std::string* dst);
+#if defined(MTK_UBIFS_SUPPORT) || defined (MTK_FTL_SUPPORT)
+int ubi_attach_mtd(const char *name);
+int ubi_detach_dev(int dev);
+#ifdef MTK_FTL_SUPPORT
+int ftl_attach_ubi(int ubi_num);
+#endif
+#endif
 #endif

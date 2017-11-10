@@ -17,15 +17,13 @@
 #ifndef _DEBUGGERD_MACHINE_H
 #define _DEBUGGERD_MACHINE_H
 
-#include <stddef.h>
-#include <stdbool.h>
 #include <sys/types.h>
 
-#include <corkscrew/ptrace.h>
+#include <backtrace/Backtrace.h>
 
 #include "utility.h"
 
-void dump_memory_and_code(const ptrace_context_t* context, log_t* log, pid_t tid, bool at_fault);
-void dump_registers(const ptrace_context_t* context, log_t* log, pid_t tid, bool at_fault);
+void dump_memory_and_code(log_t* log, Backtrace* backtrace);
+void dump_registers(log_t* log, pid_t tid);
 
 #endif // _DEBUGGERD_MACHINE_H

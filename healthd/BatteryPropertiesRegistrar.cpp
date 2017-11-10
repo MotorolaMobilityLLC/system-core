@@ -18,19 +18,21 @@
 #include <batteryservice/BatteryService.h>
 #include <batteryservice/IBatteryPropertiesListener.h>
 #include <batteryservice/IBatteryPropertiesRegistrar.h>
+#include <binder/IPCThreadState.h>
 #include <binder/IServiceManager.h>
+#include <binder/PermissionCache.h>
+#include <private/android_filesystem_config.h>
 #include <utils/Errors.h>
 #include <utils/Mutex.h>
 #include <utils/String16.h>
 
+#include <healthd/healthd.h>
+
 namespace android {
 
-BatteryPropertiesRegistrar::BatteryPropertiesRegistrar(BatteryMonitor* monitor) {
-    mBatteryMonitor = monitor;
-}
-
-void BatteryPropertiesRegistrar::publish() {
-    defaultServiceManager()->addService(String16("batterypropreg"), this);
+void BatteryPropertiesRegistrar::publish(
+    const sp<BatteryPropertiesRegistrar>& service) {
+    defaultServiceManager()->addService(String16("batteryproperties"), service);
 }
 
 void BatteryPropertiesRegistrar::notifyListeners(struct BatteryProperties props) {
@@ -42,36 +44,57 @@ void BatteryPropertiesRegistrar::notifyListeners(struct BatteryProperties props)
 
 void BatteryPropertiesRegistrar::registerListener(const sp<IBatteryPropertiesListener>& listener) {
     {
+        if (listener == NULL)
+            return;
         Mutex::Autolock _l(mRegistrationLock);
         // check whether this is a duplicate
         for (size_t i = 0; i < mListeners.size(); i++) {
-            if (mListeners[i]->asBinder() == listener->asBinder()) {
+            if (IInterface::asBinder(mListeners[i]) == IInterface::asBinder(listener)) {
                 return;
             }
         }
 
         mListeners.add(listener);
-        listener->asBinder()->linkToDeath(this);
+        IInterface::asBinder(listener)->linkToDeath(this);
     }
-    mBatteryMonitor->update();
+    healthd_battery_update();
 }
 
 void BatteryPropertiesRegistrar::unregisterListener(const sp<IBatteryPropertiesListener>& listener) {
+    if (listener == NULL)
+        return;
     Mutex::Autolock _l(mRegistrationLock);
     for (size_t i = 0; i < mListeners.size(); i++) {
-        if (mListeners[i]->asBinder() == listener->asBinder()) {
-            mListeners[i]->asBinder()->unlinkToDeath(this);
+        if (IInterface::asBinder(mListeners[i]) == IInterface::asBinder(listener)) {
+            IInterface::asBinder(mListeners[i])->unlinkToDeath(this);
             mListeners.removeAt(i);
             break;
         }
     }
 }
 
+status_t BatteryPropertiesRegistrar::getProperty(int id, struct BatteryProperty *val) {
+    return healthd_get_property(id, val);
+}
+
+status_t BatteryPropertiesRegistrar::dump(int fd, const Vector<String16>& /*args*/) {
+    IPCThreadState* self = IPCThreadState::self();
+    const int pid = self->getCallingPid();
+    const int uid = self->getCallingUid();
+    if ((uid != AID_SHELL) &&
+        !PermissionCache::checkPermission(
+                String16("android.permission.DUMP"), pid, uid))
+        return PERMISSION_DENIED;
+
+    healthd_dump_battery_state(fd);
+    return OK;
+}
+
 void BatteryPropertiesRegistrar::binderDied(const wp<IBinder>& who) {
     Mutex::Autolock _l(mRegistrationLock);
 
     for (size_t i = 0; i < mListeners.size(); i++) {
-        if (mListeners[i]->asBinder() == who) {
+        if (IInterface::asBinder(mListeners[i]) == who) {
             mListeners.removeAt(i);
             break;
         }

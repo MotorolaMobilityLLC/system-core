@@ -63,7 +63,7 @@ public:
     };
 
     enum {
-        CODEGEN_ARCH_ARM = 1, CODEGEN_ARCH_MIPS
+        CODEGEN_ARCH_ARM = 1, CODEGEN_ARCH_MIPS, CODEGEN_ARCH_ARM64, CODEGEN_ARCH_MIPS64
     };
 
     // -----------------------------------------------------------------------
@@ -115,7 +115,8 @@ public:
     // data processing...
     enum {
         opAND, opEOR, opSUB, opRSB, opADD, opADC, opSBC, opRSC, 
-        opTST, opTEQ, opCMP, opCMN, opORR, opMOV, opBIC, opMVN
+        opTST, opTEQ, opCMP, opCMN, opORR, opMOV, opBIC, opMVN,
+        opADD64, opSUB64
     };
 
     virtual void
@@ -331,6 +332,16 @@ public:
     inline void
     SMLAWT(int cc, int Rd, int Rm, int Rs, int Rn) {
         SMLAW(cc, yT, Rd, Rm, Rs, Rn);    }
+
+    // Address loading/storing/manipulation
+    virtual void ADDR_LDR(int cc, int Rd,
+                int Rn, uint32_t offset = __immed12_pre(0));
+    virtual void ADDR_STR (int cc, int Rd,
+                int Rn, uint32_t offset = __immed12_pre(0));
+    virtual void ADDR_ADD(int cc, int s, int Rd,
+                int Rn, uint32_t Op2);
+    virtual void ADDR_SUB(int cc, int s, int Rd,
+                int Rn, uint32_t Op2);
 };
 
 }; // namespace android

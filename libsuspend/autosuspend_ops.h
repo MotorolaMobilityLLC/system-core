@@ -25,5 +25,6 @@ struct autosuspend_ops {
 struct autosuspend_ops *autosuspend_autosleep_init(void);
 struct autosuspend_ops *autosuspend_earlysuspend_init(void);
 struct autosuspend_ops *autosuspend_wakeup_count_init(void);
+struct autosuspend_ops *autosuspend_debugger_init(void);
 
 #endif

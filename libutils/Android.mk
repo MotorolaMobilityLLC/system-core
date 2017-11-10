@@ -1,3 +1,8 @@
+#
+# Copyright (C) 2014 MediaTek Inc.
+# Modification based on code covered by the mentioned copyright
+# and/or permission notice(s).
+#
 # Copyright (C) 2008 The Android Open Source Project
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,20 +19,14 @@
 
 LOCAL_PATH:= $(call my-dir)
 
-# libutils is a little unique: It's built twice, once for the host
-# and once for the device.
-
 commonSources:= \
-	BasicHashtable.cpp \
-	BlobCache.cpp \
 	CallStack.cpp \
 	FileMap.cpp \
 	JenkinsHash.cpp \
-	LinearAllocator.cpp \
 	LinearTransform.cpp \
 	Log.cpp \
+	NativeHandle.cpp \
 	Printer.cpp \
-	ProcessCallStack.cpp \
 	PropertyMap.cpp \
 	RefBase.cpp \
 	SharedBuffer.cpp \
@@ -41,49 +40,24 @@ commonSources:= \
 	Tokenizer.cpp \
 	Unicode.cpp \
 	VectorImpl.cpp \
-	misc.cpp
+	misc.cpp \
 
-host_commonCflags := -DLIBUTILS_NATIVE=1 $(TOOL_CFLAGS)
-
-ifeq ($(HOST_OS),windows)
-ifeq ($(strip $(USE_CYGWIN),),)
-# Under MinGW, ctype.h doesn't need multi-byte support
-host_commonCflags += -DMB_CUR_MAX=1
-endif
-endif
-
-host_commonLdlibs :=
-
-ifeq ($(TARGET_OS),linux)
-host_commonLdlibs += -lrt -ldl
-endif
-
+host_commonCflags := -DLIBUTILS_NATIVE=1 $(TOOL_CFLAGS) -Werror
 
 # For the host
 # =====================================================
 include $(CLEAR_VARS)
 LOCAL_SRC_FILES:= $(commonSources)
-ifeq ($(HOST_OS), linux)
-LOCAL_SRC_FILES += Looper.cpp
-endif
+LOCAL_SRC_FILES_linux := Looper.cpp ProcessCallStack.cpp
+LOCAL_CFLAGS_darwin := -Wno-unused-parameter
 LOCAL_MODULE:= libutils
 LOCAL_STATIC_LIBRARIES := liblog
 LOCAL_CFLAGS += $(host_commonCflags)
-LOCAL_LDLIBS += $(host_commonLdlibs)
-include $(BUILD_HOST_STATIC_LIBRARY)
-
-
-# For the host, 64-bit
-# =====================================================
-include $(CLEAR_VARS)
-LOCAL_SRC_FILES:= $(commonSources)
-ifeq ($(HOST_OS), linux)
-LOCAL_SRC_FILES += Looper.cpp
-endif
-LOCAL_MODULE:= lib64utils
-LOCAL_STATIC_LIBRARIES := liblog
-LOCAL_CFLAGS += $(host_commonCflags) -m64
-LOCAL_LDLIBS += $(host_commonLdlibs)
+# Under MinGW, ctype.h doesn't need multi-byte support
+LOCAL_CFLAGS_windows := -DMB_CUR_MAX=1
+LOCAL_MULTILIB := both
+LOCAL_MODULE_HOST_OS := darwin linux windows
+LOCAL_C_INCLUDES += external/safe-iop/include
 include $(BUILD_HOST_STATIC_LIBRARY)
 
 
@@ -95,32 +69,29 @@ include $(CLEAR_VARS)
 # we have the common sources, plus some device-specific stuff
 LOCAL_SRC_FILES:= \
 	$(commonSources) \
+	BlobCache.cpp \
 	Looper.cpp \
+	ProcessCallStack.cpp \
 	Trace.cpp
-
-ifeq ($(TARGET_OS),linux)
-LOCAL_LDLIBS += -lrt -ldl
-endif
 
 ifeq ($(TARGET_ARCH),mips)
 LOCAL_CFLAGS += -DALIGN_DOUBLE
 endif
-
-LOCAL_C_INCLUDES += \
-		bionic/libc/private \
-		external/zlib
-
-LOCAL_LDLIBS += -lpthread
+LOCAL_CFLAGS += -Werror -fvisibility=protected
 
 LOCAL_STATIC_LIBRARIES := \
-	libcutils
+	libcutils \
+	libc
 
 LOCAL_SHARED_LIBRARIES := \
-        libcorkscrew \
+        libbacktrace \
         liblog \
         libdl
 
-LOCAL_MODULE:= libutils
+LOCAL_MODULE := libutils
+LOCAL_CLANG := true
+LOCAL_SANITIZE := integer
+LOCAL_C_INCLUDES += external/safe-iop/include
 include $(BUILD_STATIC_LIBRARY)
 
 # For the device, shared
@@ -129,18 +100,31 @@ include $(CLEAR_VARS)
 LOCAL_MODULE:= libutils
 LOCAL_WHOLE_STATIC_LIBRARIES := libutils
 LOCAL_SHARED_LIBRARIES := \
-        liblog \
+        libbacktrace \
         libcutils \
         libdl \
-        libcorkscrew
+        liblog
+LOCAL_CFLAGS := -Werror
+LOCAL_C_INCLUDES += external/safe-iop/include
+
+LOCAL_CLANG := true
+LOCAL_SANITIZE := integer
 
 include $(BUILD_SHARED_LIBRARY)
 
-# Include subdirectory makefiles
-# ============================================================
+include $(CLEAR_VARS)
+LOCAL_MODULE := SharedBufferTest
+LOCAL_STATIC_LIBRARIES := libutils
+LOCAL_SHARED_LIBRARIES := liblog
+LOCAL_SRC_FILES := SharedBufferTest.cpp
+include $(BUILD_NATIVE_TEST)
 
-# If we're building with ONE_SHOT_MAKEFILE (mm, mmm), then what the framework
-# team really wants is to build the stuff defined by this makefile.
-ifeq (,$(ONE_SHOT_MAKEFILE))
+include $(CLEAR_VARS)
+LOCAL_MODULE := SharedBufferTest
+LOCAL_STATIC_LIBRARIES := libutils
+LOCAL_SHARED_LIBRARIES := liblog
+LOCAL_SRC_FILES := SharedBufferTest.cpp
+include $(BUILD_HOST_NATIVE_TEST)
+
+# Build the tests in the tests/ subdirectory.
 include $(call first-makefiles-under,$(LOCAL_PATH))
-endif

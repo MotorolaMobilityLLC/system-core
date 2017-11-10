@@ -1,9 +1,10 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <inttypes.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 
 #include <mtd/mtd-user.h>
@@ -12,7 +13,7 @@
 static int test_empty(const char *buf, size_t size)
 {
     while(size--) {
-        if (*buf++ != 0xff)
+        if (*buf++ != (char) 0xff)
             return 0;
     }
     return 1;
@@ -44,7 +45,7 @@ int nandread_main(int argc, char **argv)
     struct mtd_info_user mtdinfo;
     struct mtd_ecc_stats initial_ecc, last_ecc, ecc;
     struct mtd_oob_buf oobbuf;
-    struct nand_ecclayout ecclayout;
+    nand_ecclayout_t ecclayout;
 
     do {
         c = getopt(argc, argv, "d:f:s:S:L:Rhv");
@@ -158,7 +159,7 @@ int nandread_main(int argc, char **argv)
         printf("oobavail: %u\n", ecclayout.oobavail);
     }
     if (ecclayout.oobavail > spare_size)
-        printf("oobavail, %d > image spare size, %d\n", ecclayout.oobavail, spare_size);
+        printf("oobavail, %d > image spare size, %zu\n", ecclayout.oobavail, spare_size);
 
     ret = ioctl(fd, ECCGETSTATS, &initial_ecc);
     if (ret) {
@@ -177,7 +178,7 @@ int nandread_main(int argc, char **argv)
 
     if (rawmode) {
         rawmode = mtdinfo.oobsize;
-        ret = ioctl(fd, MTDFILEMODE, MTD_MODE_RAW);
+        ret = ioctl(fd, MTDFILEMODE, MTD_FILE_MODE_RAW);
         if (ret) {
             fprintf(stderr, "failed set raw mode for %s, %s\n",
                     devname, strerror(errno));
@@ -189,18 +190,18 @@ int nandread_main(int argc, char **argv)
     for (pos = start, opos = 0; pos < end; pos += mtdinfo.writesize) {
         bad_block = 0;
         if (verbose > 3)
-            printf("reading at %llx\n", pos);
+            printf("reading at %" PRIx64 "\n", pos);
         lseek64(fd, pos, SEEK_SET);
         ret = read(fd, buffer, mtdinfo.writesize + rawmode);
         if (ret < (int)mtdinfo.writesize) {
-            fprintf(stderr, "short read at %llx, %d\n", pos, ret);
+            fprintf(stderr, "short read at %" PRIx64 ", %d\n", pos, ret);
             bad_block = 2;
         }
         if (!rawmode) {
             oobbuf.start = pos;
             ret = ioctl(fd, MEMREADOOB, &oobbuf);
             if (ret) {
-                fprintf(stderr, "failed to read oob data at %llx, %d\n", pos, ret);
+                fprintf(stderr, "failed to read oob data at %" PRIx64 ", %d\n", pos, ret);
                 bad_block = 2;
             }
         }
@@ -213,17 +214,17 @@ int nandread_main(int argc, char **argv)
         bpos = pos / mtdinfo.erasesize * mtdinfo.erasesize;
         ret = ioctl(fd, MEMGETBADBLOCK, &bpos);
         if (ret && errno != EOPNOTSUPP) {
-            printf("badblock at %llx\n", pos);
+            printf("badblock at %" PRIx64 "\n", pos);
             bad_block = 1;
         }
         if (ecc.corrected != last_ecc.corrected)
-            printf("ecc corrected, %u, at %llx\n", ecc.corrected - last_ecc.corrected, pos);
+            printf("ecc corrected, %u, at %" PRIx64 "\n", ecc.corrected - last_ecc.corrected, pos);
         if (ecc.failed != last_ecc.failed)
-            printf("ecc failed, %u, at %llx\n", ecc.failed - last_ecc.failed, pos);
+            printf("ecc failed, %u, at %" PRIx64 "\n", ecc.failed - last_ecc.failed, pos);
         if (ecc.badblocks != last_ecc.badblocks)
-            printf("ecc badblocks, %u, at %llx\n", ecc.badblocks - last_ecc.badblocks, pos);
+            printf("ecc badblocks, %u, at %" PRIx64 "\n", ecc.badblocks - last_ecc.badblocks, pos);
         if (ecc.bbtblocks != last_ecc.bbtblocks)
-            printf("ecc bbtblocks, %u, at %llx\n", ecc.bbtblocks - last_ecc.bbtblocks, pos);
+            printf("ecc bbtblocks, %u, at %" PRIx64 "\n", ecc.bbtblocks - last_ecc.bbtblocks, pos);
 
         if (!rawmode) {
             oob_fixed = (uint8_t *)oob_data;
@@ -241,18 +242,18 @@ int nandread_main(int argc, char **argv)
         if (outfd >= 0) {
             ret = write(outfd, buffer, mtdinfo.writesize + spare_size);
             if (ret < (int)(mtdinfo.writesize + spare_size)) {
-                fprintf(stderr, "short write at %llx, %d\n", pos, ret);
+                fprintf(stderr, "short write at %" PRIx64 ", %d\n", pos, ret);
                 close(outfd);
                 outfd = -1;
             }
             if (ecc.corrected != last_ecc.corrected)
-                fprintf(statusfile, "%08llx: ecc corrected\n", opos);
+                fprintf(statusfile, "%08" PRIx64 ": ecc corrected\n", opos);
             if (ecc.failed != last_ecc.failed)
-                fprintf(statusfile, "%08llx: ecc failed\n", opos);
+                fprintf(statusfile, "%08" PRIx64 ": ecc failed\n", opos);
             if (bad_block == 1)
-                fprintf(statusfile, "%08llx: badblock\n", opos);
+                fprintf(statusfile, "%08" PRIx64 ": badblock\n", opos);
             if (bad_block == 2)
-                fprintf(statusfile, "%08llx: read error\n", opos);
+                fprintf(statusfile, "%08" PRIx64 ": read error\n", opos);
             opos += mtdinfo.writesize + spare_size;
         }
 
@@ -261,7 +262,7 @@ int nandread_main(int argc, char **argv)
         if (test_empty(buffer, mtdinfo.writesize + mtdinfo.oobsize + spare_size))
             empty_pages++;
         else if (verbose > 2 || (verbose > 1 && !(pos & (mtdinfo.erasesize - 1))))
-            printf("page at %llx (%d oobbytes): %08x %08x %08x %08x "
+            printf("page at %" PRIx64 " (%d oobbytes): %08x %08x %08x %08x "
                    "%08x %08x %08x %08x\n", pos, oobbuf.start,
                    oob_data[0], oob_data[1], oob_data[2], oob_data[3],
                    oob_data[4], oob_data[5], oob_data[6], oob_data[7]);

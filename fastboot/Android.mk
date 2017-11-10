@@ -14,66 +14,121 @@
 
 LOCAL_PATH:= $(call my-dir)
 
+fastboot_version := $(shell git -C $(LOCAL_PATH) rev-parse --short=12 HEAD 2>/dev/null)-android
+
 include $(CLEAR_VARS)
 
-LOCAL_C_INCLUDES := $(LOCAL_PATH)/../mkbootimg \
-  $(LOCAL_PATH)/../../extras/ext4_utils
-LOCAL_SRC_FILES := protocol.c engine.c bootimg.c fastboot.c
+LOCAL_C_INCLUDES := \
+  $(LOCAL_PATH)/../adb \
+  $(LOCAL_PATH)/../mkbootimg \
+  $(LOCAL_PATH)/../../extras/ext4_utils \
+  $(LOCAL_PATH)/../../extras/f2fs_utils \
+
+LOCAL_SRC_FILES := \
+    bootimg_utils.cpp \
+    engine.cpp \
+    fastboot.cpp \
+    fs.cpp\
+    protocol.cpp \
+    socket.cpp \
+    tcp.cpp \
+    udp.cpp \
+    util.cpp \
+
 LOCAL_MODULE := fastboot
 LOCAL_MODULE_TAGS := debug
+LOCAL_MODULE_HOST_OS := darwin linux windows
+LOCAL_CONLYFLAGS += -std=gnu99
+LOCAL_CFLAGS += -Wall -Wextra -Werror -Wunreachable-code
 
-ifeq ($(HOST_OS),linux)
-  LOCAL_SRC_FILES += usb_linux.c util_linux.c
-endif
+LOCAL_CFLAGS += -DFASTBOOT_REVISION='"$(fastboot_version)"'
 
-ifeq ($(HOST_OS),darwin)
-  LOCAL_SRC_FILES += usb_osx.c util_osx.c
-  LOCAL_LDLIBS += -lpthread -framework CoreFoundation -framework IOKit \
-	-framework Carbon
-endif
+LOCAL_SRC_FILES_linux := usb_linux.cpp util_linux.cpp
+LOCAL_STATIC_LIBRARIES_linux := libselinux
 
-ifeq ($(HOST_OS),windows)
-  LOCAL_SRC_FILES += usb_windows.c util_windows.c
-  EXTRA_STATIC_LIBS := AdbWinApi
-  ifneq ($(strip $(USE_CYGWIN)),)
-    # Pure cygwin case
-    LOCAL_LDLIBS += -lpthread
-    LOCAL_C_INCLUDES += /usr/include/w32api/ddk
-  endif
-  ifneq ($(strip $(USE_MINGW)),)
-    # MinGW under Linux case
-    LOCAL_LDLIBS += -lws2_32
-    USE_SYSDEPS_WIN32 := 1
-    LOCAL_C_INCLUDES += /usr/i586-mingw32msvc/include/ddk
-  endif
-  LOCAL_C_INCLUDES += development/host/windows/usb/api
-endif
+LOCAL_SRC_FILES_darwin := usb_osx.cpp util_osx.cpp
+LOCAL_STATIC_LIBRARIES_darwin := libselinux
+LOCAL_LDLIBS_darwin := -lpthread -framework CoreFoundation -framework IOKit -framework Carbon
+LOCAL_CFLAGS_darwin := -Wno-unused-parameter
+
+LOCAL_SRC_FILES_windows := usb_windows.cpp util_windows.cpp
+LOCAL_STATIC_LIBRARIES_windows := AdbWinApi
+LOCAL_REQUIRED_MODULES_windows := AdbWinApi
+LOCAL_LDLIBS_windows := -lws2_32
+LOCAL_C_INCLUDES_windows := development/host/windows/usb/api
 
 LOCAL_STATIC_LIBRARIES := \
-    $(EXTRA_STATIC_LIBS) \
-    libzipfile \
-    libunz \
+    libziparchive-host \
     libext4_utils_host \
     libsparse_host \
-    libz
+    libutils \
+    liblog \
+    libz \
+    libdiagnose_usb \
+    libbase \
+    libcutils \
+    libgtest_host \
 
-ifneq ($(HOST_OS),windows)
-LOCAL_STATIC_LIBRARIES += libselinux
-endif # HOST_OS != windows
+# libf2fs_dlutils_host will dlopen("libf2fs_fmt_host_dyn")
+LOCAL_CFLAGS_linux := -DUSE_F2FS
+LOCAL_LDFLAGS_linux := -ldl -rdynamic -Wl,-rpath,.
+LOCAL_REQUIRED_MODULES_linux := libf2fs_fmt_host_dyn
+# The following libf2fs_* are from system/extras/f2fs_utils,
+# and do not use code in external/f2fs-tools.
+LOCAL_STATIC_LIBRARIES_linux += libf2fs_utils_host libf2fs_ioutils_host libf2fs_dlutils_host
+
+LOCAL_CXX_STL := libc++_static
+
+# Don't add anything here, we don't want additional shared dependencies
+# on the host fastboot tool, and shared libraries that link against libc++
+# will violate ODR
+LOCAL_SHARED_LIBRARIES :=
 
 include $(BUILD_HOST_EXECUTABLE)
 
-
-$(call dist-for-goals,dist_files sdk,$(LOCAL_BUILT_MODULE))
-
+my_dist_files := $(LOCAL_BUILT_MODULE)
+ifeq ($(HOST_OS),linux)
+my_dist_files += $(HOST_LIBRARY_PATH)/libf2fs_fmt_host_dyn$(HOST_SHLIB_SUFFIX)
+endif
+$(call dist-for-goals,dist_files sdk win_sdk,$(my_dist_files))
+ifdef HOST_CROSS_OS
+# Archive fastboot.exe for win_sdk build.
+$(call dist-for-goals,win_sdk,$(ALL_MODULES.host_cross_fastboot.BUILT))
+endif
+my_dist_files :=
 
 ifeq ($(HOST_OS),linux)
 include $(CLEAR_VARS)
-LOCAL_SRC_FILES := usbtest.c usb_linux.c
+LOCAL_SRC_FILES := usbtest.cpp usb_linux.cpp util.cpp
 LOCAL_MODULE := usbtest
+LOCAL_CFLAGS := -Werror
+LOCAL_STATIC_LIBRARIES := libbase
 include $(BUILD_HOST_EXECUTABLE)
 endif
 
-ifeq ($(HOST_OS),windows)
-$(LOCAL_INSTALLED_MODULE): $(HOST_OUT_EXECUTABLES)/AdbWinApi.dll
-endif
+# fastboot_test
+# =========================================================
+include $(CLEAR_VARS)
+
+LOCAL_MODULE := fastboot_test
+LOCAL_MODULE_HOST_OS := darwin linux windows
+
+LOCAL_SRC_FILES := \
+    socket.cpp \
+    socket_mock.cpp \
+    socket_test.cpp \
+    tcp.cpp \
+    tcp_test.cpp \
+    udp.cpp \
+    udp_test.cpp \
+
+LOCAL_STATIC_LIBRARIES := libbase libcutils
+
+LOCAL_CFLAGS += -Wall -Wextra -Werror -Wunreachable-code
+
+LOCAL_LDLIBS_darwin := -lpthread -framework CoreFoundation -framework IOKit -framework Carbon
+LOCAL_CFLAGS_darwin := -Wno-unused-parameter
+
+LOCAL_LDLIBS_windows := -lws2_32
+
+include $(BUILD_HOST_NATIVE_TEST)

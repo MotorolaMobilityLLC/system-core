@@ -18,23 +18,14 @@
 // Timer functions.
 //
 #include <utils/Timers.h>
-#include <utils/Log.h>
 
-#include <stdlib.h>
-#include <stdio.h>
-#include <unistd.h>
+#include <limits.h>
 #include <sys/time.h>
 #include <time.h>
-#include <errno.h>
-#include <limits.h>
 
-#ifdef HAVE_WIN32_THREADS
-#include <windows.h>
-#endif
-
+#if defined(__ANDROID__)
 nsecs_t systemTime(int clock)
 {
-#if defined(HAVE_POSIX_CLOCKS)
     static const clockid_t clocks[] = {
             CLOCK_REALTIME,
             CLOCK_MONOTONIC,
@@ -46,14 +37,19 @@ nsecs_t systemTime(int clock)
     t.tv_sec = t.tv_nsec = 0;
     clock_gettime(clocks[clock], &t);
     return nsecs_t(t.tv_sec)*1000000000LL + t.tv_nsec;
+}
 #else
-    // we don't support the clocks here.
+nsecs_t systemTime(int /*clock*/)
+{
+    // Clock support varies widely across hosts. Mac OS doesn't support
+    // posix clocks, older glibcs don't support CLOCK_BOOTTIME and Windows
+    // is windows.
     struct timeval t;
     t.tv_sec = t.tv_usec = 0;
     gettimeofday(&t, NULL);
     return nsecs_t(t.tv_sec)*1000000000LL + nsecs_t(t.tv_usec)*1000LL;
-#endif
 }
+#endif
 
 int toMillisecondTimeoutDelay(nsecs_t referenceTime, nsecs_t timeoutTime)
 {

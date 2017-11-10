@@ -21,22 +21,32 @@
 #define NL_PARAMS_MAX 32
 
 class NetlinkEvent {
+public:
+    enum class Action {
+        kUnknown = 0,
+        kAdd = 1,
+        kRemove = 2,
+        kChange = 3,
+        kLinkUp = 4,
+        kLinkDown = 5,
+        kAddressUpdated = 6,
+        kAddressRemoved = 7,
+        kRdnss = 8,
+        kRouteUpdated = 9,
+        kRouteRemoved = 10,
+        kIPv6Enable = 100,
+        kIPv6Disable = 101,
+        kNoRA = 108,
+    };
+
+private:
     int  mSeq;
     char *mPath;
-    int  mAction;
+    Action mAction;
     char *mSubsystem;
     char *mParams[NL_PARAMS_MAX];
 
 public:
-    const static int NlActionUnknown;
-    const static int NlActionAdd;
-    const static int NlActionRemove;
-    const static int NlActionChange;
-    const static int NlActionLinkDown;
-    const static int NlActionLinkUp;
-    const static int NlActionAddressUpdated;
-    const static int NlActionAddressRemoved;
-
     NetlinkEvent();
     virtual ~NetlinkEvent();
 
@@ -44,14 +54,21 @@ public:
     const char *findParam(const char *paramName);
 
     const char *getSubsystem() { return mSubsystem; }
-    int getAction() { return mAction; }
+    Action getAction() { return mAction; }
 
     void dump();
 
  protected:
-    bool parseIfAddrMessage(int type, struct ifaddrmsg *ifaddr, int rtasize);
     bool parseBinaryNetlinkMessage(char *buffer, int size);
     bool parseAsciiNetlinkMessage(char *buffer, int size);
+    bool parseIfInfoMessage(const struct nlmsghdr *nh);
+    bool parseIfAddrMessage(const struct nlmsghdr *nh);
+    bool parseUlogPacketMessage(const struct nlmsghdr *nh);
+    bool parseNfPacketMessage(struct nlmsghdr *nh);
+    bool parseRtMessage(const struct nlmsghdr *nh);
+    bool parseNdUserOptMessage(const struct nlmsghdr *nh);
+    bool parseNewPrefixMessage(const struct nlmsghdr *nh);    
+    bool parseNoRAMessage(const struct nlmsghdr *nh);   
 };
 
 #endif

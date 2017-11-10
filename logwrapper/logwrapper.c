@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/wait.h>
@@ -80,7 +81,7 @@ int main(int argc, char* argv[]) {
     }
 
     rc = android_fork_execvp_ext(argc, &argv[0], &status, true,
-                                 log_target, abbreviated, NULL);
+                                 log_target, abbreviated, NULL, NULL, 0);
     if (!rc) {
         if (WIFEXITED(status))
             rc = WEXITSTATUS(status);
@@ -89,7 +90,8 @@ int main(int argc, char* argv[]) {
     }
 
     if (seg_fault_on_exit) {
-        *(int *)status = 0;  // causes SIGSEGV with fault_address = status
+        uintptr_t fault_address = (uintptr_t) status;
+        *(int *) fault_address = 0;  // causes SIGSEGV with fault_address = status
     }
 
     return rc;

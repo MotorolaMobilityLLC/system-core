@@ -19,10 +19,14 @@
 
 #include <cutils/klog.h>
 
-#define ERROR(x...)   KLOG_ERROR("init", x)
-#define NOTICE(x...)  KLOG_NOTICE("init", x)
-#define INFO(x...)    KLOG_INFO("init", x)
+#define ERROR(x...)   init_klog_write(KLOG_ERROR_LEVEL, x)
+#define WARNING(x...) init_klog_write(KLOG_WARNING_LEVEL, x)
+#define NOTICE(x...)  init_klog_write(KLOG_NOTICE_LEVEL, x)
+#define INFO(x...)    init_klog_write(KLOG_INFO_LEVEL, x)
+#define DEBUG(x...)   init_klog_write(KLOG_DEBUG_LEVEL, x)
+#define VERBOSE(x...) init_klog_write(KLOG_DEBUG_LEVEL, x)
 
-#define LOG_UEVENTS        0  /* log uevent messages if 1. verbose */
+void init_klog_write(int level, const char* fmt, ...) __printflike(2, 3);
+int selinux_klog_callback(int level, const char* fmt, ...) __printflike(2, 3);
 
 #endif

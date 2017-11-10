@@ -104,8 +104,6 @@ static void add_line_to_abbr_buf(struct abbr_buf *a_buf, char *linebuf, int line
 static int add_line_to_linear_buf(struct beginning_buf *b_buf,
                                    char *line, ssize_t line_len)
 {
-    size_t new_len;
-    char *new_buf;
     int full = 0;
 
     if ((line_len + b_buf->used_len) > b_buf->buf_size) {
@@ -124,7 +122,6 @@ static void add_line_to_circular_buf(struct ending_buf *e_buf,
 {
     ssize_t free_len;
     ssize_t needed_space;
-    char *new_buf;
     int cnt;
 
     if (e_buf->buf == NULL) {
@@ -192,7 +189,6 @@ static void print_buf_lines(struct log_info *log_info, char *buf, int buf_size)
 {
     char *line_start;
     char c;
-    int line_len;
     int i;
 
     line_start = buf;
@@ -295,7 +291,8 @@ static void print_abbr_buf(struct log_info *log_info) {
 }
 
 static int parent(const char *tag, int parent_read, pid_t pid,
-        int *chld_sts, int log_target, bool abbreviated, char *file_path) {
+        int *chld_sts, int log_target, bool abbreviated, char *file_path,
+        const struct AndroidForkExecvpOption* opts, size_t opts_len) {
     int status = 0;
     char buffer[4096];
     struct pollfd poll_fds[] = {
@@ -305,6 +302,7 @@ static int parent(const char *tag, int parent_read, pid_t pid,
         },
     };
     int rc = 0;
+    int ret = 0;
     int fd;
 
     struct log_info log_info;
@@ -329,7 +327,7 @@ static int parent(const char *tag, int parent_read, pid_t pid,
 
     if (log_target & LOG_KLOG) {
         snprintf(log_info.klog_fmt, sizeof(log_info.klog_fmt),
-                 "<6>%.*s: %%s", MAX_KLOG_TAG, log_info.btag);
+                 "<6>%.*s: %%s\n", MAX_KLOG_TAG, log_info.btag);
     }
 
     if ((log_target & LOG_FILE) && !file_path) {
@@ -352,14 +350,37 @@ static int parent(const char *tag, int parent_read, pid_t pid,
     log_info.abbreviated = abbreviated;
 
     while (!found_child) {
-        if (TEMP_FAILURE_RETRY(poll(poll_fds, ARRAY_SIZE(poll_fds), -1)) < 0) {
+        ret = TEMP_FAILURE_RETRY(poll(poll_fds, ARRAY_SIZE(poll_fds), 5000));
+        if (ret < 0) {
             ERROR("poll failed\n");
             rc = -1;
             goto err_poll;
         }
 
+
+        if (ret == 0) {
+            ret = waitpid(pid, &status, WNOHANG);
+            if (ret < 0) {
+                rc = errno;
+                ALOG(LOG_ERROR, "logwrap", "waitpid failed with %s\n", strerror(errno));
+                goto err_waitpid;
+            }
+            if (ret > 0) {
+                found_child = true;
+            }
+            continue;
+        }
+
         if (poll_fds[0].revents & POLLIN) {
-            sz = read(parent_read, &buffer[b], sizeof(buffer) - 1 - b);
+            sz = TEMP_FAILURE_RETRY(
+                read(parent_read, &buffer[b], sizeof(buffer) - 1 - b));
+
+            for (size_t i = 0; sz > 0 && i < opts_len; ++i) {
+                if (opts[i].opt_type == FORK_EXECVP_OPTION_CAPTURE_OUTPUT) {
+                  opts[i].opt_capture_output.on_output(
+                      (uint8_t*)&buffer[b], sz, opts[i].opt_capture_output.user_pointer);
+                }
+            }
 
             sz += b;
             // Log one line at a time
@@ -401,7 +422,6 @@ static int parent(const char *tag, int parent_read, pid_t pid,
         }
 
         if (poll_fds[0].revents & POLLHUP) {
-            int ret;
 
             ret = waitpid(pid, &status, WNOHANG);
             if (ret < 0) {
@@ -477,11 +497,11 @@ static void child(int argc, char* argv[]) {
 }
 
 int android_fork_execvp_ext(int argc, char* argv[], int *status, bool ignore_int_quit,
-        int log_target, bool abbreviated, char *file_path) {
+        int log_target, bool abbreviated, char *file_path,
+        const struct AndroidForkExecvpOption* opts, size_t opts_len) {
     pid_t pid;
     int parent_ptty;
     int child_ptty;
-    char *child_devname = NULL;
     struct sigaction intact;
     struct sigaction quitact;
     sigset_t blockset;
@@ -495,21 +515,22 @@ int android_fork_execvp_ext(int argc, char* argv[], int *status, bool ignore_int
     }
 
     /* Use ptty instead of socketpair so that STDOUT is not buffered */
-    parent_ptty = open("/dev/ptmx", O_RDWR);
+    parent_ptty = TEMP_FAILURE_RETRY(open("/dev/ptmx", O_RDWR));
     if (parent_ptty < 0) {
         ERROR("Cannot create parent ptty\n");
         rc = -1;
         goto err_open;
     }
 
+    char child_devname[64];
     if (grantpt(parent_ptty) || unlockpt(parent_ptty) ||
-            ((child_devname = (char*)ptsname(parent_ptty)) == 0)) {
+            ptsname_r(parent_ptty, child_devname, sizeof(child_devname)) != 0) {
         ERROR("Problem with /dev/ptmx\n");
         rc = -1;
         goto err_ptty;
     }
 
-    child_ptty = open(child_devname, O_RDWR);
+    child_ptty = TEMP_FAILURE_RETRY(open(child_devname, O_RDWR));
     if (child_ptty < 0) {
         ERROR("Cannot open child_ptty\n");
         rc = -1;
@@ -532,7 +553,13 @@ int android_fork_execvp_ext(int argc, char* argv[], int *status, bool ignore_int
         pthread_sigmask(SIG_SETMASK, &oldset, NULL);
         close(parent_ptty);
 
-        // redirect stdout and stderr
+        // redirect stdin, stdout and stderr
+        for (size_t i = 0; i < opts_len; ++i) {
+            if (opts[i].opt_type == FORK_EXECVP_OPTION_INPUT) {
+                dup2(child_ptty, 0);
+                break;
+            }
+        }
         dup2(child_ptty, 1);
         dup2(child_ptty, 2);
         close(child_ptty);
@@ -549,8 +576,24 @@ int android_fork_execvp_ext(int argc, char* argv[], int *status, bool ignore_int
             sigaction(SIGQUIT, &ignact, &quitact);
         }
 
+        for (size_t i = 0; i < opts_len; ++i) {
+            if (opts[i].opt_type == FORK_EXECVP_OPTION_INPUT) {
+                size_t left = opts[i].opt_input.input_len;
+                const uint8_t* input = opts[i].opt_input.input;
+                while (left > 0) {
+                    ssize_t res =
+                        TEMP_FAILURE_RETRY(write(parent_ptty, input, left));
+                    if (res < 0) {
+                        break;
+                    }
+                    left -= res;
+                    input += res;
+                }
+            }
+        }
+
         rc = parent(argv[0], parent_ptty, pid, status, log_target,
-                    abbreviated, file_path);
+                    abbreviated, file_path, opts, opts_len);
     }
 
     if (ignore_int_quit) {

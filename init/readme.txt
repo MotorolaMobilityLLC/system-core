@@ -2,8 +2,8 @@
 Android Init Language
 ---------------------
 
-The Android Init Language consists of four broad classes of statements,
-which are Actions, Commands, Services, and Options.
+The Android Init Language consists of five broad classes of statements,
+which are Actions, Commands, Services, Options, and Imports.
 
 All of these are line-oriented, consisting of tokens separated by
 whitespace.  The c-style backslash escapes may be used to insert
@@ -17,10 +17,66 @@ Actions and Services implicitly declare a new section.  All commands
 or options belong to the section most recently declared.  Commands
 or options before the first section are ignored.
 
-Actions and Services have unique names.  If a second Action or Service
-is declared with the same name as an existing one, it is ignored as
-an error.  (??? should we override instead)
+Actions and Services have unique names.  If a second Action is defined
+with the same name as an existing one, its commands are appended to
+the commands of the existing action.  If a second Service is defined
+with the same name as an existing one, it is ignored and an error
+message is logged.
 
+
+Init .rc Files
+--------------
+The init language is used in plaintext files that take the .rc file
+extension.  These are typically multiple of these in multiple
+locations on the system, described below.
+
+/init.rc is the primary .rc file and is loaded by the init executable
+at the beginning of its execution.  It is responsible for the initial
+set up of the system.  It imports /init.${ro.hardware}.rc which is the
+primary vendor supplied .rc file.
+
+During the mount_all command, the init executable loads all of the
+files contained within the /{system,vendor,odm}/etc/init/ directories.
+These directories are intended for all Actions and Services used after
+file system mounting.
+
+One may specify paths in the mount_all command line to have it import
+.rc files at the specified paths instead of the default ones listed above.
+This is primarily for supporting factory mode and other non-standard boot
+modes.  The three default paths should be used for the normal boot process.
+
+The intention of these directories is as follows
+   1) /system/etc/init/ is for core system items such as
+      SurfaceFlinger, MediaService, and logcatd.
+   2) /vendor/etc/init/ is for SoC vendor items such as actions or
+      daemons needed for core SoC functionality.
+   3) /odm/etc/init/ is for device manufacturer items such as
+      actions or daemons needed for motion sensor or other peripheral
+      functionality.
+
+All services whose binaries reside on the system, vendor, or odm
+partitions should have their service entries placed into a
+corresponding init .rc file, located in the /etc/init/
+directory of the partition where they reside.  There is a build
+system macro, LOCAL_INIT_RC, that handles this for developers.  Each
+init .rc file should additionally contain any actions associated with
+its service.
+
+An example is the logcatd.rc and Android.mk files located in the
+system/core/logcat directory.  The LOCAL_INIT_RC macro in the
+Android.mk file places logcatd.rc in /system/etc/init/ during the
+build process.  Init loads logcatd.rc during the mount_all command and
+allows the service to be run and the action to be queued when
+appropriate.
+
+This break up of init .rc files according to their daemon is preferred
+to the previously used monolithic init .rc files.  This approach
+ensures that the only service entries that init reads and the only
+actions that init performs correspond to services whose binaries are in
+fact present on the file system, which was not the case with the
+monolithic init .rc files.  This additionally will aid in merge
+conflict resolution when multiple services are added to the system, as
+each one will go into a separate file.
 
 Actions
 -------
@@ -37,7 +93,7 @@ that action is executed in sequence.  Init handles other activities
 
 Actions take the form of:
 
-on <trigger>
+on <trigger> [&& <trigger>]*
    <command>
    <command>
    <command>
@@ -60,100 +116,108 @@ Options are modifiers to services.  They affect how and when init
 runs the service.
 
 critical
-   This is a device-critical service. If it exits more than four times in
-   four minutes, the device will reboot into recovery mode.
+  This is a device-critical service. If it exits more than four times in
+  four minutes, the device will reboot into recovery mode.
 
 disabled
-   This service will not automatically start with its class.
-   It must be explicitly started by name.
+  This service will not automatically start with its class.
+  It must be explicitly started by name.
 
 setenv <name> <value>
-   Set the environment variable <name> to <value> in the launched process.
+  Set the environment variable <name> to <value> in the launched process.
 
-socket <name> <type> <perm> [ <user> [ <group> ] ]
-   Create a unix domain socket named /dev/socket/<name> and pass
-   its fd to the launched process.  <type> must be "dgram", "stream" or "seqpacket".
-   User and group default to 0.
+socket <name> <type> <perm> [ <user> [ <group> [ <seclabel> ] ] ]
+  Create a unix domain socket named /dev/socket/<name> and pass
+  its fd to the launched process.  <type> must be "dgram", "stream" or "seqpacket".
+  User and group default to 0.
+  'seclabel' is the SELinux security context for the socket.
+  It defaults to the service security context, as specified by seclabel or
+  computed based on the service executable file security context.
 
 user <username>
-   Change to username before exec'ing this service.
-   Currently defaults to root.  (??? probably should default to nobody)
-   Currently, if your process requires linux capabilities then you cannot use
-   this command. You must instead request the capabilities in-process while
-   still root, and then drop to your desired uid.
+  Change to username before exec'ing this service.
+  Currently defaults to root.  (??? probably should default to nobody)
+  As of Android M, processes should use this option even if they
+  require linux capabilities.  Previously, to acquire linux
+  capabilities, a process would need to run as root, request the
+  capabilities, then drop to its desired uid.  There is a new
+  mechanism through fs_config that allows device manufacturers to add
+  linux capabilities to specific binaries on a file system that should
+  be used instead. This mechanism is described on
+  http://source.android.com/devices/tech/config/filesystem.html.  When
+  using this new mechanism, processes can use the user option to
+  select their desired uid without ever running as root.
 
 group <groupname> [ <groupname> ]*
-   Change to groupname before exec'ing this service.  Additional
-   groupnames beyond the (required) first one are used to set the
-   supplemental groups of the process (via setgroups()).
-   Currently defaults to root.  (??? probably should default to nobody)
+  Change to groupname before exec'ing this service.  Additional
+  groupnames beyond the (required) first one are used to set the
+  supplemental groups of the process (via setgroups()).
+  Currently defaults to root.  (??? probably should default to nobody)
 
-seclabel <securitycontext>
-  Change to securitycontext before exec'ing this service.
+seclabel <seclabel>
+  Change to 'seclabel' before exec'ing this service.
   Primarily for use by services run from the rootfs, e.g. ueventd, adbd.
   Services on the system partition can instead use policy-defined transitions
   based on their file security context.
   If not specified and no transition is defined in policy, defaults to the init context.
 
 oneshot
-   Do not restart the service when it exits.
+  Do not restart the service when it exits.
 
 class <name>
-   Specify a class name for the service.  All services in a
-   named class may be started or stopped together.  A service
-   is in the class "default" if one is not specified via the
-   class option.
+  Specify a class name for the service.  All services in a
+  named class may be started or stopped together.  A service
+  is in the class "default" if one is not specified via the
+  class option.
 
 onrestart
-    Execute a Command (see below) when service restarts.
+  Execute a Command (see below) when service restarts.
+
+writepid <file...>
+  Write the child's pid to the given files when it forks. Meant for
+  cgroup/cpuset usage.
+
 
 Triggers
 --------
-   Triggers are strings which can be used to match certain kinds
-   of events and used to cause an action to occur.
+Triggers are strings which can be used to match certain kinds of
+events and used to cause an action to occur.
 
-boot
-   This is the first trigger that will occur when init starts
-   (after /init.conf is loaded)
+Triggers are subdivided into event triggers and property triggers.
 
-<name>=<value>
-   Triggers of this form occur when the property <name> is set
-   to the specific value <value>.
+Event triggers are strings triggered by the 'trigger' command or by
+the QueueEventTrigger() function within the init executable.  These
+take the form of a simple string such as 'boot' or 'late-init'.
 
-device-added-<path>
-device-removed-<path>
-   Triggers of these forms occur when a device node is added
-   or removed.
+Property triggers are strings triggered when a named property changes
+value to a given new value or when a named property changes value to
+any new value.  These take the form of 'property:<name>=<value>' and
+'property:<name>=*' respectively.  Property triggers are additionally
+evaluated and triggered accordingly during the initial boot phase of
+init.
 
-service-exited-<name>
-   Triggers of this form occur when the specified service exits.
+An Action can have multiple property triggers but may only have one
+event trigger.
+
+For example:
+'on boot && property:a=b' defines an action that is only executed when
+the 'boot' event trigger happens and the property a equals b.
+
+'on property:a=b && property:c=d' defines an action that is executed
+at three times,
+   1) During initial boot if property a=b and property c=d
+   2) Any time that property a transitions to value b, while property
+      c already equals d.
+   3) Any time that property c transitions to value d, while property
+      a already equals b.
 
 
 Commands
 --------
 
-exec <path> [ <argument> ]*
-   Fork and execute a program (<path>).  This will block until
-   the program completes execution.  It is best to avoid exec
-   as unlike the builtin commands, it runs the risk of getting
-   init "stuck". (??? maybe there should be a timeout?)
-
-export <name> <value>
-   Set the environment variable <name> equal to <value> in the
-   global environment (which will be inherited by all processes
-   started after this command is executed)
-
-ifup <interface>
-   Bring the network interface <interface> online.
-
-import <filename>
-   Parse an init config file, extending the current configuration.
-
-hostname <name>
-   Set the host name.
-
-chdir <directory>
-   Change working directory.
+bootchart_init
+   Start bootcharting if configured (see below).
+   This is included in the default init.rc.
 
 chmod <octal-mode> <path>
    Change file access permissions.
@@ -161,67 +225,125 @@ chmod <octal-mode> <path>
 chown <owner> <group> <path>
    Change file owner and group.
 
-chroot <directory>
-  Change process root directory.
-
 class_start <serviceclass>
    Start all services of the specified class if they are
    not already running.
 
 class_stop <serviceclass>
-   Stop all services of the specified class if they are
+   Stop and disable all services of the specified class if they are
    currently running.
+
+class_reset <serviceclass>
+   Stop all services of the specified class if they are
+   currently running, without disabling them. They can be restarted
+   later using class_start.
+
+copy <src> <dst>
+   Copies a file. Similar to write, but useful for binary/large
+   amounts of data.
 
 domainname <name>
    Set the domain name.
 
+enable <servicename>
+   Turns a disabled service into an enabled one as if the service did not
+   specify disabled.
+   If the service is supposed to be running, it will be started now.
+   Typically used when the bootloader sets a variable that indicates a specific
+   service should be started when needed. E.g.
+     on property:ro.boot.myfancyhardware=1
+        enable my_fancy_service_for_my_fancy_hardware
+
+exec [ <seclabel> [ <user> [ <group> ]* ] ] -- <command> [ <argument> ]*
+   Fork and execute command with the given arguments. The command starts
+   after "--" so that an optional security context, user, and supplementary
+   groups can be provided. No other commands will be run until this one
+   finishes. <seclabel> can be a - to denote default.
+
+export <name> <value>
+   Set the environment variable <name> equal to <value> in the
+   global environment (which will be inherited by all processes
+   started after this command is executed)
+
+hostname <name>
+   Set the host name.
+
+ifup <interface>
+   Bring the network interface <interface> online.
+
 insmod <path>
    Install the module at <path>
+
+load_all_props
+   Loads properties from /system, /vendor, et cetera.
+   This is included in the default init.rc.
+
+load_persist_props
+   Loads persistent properties when /data has been decrypted.
+   This is included in the default init.rc.
+
+loglevel <level>
+   Sets the kernel log level to level. Properties are expanded within <level>.
 
 mkdir <path> [mode] [owner] [group]
    Create a directory at <path>, optionally with the given mode, owner, and
    group. If not provided, the directory is created with permissions 755 and
-   owned by the root user and root group.
+   owned by the root user and root group. If provided, the mode, owner and group
+   will be updated if the directory exists already.
 
-mount <type> <device> <dir> [ <mountoption> ]*
+mount_all <fstab> [ <path> ]*
+   Calls fs_mgr_mount_all on the given fs_mgr-format fstab and imports .rc files
+   at the specified paths (e.g., on the partitions just mounted). Refer to the
+   section of "Init .rc Files" for detail.
+
+mount <type> <device> <dir> [ <flag> ]* [<options>]
    Attempt to mount the named device at the directory <dir>
    <device> may be of the form mtd@name to specify a mtd block
    device by name.
-   <mountoption>s include "ro", "rw", "remount", "noatime", ...
+   <flag>s include "ro", "rw", "remount", "noatime", ...
+   <options> include "barrier=1", "noauto_da_alloc", "discard", ... as
+   a comma separated string, eg: barrier=1,noauto_da_alloc
 
-restorecon <path>
+powerctl
+   Internal implementation detail used to respond to changes to the
+   "sys.powerctl" system property, used to implement rebooting.
+
+restart <service>
+   Like stop, but doesn't disable the service.
+
+restorecon <path> [ <path> ]*
    Restore the file named by <path> to the security context specified
    in the file_contexts configuration.
    Not required for directories created by the init.rc as these are
    automatically labeled correctly by init.
 
-setcon <securitycontext>
-   Set the current process security context to the specified string.
-   This is typically only used from early-init to set the init context
-   before any other process is started.
+restorecon_recursive <path> [ <path> ]*
+   Recursively restore the directory tree named by <path> to the
+   security contexts specified in the file_contexts configuration.
 
-setenforce 0|1
-   Set the SELinux system-wide enforcing status.
-   0 is permissive (i.e. log but do not deny), 1 is enforcing.
+rm <path>
+   Calls unlink(2) on the given path. You might want to
+   use "exec -- rm ..." instead (provided the system partition is
+   already mounted).
 
-setkey
-   TBD
+rmdir <path>
+   Calls rmdir(2) on the given path.
 
 setprop <name> <value>
-   Set system property <name> to <value>.
+   Set system property <name> to <value>. Properties are expanded
+   within <value>.
 
 setrlimit <resource> <cur> <max>
    Set the rlimit for a resource.
-
-setsebool <name> <value>
-   Set SELinux boolean <name> to <value>.
-   <value> may be 1|true|on or 0|false|off
 
 start <service>
    Start a service running if it is not already running.
 
 stop <service>
    Stop a service from running if it is currently running.
+
+swapon_all <fstab>
+   Calls fs_mgr_swapon_all on the given fstab file.
 
 symlink <target> <path>
    Create a symbolic link at <path> with the value <target>
@@ -233,98 +355,154 @@ trigger <event>
    Trigger an event.  Used to queue an action from another
    action.
 
-wait <path> [ <timeout> ]
-  Poll for the existence of the given file and return when found,
-  or the timeout has been reached. If timeout is not specified it
-  currently defaults to five seconds.
+verity_load_state
+   Internal implementation detail used to load dm-verity state.
 
-write <path> <string> [ <string> ]*
-   Open the file at <path> and write one or more strings
-   to it with write(2)
+verity_update_state <mount_point>
+   Internal implementation detail used to update dm-verity state and
+   set the partition.<mount_point>.verified properties used by adb remount
+   because fs_mgr can't set them directly itself.
+
+wait <path> [ <timeout> ]
+   Poll for the existence of the given file and return when found,
+   or the timeout has been reached. If timeout is not specified it
+   currently defaults to five seconds.
+
+write <path> <content>
+   Open the file at <path> and write a string to it with write(2).
+   If the file does not exist, it will be created. If it does exist,
+   it will be truncated. Properties are expanded within <content>.
+
+
+Imports
+-------
+The import keyword is not a command, but rather its own section and is
+handled immediately after the .rc file that contains it has finished
+being parsed.  It takes the below form:
+
+import <path>
+   Parse an init config file, extending the current configuration.
+   If <path> is a directory, each file in the directory is parsed as
+   a config file. It is not recursive, nested directories will
+   not be parsed.
+
+There are only two times where the init executable imports .rc files,
+   1) When it imports /init.rc during initial boot
+   2) When it imports /{system,vendor,odm}/etc/init/ or .rc files at specified
+      paths during mount_all
 
 
 Properties
 ----------
-Init updates some system properties to provide some insight into
-what it's doing:
-
-init.action 
-   Equal to the name of the action currently being executed or "" if none
-
-init.command
-   Equal to the command being executed or "" if none.
+Init provides information about the services that it is responsible
+for via the below properties.
 
 init.svc.<name>
-   State of a named service ("stopped", "running", "restarting")
+   State of a named service ("stopped", "stopping", "running", "restarting")
 
 
-Example init.conf
------------------
+Bootcharting
+------------
+This version of init contains code to perform "bootcharting": generating log
+files that can be later processed by the tools provided by www.bootchart.org.
 
-# not complete -- just providing some examples of usage
-#
-on boot
-   export PATH /sbin:/system/sbin:/system/bin
-   export LD_LIBRARY_PATH /system/lib
+On the emulator, use the -bootchart <timeout> option to boot with bootcharting
+activated for <timeout> seconds.
 
-   mkdir /dev
-   mkdir /proc
-   mkdir /sys
+On a device, create /data/bootchart/start with a command like the following:
 
-   mount tmpfs tmpfs /dev
-   mkdir /dev/pts
-   mkdir /dev/socket
-   mount devpts devpts /dev/pts
-   mount proc proc /proc
-   mount sysfs sysfs /sys
+  adb shell 'echo $TIMEOUT > /data/bootchart/start'
 
-   write /proc/cpu/alignment 4
+Where the value of $TIMEOUT corresponds to the desired bootcharted period in
+seconds. Bootcharting will stop after that many seconds have elapsed.
+You can also stop the bootcharting at any moment by doing the following:
 
-   ifup lo
+  adb shell 'echo 1 > /data/bootchart/stop'
 
-   hostname localhost
-   domainname localhost
+Note that /data/bootchart/stop is deleted automatically by init at the end of
+the bootcharting. This is not the case with /data/bootchart/start, so don't
+forget to delete it when you're done collecting data.
 
-   mount yaffs2 mtd@system /system
-   mount yaffs2 mtd@userdata /data
+The log files are written to /data/bootchart/. A script is provided to
+retrieve them and create a bootchart.tgz file that can be used with the
+bootchart command-line utility:
 
-   import /system/etc/init.conf
+  sudo apt-get install pybootchartgui
+  # grab-bootchart.sh uses $ANDROID_SERIAL.
+  $ANDROID_BUILD_TOP/system/core/init/grab-bootchart.sh
 
-   class_start default
+One thing to watch for is that the bootchart will show init as if it started
+running at 0s. You'll have to look at dmesg to work out when the kernel
+actually started init.
 
-service adbd /sbin/adbd
-   user adb
-   group adb
 
-service usbd /system/bin/usbd -r
-   user usbd
-   group usbd
-   socket usbd 666
+Comparing two bootcharts
+------------------------
+A handy script named compare-bootcharts.py can be used to compare the
+start/end time of selected processes. The aforementioned grab-bootchart.sh
+will leave a bootchart tarball named bootchart.tgz at /tmp/android-bootchart.
+If two such barballs are preserved on the host machine under different
+directories, the script can list the timestamps differences. For example:
 
-service zygote /system/bin/app_process -Xzygote /system/bin --zygote
-   socket zygote 666
+Usage: system/core/init/compare-bootcharts.py base_bootchart_dir
+       exp_bootchart_dir
 
-service runtime /system/bin/runtime
-   user system
-   group system
+process: baseline experiment (delta)
+ - Unit is ms (a jiffy is 10 ms on the system)
+------------------------------------
+/init: 50 40 (-10)
+/system/bin/surfaceflinger: 4320 4470 (+150)
+/system/bin/bootanimation: 6980 6990 (+10)
+zygote64: 10410 10640 (+230)
+zygote: 10410 10640 (+230)
+system_server: 15350 15150 (-200)
+bootanimation ends at: 33790 31230 (-2560)
 
-on device-added-/dev/compass
-   start akmd
 
-on device-removed-/dev/compass
-   stop akmd
+Systrace
+--------
+Systrace [1] can be used for obtaining performance analysis reports during boot
+time on userdebug or eng builds.
+Here is an example of trace events of "wm" and "am" categories:
 
-service akmd /sbin/akmd
-   disabled
-   user akmd
-   group akmd
+  $ANDROID_BUILD_TOP/external/chromium-trace/systrace.py wm am --boot
 
-Debugging notes
----------------
+This command will cause the device to reboot. After the device is rebooted and
+the boot sequence has finished, the trace report is obtained from the device
+and written as trace.html on the host by hitting Ctrl+C.
+
+LIMITATION
+Recording trace events is started after persistent properties are loaded, so
+the trace events that are emitted before that are not recorded. Several
+services such as vold, surfaceflinger, and servicemanager are affected by this
+limitation since they are started before persistent properties are loaded.
+Zygote initialization and the processes that are forked from the zygote are not
+affected.
+
+[1] http://developer.android.com/tools/help/systrace.html
+
+
+Debugging init
+--------------
 By default, programs executed by init will drop stdout and stderr into
 /dev/null. To help with debugging, you can execute your program via the
-Andoird program logwrapper. This will redirect stdout/stderr into the
+Android program logwrapper. This will redirect stdout/stderr into the
 Android logging system (accessed via logcat).
 
 For example
 service akmd /system/bin/logwrapper /sbin/akmd
+
+For quicker turnaround when working on init itself, use:
+
+  mm -j
+  m ramdisk-nodeps
+  m bootimage-nodeps
+  adb reboot bootloader
+  fastboot boot $ANDROID_PRODUCT_OUT/boot.img
+
+Alternatively, use the emulator:
+
+  emulator -partition-size 1024 -verbose -show-kernel -no-window
+
+You might want to call klog_set_level(6) after the klog_init() call
+so you see the kernel logging in dmesg (or the emulator output).

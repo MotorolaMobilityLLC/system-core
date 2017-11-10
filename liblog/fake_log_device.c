@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008 The Android Open Source Project
+ * Copyright (C) 2008-2014 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,17 +19,19 @@
  * passed on to the underlying (fake) log device.  When not in the
  * simulator, messages are printed to stderr.
  */
-#include <log/logd.h>
-
-#include <stdlib.h>
-#include <string.h>
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
-
-#ifdef HAVE_PTHREADS
+#if !defined(_WIN32)
 #include <pthread.h>
 #endif
+#include <stdlib.h>
+#include <string.h>
+
+#include <log/logd.h>
+
+#include "fake_log_device.h"
+#include "log_portability.h"
 
 #define kMaxTagLen  16      /* from the long-dead utils/Log.cpp */
 
@@ -63,7 +65,7 @@ typedef struct LogState {
     int     fakeFd;
 
     /* a printable name for this fake device */
-    char   *debugName;
+    char   debugName[sizeof("/dev/log/security")];
 
     /* nonzero if this is a binary log */
     int     isBinary;
@@ -82,7 +84,7 @@ typedef struct LogState {
 } LogState;
 
 
-#ifdef HAVE_PTHREADS
+#if !defined(_WIN32)
 /*
  * Locking.  Since we're emulating a device, we need to be prepared
  * to have multiple callers at the same time.  This lock is used
@@ -93,6 +95,10 @@ static pthread_mutex_t fakeLogDeviceLock = PTHREAD_MUTEX_INITIALIZER;
 
 static void lock()
 {
+    /*
+     * If we trigger a signal handler in the middle of locked activity and the
+     * signal handler logs a message, we could get into a deadlock state.
+     */
     pthread_mutex_lock(&fakeLogDeviceLock);
 }
 
@@ -100,18 +106,21 @@ static void unlock()
 {
     pthread_mutex_unlock(&fakeLogDeviceLock);
 }
-#else   // !HAVE_PTHREADS
+
+#else   // !defined(_WIN32)
+
 #define lock() ((void)0)
 #define unlock() ((void)0)
-#endif  // !HAVE_PTHREADS
+
+#endif  // !defined(_WIN32)
 
 
 /*
  * File descriptor management.
  */
 #define FAKE_FD_BASE 10000
-#define MAX_OPEN_LOGS 16
-static LogState *openLogTable[MAX_OPEN_LOGS];
+#define MAX_OPEN_LOGS 8
+static LogState openLogTable[MAX_OPEN_LOGS];
 
 /*
  * Allocate an fd and associate a new LogState with it.
@@ -121,11 +130,10 @@ static LogState *createLogState()
 {
     size_t i;
 
-    for (i = 0; i < sizeof(openLogTable); i++) {
-        if (openLogTable[i] == NULL) {
-            openLogTable[i] = calloc(1, sizeof(LogState));
-            openLogTable[i]->fakeFd = FAKE_FD_BASE + i;
-            return openLogTable[i];
+    for (i = 0; i < (sizeof(openLogTable) / sizeof(openLogTable[0])); i++) {
+        if (openLogTable[i].fakeFd == 0) {
+            openLogTable[i].fakeFd = FAKE_FD_BASE + i;
+            return &openLogTable[i];
         }
     }
     return NULL;
@@ -137,7 +145,7 @@ static LogState *createLogState()
 static LogState *fdToLogState(int fd)
 {
     if (fd >= FAKE_FD_BASE && fd < FAKE_FD_BASE + MAX_OPEN_LOGS) {
-        return openLogTable[fd - FAKE_FD_BASE];
+        return &openLogTable[fd - FAKE_FD_BASE];
     }
     return NULL;
 }
@@ -153,9 +161,7 @@ static void deleteFakeFd(int fd)
 
     ls = fdToLogState(fd);
     if (ls != NULL) {
-        openLogTable[fd - FAKE_FD_BASE] = NULL;
-        free(ls->debugName);
-        free(ls);
+        memset(&openLogTable[fd - FAKE_FD_BASE], 0, sizeof(openLogTable[0]));
     }
 
     unlock();
@@ -178,10 +184,12 @@ static void configureInitialState(const char* pathName, LogState* logState)
 {
     static const int kDevLogLen = sizeof("/dev/log/") - 1;
 
-    logState->debugName = strdup(pathName);
+    strncpy(logState->debugName, pathName, sizeof(logState->debugName));
+    logState->debugName[sizeof(logState->debugName) - 1] = '\0';
 
     /* identify binary logs */
-    if (strcmp(pathName + kDevLogLen, "events") == 0) {
+    if (!strcmp(pathName + kDevLogLen, "events") ||
+            !strcmp(pathName + kDevLogLen, "security")) {
         logState->isBinary = 1;
     }
 
@@ -205,8 +213,7 @@ static void configureInitialState(const char* pathName, LogState* logState)
 
             i = 0;
             while (*tags != '\0' && !isspace(*tags) && *tags != ':' &&
-                i < kMaxTagLen)
-            {
+                    i < kMaxTagLen) {
                 tagName[i++] = *tags++;
             }
             if (i == kMaxTagLen) {
@@ -307,24 +314,24 @@ static const char* getPriorityString(int priority)
     };
     int idx;
 
-    idx = (int) priority - (int) ANDROID_LOG_VERBOSE;
+    idx = (int)priority - (int)ANDROID_LOG_VERBOSE;
     if (idx < 0 ||
-        idx >= (int) (sizeof(priorityStrings) / sizeof(priorityStrings[0])))
+            idx >= (int)(sizeof(priorityStrings) / sizeof(priorityStrings[0])))
         return "?unknown?";
     return priorityStrings[idx];
 }
 
-#ifndef HAVE_WRITEV
+#if defined(_WIN32)
 /*
- * Some platforms like WIN32 do not have writev().
+ * WIN32 does not have writev().
  * Make up something to replace it.
  */
 static ssize_t fake_writev(int fd, const struct iovec *iov, int iovcnt) {
-    int result = 0;
-    struct iovec* end = iov + iovcnt;
+    ssize_t result = 0;
+    const struct iovec* end = iov + iovcnt;
     for (; iov < end; iov++) {
-        int w = write(fd, iov->iov_base, iov->iov_len);
-        if (w != iov->iov_len) {
+        ssize_t w = write(fd, iov->iov_base, iov->iov_len);
+        if (w != (ssize_t) iov->iov_len) {
             if (w < 0)
                 return w;
             return result + w;
@@ -346,7 +353,7 @@ static ssize_t fake_writev(int fd, const struct iovec *iov, int iovcnt) {
 static void showLog(LogState *state,
         int logPrio, const char* tag, const char* msg)
 {
-#if defined(HAVE_LOCALTIME_R)
+#if !defined(_WIN32)
     struct tm tmBuf;
 #endif
     struct tm* ptm;
@@ -354,7 +361,11 @@ static void showLog(LogState *state,
     char prefixBuf[128], suffixBuf[128];
     char priChar;
     time_t when;
+#if !defined(_WIN32)
     pid_t pid, tid;
+#else
+    uint32_t pid, tid;
+#endif
 
     TRACE("LOG %d: %s %s", logPrio, tag, msg);
 
@@ -371,7 +382,7 @@ static void showLog(LogState *state,
      * in the time stamp.  Don't use forward slashes, parenthesis,
      * brackets, asterisks, or other special chars here.
      */
-#if defined(HAVE_LOCALTIME_R)
+#if !defined(_WIN32)
     ptm = localtime_r(&when, &tmBuf);
 #else
     ptm = localtime(&when);
@@ -437,13 +448,15 @@ static void showLog(LogState *state,
     while (p < end) {
         if (*p++ == '\n') numLines++;
     }
-    if (p > msg && *(p-1) != '\n') numLines++;
+    if (p > msg && *(p-1) != '\n') {
+        numLines++;
+    }
 
     /*
      * Create an array of iovecs large enough to write all of
      * the lines with a prefix and a suffix.
      */
-    const size_t INLINE_VECS = 6;
+    const size_t INLINE_VECS = 64;
     const size_t MAX_LINES   = ((size_t)~0)/(3*sizeof(struct iovec*));
     struct iovec stackVec[INLINE_VECS];
     struct iovec* vec = stackVec;
@@ -452,13 +465,13 @@ static void showLog(LogState *state,
     if (numLines > MAX_LINES)
         numLines = MAX_LINES;
 
-    numVecs = numLines*3;  // 3 iovecs per line.
+    numVecs = numLines * 3;  // 3 iovecs per line.
     if (numVecs > INLINE_VECS) {
         vec = (struct iovec*)malloc(sizeof(struct iovec)*numVecs);
         if (vec == NULL) {
             msg = "LOG: write failed, no memory";
-            numVecs = 3;
-            numLines = 1;
+            numVecs = INLINE_VECS;
+            numLines = numVecs / 3;
             vec = stackVec;
         }
     }
@@ -477,7 +490,9 @@ static void showLog(LogState *state,
             v++;
         }
         const char* start = p;
-        while (p < end && *p != '\n') p++;
+        while (p < end && *p != '\n') {
+            p++;
+        }
         if ((p-start) > 0) {
             v->iov_base = (void*)start;
             v->iov_len = p-start;
@@ -493,7 +508,7 @@ static void showLog(LogState *state,
         }
         numLines -= 1;
     }
-    
+
     /*
      * Write the entire message to the log file with a single writev() call.
      * We need to use this rather than a collection of printf()s on a FILE*
@@ -512,10 +527,10 @@ static void showLog(LogState *state,
         int cc = writev(fileno(stderr), vec, v-vec);
 
         if (cc == totalLen) break;
-        
+
         if (cc < 0) {
             if(errno == EINTR) continue;
-            
+
                 /* can't really log the failure; for now, throw out a stderr */
             fprintf(stderr, "+++ LOG: write failed (errno=%d)\n", errno);
             break;
@@ -611,7 +626,7 @@ static int logClose(int fd)
 /*
  * Open a log output device and return a fake fd.
  */
-static int logOpen(const char* pathName, int flags)
+static int logOpen(const char* pathName, int flags __unused)
 {
     LogState *logState;
     int fd = -1;
@@ -664,7 +679,7 @@ static void setRedirects()
     }
 }
 
-int fakeLogOpen(const char *pathName, int flags)
+LIBLOG_HIDDEN int fakeLogOpen(const char *pathName, int flags)
 {
     if (redirectOpen == NULL) {
         setRedirects();
@@ -672,14 +687,34 @@ int fakeLogOpen(const char *pathName, int flags)
     return redirectOpen(pathName, flags);
 }
 
-int fakeLogClose(int fd)
+/*
+ * The logger API has no means or need to 'stop' or 'close' using the logs,
+ * and as such, there is no way for that 'stop' or 'close' to translate into
+ * a close operation to the fake log handler. fakeLogClose is provided for
+ * completeness only.
+ *
+ * We have no intention of adding a log close operation as it would complicate
+ * every user of the logging API with no gain since the only valid place to
+ * call is in the exit handler. Logging can continue in the exit handler to
+ * help debug HOST tools ...
+ */
+LIBLOG_HIDDEN int fakeLogClose(int fd)
 {
     /* Assume that open() was called first. */
     return redirectClose(fd);
 }
 
-ssize_t fakeLogWritev(int fd, const struct iovec* vector, int count)
+LIBLOG_HIDDEN ssize_t fakeLogWritev(int fd,
+                                    const struct iovec* vector, int count)
 {
     /* Assume that open() was called first. */
     return redirectWritev(fd, vector, count);
+}
+
+LIBLOG_ABI_PUBLIC int __android_log_is_loggable(int prio,
+                                                const char *tag __unused,
+                                                int def)
+{
+    int logLevel = def;
+    return logLevel >= 0 && prio >= logLevel;
 }

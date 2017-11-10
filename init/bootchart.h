@@ -17,20 +17,10 @@
 #ifndef _BOOTCHART_H
 #define _BOOTCHART_H
 
-#ifndef BOOTCHART
-# define  BOOTCHART  0
-#endif
+#include <string>
+#include <vector>
 
-#if BOOTCHART
-
-extern int   bootchart_init(void);
-extern int   bootchart_step(void);
-extern void  bootchart_finish(void);
-
-# define BOOTCHART_POLLING_MS   200   /* polling period in ms */
-# define BOOTCHART_DEFAULT_TIME_SEC    (2*60)  /* default polling time in seconds */
-# define BOOTCHART_MAX_TIME_SEC        (10*60) /* max polling time in seconds */
-
-#endif /* BOOTCHART */
+int do_bootchart_init(const std::vector<std::string>& args);
+void bootchart_sample(int* timeout);
 
 #endif /* _BOOTCHART_H */

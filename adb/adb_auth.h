@@ -17,10 +17,16 @@
 #ifndef __ADB_AUTH_H
 #define __ADB_AUTH_H
 
-void adb_auth_init(void);
+#include "adb.h"
+
+extern bool auth_required;
+
+int adb_auth_keygen(const char* filename);
 void adb_auth_verified(atransport *t);
 
 void send_auth_request(atransport *t);
+void send_auth_response(uint8_t *token, size_t token_size, atransport *t);
+void send_auth_publickey(atransport *t);
 
 /* AUTH packets first argument */
 /* Request */
@@ -31,7 +37,9 @@ void send_auth_request(atransport *t);
 
 #if ADB_HOST
 
-int adb_auth_sign(void *key, void *token, size_t token_size, void *sig);
+void adb_auth_init(void);
+int adb_auth_sign(void *key, const unsigned char* token, size_t token_size,
+                  unsigned char* sig);
 void *adb_auth_nextkey(void *current);
 int adb_auth_get_userkey(unsigned char *data, size_t len);
 
@@ -41,12 +49,17 @@ static inline void adb_auth_confirm_key(unsigned char *data, size_t len, atransp
 
 #else // !ADB_HOST
 
-static inline int adb_auth_sign(void* key, void *token, size_t token_size, void *sig) { return 0; }
+static inline int adb_auth_sign(void* key, const unsigned char* token,
+                                size_t token_size, unsigned char* sig) {
+    return 0;
+}
 static inline void *adb_auth_nextkey(void *current) { return NULL; }
 static inline int adb_auth_get_userkey(unsigned char *data, size_t len) { return 0; }
 
+void adbd_auth_init(void);
+void adbd_cloexec_auth_socket();
 int adb_auth_generate_token(void *token, size_t token_size);
-int adb_auth_verify(void *token, void *sig, int siglen);
+int adb_auth_verify(uint8_t* token, uint8_t* sig, int siglen);
 void adb_auth_confirm_key(unsigned char *data, size_t len, atransport *t);
 
 #endif // ADB_HOST

@@ -9,7 +9,7 @@
  *    notice, this list of conditions and the following disclaimer.
  *  * Redistributions in binary form must reproduce the above copyright
  *    notice, this list of conditions and the following disclaimer in
- *    the documentation and/or other materials provided with the 
+ *    the documentation and/or other materials provided with the
  *    distribution.
  *  * Neither the name of Google, Inc. nor the names of its contributors
  *    may be used to endorse or promote products derived from this
@@ -22,7 +22,7 @@
  * COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
  * INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
  * BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS
- * OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED 
+ * OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED
  * AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT
  * OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
@@ -32,6 +32,7 @@
 #include <ctype.h>
 #include <dirent.h>
 #include <grp.h>
+#include <inttypes.h>
 #include <pwd.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -59,14 +60,15 @@ struct proc_info {
     char name[PROC_NAME_LEN];
     char tname[THREAD_NAME_LEN];
     char state;
-    long unsigned utime;
-    long unsigned stime;
-    long unsigned delta_utime;
-    long unsigned delta_stime;
-    long unsigned delta_time;
-    long vss;
-    long rss;
-    int prs;
+    uint64_t utime;
+    uint64_t stime;
+    char pr[3];
+    long ni;
+    uint64_t delta_utime;
+    uint64_t delta_stime;
+    uint64_t delta_time;
+    uint64_t vss;
+    uint64_t rss;
     int num_threads;
     char policy[POLICY_NAME_LEN];
 };
@@ -109,15 +111,13 @@ static int numcmp(long long a, long long b);
 static void usage(char *cmd);
 
 int top_main(int argc, char *argv[]) {
-    int i;
-
     num_used_procs = num_free_procs = 0;
 
     max_procs = 0;
     delay = 3;
     iterations = -1;
     proc_cmp = &proc_cpu_cmp;
-    for (i = 1; i < argc; i++) {
+    for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "-m")) {
             if (i + 1 >= argc) {
                 fprintf(stderr, "Option -m expects an argument.\n");
@@ -159,7 +159,7 @@ int top_main(int argc, char *argv[]) {
             fprintf(stderr, "Invalid argument \"%s\" for option -s.\n", argv[i]);
             exit(EXIT_FAILURE);
         }
-        if (!strcmp(argv[i], "-t")) { threads = 1; continue; }
+        if (!strcmp(argv[i], "-H") || !strcmp(argv[i], "-t")) { threads = 1; continue; }
         if (!strcmp(argv[i], "-h")) {
             usage(argv[0]);
             exit(EXIT_SUCCESS);
@@ -184,10 +184,11 @@ int top_main(int argc, char *argv[]) {
         old_procs = new_procs;
         num_old_procs = num_new_procs;
         memcpy(&old_cpu, &new_cpu, sizeof(old_cpu));
-        sleep(delay);
         read_procs();
         print_procs();
         free_old_procs();
+        fflush(stdout);
+        if (iterations != 0) sleep(delay);
     }
 
     return 0;
@@ -249,9 +250,9 @@ static void read_procs(void) {
             continue;
 
         pid = atoi(pid_dir->d_name);
-        
+
         struct proc_info cur_proc;
-        
+
         if (!threads) {
             proc = alloc_proc();
 
@@ -275,7 +276,7 @@ static void read_procs(void) {
 
             sprintf(filename, "/proc/%d/status", pid);
             read_status(filename, &cur_proc);
-            
+
             proc = NULL;
         }
 
@@ -310,7 +311,7 @@ static void read_procs(void) {
         }
 
         closedir(task_dir);
-        
+
         if (!threads)
             add_proc(proc_num++, proc);
     }
@@ -324,7 +325,6 @@ static void read_procs(void) {
 static int read_stat(char *filename, struct proc_info *proc) {
     FILE *file;
     char buf[MAX_LINE], *open_paren, *close_paren;
-    int res, idx;
 
     file = fopen(filename, "r");
     if (!file) return 1;
@@ -339,12 +339,31 @@ static int read_stat(char *filename, struct proc_info *proc) {
     *open_paren = *close_paren = '\0';
     strncpy(proc->tname, open_paren + 1, THREAD_NAME_LEN);
     proc->tname[THREAD_NAME_LEN-1] = 0;
-    
-    /* Scan rest of string. */
-    sscanf(close_paren + 1, " %c %*d %*d %*d %*d %*d %*d %*d %*d %*d %*d "
-                 "%lu %lu %*d %*d %*d %*d %*d %*d %*d %lu %ld "
-                 "%*d %*d %*d %*d %*d %*d %*d %*d %*d %*d %*d %*d %*d %*d %d",
-                 &proc->state, &proc->utime, &proc->stime, &proc->vss, &proc->rss, &proc->prs);
+
+    // Scan rest of string.
+    long pr;
+    sscanf(close_paren + 1,
+           " %c "
+           "%*d %*d %*d %*d %*d %*d %*d %*d %*d %*d "
+           "%" SCNu64 // utime %lu (14)
+           "%" SCNu64 // stime %lu (15)
+           "%*d %*d "
+           "%ld " // priority %ld (18)
+           "%ld " // nice %ld (19)
+           "%*d %*d %*d "
+           "%" SCNu64 // vsize %lu (23)
+           "%" SCNu64, // rss %ld (24)
+           &proc->state,
+           &proc->utime,
+           &proc->stime,
+           &pr,
+           &proc->ni,
+           &proc->vss,
+           &proc->rss);
+
+    // Translate the PR field.
+    if (pr < -9) strcpy(proc->pr, "RT");
+    else snprintf(proc->pr, sizeof(proc->pr), "%ld", pr);
 
     return 0;
 }
@@ -406,13 +425,10 @@ static int read_status(char *filename, struct proc_info *proc) {
 }
 
 static void print_procs(void) {
+    static int call = 0;
     int i;
     struct proc_info *old_proc, *proc;
     long unsigned total_delta_time;
-    struct passwd *user;
-    struct group *group;
-    char *user_str, user_buf[20];
-    char *group_str, group_buf[20];
 
     for (i = 0; i < num_new_procs; i++) {
         if (new_procs[i]) {
@@ -435,7 +451,7 @@ static void print_procs(void) {
 
     qsort(new_procs, num_new_procs, sizeof(struct proc_info *), proc_cmp);
 
-    printf("\n\n\n");
+    if (call++ > 0) printf("\n\n\n");
     printf("User %ld%%, System %ld%%, IOW %ld%%, IRQ %ld%%\n",
             ((new_cpu.utime + new_cpu.ntime) - (old_cpu.utime + old_cpu.ntime)) * 100  / total_delta_time,
             ((new_cpu.stime ) - (old_cpu.stime)) * 100 / total_delta_time,
@@ -452,36 +468,38 @@ static void print_procs(void) {
             new_cpu.sirqtime - old_cpu.sirqtime,
             total_delta_time);
     printf("\n");
-    if (!threads) 
-        printf("%5s %2s %4s %1s %5s %7s %7s %3s %-8s %s\n", "PID", "PR", "CPU%", "S", "#THR", "VSS", "RSS", "PCY", "UID", "Name");
+    if (!threads)
+        printf("%5s %-8s %2s %3s %4s %1s %5s %7s %7s %3s %s\n", "PID", "USER", "PR", "NI", "CPU%", "S", "#THR", "VSS", "RSS", "PCY", "Name");
     else
-        printf("%5s %5s %2s %4s %1s %7s %7s %3s %-8s %-15s %s\n", "PID", "TID", "PR", "CPU%", "S", "VSS", "RSS", "PCY", "UID", "Thread", "Proc");
+        printf("%5s %5s %-8s %2s %3s %4s %1s %7s %7s %3s %-15s %s\n", "PID", "TID", "USER", "PR", "NI", "CPU%", "S", "VSS", "RSS", "PCY", "Thread", "Proc");
 
     for (i = 0; i < num_new_procs; i++) {
         proc = new_procs[i];
 
         if (!proc || (max_procs && (i >= max_procs)))
             break;
-        user  = getpwuid(proc->uid);
-        group = getgrgid(proc->gid);
+        struct passwd* user = getpwuid(proc->uid);
+        char user_buf[20];
+        char* user_str;
         if (user && user->pw_name) {
             user_str = user->pw_name;
         } else {
             snprintf(user_buf, 20, "%d", proc->uid);
             user_str = user_buf;
         }
-        if (group && group->gr_name) {
-            group_str = group->gr_name;
+        if (!threads) {
+            printf("%5d %-8.8s %2s %3ld %3" PRIu64 "%% %c %5d %6" PRIu64 "K %6" PRIu64 "K %3s %s\n",
+                   proc->pid, user_str, proc->pr, proc->ni,
+                   (total_delta_time != 0) ? (proc->delta_time * 100 / total_delta_time) : 0, proc->state, proc->num_threads,
+                   proc->vss / 1024, proc->rss * getpagesize() / 1024, proc->policy,
+                   proc->name[0] != 0 ? proc->name : proc->tname);
         } else {
-            snprintf(group_buf, 20, "%d", proc->gid);
-            group_str = group_buf;
+            printf("%5d %5d %-8.8s %2s %3ld %3" PRIu64 "%% %c %6" PRIu64 "K %6" PRIu64 "K %3s %-15s %s\n",
+                   proc->pid, proc->tid, user_str, proc->pr, proc->ni,
+                   (total_delta_time != 0) ? (proc->delta_time * 100 / total_delta_time) : 0, proc->state,
+                   proc->vss / 1024, proc->rss * getpagesize() / 1024, proc->policy,
+                   proc->tname, proc->name);
         }
-        if (!threads) 
-            printf("%5d %2d %3ld%% %c %5d %6ldK %6ldK %3s %-8.8s %s\n", proc->pid, proc->prs, proc->delta_time * 100 / total_delta_time, proc->state, proc->num_threads,
-                proc->vss / 1024, proc->rss * getpagesize() / 1024, proc->policy, user_str, proc->name[0] != 0 ? proc->name : proc->tname);
-        else
-            printf("%5d %5d %2d %3ld%% %c %6ldK %6ldK %3s %-8.8s %-15s %s\n", proc->pid, proc->tid, proc->prs, proc->delta_time * 100 / total_delta_time, proc->state,
-                proc->vss / 1024, proc->rss * getpagesize() / 1024, proc->policy, user_str, proc->tname, proc->name);
     }
 }
 
@@ -565,7 +583,7 @@ static void usage(char *cmd) {
                     "    -n num  Updates to show before exiting.\n"
                     "    -d num  Seconds to wait between updates.\n"
                     "    -s col  Column to sort by (cpu,vss,rss,thr).\n"
-                    "    -t      Show threads instead of processes.\n"
+                    "    -H      Show threads instead of processes.\n"
                     "    -h      Display this help screen.\n",
         cmd);
 }

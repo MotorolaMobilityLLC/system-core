@@ -15,22 +15,27 @@
 ** limitations under the License.
 */
 
-#define PROGNAME  "run-as"
-#define LOG_TAG   PROGNAME
+#define PROGNAME "run-as"
+#define LOG_TAG  PROGNAME
 
+#include <dirent.h>
+#include <errno.h>
+#include <paths.h>
+#include <pwd.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/types.h>
+#include <sys/capability.h>
+#include <sys/cdefs.h>
 #include <sys/stat.h>
-#include <dirent.h>
-#include <errno.h>
-#include <unistd.h>
+#include <sys/types.h>
 #include <time.h>
-#include <stdarg.h>
+#include <unistd.h>
 
-#include <selinux/android.h>
 #include <private/android_filesystem_config.h>
+#include <selinux/android.h>
+
 #include "package.h"
 
 /*
@@ -83,37 +88,38 @@
  *  - Run the 'gdbserver' binary executable to allow native debugging
  */
 
-static void
-usage(void)
-{
-    const char*  str = "Usage: " PROGNAME " <package-name> <command> [<args>]\n\n";
-    write(1, str, strlen(str));
-    exit(1);
-}
-
-
-static void
+__noreturn static void
 panic(const char* format, ...)
 {
     va_list args;
+    int e = errno;
 
     fprintf(stderr, "%s: ", PROGNAME);
     va_start(args, format);
     vfprintf(stderr, format, args);
     va_end(args);
-    exit(1);
+    exit(e ? -e : 1);
 }
 
+static void
+usage(void)
+{
+    panic("Usage:\n    " PROGNAME " <package-name> [--user <uid>] <command> [<args>]\n");
+}
 
 int main(int argc, char **argv)
 {
     const char* pkgname;
-    int myuid, uid, gid;
+    uid_t myuid, uid, gid, userAppId = 0;
+    int commandArgvOfs = 2, userId = 0;
     PackageInfo info;
+    struct __user_cap_header_struct capheader;
+    struct __user_cap_data_struct capdata[2];
 
     /* check arguments */
-    if (argc < 2)
+    if (argc < 2) {
         usage();
+    }
 
     /* check userid of caller - must be 'shell' or 'root' */
     myuid = getuid();
@@ -121,69 +127,98 @@ int main(int argc, char **argv)
         panic("only 'shell' or 'root' users can run this program\n");
     }
 
-    /* retrieve package information from system */
-    pkgname = argv[1];
-    if (get_package_info(pkgname, &info) < 0) {
-        panic("Package '%s' is unknown\n", pkgname);
-        return 1;
+    memset(&capheader, 0, sizeof(capheader));
+    memset(&capdata, 0, sizeof(capdata));
+    capheader.version = _LINUX_CAPABILITY_VERSION_3;
+    capdata[CAP_TO_INDEX(CAP_SETUID)].effective |= CAP_TO_MASK(CAP_SETUID);
+    capdata[CAP_TO_INDEX(CAP_SETGID)].effective |= CAP_TO_MASK(CAP_SETGID);
+    capdata[CAP_TO_INDEX(CAP_SETUID)].permitted |= CAP_TO_MASK(CAP_SETUID);
+    capdata[CAP_TO_INDEX(CAP_SETGID)].permitted |= CAP_TO_MASK(CAP_SETGID);
+
+    if (capset(&capheader, &capdata[0]) < 0) {
+        panic("Could not set capabilities: %s\n", strerror(errno));
     }
 
+    pkgname = argv[1];
+
+    /* get user_id from command line if provided */
+    if ((argc >= 4) && !strcmp(argv[2], "--user")) {
+        userId = atoi(argv[3]);
+        if (userId < 0)
+            panic("Negative user id %d is provided\n", userId);
+        commandArgvOfs += 2;
+    }
+
+    /* retrieve package information from system (does setegid) */
+    if (get_package_info(pkgname, userId, &info) < 0) {
+        panic("Package '%s' is unknown\n", pkgname);
+    }
+
+    /* verify that user id is not too big. */
+    if ((UID_MAX - info.uid) / AID_USER < (uid_t)userId) {
+        panic("User id %d is too big\n", userId);
+    }
+
+    /* calculate user app ID. */
+    userAppId = (AID_USER * userId) + info.uid;
+
     /* reject system packages */
-    if (info.uid < AID_APP) {
+    if (userAppId < AID_APP) {
         panic("Package '%s' is not an application\n", pkgname);
-        return 1;
     }
 
     /* reject any non-debuggable package */
     if (!info.isDebuggable) {
         panic("Package '%s' is not debuggable\n", pkgname);
-        return 1;
     }
 
     /* check that the data directory path is valid */
-    if (check_data_path(info.dataDir, info.uid) < 0) {
+    if (check_data_path(info.dataDir, userAppId) < 0) {
         panic("Package '%s' has corrupt installation\n", pkgname);
-        return 1;
     }
 
     /* Ensure that we change all real/effective/saved IDs at the
      * same time to avoid nasty surprises.
      */
-    uid = gid = info.uid;
+    uid = gid = userAppId;
     if(setresgid(gid,gid,gid) || setresuid(uid,uid,uid)) {
         panic("Permission denied\n");
-        return 1;
+    }
+
+    /* Required if caller has uid and gid all non-zero */
+    memset(&capdata, 0, sizeof(capdata));
+    if (capset(&capheader, &capdata[0]) < 0) {
+        panic("Could not clear all capabilities: %s\n", strerror(errno));
     }
 
     if (selinux_android_setcontext(uid, 0, info.seinfo, pkgname) < 0) {
-        panic("Could not set SELinux security context:  %s\n", strerror(errno));
-        return 1;
+        panic("Could not set SELinux security context: %s\n", strerror(errno));
     }
 
-    /* cd into the data directory */
-    {
-        int ret;
-        do {
-            ret = chdir(info.dataDir);
-        } while (ret < 0 && errno == EINTR);
-
-        if (ret < 0) {
-            panic("Could not cd to package's data directory: %s\n", strerror(errno));
-            return 1;
-        }
+    // cd into the data directory, and set $HOME correspondingly.
+    if (TEMP_FAILURE_RETRY(chdir(info.dataDir)) < 0) {
+        panic("Could not cd to package's data directory: %s\n", strerror(errno));
     }
+    setenv("HOME", info.dataDir, 1);
+
+    // Reset parts of the environment, like su would.
+    setenv("PATH", _PATH_DEFPATH, 1);
+    unsetenv("IFS");
+
+    // Set the user-specific parts for this user.
+    struct passwd* pw = getpwuid(uid);
+    setenv("LOGNAME", pw->pw_name, 1);
+    setenv("SHELL", pw->pw_shell, 1);
+    setenv("USER", pw->pw_name, 1);
 
     /* User specified command for exec. */
-    if (argc >= 3 ) {
-        if (execvp(argv[2], argv+2) < 0) {
-            panic("exec failed for %s Error:%s\n", argv[2], strerror(errno));
-            return -errno;
-        }
+    if ((argc >= commandArgvOfs + 1) &&
+        (execvp(argv[commandArgvOfs], argv+commandArgvOfs) < 0)) {
+        panic("exec failed for %s: %s\n", argv[commandArgvOfs], strerror(errno));
     }
 
     /* Default exec shell. */
     execlp("/system/bin/sh", "sh", NULL);
 
-    panic("exec failed\n");
-    return 1;
+    panic("exec failed: %s\n", strerror(errno));
 }
