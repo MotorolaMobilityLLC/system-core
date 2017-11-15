@@ -1051,6 +1051,53 @@ int ifc_ccmni_md_cfg(const char *ifname, int md_id)
     return ret;
 }
 
+int ifc_set_ipsec_forward(char *inIface, char *outIface, char *nxthop, char prefLen, int enable)
+{
+    FILE* fnetd = NULL;
+    int ret = -1;
+    int seq = 1;
+    char rcv_buf[24];
+    int nread = 0;
+    int netd_sock = 0;
+
+    ALOGD("ifc_set_ipsec_forward, inIface %s, outIface %s, nxthop %s/%u, enable %d\n", inIface, outIface, nxthop, prefLen, enable);
+
+    netd_sock = ifc_netd_sock_init();
+    if(netd_sock <= 0)
+        goto exit;
+
+    // Send the request.
+    fnetd = fdopen(netd_sock, "r+");
+    if(fnetd == NULL){
+        ALOGE("open netd socket failed, err:%d(%s)", errno, strerror(errno));
+        goto exit;
+    }
+    if(enable) {
+        if (fprintf(fnetd, "%d network forward %s %s %s/%u enable", seq, inIface, outIface, nxthop, prefLen) < 0)
+            goto exit;
+    } else {
+        if (fprintf(fnetd, "%d network forward %s %s %s/%u disable", seq, inIface, outIface, nxthop, prefLen) < 0)
+            goto exit;
+    }
+    // literal NULL byte at end, required by FrameworkListener
+    if (fputc(0, fnetd) == EOF ||
+        fflush(fnetd) != 0) {
+        goto exit;
+    }
+    ret = 0;
+
+    /*Todo: read the whole response from netd
+     *fread block 6 seconds, it is too long.*/
+    //nread = fread(rcv_buf, 1, 20, fnetd);
+    //rcv_buf[23] = 0;
+    //ALOGD("response: %s", rcv_buf);
+exit:
+    if (fnetd != NULL) {
+        fclose(fnetd);
+    }
+    return ret;
+}
+
 static int setEnableIPv6(char* ifname, int on) {
     char *path;
     const char *value = on ? "0" : "1";
