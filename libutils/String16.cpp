@@ -16,7 +16,6 @@
 
 #include <utils/String16.h>
 
-#include <utils/Debug.h>
 #include <utils/Log.h>
 #include <utils/Unicode.h>
 #include <utils/String8.h>
@@ -26,6 +25,7 @@
 #include <stdio.h>
 #include <ctype.h>
 
+#include "SharedBuffer.h"
 
 namespace android {
 
@@ -66,8 +66,6 @@ static char16_t* allocFromUTF8(const char* u8str, size_t u8len)
     if (u16len < 0) {
         return getEmptyString();
     }
-
-    const uint8_t* const u8end = u8cur + u8len;
 
     SharedBuffer* buf = SharedBuffer::alloc(sizeof(char16_t)*(u16len+1));
     if (buf) {
@@ -166,6 +164,11 @@ String16::String16(const char* o, size_t len)
 String16::~String16()
 {
     SharedBuffer::bufferFromData(mString)->release();
+}
+
+size_t String16::size() const
+{
+    return SharedBuffer::sizeFromData(mString)/sizeof(char16_t)-1;
 }
 
 void String16::setTo(const String16& other)
@@ -340,6 +343,11 @@ bool String16::startsWith(const char16_t* prefix) const
     const size_t ps = strlen16(prefix);
     if (ps > size()) return false;
     return strncmp16(mString, prefix, ps) == 0;
+}
+
+bool String16::contains(const char16_t* chrs) const
+{
+    return strstr16(mString, chrs) != nullptr;
 }
 
 status_t String16::makeLower()

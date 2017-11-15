@@ -17,9 +17,10 @@
 #define LOG_TAG "ProcessCallStack"
 // #define LOG_NDEBUG 0
 
-#include <string.h>
-#include <stdio.h>
 #include <dirent.h>
+#include <errno.h>
+#include <stdio.h>
+#include <string.h>
 
 #include <utils/Log.h>
 #include <utils/Errors.h>
@@ -90,6 +91,11 @@ static String8 getThreadName(pid_t tid) {
         ALOGE("%s: Failed to open %s", __FUNCTION__, path);
     }
 
+    if (procName == NULL) {
+        // Reading /proc/self/task/%d/comm failed due to a race
+        return String8::format("[err-unknown-tid-%d]", tid);
+    }
+
     // Strip ending newline
     strtok(procName, "\n");
 
@@ -123,15 +129,15 @@ void ProcessCallStack::clear() {
     mTimeUpdated = tm();
 }
 
-void ProcessCallStack::update(int32_t maxDepth) {
+void ProcessCallStack::update() {
     DIR *dp;
     struct dirent *ep;
     struct dirent entry;
 
     dp = opendir(PATH_SELF_TASK);
     if (dp == NULL) {
-        ALOGE("%s: Failed to update the process's call stacks (errno = %d, '%s')",
-              __FUNCTION__, errno, strerror(errno));
+        ALOGE("%s: Failed to update the process's call stacks: %s",
+              __FUNCTION__, strerror(errno));
         return;
     }
 
@@ -140,7 +146,6 @@ void ProcessCallStack::update(int32_t maxDepth) {
     clear();
 
     // Get current time.
-#ifndef USE_MINGW
     {
         time_t t = time(NULL);
         struct tm tm;
@@ -167,8 +172,8 @@ void ProcessCallStack::update(int32_t maxDepth) {
 
         ssize_t idx = mThreadMap.add(tid, ThreadInfo());
         if (idx < 0) { // returns negative error value on error
-            ALOGE("%s: Failed to add new ThreadInfo (errno = %zd, '%s')",
-                  __FUNCTION__, idx, strerror(-idx));
+            ALOGE("%s: Failed to add new ThreadInfo: %s",
+                  __FUNCTION__, strerror(-idx));
             continue;
         }
 
@@ -181,20 +186,18 @@ void ProcessCallStack::update(int32_t maxDepth) {
         int ignoreDepth = (selfPid == tid) ? IGNORE_DEPTH_CURRENT_THREAD : 0;
 
         // Update thread's call stacks
-        CallStack& cs = threadInfo.callStack;
-        cs.update(ignoreDepth, maxDepth, tid);
+        threadInfo.callStack.update(ignoreDepth, tid);
 
         // Read/save thread name
         threadInfo.threadName = getThreadName(tid);
 
         ALOGV("%s: Got call stack for tid %d (size %zu)",
-              __FUNCTION__, tid, cs.size());
+              __FUNCTION__, tid, threadInfo.callStack.size());
     }
     if (code != 0) { // returns positive error value on error
-        ALOGE("%s: Failed to readdir from %s (errno = %d, '%s')",
-              __FUNCTION__, PATH_SELF_TASK, -code, strerror(code));
+        ALOGE("%s: Failed to readdir from %s: %s",
+              __FUNCTION__, PATH_SELF_TASK, strerror(code));
     }
-#endif
 
     closedir(dp);
 }
@@ -221,13 +224,12 @@ void ProcessCallStack::printInternal(Printer& printer, Printer& csPrinter) const
     for (size_t i = 0; i < mThreadMap.size(); ++i) {
         pid_t tid = mThreadMap.keyAt(i);
         const ThreadInfo& threadInfo = mThreadMap.valueAt(i);
-        const CallStack& cs = threadInfo.callStack;
         const String8& threadName = threadInfo.threadName;
 
         printer.printLine("");
         printer.printFormatLine("\"%s\" sysTid=%d", threadName.string(), tid);
 
-        cs.print(csPrinter);
+        threadInfo.callStack.print(csPrinter);
     }
 
     dumpProcessFooter(printer, getpid());

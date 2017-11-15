@@ -21,9 +21,9 @@
 #include <stdint.h>
 #include <sys/types.h>
 
-#include "tinyutils/KeyedVector.h"
-#include "tinyutils/Vector.h"
 #include "tinyutils/smartpointer.h"
+#include "utils/KeyedVector.h"
+#include "utils/Vector.h"
 
 #include "ARMAssemblerInterface.h"
 #include "CodeCache.h"
@@ -242,22 +242,23 @@ class MIPSAssembler
 {
 public:
                 MIPSAssembler(const sp<Assembly>& assembly, ArmToMipsAssembler *parent);
+                MIPSAssembler(void* assembly);
     virtual     ~MIPSAssembler();
 
-    uint32_t*   base() const;
-    uint32_t*   pc() const;
-    void        reset();
+    virtual uint32_t*   base() const;
+    virtual uint32_t*   pc() const;
+    virtual void        reset();
 
-    void        disassemble(const char* name);
+    virtual void        disassemble(const char* name);
 
-    void        prolog();
-    void        epilog(uint32_t touched);
-    int         generate(const char* name);
-    void        comment(const char* string);
-    void        label(const char* string);
+    virtual void        prolog();
+    virtual void        epilog(uint32_t touched);
+    virtual int         generate(const char* name);
+    virtual void        comment(const char* string);
+    virtual void        label(const char* string);
 
     // valid only after generate() has been called
-    uint32_t*   pcForLabel(const char* label);
+    virtual uint32_t*   pcForLabel(const char* label);
 
 
     // ------------------------------------------------------------------------
@@ -399,9 +400,9 @@ public:
 
 
 
-private:
-    void string_detab(char *s);
-    void string_pad(char *s, int padded_len);
+protected:
+    virtual void string_detab(char *s);
+    virtual void string_pad(char *s, int padded_len);
 
     ArmToMipsAssembler *mParent;
     sp<Assembly>    mAssembly;
@@ -537,7 +538,11 @@ private:
 enum mips_regnames {
     R_zero = 0,
             R_at,   R_v0,   R_v1,   R_a0,   R_a1,   R_a2,   R_a3,
+#if __mips_isa_rev < 6
     R_t0,   R_t1,   R_t2,   R_t3,   R_t4,   R_t5,   R_t6,   R_t7,
+#else
+    R_a4,   R_a5,   R_a6,   R_a7,   R_t0,   R_t1,   R_t2,   R_t3,
+#endif
     R_s0,   R_s1,   R_s2,   R_s3,   R_s4,   R_s5,   R_s6,   R_s7,
     R_t8,   R_t9,   R_k0,   R_k1,   R_gp,   R_sp,   R_s8,   R_ra,
     R_lr = R_s8,

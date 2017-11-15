@@ -17,20 +17,39 @@
 #ifndef _INIT_INIT_PARSER_H_
 #define _INIT_INIT_PARSER_H_
 
-#define INIT_PARSER_MAXARGS 64
+#include <map>
+#include <string>
+#include <vector>
 
-struct action;
+class SectionParser {
+public:
+    virtual ~SectionParser() {
+    }
+    virtual bool ParseSection(const std::vector<std::string>& args,
+                              std::string* err) = 0;
+    virtual bool ParseLineSection(const std::vector<std::string>& args,
+                                  const std::string& filename, int line,
+                                  std::string* err) const = 0;
+    virtual void EndSection() = 0;
+    virtual void EndFile(const std::string& filename) = 0;
+};
 
-struct action *action_remove_queue_head(void);
-void action_add_queue_tail(struct action *act);
-void action_for_each_trigger(const char *trigger,
-                             void (*func)(struct action *act));
-int action_queue_empty(void);
-void queue_property_triggers(const char *name, const char *value);
-void queue_all_property_triggers();
-void queue_builtin_action(int (*func)(int nargs, char **args), char *name);
+class Parser {
+public:
+    static Parser& GetInstance();
+    void DumpState() const;
+    bool ParseConfig(const std::string& path);
+    void AddSectionParser(const std::string& name,
+                          std::unique_ptr<SectionParser> parser);
 
-int init_parse_config_file(const char *fn);
-int expand_props(char *dst, const char *src, int len);
+private:
+    Parser();
+
+    void ParseData(const std::string& filename, const std::string& data);
+    bool ParseConfigFile(const std::string& path);
+    bool ParseConfigDir(const std::string& path);
+
+    std::map<std::string, std::unique_ptr<SectionParser>> section_parsers_;
+};
 
 #endif

@@ -1,4 +1,9 @@
 #
+# Copyright (C) 2014 MediaTek Inc.
+# Modification based on code covered by the mentioned copyright
+# and/or permission notice(s).
+#
+#
 # Copyright (C) 2008 The Android Open Source Project
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,94 +21,83 @@
 LOCAL_PATH := $(my-dir)
 include $(CLEAR_VARS)
 
-ifeq ($(TARGET_CPU_SMP),true)
-    targetSmpFlag := -DANDROID_SMP=1
-else
-    targetSmpFlag := -DANDROID_SMP=0
-endif
-hostSmpFlag := -DANDROID_SMP=0
-
-commonSources := \
-	hashmap.c \
-	atomic.c.arm \
-	native_handle.c \
-	socket_inaddr_any_server.c \
-	socket_local_client.c \
-	socket_local_server.c \
-	socket_loopback_client.c \
-	socket_loopback_server.c \
-	socket_network_client.c \
-	sockets.c \
-	config_utils.c \
-	cpu_info.c \
-	load_file.c \
-	list.c \
-	open_memstream.c \
-	strdup16to8.c \
-	strdup8to16.c \
-	record_stream.c \
-	process_name.c \
-	threads.c \
-	sched_policy.c \
-	iosched_policy.c \
-	str_parms.c \
-
-commonHostSources := \
-        ashmem-host.c
+libcutils_common_sources := \
+        atomic.c.arm \
+        config_utils.c \
+        fs_config.c \
+        canned_fs_config.c \
+        hashmap.c \
+        iosched_policy.c \
+        load_file.c \
+        native_handle.c \
+        open_memstream.c \
+        process_name.c \
+        record_stream.c \
+        sched_policy.c \
+        sockets.cpp \
+        strdup16to8.c \
+        strdup8to16.c \
+        strlcpy.c \
+        threads.c \
 
 # some files must not be compiled when building against Mingw
 # they correspond to features not used by our host development tools
 # which are also hard or even impossible to port to native Win32
-WINDOWS_HOST_ONLY :=
-ifeq ($(HOST_OS),windows)
-    ifeq ($(strip $(USE_CYGWIN)),)
-        WINDOWS_HOST_ONLY := 1
-    endif
-endif
-# USE_MINGW is defined when we build against Mingw on Linux
-ifneq ($(strip $(USE_MINGW)),)
-    WINDOWS_HOST_ONLY := 1
-endif
-
-ifneq ($(WINDOWS_HOST_ONLY),1)
-    commonSources += \
+libcutils_nonwindows_sources := \
         fs.c \
-        multiuser.c
-endif
+        multiuser.c \
+        socket_inaddr_any_server_unix.c \
+        socket_local_client_unix.c \
+        socket_local_server_unix.c \
+        socket_loopback_client_unix.c \
+        socket_loopback_server_unix.c \
+        socket_network_client_unix.c \
+        sockets_unix.cpp \
+        str_parms.c \
 
+libcutils_nonwindows_host_sources := \
+        ashmem-host.c \
+        trace-host.c \
 
-# Static library for host
+libcutils_windows_host_sources := \
+        socket_inaddr_any_server_windows.c \
+        socket_network_client_windows.c \
+        sockets_windows.cpp \
+
+# Shared and static library for host
+# Note: when linking this library on Windows, you must also link to Winsock2
+# using "LOCAL_LDLIBS_windows := -lws2_32".
 # ========================================================
 LOCAL_MODULE := libcutils
-LOCAL_SRC_FILES := $(commonSources) $(commonHostSources) dlmalloc_stubs.c
-LOCAL_LDLIBS := -lpthread
+LOCAL_SRC_FILES := $(libcutils_common_sources) dlmalloc_stubs.c
+LOCAL_SRC_FILES_darwin := $(libcutils_nonwindows_sources) $(libcutils_nonwindows_host_sources)
+LOCAL_SRC_FILES_linux := $(libcutils_nonwindows_sources) $(libcutils_nonwindows_host_sources)
+LOCAL_SRC_FILES_windows := $(libcutils_windows_host_sources)
 LOCAL_STATIC_LIBRARIES := liblog
-LOCAL_CFLAGS += $(hostSmpFlag)
+LOCAL_CFLAGS := -Werror -Wall -Wextra
+LOCAL_MULTILIB := both
+LOCAL_MODULE_HOST_OS := darwin linux windows
 include $(BUILD_HOST_STATIC_LIBRARY)
 
-
-# Static library for host, 64-bit
-# ========================================================
 include $(CLEAR_VARS)
-LOCAL_MODULE := lib64cutils
-LOCAL_SRC_FILES := $(commonSources) $(commonHostSources) dlmalloc_stubs.c
-LOCAL_LDLIBS := -lpthread
-LOCAL_STATIC_LIBRARIES := lib64log
-LOCAL_CFLAGS += $(hostSmpFlag) -m64
-include $(BUILD_HOST_STATIC_LIBRARY)
+LOCAL_MODULE := libcutils
+LOCAL_SRC_FILES := $(libcutils_common_sources) dlmalloc_stubs.c
+LOCAL_SRC_FILES_darwin := $(libcutils_nonwindows_sources) $(libcutils_nonwindows_host_sources)
+LOCAL_SRC_FILES_linux := $(libcutils_nonwindows_sources) $(libcutils_nonwindows_host_sources)
+LOCAL_SHARED_LIBRARIES := liblog
+LOCAL_CFLAGS := -Werror -Wall -Wextra
+LOCAL_MULTILIB := both
+include $(BUILD_HOST_SHARED_LIBRARY)
+
 
 
 # Shared and static library for target
 # ========================================================
 
-# This is needed in LOCAL_C_INCLUDES to access the C library's private
-# header named <bionic_time.h>
-#
-libcutils_c_includes := bionic/libc/private
-
 include $(CLEAR_VARS)
 LOCAL_MODULE := libcutils
-LOCAL_SRC_FILES := $(commonSources) \
+LOCAL_SRC_FILES := $(libcutils_common_sources) \
+        $(libcutils_nonwindows_sources) \
         android_reboot.c \
         ashmem-dev.c \
         debugger.c \
@@ -111,45 +105,75 @@ LOCAL_SRC_FILES := $(commonSources) \
         partition_utils.c \
         properties.c \
         qtaguid.c \
-        trace.c \
-        uevent.c
+        trace-dev.c \
+        uevent.c \
 
-ifeq ($(TARGET_ARCH),arm)
-LOCAL_SRC_FILES += arch-arm/memset32.S
-else  # !arm
-ifeq ($(TARGET_ARCH_VARIANT),x86-atom)
-LOCAL_CFLAGS += -DHAVE_MEMSET16 -DHAVE_MEMSET32
-LOCAL_SRC_FILES += arch-x86/android_memset16.S arch-x86/android_memset32.S memory.c
-else # !x86-atom
-ifeq ($(TARGET_ARCH),mips)
-LOCAL_SRC_FILES += arch-mips/android_memset.c
-else # !mips
-LOCAL_SRC_FILES += memory.c
-endif # !mips
-endif # !x86-atom
-endif # !arm
+LOCAL_SRC_FILES_arm += arch-arm/memset32.S
+LOCAL_SRC_FILES_arm64 += arch-arm64/android_memset.S
 
-LOCAL_C_INCLUDES := $(libcutils_c_includes) $(KERNEL_HEADERS)
+LOCAL_SRC_FILES_mips += arch-mips/android_memset.c
+LOCAL_SRC_FILES_mips64 += arch-mips/android_memset.c
+
+LOCAL_SRC_FILES_x86 += \
+        arch-x86/android_memset16.S \
+        arch-x86/android_memset32.S \
+
+LOCAL_SRC_FILES_x86_64 += \
+        arch-x86_64/android_memset16.S \
+        arch-x86_64/android_memset32.S \
+
+LOCAL_C_INCLUDES := $(libcutils_c_includes)
 LOCAL_STATIC_LIBRARIES := liblog
-LOCAL_CFLAGS += $(targetSmpFlag)
+ifneq ($(ENABLE_CPUSETS),)
+LOCAL_CFLAGS += -DUSE_CPUSETS
+endif
+ifneq ($(ENABLE_SCHEDBOOST),)
+LOCAL_CFLAGS += -DUSE_SCHEDBOOST
+endif
+LOCAL_CFLAGS += -Werror -Wall -Wextra -std=gnu90
+#M: arm 32bit
+ifeq ($(MTK_USER_SPACE_DEBUG_FW),yes)
+  ifeq ($(TARGET_BUILD_VARIANT),eng)
+    ifneq ($(filter arm arm64,$(TARGET_ARCH)),)
+      ifeq ($(TARGET_IS_64_BIT),true)
+        LOCAL_CFLAGS_arm += -marm -fno-omit-frame-pointer -Wno-strict-aliasing
+      else
+        LOCAL_CFLAGS +=  -marm -fno-omit-frame-pointer -Wno-strict-aliasing
+      endif
+    endif
+  endif
+endif
+LOCAL_CLANG := true
+LOCAL_SANITIZE := integer
 include $(BUILD_STATIC_LIBRARY)
-
 include $(CLEAR_VARS)
 LOCAL_MODULE := libcutils
 # TODO: remove liblog as whole static library, once we don't have prebuilt that requires
 # liblog symbols present in libcutils.
 LOCAL_WHOLE_STATIC_LIBRARIES := libcutils liblog
 LOCAL_SHARED_LIBRARIES := liblog
-LOCAL_CFLAGS += $(targetSmpFlag)
+ifneq ($(ENABLE_CPUSETS),)
+LOCAL_CFLAGS += -DUSE_CPUSETS
+endif
+ifneq ($(ENABLE_SCHEDBOOST),)
+LOCAL_CFLAGS += -DUSE_SCHEDBOOST
+endif
+LOCAL_CFLAGS += -Werror -Wall -Wextra
+#M: arm 32bit
+ifeq ($(MTK_USER_SPACE_DEBUG_FW),yes)
+  ifeq ($(TARGET_BUILD_VARIANT),eng)
+    ifneq ($(filter arm arm64,$(TARGET_ARCH)),)
+      ifeq ($(TARGET_IS_64_BIT),true)
+        LOCAL_CFLAGS_arm += -marm -fno-omit-frame-pointer
+      else
+        LOCAL_CFLAGS +=  -marm -fno-omit-frame-pointer
+      endif
+    endif
+  endif
+endif
 LOCAL_C_INCLUDES := $(libcutils_c_includes)
+LOCAL_CLANG := true
+LOCAL_SANITIZE := integer
 include $(BUILD_SHARED_LIBRARY)
-
-include $(CLEAR_VARS)
-LOCAL_MODULE := tst_str_parms
-LOCAL_CFLAGS += -DTEST_STR_PARMS
-LOCAL_SRC_FILES := str_parms.c hashmap.c memory.c
-LOCAL_SHARED_LIBRARIES := liblog
-LOCAL_MODULE_TAGS := optional
-include $(BUILD_EXECUTABLE)
 
 include $(call all-makefiles-under,$(LOCAL_PATH))

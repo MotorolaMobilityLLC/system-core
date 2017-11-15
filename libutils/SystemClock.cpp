@@ -19,7 +19,7 @@
  * System clock functions.
  */
 
-#ifdef HAVE_ANDROID_OS
+#if defined(__ANDROID__)
 #include <linux/ioctl.h>
 #include <linux/rtc.h>
 #include <utils/Atomic.h>
@@ -29,7 +29,6 @@
 #include <sys/time.h>
 #include <limits.h>
 #include <fcntl.h>
-#include <errno.h>
 #include <string.h>
 
 #include <utils/SystemClock.h>
@@ -68,13 +67,7 @@ int64_t elapsedRealtime()
  */
 #define DEBUG_TIMESTAMP         0
 
-static const char *gettime_method_names[] = {
-    "clock_gettime",
-    "ioctl",
-    "systemTime",
-};
-
-#if DEBUG_TIMESTAMP
+#if DEBUG_TIMESTAMP && defined(__arm__)
 static inline void checkTimeStamps(int64_t timestamp,
                                    int64_t volatile *prevTimestampPtr,
                                    int volatile *prevMethodPtr,
@@ -85,11 +78,16 @@ static inline void checkTimeStamps(int64_t timestamp,
      * gettid, and int64_t is different on the ARM platform
      * (ie long vs long long).
      */
-#ifdef ARCH_ARM
     int64_t prevTimestamp = *prevTimestampPtr;
     int prevMethod = *prevMethodPtr;
 
     if (timestamp < prevTimestamp) {
+        static const char *gettime_method_names[] = {
+            "clock_gettime",
+            "ioctl",
+            "systemTime",
+        };
+
         ALOGW("time going backwards: prev %lld(%s) vs now %lld(%s), tid=%d",
               prevTimestamp, gettime_method_names[prevMethod],
               timestamp, gettime_method_names[curMethod],
@@ -99,7 +97,6 @@ static inline void checkTimeStamps(int64_t timestamp,
     // write is interrupted or not observed as a whole.
     *prevTimestampPtr = timestamp;
     *prevMethodPtr = curMethod;
-#endif
 }
 #else
 #define checkTimeStamps(timestamp, prevTimestampPtr, prevMethodPtr, curMethod)
@@ -110,7 +107,7 @@ static inline void checkTimeStamps(int64_t timestamp,
  */
 int64_t elapsedRealtimeNano()
 {
-#ifdef HAVE_ANDROID_OS
+#if defined(__ANDROID__)
     struct timespec ts;
     int result;
     int64_t timestamp;
@@ -119,22 +116,6 @@ int64_t elapsedRealtimeNano()
     static volatile int prevMethod;
 #endif
 
-#if 0
-    /*
-     * b/7100774
-     * clock_gettime appears to have clock skews and can sometimes return
-     * backwards values. Disable its use until we find out what's wrong.
-     */
-    result = clock_gettime(CLOCK_BOOTTIME, &ts);
-    if (result == 0) {
-        timestamp = seconds_to_nanoseconds(ts.tv_sec) + ts.tv_nsec;
-        checkTimeStamps(timestamp, &prevTimestamp, &prevMethod,
-                        METHOD_CLOCK_GETTIME);
-        return timestamp;
-    }
-#endif
-
-    // CLOCK_BOOTTIME doesn't exist, fallback to /dev/alarm
     static int s_fd = -1;
 
     if (s_fd == -1) {
@@ -150,6 +131,15 @@ int64_t elapsedRealtimeNano()
     if (result == 0) {
         timestamp = seconds_to_nanoseconds(ts.tv_sec) + ts.tv_nsec;
         checkTimeStamps(timestamp, &prevTimestamp, &prevMethod, METHOD_IOCTL);
+        return timestamp;
+    }
+
+    // /dev/alarm doesn't exist, fallback to CLOCK_BOOTTIME
+    result = clock_gettime(CLOCK_BOOTTIME, &ts);
+    if (result == 0) {
+        timestamp = seconds_to_nanoseconds(ts.tv_sec) + ts.tv_nsec;
+        checkTimeStamps(timestamp, &prevTimestamp, &prevMethod,
+                        METHOD_CLOCK_GETTIME);
         return timestamp;
     }
 

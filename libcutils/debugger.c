@@ -1,4 +1,9 @@
 /*
+* Copyright (C) 2014 MediaTek Inc.
+* Modification based on code covered by the mentioned copyright
+* and/or permission notice(s).
+*/
+/*
  * Copyright (C) 2012 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,74 +19,134 @@
  * limitations under the License.
  */
 
+#include <stdbool.h>
+#include <fcntl.h>
+#include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <sys/types.h>
+#include <sys/socket.h>
 #include <unistd.h>
+#include <poll.h>
+#include <errno.h>
 
 #include <cutils/debugger.h>
 #include <cutils/sockets.h>
 
-int dump_tombstone(pid_t tid, char* pathbuf, size_t pathlen) {
-    int s = socket_local_client(DEBUGGER_SOCKET_NAME,
-            ANDROID_SOCKET_NAMESPACE_ABSTRACT, SOCK_STREAM);
-    if (s < 0) {
-        return -1;
+#define LOG_TAG "DEBUG"
+#include <log/log.h>
+
+static int send_request(int sock_fd, void* msg_ptr, size_t msg_len) {
+  int result = 0;
+
+  int status = 0;
+  struct pollfd pollfds[1];
+  pollfds[0].fd = sock_fd;
+  pollfds[0].events = POLLRDHUP;
+  pollfds[0].revents = 0;
+  do {
+    status = TEMP_FAILURE_RETRY(poll(pollfds, 1, 0));
+    if ((status < 0 && errno != EINTR) || (pollfds[0].revents & POLLRDHUP)) {
+      result = -1;
+      // stream socket peer closed connection, or shut down writing half of connection, or error
+      return result;
+    }
+  } while(status < 0 && errno == EINTR);
+
+  if (TEMP_FAILURE_RETRY(write(sock_fd, msg_ptr, msg_len)) != (ssize_t) msg_len) {
+    result = -1;
+  } else {
+    char ack;
+    if (TEMP_FAILURE_RETRY(read(sock_fd, &ack, 1)) != 1) {
+      result = -1;
+    }
+  }
+  return result;
+}
+
+static int make_dump_request(debugger_action_t action, pid_t tid, int timeout_secs) {
+  debugger_msg_t msg;
+  memset(&msg, 0, sizeof(msg));
+  msg.tid = tid;
+  msg.action = action;
+
+  int sock_fd = socket_local_client(DEBUGGER_SOCKET_NAME, ANDROID_SOCKET_NAMESPACE_ABSTRACT,
+      SOCK_STREAM | SOCK_CLOEXEC);
+  if (sock_fd < 0) {
+    return -1;
+  }
+
+  if (timeout_secs > 0) {
+    struct timeval tm;
+    tm.tv_sec = timeout_secs;
+    tm.tv_usec = 0;
+    if (setsockopt(sock_fd, SOL_SOCKET, SO_RCVTIMEO, &tm, sizeof(tm)) == -1) {
+      ALOGE("WARNING: Cannot set receive timeout value on socket: %s", strerror(errno));
     }
 
-    debugger_msg_t msg;
-    msg.tid = tid;
-    msg.action = DEBUGGER_ACTION_DUMP_TOMBSTONE;
-
-    int result = 0;
-    if (TEMP_FAILURE_RETRY(write(s, &msg, sizeof(msg))) != sizeof(msg)) {
-        result = -1;
-    } else {
-        char ack;
-        if (TEMP_FAILURE_RETRY(read(s, &ack, 1)) != 1) {
-            result = -1;
-        } else {
-            if (pathbuf && pathlen) {
-                ssize_t n = TEMP_FAILURE_RETRY(read(s, pathbuf, pathlen - 1));
-                if (n <= 0) {
-                    result = -1;
-                } else {
-                    pathbuf[n] = '\0';
-                }
-            }
-        }
+    if (setsockopt(sock_fd, SOL_SOCKET, SO_SNDTIMEO, &tm, sizeof(tm)) == -1) {
+      ALOGE("WARNING: Cannot set send timeout value on socket: %s", strerror(errno));
     }
-    TEMP_FAILURE_RETRY(close(s));
-    return result;
+  }
+
+  if (send_request(sock_fd, &msg, sizeof(msg)) < 0) {
+    close(sock_fd);
+    return -1;
+  }
+
+  return sock_fd;
 }
 
 int dump_backtrace_to_file(pid_t tid, int fd) {
-    int s = socket_local_client(DEBUGGER_SOCKET_NAME,
-            ANDROID_SOCKET_NAMESPACE_ABSTRACT, SOCK_STREAM);
-    if (s < 0) {
-        return -1;
-    }
+  // return dump_backtrace_to_file_timeout(tid, fd, 0);
+  return dump_backtrace_to_file_timeout(tid, fd, 5);
+}
 
-    debugger_msg_t msg;
-    msg.tid = tid;
-    msg.action = DEBUGGER_ACTION_DUMP_BACKTRACE;
+int dump_backtrace_to_file_timeout(pid_t tid, int fd, int timeout_secs) {
+  int sock_fd = make_dump_request(DEBUGGER_ACTION_DUMP_BACKTRACE, tid, timeout_secs);
+  if (sock_fd < 0) {
+    return -1;
+  }
 
-    int result = 0;
-    if (TEMP_FAILURE_RETRY(write(s, &msg, sizeof(msg))) != sizeof(msg)) {
-        result = -1;
-    } else {
-        char ack;
-        if (TEMP_FAILURE_RETRY(read(s, &ack, 1)) != 1) {
-            result = -1;
-        } else {
-            char buffer[4096];
-            ssize_t n;
-            while ((n = TEMP_FAILURE_RETRY(read(s, buffer, sizeof(buffer)))) > 0) {
-                if (TEMP_FAILURE_RETRY(write(fd, buffer, n)) != n) {
-                    result = -1;
-                    break;
-                }
-            }
-        }
+  /* Write the data read from the socket to the fd. */
+  int result = 0;
+  char buffer[1024];
+  ssize_t n;
+  while ((n = TEMP_FAILURE_RETRY(read(sock_fd, buffer, sizeof(buffer)))) > 0) {
+    if (TEMP_FAILURE_RETRY(write(fd, buffer, n)) != n) {
+      result = -1;
+      break;
     }
-    TEMP_FAILURE_RETRY(close(s));
-    return result;
+  }
+  close(sock_fd);
+  return result;
+}
+
+int dump_tombstone(pid_t tid, char* pathbuf, size_t pathlen) {
+  return dump_tombstone_timeout(tid, pathbuf, pathlen, 0);
+}
+
+int dump_tombstone_timeout(pid_t tid, char* pathbuf, size_t pathlen, int timeout_secs) {
+  int sock_fd = make_dump_request(DEBUGGER_ACTION_DUMP_TOMBSTONE, tid, timeout_secs);
+  if (sock_fd < 0) {
+    return -1;
+  }
+
+  /* Read the tombstone file name. */
+  char buffer[100]; /* This is larger than the largest tombstone path. */
+  int result = 0;
+  ssize_t n = TEMP_FAILURE_RETRY(read(sock_fd, buffer, sizeof(buffer) - 1));
+  if (n <= 0) {
+    result = -1;
+  } else {
+    if (pathbuf && pathlen) {
+      if (n >= (ssize_t) pathlen) {
+        n = pathlen - 1;
+      }
+      buffer[n] = '\0';
+      memcpy(pathbuf, buffer, n + 1);
+    }
+  }
+  close(sock_fd);
+  return result;
 }

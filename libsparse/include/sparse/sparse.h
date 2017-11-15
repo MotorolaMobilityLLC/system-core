@@ -20,6 +20,10 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#ifdef	__cplusplus
+extern "C" {
+#endif
+
 struct sparse_file;
 
 /**
@@ -230,6 +234,7 @@ struct sparse_file *sparse_file_import(int fd, bool verbose, bool crc);
  *
  * @fd - file descriptor to read from
  * @crc - verify the crc of a file in the Android sparse file format
+ * @verbose - whether to use verbose logging
  *
  * Reads an existing sparse or normal file into a sparse file cookie.
  * Attempts to determine if the file is sparse or not by looking for the sparse
@@ -239,7 +244,7 @@ struct sparse_file *sparse_file_import(int fd, bool verbose, bool crc);
  *
  * Returns a new sparse file cookie on success, NULL on error.
  */
-struct sparse_file *sparse_file_import_auto(int fd, bool crc);
+struct sparse_file *sparse_file_import_auto(int fd, bool crc, bool verbose);
 
 /** sparse_file_resparse - rechunk an existing sparse file into smaller files
  *
@@ -272,5 +277,9 @@ void sparse_file_verbose(struct sparse_file *s);
  *
  */
 extern void (*sparse_print_verbose)(const char *fmt, ...);
+
+#ifdef	__cplusplus
+}
+#endif
 
 #endif

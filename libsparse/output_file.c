@@ -1,4 +1,9 @@
 /*
+* Copyright (C) 2014 MediaTek Inc.
+* Modification based on code covered by the mentioned copyright
+* and/or permission notice(s).
+*/
+/*
  * Copyright (C) 2010 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,6 +23,7 @@
 #define _LARGEFILE64_SOURCE 1
 
 #include <fcntl.h>
+#include <inttypes.h>
 #include <limits.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -28,9 +34,10 @@
 #include <unistd.h>
 #include <zlib.h>
 
+#include "defs.h"
 #include "output_file.h"
-#include "sparse_format.h"
 #include "sparse_crc32.h"
+#include "sparse_format.h"
 
 #ifndef USE_MINGW
 #include <sys/mman.h>
@@ -44,15 +51,6 @@
 #define ftruncate64 ftruncate
 #define mmap64 mmap
 #define off64_t off_t
-#endif
-
-#ifdef __BIONIC__
-extern void*  __mmap2(void *, size_t, int, int, int, off_t);
-static inline void *mmap64(void *addr, size_t length, int prot, int flags,
-        int fd, off64_t offset)
-{
-    return __mmap2(addr, length, prot, flags, fd, offset >> 12);
-}
 #endif
 
 #define min(a, b) \
@@ -272,7 +270,7 @@ static struct output_file_ops gz_file_ops = {
 	.close = gz_file_close,
 };
 
-static int callback_file_open(struct output_file *out, int fd)
+static int callback_file_open(struct output_file *out __unused, int fd __unused)
 {
 	return 0;
 }
@@ -295,14 +293,13 @@ static int callback_file_skip(struct output_file *out, int64_t off)
 	return 0;
 }
 
-static int callback_file_pad(struct output_file *out, int64_t len)
+static int callback_file_pad(struct output_file *out __unused, int64_t len __unused)
 {
 	return -1;
 }
 
 static int callback_file_write(struct output_file *out, void *data, int len)
 {
-	int ret;
 	struct output_file_callback *outc = to_output_file_callback(out);
 
 	return outc->write(outc->priv, data, len);
@@ -348,10 +345,10 @@ int read_all(int fd, void *buf, size_t len)
 static int write_sparse_skip_chunk(struct output_file *out, int64_t skip_len)
 {
 	chunk_header_t chunk_header;
-	int ret, chunk;
+	int ret;
 
 	if (skip_len % out->block_size) {
-		error("don't care size %llu is not a multiple of the block size %u",
+		error("don't care size %"PRIi64" is not a multiple of the block size %u",
 				skip_len, out->block_size);
 		return -1;
 	}
@@ -375,9 +372,8 @@ static int write_sparse_fill_chunk(struct output_file *out, unsigned int len,
 		uint32_t fill_val)
 {
 	chunk_header_t chunk_header;
-	int rnd_up_len, zero_len, count;
+	int rnd_up_len, count;
 	int ret;
-	unsigned int i;
 
 	/* Round up the fill length to a multiple of the block size */
 	rnd_up_len = ALIGN(len, out->block_size);
@@ -543,8 +539,6 @@ static struct sparse_file_ops normal_file_ops = {
 
 void output_file_close(struct output_file *out)
 {
-	int ret;
-
 	out->sparse_ops->write_end_chunk(out);
 	out->ops->close(out);
 }
@@ -639,8 +633,8 @@ static struct output_file *output_file_new_normal(void)
 }
 
 struct output_file *output_file_open_callback(int (*write)(void *, const void *, int),
-		void *priv, unsigned int block_size, int64_t len, int gz, int sparse,
-		int chunks, int crc)
+		void *priv, unsigned int block_size, int64_t len,
+		int gz __unused, int sparse, int chunks, int crc)
 {
 	int ret;
 	struct output_file_callback *outc;
@@ -700,7 +694,30 @@ int write_data_chunk(struct output_file *out, unsigned int len, void *data)
 int write_fill_chunk(struct output_file *out, unsigned int len,
 		uint32_t fill_val)
 {
+#if 0
 	return out->sparse_ops->write_fill_chunk(out, len, fill_val);
+#endif
+    if(fill_val==0x00) {
+        return out->sparse_ops->write_skip_chunk(out, len);
+    }
+    else {
+      uint32_t *data = malloc(len);
+      int rtn;
+      unsigned int i;
+
+      if (!data) {
+        return -errno;
+      }
+
+      /* Initialize fill_buf with the fill_val */
+      for (i = 0; i < len / sizeof(uint32_t); i++) {
+          data[i] = fill_val;
+      }
+
+      rtn = out->sparse_ops->write_data_chunk(out, len, data);
+      free(data);
+      return rtn;
+    }
 }
 
 int write_fd_chunk(struct output_file *out, unsigned int len,
@@ -731,10 +748,12 @@ int write_fd_chunk(struct output_file *out, unsigned int len,
 	}
 	pos = lseek64(fd, offset, SEEK_SET);
 	if (pos < 0) {
+                free(data);
 		return -errno;
 	}
 	ret = read_all(fd, data, len);
 	if (ret < 0) {
+                free(data);
 		return ret;
 	}
 	ptr = data;

@@ -1,108 +1,69 @@
 LOCAL_PATH:= $(call my-dir)
+
+
+common_cflags := \
+    -Werror -Wno-unused-parameter -Wno-unused-const-variable \
+    -I$(LOCAL_PATH)/upstream-netbsd/include/ \
+    -include bsd-compatibility.h \
+
+
+include $(CLEAR_VARS)
+LOCAL_SRC_FILES := \
+    upstream-netbsd/bin/dd/args.c \
+    upstream-netbsd/bin/dd/conv.c \
+    upstream-netbsd/bin/dd/dd.c \
+    upstream-netbsd/bin/dd/dd_hostops.c \
+    upstream-netbsd/bin/dd/misc.c \
+    upstream-netbsd/bin/dd/position.c \
+    upstream-netbsd/lib/libc/gen/getbsize.c \
+    upstream-netbsd/lib/libc/gen/humanize_number.c \
+    upstream-netbsd/lib/libc/stdlib/strsuftoll.c \
+    upstream-netbsd/lib/libc/string/swab.c \
+    upstream-netbsd/lib/libutil/raise_default_signal.c
+LOCAL_CFLAGS += $(common_cflags) -Dmain=dd_main -DNO_CONV
+LOCAL_MODULE := libtoolbox_dd
+include $(BUILD_STATIC_LIBRARY)
+
+
 include $(CLEAR_VARS)
 
-TOOLS := \
-	ls \
-	mount \
-	cat \
-	ps \
-	kill \
-	ln \
-	insmod \
-	rmmod \
-	lsmod \
-	ifconfig \
-	setconsole \
-	rm \
-	mkdir \
-	rmdir \
-	getevent \
-	sendevent \
-	date \
-	wipe \
-	sync \
-	umount \
-	start \
-	stop \
-	notify \
-	cmp \
-	dmesg \
-	route \
-	hd \
-	dd \
-	df \
-	getprop \
-	setprop \
-	watchprops \
-	log \
-	sleep \
-	renice \
-	printenv \
-	smd \
-	chmod \
-	chown \
-	newfs_msdos \
-	netstat \
-	ioctl \
-	mv \
-	schedtop \
-	top \
-	iftop \
-	id \
-	uptime \
-	vmstat \
-	nandread \
-	ionice \
-	touch \
-	lsof \
-	du \
-	md5 \
-	clear \
-	getenforce \
-	setenforce \
-	chcon \
-	restorecon \
-	runcon \
-	getsebool \
-	setsebool \
-	load_policy \
-	swapon \
-	swapoff \
-	mkswap \
-	readlink
+BSD_TOOLS := \
+    dd \
 
-ifneq (,$(filter userdebug eng,$(TARGET_BUILD_VARIANT)))
-TOOLS += r
-endif
+OUR_TOOLS := \
+    getevent \
+    iftop \
+    ioctl \
+    log \
+    nandread \
+    newfs_msdos \
+    ps \
+    prlimit \
+    sendevent \
+    start \
+    stop \
+    top \
 
-ALL_TOOLS = $(TOOLS)
-ALL_TOOLS += \
-	cp \
-	grep
+ALL_TOOLS = $(BSD_TOOLS) $(OUR_TOOLS)
 
 LOCAL_SRC_FILES := \
-	dynarray.c \
-	toolbox.c \
-	$(patsubst %,%.c,$(TOOLS)) \
-	cp/cp.c cp/utils.c \
-	grep/grep.c grep/fastgrep.c grep/file.c grep/queue.c grep/util.c
+    start_stop.cpp \
+    toolbox.c \
+    $(patsubst %,%.c,$(OUR_TOOLS)) \
 
-LOCAL_C_INCLUDES := bionic/libc/bionic
+LOCAL_CFLAGS += $(common_cflags)
+LOCAL_CONLYFLAGS += -std=gnu99
 
 LOCAL_SHARED_LIBRARIES := \
-	libcutils \
-	liblog \
-	libc \
-	libusbhost \
-	libselinux
+    libcutils \
+    libselinux \
 
-#BEGIN Motorola, xdkg47, 11-05-2012, IKMAINJB-6081/support property blacklist for Sprint TV
-ifeq ($(PRODUCT_HAVE_HTTP_RTSP_PROXY), true)
-LOCAL_CFLAGS += -DENABLE_BLACKLIST
-endif
-#END IKMAINJB-6081
+LOCAL_WHOLE_STATIC_LIBRARIES := $(patsubst %,libtoolbox_%,$(BSD_TOOLS))
 
 LOCAL_MODULE := toolbox
+
+# Install the symlinks.
+LOCAL_POST_INSTALL_CMD := $(hide) $(foreach t,$(ALL_TOOLS),ln -sf toolbox $(TARGET_OUT)/bin/$(t);)
 
 # Including this will define $(intermediates).
 #
@@ -117,19 +78,39 @@ $(TOOLS_H): $(LOCAL_PATH)/Android.mk
 $(TOOLS_H):
 	$(transform-generated-source)
 
-# Make #!/system/bin/toolbox launchers for each tool.
-#
-SYMLINKS := $(addprefix $(TARGET_OUT)/bin/,$(ALL_TOOLS))
-$(SYMLINKS): TOOLBOX_BINARY := $(LOCAL_MODULE)
-$(SYMLINKS): $(LOCAL_INSTALLED_MODULE) $(LOCAL_PATH)/Android.mk
-	@echo "Symlink: $@ -> $(TOOLBOX_BINARY)"
-	@mkdir -p $(dir $@)
-	@rm -rf $@
-	$(hide) ln -sf $(TOOLBOX_BINARY) $@
+$(LOCAL_PATH)/getevent.c: $(intermediates)/input.h-labels.h
 
-ALL_DEFAULT_INSTALLED_MODULES += $(SYMLINKS)
+UAPI_INPUT_EVENT_CODES_H := bionic/libc/kernel/uapi/linux/input-event-codes.h
+INPUT_H_LABELS_H := $(intermediates)/input.h-labels.h
+$(INPUT_H_LABELS_H): PRIVATE_LOCAL_PATH := $(LOCAL_PATH)
+# The PRIVATE_CUSTOM_TOOL line uses = to evaluate the output path late.
+# We copy the input path so it can't be accidentally modified later.
+$(INPUT_H_LABELS_H): PRIVATE_UAPI_INPUT_EVENT_CODES_H := $(UAPI_INPUT_EVENT_CODES_H)
+$(INPUT_H_LABELS_H): PRIVATE_CUSTOM_TOOL = $(PRIVATE_LOCAL_PATH)/generate-input.h-labels.py $(PRIVATE_UAPI_INPUT_EVENT_CODES_H) > $@
+# The dependency line though gets evaluated now, so the PRIVATE_ copy doesn't exist yet,
+# and the original can't yet have been modified, so this is both sufficient and necessary.
+$(INPUT_H_LABELS_H): $(LOCAL_PATH)/Android.mk $(LOCAL_PATH)/generate-input.h-labels.py $(UAPI_INPUT_EVENT_CODES_H)
+$(INPUT_H_LABELS_H):
+	$(transform-generated-source)
 
-# We need this so that the installed files could be picked up based on the
-# local module name
-ALL_MODULES.$(LOCAL_MODULE).INSTALLED := \
-    $(ALL_MODULES.$(LOCAL_MODULE).INSTALLED) $(SYMLINKS)
+# We only want 'r' on userdebug and eng builds.
+include $(CLEAR_VARS)
+LOCAL_SRC_FILES := r.c
+LOCAL_CFLAGS += $(common_cflags)
+LOCAL_MODULE := r
+LOCAL_MODULE_TAGS := debug
+include $(BUILD_EXECUTABLE)
+
+
+# We build BSD grep separately, so it can provide egrep and fgrep too.
+include $(CLEAR_VARS)
+LOCAL_SRC_FILES := \
+    upstream-netbsd/usr.bin/grep/fastgrep.c \
+    upstream-netbsd/usr.bin/grep/file.c \
+    upstream-netbsd/usr.bin/grep/grep.c \
+    upstream-netbsd/usr.bin/grep/queue.c \
+    upstream-netbsd/usr.bin/grep/util.c
+LOCAL_CFLAGS += $(common_cflags)
+LOCAL_MODULE := grep
+LOCAL_POST_INSTALL_CMD := $(hide) $(foreach t,egrep fgrep,ln -sf grep $(TARGET_OUT)/bin/$(t);)
+include $(BUILD_EXECUTABLE)

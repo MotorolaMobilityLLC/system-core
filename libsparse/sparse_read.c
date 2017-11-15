@@ -18,6 +18,7 @@
 #define _FILE_OFFSET_BITS 64
 #define _LARGEFILE64_SOURCE 1
 
+#include <inttypes.h>
 #include <fcntl.h>
 #include <stdarg.h>
 #include <stdbool.h>
@@ -29,6 +30,8 @@
 
 #include <sparse/sparse.h>
 
+#include "defs.h"
+#include "output_file.h"
 #include "sparse_crc32.h"
 #include "sparse_file.h"
 #include "sparse_format.h"
@@ -175,24 +178,19 @@ static int process_fill_chunk(struct sparse_file *s, unsigned int chunk_size,
 }
 
 static int process_skip_chunk(struct sparse_file *s, unsigned int chunk_size,
-		int fd, unsigned int blocks, unsigned int block, uint32_t *crc32)
+		int fd __unused, unsigned int blocks,
+		unsigned int block __unused, uint32_t *crc32)
 {
-	int ret;
-	int chunk;
-	int64_t len = (int64_t)blocks * s->block_size;
-	uint32_t fill_val;
-	uint32_t *fillbuf;
-	unsigned int i;
-
 	if (chunk_size != 0) {
 		return -EINVAL;
 	}
 
 	if (crc32) {
+	        int64_t len = (int64_t)blocks * s->block_size;
 		memset(copybuf, 0, COPY_BUF_SIZE);
 
 		while (len) {
-			chunk = min(len, COPY_BUF_SIZE);
+			int chunk = min(len, COPY_BUF_SIZE);
 			*crc32 = sparse_crc32(*crc32, copybuf, chunk);
 			len -= chunk;
 		}
@@ -201,7 +199,7 @@ static int process_skip_chunk(struct sparse_file *s, unsigned int chunk_size,
 	return 0;
 }
 
-static int process_crc32_chunk(int fd, unsigned int chunk_size, uint32_t crc32)
+static int process_crc32_chunk(int fd, unsigned int chunk_size, uint32_t *crc32)
 {
 	uint32_t file_crc32;
 	int ret;
@@ -215,7 +213,7 @@ static int process_crc32_chunk(int fd, unsigned int chunk_size, uint32_t crc32)
 		return ret;
 	}
 
-	if (file_crc32 != crc32) {
+	if (crc32 != NULL && file_crc32 != *crc32) {
 		return -EINVAL;
 	}
 
@@ -236,7 +234,7 @@ static int process_chunk(struct sparse_file *s, int fd, off64_t offset,
 			ret = process_raw_chunk(s, chunk_data_size, fd, offset,
 					chunk_header->chunk_sz, cur_block, crc_ptr);
 			if (ret < 0) {
-				verbose_error(s->verbose, ret, "data block at %lld", offset);
+				verbose_error(s->verbose, ret, "data block at %" PRId64, offset);
 				return ret;
 			}
 			return chunk_header->chunk_sz;
@@ -244,7 +242,7 @@ static int process_chunk(struct sparse_file *s, int fd, off64_t offset,
 			ret = process_fill_chunk(s, chunk_data_size, fd,
 					chunk_header->chunk_sz, cur_block, crc_ptr);
 			if (ret < 0) {
-				verbose_error(s->verbose, ret, "fill block at %lld", offset);
+				verbose_error(s->verbose, ret, "fill block at %" PRId64, offset);
 				return ret;
 			}
 			return chunk_header->chunk_sz;
@@ -253,21 +251,21 @@ static int process_chunk(struct sparse_file *s, int fd, off64_t offset,
 					chunk_header->chunk_sz, cur_block, crc_ptr);
 			if (chunk_data_size != 0) {
 				if (ret < 0) {
-					verbose_error(s->verbose, ret, "skip block at %lld", offset);
+					verbose_error(s->verbose, ret, "skip block at %" PRId64, offset);
 					return ret;
 				}
 			}
 			return chunk_header->chunk_sz;
 		case CHUNK_TYPE_CRC32:
-			ret = process_crc32_chunk(fd, chunk_data_size, *crc_ptr);
+			ret = process_crc32_chunk(fd, chunk_data_size, crc_ptr);
 			if (ret < 0) {
-				verbose_error(s->verbose, -EINVAL, "crc block at %lld",
+				verbose_error(s->verbose, -EINVAL, "crc block at %" PRId64,
 						offset);
 				return ret;
 			}
 			return 0;
 		default:
-			verbose_error(s->verbose, -EINVAL, "unknown block %04X at %lld",
+			verbose_error(s->verbose, -EINVAL, "unknown block %04X at %" PRId64,
 					chunk_header->chunk_type, offset);
 	}
 
@@ -364,7 +362,6 @@ static int sparse_file_read_normal(struct sparse_file *s, int fd)
 	int64_t remain = s->len;
 	int64_t offset = 0;
 	unsigned int to_read;
-	char *ptr;
 	unsigned int i;
 	bool sparse_block;
 
@@ -377,6 +374,7 @@ static int sparse_file_read_normal(struct sparse_file *s, int fd)
 		ret = read_all(fd, buf, to_read);
 		if (ret < 0) {
 			error("failed to read sparse file");
+			free(buf);
 			return ret;
 		}
 
@@ -404,6 +402,7 @@ static int sparse_file_read_normal(struct sparse_file *s, int fd)
 		block++;
 	}
 
+	free(buf);
 	return 0;
 }
 
@@ -476,13 +475,13 @@ struct sparse_file *sparse_file_import(int fd, bool verbose, bool crc)
 	return s;
 }
 
-struct sparse_file *sparse_file_import_auto(int fd, bool crc)
+struct sparse_file *sparse_file_import_auto(int fd, bool crc, bool verbose)
 {
 	struct sparse_file *s;
 	int64_t len;
 	int ret;
 
-	s = sparse_file_import(fd, true, crc);
+	s = sparse_file_import(fd, verbose, crc);
 	if (s) {
 		return s;
 	}

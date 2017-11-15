@@ -26,14 +26,23 @@
 #include <cutils/memory.h>
 #include <cutils/log.h>
 
+#ifdef __arm__
+#include <machine/cpu-features.h>
+#endif
+
 #include "buffer.h"
 #include "scanline.h"
 
 #include "codeflinger/CodeCache.h"
 #include "codeflinger/GGLAssembler.h"
+#if defined(__arm__)
 #include "codeflinger/ARMAssembler.h"
-#if defined(__mips__)
+#elif defined(__aarch64__)
+#include "codeflinger/Arm64Assembler.h"
+#elif defined(__mips__) && !defined(__LP64__) && __mips_isa_rev < 6
 #include "codeflinger/MIPSAssembler.h"
+#elif defined(__mips__) && defined(__LP64__)
+#include "codeflinger/MIPS64Assembler.h"
 #endif
 //#include "codeflinger/ARMAssemblerOptimizer.h"
 
@@ -52,7 +61,7 @@
 #   define ANDROID_CODEGEN      ANDROID_CODEGEN_GENERATED
 #endif
 
-#if defined(__arm__) || defined(__mips__)
+#if defined(__arm__) || (defined(__mips__) && ((!defined(__LP64__) && __mips_isa_rev < 6) || defined(__LP64__))) || defined(__aarch64__)
 #   define ANDROID_ARM_CODEGEN  1
 #else
 #   define ANDROID_ARM_CODEGEN  0
@@ -66,8 +75,10 @@
  */
 #define DEBUG_NEEDS  0
 
-#ifdef __mips__
+#if defined( __mips__) && ((!defined(__LP64__) && __mips_isa_rev < 6) || defined(__LP64__))
 #define ASSEMBLY_SCRATCH_SIZE   4096
+#elif defined(__aarch64__)
+#define ASSEMBLY_SCRATCH_SIZE   8192
 #else
 #define ASSEMBLY_SCRATCH_SIZE   2048
 #endif
@@ -122,8 +133,14 @@ extern "C" void scanline_t32cb16blend_arm(uint16_t*, uint32_t*, size_t);
 extern "C" void scanline_t32cb16_arm(uint16_t *dst, uint32_t *src, size_t ct);
 extern "C" void scanline_col32cb16blend_neon(uint16_t *dst, uint32_t *col, size_t ct);
 extern "C" void scanline_col32cb16blend_arm(uint16_t *dst, uint32_t col, size_t ct);
-#elif defined(__mips__)
+#elif defined(__aarch64__)
+extern "C" void scanline_t32cb16blend_arm64(uint16_t*, uint32_t*, size_t);
+extern "C" void scanline_col32cb16blend_arm64(uint16_t *dst, uint32_t col, size_t ct);
+#elif defined(__mips__) && !defined(__LP64__) && __mips_isa_rev < 6
 extern "C" void scanline_t32cb16blend_mips(uint16_t*, uint32_t*, size_t);
+#elif defined(__mips__) && defined(__LP64__)
+extern "C" void scanline_t32cb16blend_mips64(uint16_t*, uint32_t*, size_t);
+extern "C" void scanline_col32cb16blend_mips64(uint16_t *dst, uint32_t col, size_t ct);
 #endif
 
 // ----------------------------------------------------------------------------
@@ -274,8 +291,10 @@ static  const needs_filter_t fill16noblend = {
 
 #if ANDROID_ARM_CODEGEN
 
-#if defined(__mips__)
+#if defined(__mips__) && ((!defined(__LP64__) && __mips_isa_rev < 6) || defined(__LP64__))
 static CodeCache gCodeCache(32 * 1024);
+#elif defined(__aarch64__)
+static CodeCache gCodeCache(48 * 1024);
 #else
 static CodeCache gCodeCache(12 * 1024);
 #endif
@@ -392,14 +411,18 @@ static void pick_scanline(context_t* c)
         //GGLAssembler assembler(
         //        new ARMAssemblerOptimizer(new ARMAssembler(a)) );
 #endif
-#if defined(__mips__)
+#if defined(__mips__) && !defined(__LP64__) && __mips_isa_rev < 6
         GGLAssembler assembler( new ArmToMipsAssembler(a) );
+#elif defined(__mips__) && defined(__LP64__)
+        GGLAssembler assembler( new ArmToMips64Assembler(a) );
+#elif defined(__aarch64__)
+        GGLAssembler assembler( new ArmToArm64Assembler(a) );
 #endif
         // generate the scanline code for the given needs
-        int err = assembler.scanline(c->state.needs, c);
+        bool err = assembler.scanline(c->state.needs, c) != 0;
         if (ggl_likely(!err)) {
             // finally, cache this assembly
-            err = gCodeCache.cache(a->key(), a);
+            err = gCodeCache.cache(a->key(), a) < 0;
         }
         if (ggl_unlikely(err)) {
             ALOGE("error generating or caching assembly. Reverting to NOP.");
@@ -522,7 +545,7 @@ static inline int blendfactor(uint32_t x, uint32_t size, uint32_t def = 0)
     return x;
 }
 
-void blend_factor(context_t* c, pixel_t* r, 
+void blend_factor(context_t* /*c*/, pixel_t* r, 
         uint32_t factor, const pixel_t* src, const pixel_t* dst)
 {
     switch (factor) {
@@ -1149,7 +1172,7 @@ protected:
  *   blender.blend(<32-bit-src-pixel-value>,<ptr-to-16-bit-dest-pixel>)
  */
 struct blender_32to16 {
-    blender_32to16(context_t* c) { }
+    blender_32to16(context_t* /*c*/) { }
     void write(uint32_t s, uint16_t* dst) {
         if (s == 0)
             return;
@@ -1206,7 +1229,7 @@ struct blender_32to16 {
  * where dstFactor=srcA*(1-srcA) srcFactor=srcA
  */
 struct blender_32to16_srcA {
-    blender_32to16_srcA(const context_t* c) { }
+    blender_32to16_srcA(const context_t* /*c*/) { }
     void write(uint32_t s, uint16_t* dst) {
         if (!s) {
             return;
@@ -1717,7 +1740,7 @@ void init_y(context_t* c, int32_t ys)
             gen.width   = t.surface.width;
             gen.height  = t.surface.height;
             gen.stride  = t.surface.stride;
-            gen.data    = int32_t(t.surface.data);
+            gen.data    = uintptr_t(t.surface.data);
             gen.dsdx = ti.dsdx;
             gen.dtdx = ti.dtdx;
         }
@@ -1877,7 +1900,7 @@ void scanline_perspective(context_t* c)
             struct {
                 int32_t s, sq;
                 int32_t t, tq;
-            };
+            } sqtq;
             struct {
                 int32_t v, q;
             } st[2];
@@ -1916,10 +1939,10 @@ void scanline_perspective(context_t* c)
         int32_t t =   tmu.shade.it0 +
                      (tmu.shade.idtdy * ys) + (tmu.shade.idtdx * xs) +
                      ((tmu.shade.idtdx + tmu.shade.idtdy)>>1);
-        tc[i].s  = s;
-        tc[i].t  = t;
-        tc[i].sq = gglMulx(s, q0, iwscale);
-        tc[i].tq = gglMulx(t, q0, iwscale);
+        tc[i].sqtq.s  = s;
+        tc[i].sqtq.t  = t;
+        tc[i].sqtq.sq = gglMulx(s, q0, iwscale);
+        tc[i].sqtq.tq = gglMulx(t, q0, iwscale);
     }
 
     int32_t span = 0;
@@ -2085,6 +2108,10 @@ void scanline_col32cb16blend(context_t* c)
 #else  // defined(__ARM_HAVE_NEON) && BYTE_ORDER == LITTLE_ENDIAN
     scanline_col32cb16blend_arm(dst, GGL_RGBA_TO_HOST(c->packed8888), ct);
 #endif // defined(__ARM_HAVE_NEON) && BYTE_ORDER == LITTLE_ENDIAN
+#elif ((ANDROID_CODEGEN >= ANDROID_CODEGEN_ASM) && defined(__aarch64__))
+    scanline_col32cb16blend_arm64(dst, GGL_RGBA_TO_HOST(c->packed8888), ct);
+#elif ((ANDROID_CODEGEN >= ANDROID_CODEGEN_ASM) && (defined(__mips__) && defined(__LP64__)))
+    scanline_col32cb16blend_mips64(dst, GGL_RGBA_TO_HOST(c->packed8888), ct);
 #else
     uint32_t s = GGL_RGBA_TO_HOST(c->packed8888);
     int sA = (s>>24);
@@ -2125,7 +2152,7 @@ void scanline_t32cb16(context_t* c)
     int sR, sG, sB;
     uint32_t s, d;
 
-    if (ct==1 || uint32_t(dst)&2) {
+    if (ct==1 || uintptr_t(dst)&2) {
 last_one:
         s = GGL_RGBA_TO_HOST( *src++ );
         *dst++ = convertAbgr8888ToRgb565(s);
@@ -2157,7 +2184,8 @@ last_one:
 
 void scanline_t32cb16blend(context_t* c)
 {
-#if ((ANDROID_CODEGEN >= ANDROID_CODEGEN_ASM) && (defined(__arm__) || defined(__mips)))
+#if ((ANDROID_CODEGEN >= ANDROID_CODEGEN_ASM) && (defined(__arm__) || defined(__aarch64__) || \
+    (defined(__mips__) && ((!defined(__LP64__) && __mips_isa_rev < 6) || defined(__LP64__)))))
     int32_t x = c->iterators.xl;
     size_t ct = c->iterators.xr - x;
     int32_t y = c->iterators.y;
@@ -2171,8 +2199,12 @@ void scanline_t32cb16blend(context_t* c)
 
 #ifdef __arm__
     scanline_t32cb16blend_arm(dst, src, ct);
-#else
+#elif defined(__aarch64__)
+    scanline_t32cb16blend_arm64(dst, src, ct);
+#elif defined(__mips__) && !defined(__LP64__) && __mips_isa_rev < 6
     scanline_t32cb16blend_mips(dst, src, ct);
+#elif defined(__mips__) && defined(__LP64__)
+    scanline_t32cb16blend_mips64(dst, src, ct);
 #endif
 #else
     dst_iterator16  di(c);
@@ -2301,7 +2333,7 @@ void scanline_set(context_t* c)
     memset(dst, 0xFF, size);
 }
 
-void scanline_noop(context_t* c)
+void scanline_noop(context_t* /*c*/)
 {
 }
 

@@ -1,5 +1,4 @@
-/* libcutils/qtaguid.c
-**
+/*
 ** Copyright 2011, The Android Open Source Project
 **
 ** Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,14 +18,16 @@
 
 #define LOG_TAG "qtaguid"
 
-#include <cutils/qtaguid.h>
-#include <cutils/log.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <inttypes.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
-#include <pthread.h>
+
+#include <cutils/qtaguid.h>
+#include <log/log.h>
 
 static const char* CTRL_PROCPATH = "/proc/net/xt_qtaguid/ctrl";
 static const int CTRL_MAX_INPUT_LEN = 128;
@@ -74,7 +75,8 @@ static int write_ctrl(const char *cmd) {
         savedErrno = 0;
     }
     if (res < 0) {
-        ALOGI("Failed write_ctrl(%s) res=%d errno=%d", cmd, res, savedErrno);
+        // ALOGV is enough because all the callers also log failures
+        ALOGV("Failed write_ctrl(%s) res=%d errno=%d", cmd, res, savedErrno);
     }
     close(fd);
     return -savedErrno;
@@ -103,13 +105,13 @@ int qtaguid_tagSocket(int sockfd, int tag, uid_t uid) {
 
     pthread_once(&resTrackInitDone, qtaguid_resTrack);
 
-    snprintf(lineBuf, sizeof(lineBuf), "t %d %llu %d", sockfd, kTag, uid);
+    snprintf(lineBuf, sizeof(lineBuf), "t %d %" PRIu64 " %d", sockfd, kTag, uid);
 
-    ALOGV("Tagging socket %d with tag %llx{%u,0} for uid %d", sockfd, kTag, tag, uid);
+    ALOGV("Tagging socket %d with tag %" PRIx64 "{%u,0} for uid %d", sockfd, kTag, tag, uid);
 
     res = write_ctrl(lineBuf);
     if (res < 0) {
-        ALOGI("Tagging socket %d with tag %llx(%d) for uid %d failed errno=%d",
+        ALOGI("Tagging socket %d with tag %" PRIx64 "(%d) for uid %d failed errno=%d",
              sockfd, kTag, tag, uid, res);
     }
 
@@ -144,17 +146,17 @@ int qtaguid_setCounterSet(int counterSetNum, uid_t uid) {
 
 int qtaguid_deleteTagData(int tag, uid_t uid) {
     char lineBuf[CTRL_MAX_INPUT_LEN];
-    int fd, cnt = 0, res = 0;
+    int cnt = 0, res = 0;
     uint64_t kTag = (uint64_t)tag << 32;
 
-    ALOGV("Deleting tag data with tag %llx{%d,0} for uid %d", kTag, tag, uid);
+    ALOGV("Deleting tag data with tag %" PRIx64 "{%d,0} for uid %d", kTag, tag, uid);
 
     pthread_once(&resTrackInitDone, qtaguid_resTrack);
 
-    snprintf(lineBuf, sizeof(lineBuf), "d %llu %d", kTag, uid);
+    snprintf(lineBuf, sizeof(lineBuf), "d %" PRIu64 " %d", kTag, uid);
     res = write_ctrl(lineBuf);
     if (res < 0) {
-        ALOGI("Deleteing tag data with tag %llx/%d for uid %d failed with cnt=%d errno=%d",
+        ALOGI("Deleting tag data with tag %" PRIx64 "/%d for uid %d failed with cnt=%d errno=%d",
              kTag, tag, uid, cnt, errno);
     }
 
@@ -162,8 +164,6 @@ int qtaguid_deleteTagData(int tag, uid_t uid) {
 }
 
 int qtaguid_setPacifier(int on) {
-    int param_fd;
-    int res;
     const char *value;
 
     value = on ? "Y" : "N";

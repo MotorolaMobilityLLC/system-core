@@ -1,5 +1,3 @@
-ifneq ($(BUILD_TINY_ANDROID),true)
-
 LOCAL_PATH:= $(call my-dir)
 
 include $(CLEAR_VARS)
@@ -16,12 +14,12 @@ LOCAL_SRC_FILES:=                             \
 
 LOCAL_MODULE:= libsysutils
 
-LOCAL_C_INCLUDES := $(KERNEL_HEADERS)
+LOCAL_CFLAGS := -Werror
 
-LOCAL_CFLAGS :=
-
-LOCAL_SHARED_LIBRARIES := libcutils liblog
+LOCAL_SHARED_LIBRARIES := \
+        libcutils \
+        liblog \
+        libnl
 
 include $(BUILD_SHARED_LIBRARY)
 
-endif

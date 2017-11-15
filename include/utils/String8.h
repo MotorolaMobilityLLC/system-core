@@ -18,7 +18,6 @@
 #define ANDROID_STRING8_H
 
 #include <utils/Errors.h>
-#include <utils/SharedBuffer.h>
 #include <utils/Unicode.h>
 #include <utils/TypeHelpers.h>
 
@@ -65,11 +64,10 @@ public:
 
     inline  const char*         string() const;
     inline  size_t              size() const;
-    inline  size_t              length() const;
     inline  size_t              bytes() const;
     inline  bool                isEmpty() const;
     
-    inline  const SharedBuffer* sharedBuffer() const;
+            size_t              length() const;
     
             void                clear();
 
@@ -130,10 +128,18 @@ public:
             // start, or -1 if not found
             ssize_t             find(const char* other, size_t start = 0) const;
 
+            // return true if this string contains the specified substring
+    inline  bool                contains(const char* other) const;
+
+            // removes all occurrence of the specified substring
+            // returns true if any were found and removed
+            bool                removeAll(const char* other);
+
             void                toLower();
             void                toLower(size_t start, size_t numChars);
             void                toUpper();
             void                toUpper(size_t start, size_t numChars);
+
 
     /*
      * These methods operate on the string as if it were a path name.
@@ -255,11 +261,6 @@ inline const char* String8::string() const
     return mString;
 }
 
-inline size_t String8::length() const
-{
-    return SharedBuffer::sizeFromData(mString)-1;
-}
-
 inline size_t String8::size() const
 {
     return length();
@@ -272,12 +273,12 @@ inline bool String8::isEmpty() const
 
 inline size_t String8::bytes() const
 {
-    return SharedBuffer::sizeFromData(mString)-1;
+    return length();
 }
 
-inline const SharedBuffer* String8::sharedBuffer() const
+inline bool String8::contains(const char* other) const
 {
-    return SharedBuffer::bufferFromData(mString);
+    return find(other) >= 0;
 }
 
 inline String8& String8::operator=(const String8& other)

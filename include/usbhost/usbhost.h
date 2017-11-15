@@ -156,6 +156,10 @@ char* usb_device_get_manufacturer_name(struct usb_device *device);
  */
 char* usb_device_get_product_name(struct usb_device *device);
 
+/* Returns the version number for the USB device.
+ */
+int usb_device_get_version(struct usb_device *device);
+
 /* Returns the USB serial number for the USB device.
  * Call free() to free the result when you are done with it.
  */
@@ -189,6 +193,13 @@ int usb_device_release_interface(struct usb_device *device, unsigned int interfa
 int usb_device_connect_kernel_driver(struct usb_device *device,
         unsigned int interface, int connect);
 
+/* Sets the current configuration for the device to the specified configuration */
+int usb_device_set_configuration(struct usb_device *device, int configuration);
+
+/* Sets the specified interface of a USB device */
+int usb_device_set_interface(struct usb_device *device, unsigned int interface,
+                            unsigned int alt_setting);
+
 /* Sends a control message to the specified device on endpoint zero */
 int usb_device_control_transfer(struct usb_device *device,
                             int requestType,
@@ -207,6 +218,9 @@ int usb_device_bulk_transfer(struct usb_device *device,
                             void* buffer,
                             int length,
                             unsigned int timeout);
+
+/** Reset USB bus for the device */
+int usb_device_reset(struct usb_device *device);
 
 /* Creates a new usb_request. */
 struct usb_request *usb_request_new(struct usb_device *dev,

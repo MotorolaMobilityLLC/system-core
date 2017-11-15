@@ -56,6 +56,9 @@
 #define USB_FS_ID_SCANNER   USB_FS_DIR "/%d/%d"
 #define USB_FS_ID_FORMAT    USB_FS_DIR "/%03d/%03d"
 
+// Some devices fail to send string descriptors if we attempt reading > 255 bytes
+#define MAX_STRING_DESCRIPTOR_LENGTH    255
+
 // From drivers/usb/core/devio.c
 // I don't know why this isn't in a kernel header
 #define MAX_USBFS_BUFFER_SIZE   16384
@@ -263,11 +266,12 @@ int usb_host_read_event(struct usb_host_context *context)
                 D("%s subdirectory %s: index: %d\n", (event->mask & IN_CREATE) ?
                         "new" : "gone", path, i);
                 if (i > 0 && i < MAX_USBFS_WD_COUNT) {
+                    int local_ret = 0;
                     if (event->mask & IN_CREATE) {
-                        ret = inotify_add_watch(context->fd, path,
+                        local_ret = inotify_add_watch(context->fd, path,
                                 IN_CREATE | IN_DELETE);
-                        if (ret >= 0)
-                            context->wds[i] = ret;
+                        if (local_ret >= 0)
+                            context->wds[i] = local_ret;
                         done = find_existing_devices_bus(path, context->cb_added,
                                 context->data);
                     } else if (event->mask & IN_DELETE) {
@@ -448,10 +452,12 @@ const struct usb_device_descriptor* usb_device_get_device_descriptor(struct usb_
 char* usb_device_get_string(struct usb_device *device, int id)
 {
     char string[256];
-    __u16 buffer[128];
-    __u16 languages[128];
+    __u16 buffer[MAX_STRING_DESCRIPTOR_LENGTH / sizeof(__u16)];
+    __u16 languages[MAX_STRING_DESCRIPTOR_LENGTH / sizeof(__u16)];
     int i, result;
     int languageCount = 0;
+
+    if (id == 0) return NULL;
 
     string[0] = 0;
     memset(languages, 0, sizeof(languages));
@@ -486,31 +492,25 @@ char* usb_device_get_string(struct usb_device *device, int id)
 char* usb_device_get_manufacturer_name(struct usb_device *device)
 {
     struct usb_device_descriptor *desc = (struct usb_device_descriptor *)device->desc;
-
-    if (desc->iManufacturer)
-        return usb_device_get_string(device, desc->iManufacturer);
-    else
-        return NULL;
+    return usb_device_get_string(device, desc->iManufacturer);
 }
 
 char* usb_device_get_product_name(struct usb_device *device)
 {
     struct usb_device_descriptor *desc = (struct usb_device_descriptor *)device->desc;
+    return usb_device_get_string(device, desc->iProduct);
+}
 
-    if (desc->iProduct)
-        return usb_device_get_string(device, desc->iProduct);
-    else
-        return NULL;
+int usb_device_get_version(struct usb_device *device)
+{
+    struct usb_device_descriptor *desc = (struct usb_device_descriptor *)device->desc;
+    return desc->bcdUSB;
 }
 
 char* usb_device_get_serial(struct usb_device *device)
 {
     struct usb_device_descriptor *desc = (struct usb_device_descriptor *)device->desc;
-
-    if (desc->iSerialNumber)
-        return usb_device_get_string(device, desc->iSerialNumber);
-    else
-        return NULL;
+    return usb_device_get_string(device, desc->iSerialNumber);
 }
 
 int usb_device_is_writeable(struct usb_device *device)
@@ -554,6 +554,21 @@ int usb_device_connect_kernel_driver(struct usb_device *device,
     ctl.ioctl_code = (connect ? USBDEVFS_CONNECT : USBDEVFS_DISCONNECT);
     ctl.data = NULL;
     return ioctl(device->fd, USBDEVFS_IOCTL, &ctl);
+}
+
+int usb_device_set_configuration(struct usb_device *device, int configuration)
+{
+    return ioctl(device->fd, USBDEVFS_SETCONFIGURATION, &configuration);
+}
+
+int usb_device_set_interface(struct usb_device *device, unsigned int interface,
+                            unsigned int alt_setting)
+{
+    struct usbdevfs_setinterface ctl;
+
+    ctl.interface = interface;
+    ctl.altsetting = alt_setting;
+    return ioctl(device->fd, USBDEVFS_SETINTERFACE, &ctl);
 }
 
 int usb_device_control_transfer(struct usb_device *device,
@@ -600,6 +615,11 @@ int usb_device_bulk_transfer(struct usb_device *device,
     ctrl.data = buffer;
     ctrl.timeout = timeout;
     return ioctl(device->fd, USBDEVFS_BULK, &ctrl);
+}
+
+int usb_device_reset(struct usb_device *device)
+{
+    return ioctl(device->fd, USBDEVFS_RESET);
 }
 
 struct usb_request *usb_request_new(struct usb_device *dev,
@@ -689,6 +709,6 @@ struct usb_request *usb_request_wait(struct usb_device *dev)
 int usb_request_cancel(struct usb_request *req)
 {
     struct usbdevfs_urb *urb = ((struct usbdevfs_urb*)req->private_data);
-    return ioctl(req->dev->fd, USBDEVFS_DISCARDURB, &urb);
+    return ioctl(req->dev->fd, USBDEVFS_DISCARDURB, urb);
 }
 

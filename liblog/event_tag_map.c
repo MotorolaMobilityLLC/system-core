@@ -13,15 +13,18 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
+#include <assert.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/mman.h>
+
 #include <log/event_tag_map.h>
 #include <log/log.h>
 
-#include <stdlib.h>
-#include <string.h>
-#include <fcntl.h>
-#include <sys/mman.h>
-#include <errno.h>
-#include <assert.h>
+#include "log_portability.h"
 
 #define OUT_TAG "EventTagMap"
 
@@ -52,7 +55,6 @@ static int countMapLines(const EventTagMap* map);
 static int parseMapLines(EventTagMap* map);
 static int scanTagLine(char** pData, EventTag* tag, int lineNum);
 static int sortTags(EventTagMap* map);
-static void dumpTags(const EventTagMap* map);
 
 
 /*
@@ -61,7 +63,7 @@ static void dumpTags(const EventTagMap* map);
  * We create a private mapping because we want to terminate the log tag
  * strings with '\0'.
  */
-EventTagMap* android_openEventTagMap(const char* fileName)
+LIBLOG_ABI_PUBLIC EventTagMap* android_openEventTagMap(const char* fileName)
 {
     EventTagMap* newTagMap;
     off_t end;
@@ -71,7 +73,7 @@ EventTagMap* android_openEventTagMap(const char* fileName)
     if (newTagMap == NULL)
         return NULL;
 
-    fd = open(fileName, O_RDONLY);
+    fd = open(fileName, O_RDONLY | O_CLOEXEC);
     if (fd < 0) {
         fprintf(stderr, "%s: unable to open map '%s': %s\n",
             OUT_TAG, fileName, strerror(errno));
@@ -109,7 +111,7 @@ fail:
 /*
  * Close the map.
  */
-void android_closeEventTagMap(EventTagMap* map)
+LIBLOG_ABI_PUBLIC void android_closeEventTagMap(EventTagMap* map)
 {
     if (map == NULL)
         return;
@@ -123,7 +125,8 @@ void android_closeEventTagMap(EventTagMap* map)
  *
  * The entries are sorted by tag number, so we can do a binary search.
  */
-const char* android_lookupEventTag(const EventTagMap* map, int tag)
+LIBLOG_ABI_PUBLIC const char* android_lookupEventTag(const EventTagMap* map,
+                                                     int tag)
 {
     int hi, lo, mid;
 
@@ -185,8 +188,6 @@ static inline int isCharDigit(char c)
  */
 static int processFile(EventTagMap* map)
 {
-    EventTag* tagArray = NULL;
-
     /* get a tag count */
     map->numTags = countMapLines(map);
     if (map->numTags < 0)
@@ -422,17 +423,3 @@ static int sortTags(EventTagMap* map)
 
     return 0;
 }
-
-/*
- * Dump the tag array for debugging.
- */
-static void dumpTags(const EventTagMap* map)
-{
-    int i;
-
-    for (i = 0; i < map->numTags; i++) {
-        const EventTag* tag = &map->tagArray[i];
-        printf("  %3d: %6d '%s'\n", i, tag->tagIndex, tag->tagStr);
-    }
-}
-
