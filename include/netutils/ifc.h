@@ -74,6 +74,7 @@ extern int ifc_set_fwmark_rule(const char *ifname, int mark, int add);
 extern int ifc_set_txq_state(const char *ifname, int state);
 extern int ifc_ccmni_md_cfg(const char *ifname, int md_id);
 extern int ifc_ipv6_trigger_rs(char *ifname);
+extern int ifc_set_ipsec_forward(char *inIface, char *outIface, char *nxthop, char prefLen, int enable);
 struct uid_err {
     int appuid;
 	int errorNum;
