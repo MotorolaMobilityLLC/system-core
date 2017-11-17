@@ -493,6 +493,11 @@ on post-fs-data
     mkdir /data/cache/backup_stage 0700 system system
     mkdir /data/cache/backup 0700 system system
 
+    ##Lenovo,miaotao1, INDRIYA-2556,workaround for mtklog
+    rm /data/misc/mblog/mblog_config
+    rm /data/misc/mblog/mblog_history
+    rm /data/misc/mblog/inter_sd_folder
+
     init_user0
 
     # Set SELinux security contexts on upgrade or policy update.
