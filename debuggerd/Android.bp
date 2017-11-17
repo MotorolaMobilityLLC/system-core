@@ -3,7 +3,6 @@ cc_defaults {
     cflags: [
         "-Wall",
         "-Wextra",
-        "-Werror",
         "-Wno-nullability-completeness",
         "-Os",
     ],

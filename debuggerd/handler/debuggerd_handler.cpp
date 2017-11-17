@@ -482,11 +482,6 @@ static void debuggerd_signal_handler(int signal_number, siginfo_t* info, void* c
   // and then wait for it to finish.
   futex_wait(&thread_info.pseudothread_tid, child_pid);
 
-  // Restore PR_SET_DUMPABLE to its original value.
-  if (prctl(PR_SET_DUMPABLE, orig_dumpable) != 0) {
-    fatal_errno("failed to restore dumpable");
-  }
-
   // Signals can either be fatal or nonfatal.
   // For fatal signals, crash_dump will PTRACE_CONT us with the signal we
   // crashed with, so that processes using waitpid on us will see that we
