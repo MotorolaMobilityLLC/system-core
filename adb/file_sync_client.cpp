@@ -441,7 +441,7 @@ class SyncConnection {
         syncsendbuf sbuf;
         sbuf.id = ID_DATA;
         while (true) {
-            int bytes_read = adb_read(lfd, sbuf.data, max - sizeof(SyncRequest));
+            int bytes_read = adb_read(lfd, sbuf.data, max);
             if (bytes_read == -1) {
                 Error("reading '%s' locally failed: %s", lpath, strerror(errno));
                 adb_close(lfd);
