@@ -61,10 +61,12 @@ on init
     chown system system /dev/stune/foreground/tasks
     chown system system /dev/stune/background/tasks
     chown system system /dev/stune/top-app/tasks
+    chown system system /dev/goodix_fp
     chmod 0664 /dev/stune/tasks
     chmod 0664 /dev/stune/foreground/tasks
     chmod 0664 /dev/stune/background/tasks
     chmod 0664 /dev/stune/top-app/tasks
+    chmod 0666 /dev/goodix_fp
 
     # Mount staging areas for devices managed by vold
     # See storage config details at http://source.android.com/tech/storage/
