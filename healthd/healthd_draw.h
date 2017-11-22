@@ -36,6 +36,8 @@ class HealthdDraw {
   // Blanks screen if true, unblanks if false.
   virtual void blank_screen(bool blank);
 
+  virtual int set_backlight(bool toggle);
+
  protected:
   virtual void clear_screen();
 
