@@ -115,6 +115,8 @@ typedef enum {
     HAL_COLOR_MODE_SRGB = 7,
     HAL_COLOR_MODE_ADOBE_RGB = 8,
     HAL_COLOR_MODE_DISPLAY_P3 = 9,
+    HAL_COLOR_MODE_HDR_ON = 10,
+    HAL_COLOR_MODE_HDR_OFF = 11,
 } android_color_mode_t;
 
 typedef enum {
