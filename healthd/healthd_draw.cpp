@@ -22,6 +22,9 @@
 
 #define LOGE(x...) KLOG_ERROR("charger", x);
 #define LOGV(x...) KLOG_DEBUG("charger", x);
+#define LOGI(x...) KLOG_INFO("charger", x);
+
+#define BACKLIGHT_TOGGLE_PATH "/sys/class/leds/lcd-backlight/brightness"
 
 HealthdDraw::HealthdDraw(animation* anim)
   : kSplitScreen(HEALTHD_DRAW_SPLIT_SCREEN),
@@ -56,6 +59,32 @@ void HealthdDraw::redraw_screen(const animation* batt_anim, GRSurface* surf_unkn
   else
     draw_battery(batt_anim);
   gr_flip();
+}
+
+int HealthdDraw::set_backlight(bool toggle) {
+  int fd;
+  char buffer[10];
+
+  memset(buffer, '\0', sizeof(buffer));
+  fd = open(BACKLIGHT_TOGGLE_PATH, O_RDWR);
+  if (fd < 0) {
+    LOGE("Could not open backlight node : %s", strerror(errno));
+    goto cleanup;
+  }
+  if (toggle) {
+    LOGI("Enabling backlight");
+    snprintf(buffer, sizeof(int), "%d\n", 100);
+  } else {
+    LOGI("Disabling backlight");
+    snprintf(buffer, sizeof(int), "%d\n", 0);
+  }
+  if (write(fd, buffer,strlen(buffer)) < 0) {
+    LOGE("Could not write to backlight node : %s", strerror(errno));
+    goto cleanup;
+  }
+cleanup:
+  if (fd >= 0) close(fd);
+  return 0;
 }
 
 void HealthdDraw::blank_screen(bool blank) { gr_fb_blank(blank); }
