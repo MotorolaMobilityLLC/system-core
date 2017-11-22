@@ -293,6 +293,7 @@ static void update_screen_state(charger* charger, int64_t now) {
 
 #ifndef CHARGER_DISABLE_INIT_BLANK
         healthd_draw->blank_screen(true);
+        healthd_draw->set_backlight(false);
 #endif
     }
 
@@ -301,6 +302,7 @@ static void update_screen_state(charger* charger, int64_t now) {
         reset_animation(batt_anim);
         charger->next_screen_transition = -1;
         healthd_draw->blank_screen(true);
+        healthd_draw->set_backlight(false);
         LOGV("[%" PRId64 "] animation done\n", now);
         if (charger->charger_connected) request_suspend(true);
         return;
@@ -309,7 +311,10 @@ static void update_screen_state(charger* charger, int64_t now) {
     disp_time = batt_anim->frames[batt_anim->cur_frame].disp_time;
 
     /* unblank the screen on first cycle and first frame */
-    if (batt_anim->cur_cycle == 0 && batt_anim->cur_frame == 0) healthd_draw->blank_screen(false);
+    if (batt_anim->cur_cycle == 0 && batt_anim->cur_frame == 0) {
+        healthd_draw->blank_screen(false);
+        healthd_draw->set_backlight(true);
+    }
 
     /* animation starting, set up the animation */
     if (batt_anim->cur_frame == 0) {
