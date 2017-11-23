@@ -278,6 +278,9 @@ LIBLOG_ABI_PUBLIC int __android_log_is_loggable(int prio, const char* tag,
 }
 
 LIBLOG_ABI_PUBLIC int __android_log_is_debuggable() {
+#ifdef MOTO_BLD_C
+return 1;
+#endif
   static uint32_t serial;
   static struct cache_char tag_cache;
   static const char key[] = "ro.debuggable";
