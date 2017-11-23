@@ -612,6 +612,18 @@ static void load_override_properties() {
     }
 }
 
+/*Begin, lenovo-sw yelw1, get prop and ret once again for update */
+void update_persistent_aplogd_property(void)
+{
+    int ret = 0;
+    std::string enablelogd = android::base::GetProperty("persist.log.aplogd.enable","");
+    ret = property_set("persist.log.aplogd.enable", enablelogd.c_str());
+    if(ret < 0)
+        PLOG(ERROR) << "set persist.log.aplogd.enable, fail value = " << enablelogd.c_str();
+}
+/*End, lenovo-sw yelw1, get prop and ret once again for update */
+
+
 /* When booting an encrypted system, /data is not mounted when the
  * property service is started, so any properties stored there are
  * not loaded.  Vold triggers init to load these properties once it
@@ -619,6 +631,9 @@ static void load_override_properties() {
  */
 void load_persist_props(void) {
     load_override_properties();
+    /*Begin, lenovo-sw yelw1, update persist.log.aplogd.enable prop */
+    update_persistent_aplogd_property();
+    /*End, lenovo-sw yelw1, update persist.log.aplogd.enable prop */
     /* Read persistent properties after all default values have been loaded. */
     load_persistent_properties();
     property_set("ro.persistent_properties.ready", "true");
