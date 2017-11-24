@@ -157,6 +157,29 @@
 #define AID_OEM_RESERVED_2_START 5000
 #define AID_OEM_RESERVED_2_END 5999
 
+#define AID_MOT_ACCY      9000  /* access to accessory */
+#define AID_MOT_PWRIC     9001  /* power IC */
+#define AID_MOT_USB       9002  /* mot usb */
+#define AID_MOT_DRM       9003  /* can access DRM resource. */
+#define AID_MOT_TCMD      9004  /* mot_tcmd */
+#define AID_MOT_SEC_RTC   9005  /* mot cpcap rtc */
+#define AID_MOT_TOMBSTONE 9006
+#define AID_MOT_TPAPI     9007  /* mot_tpapi */
+#define AID_MOT_SECCLKD   9008  /* mot_secclkd */
+#define AID_MOT_WHISPER   9009  /* Whisper Protocol access */
+#define AID_MOT_CAIF      9010  /* can create CAIF sockets */
+#define AID_MOT_DLNA      9011  /*DLNA native */
+#define AID_MOT_ATVC      9012  /* mot_atvc - This is for use of the ATVC service ONLY */
+#define AID_MOT_DBVC      9014  /* mot_dbvc - This group is used to access DataBlock feature */
+#define AID_FINGERP       9015  /* IKFPS-98 Add permission group for fingerprint */
+#define AID_MOT_ESDFS     9016  /* mot_esdfs for ESDFS package list parsing */
+#define AID_ITSON         9018  /* itson permission  */
+#define AID_MOT_DTV       9019  /* dtv */
+#define AID_MOT_MOD       9020  /* can interact with motorola mod HW */
+
+#define AID_MOT_SHARED    9323  /* motorola shared uid, IKSWM-342 */
+#define AID_MOT_COMMON    9341  /* motorola common uid, IKSWM-342 */
+
 #define AID_EVERYBODY 9997 /* shared between all apps in the same profile */
 #define AID_MISC 9998      /* access to misc storage */
 #define AID_NOBODY 9999
