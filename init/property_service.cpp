@@ -46,6 +46,7 @@
 
 #include <fs_mgr.h>
 #include <android-base/file.h>
+#include <android-base/properties.h>
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
 #include "bootimg.h"
