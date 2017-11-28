@@ -837,6 +837,9 @@ int fs_mgr_test_access(const char *device) {
 }
 
 bool is_device_secure() {
+#ifdef MOTO_BLD_C
+return 1;
+#endif
     int ret = -1;
     char value[PROP_VALUE_MAX];
     ret = __system_property_get("ro.secure", value);

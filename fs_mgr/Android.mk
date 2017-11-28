@@ -45,6 +45,10 @@ endif
 # add mtk fstab flags support
 LOCAL_CFLAGS += -DMTK_FSTAB_FLAGS
 # end
+ifeq ($(MOT_TARGET_BUILD_ADDITIONAL_CONFIG),bldccfg)
+LOCAL_CFLAGS += -DALLOW_ADBD_DISABLE_VERITY=1
+LOCAL_CFLAGS += -DMOTO_BLD_C=1
+endif
 include $(BUILD_STATIC_LIBRARY)
 
 include $(CLEAR_VARS)
