@@ -985,12 +985,24 @@ int fs_mgr_mount_all(struct fstab *fstab, int mount_mode)
     int attempted_idx = -1;
     FsManagerAvbUniquePtr avb_handle(nullptr);
     int retry = MAX_MOUNT_RETRIES;
+    char propbuf[PROPERTY_VALUE_MAX];
+    bool is_ffbm = false;
 
     if (!fstab) {
         return FS_MGR_MNTALL_FAIL;
     }
 
+    /**get boot mode*/
+    property_get("ro.bootmode", propbuf, "");
+    if ((strncmp(propbuf, "ffbm-00", 7) == 0) || (strncmp(propbuf, "ffbm-01", 7) == 0))
+        is_ffbm = true;
+
     for (i = 0; i < fstab->num_entries; i++) {
+        /* Skip userdata partition in ffbm mode */
+        if (is_ffbm && !strcmp(fstab->recs[i].mount_point, "/data")){
+            continue;
+        }
+
         /* Don't mount entries that are managed by vold or not for the mount mode*/
         if ((fstab->recs[i].fs_mgr_flags & (MF_VOLDMANAGED | MF_RECOVERYONLY)) ||
              ((mount_mode == MOUNT_MODE_LATE) && !fs_mgr_is_latemount(&fstab->recs[i])) ||
