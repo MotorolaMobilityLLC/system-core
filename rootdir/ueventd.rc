@@ -102,6 +102,9 @@ subsystem adf
 /sys/devices/virtual/usb_composite/*   enable      0664  root   system
 /sys/devices/system/cpu/cpu*   cpufreq/scaling_max_freq   0664  system system
 /sys/devices/system/cpu/cpu*   cpufreq/scaling_min_freq   0664  system system
-
+# add by liuzhenhe 20170919 start 
+/sys/devices/platform/1100f000.i2c/i2c-5/5-0034/rt5081_pmu_rgbled/leds/rt5081_pmu_led4  pwm_duty      0664  system   system
+/sys/devices/platform/1100f000.i2c/i2c-5/5-0034/rt5081_pmu_rgbled/leds/rt5081_pmu_led4  pwm_dim_freq      0664  system   system
+#add by liuzhenhe 20170919 end
 # DVB API device nodes
 /dev/dvb*                 0660   root       system
