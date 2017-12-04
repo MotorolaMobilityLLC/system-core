@@ -180,7 +180,7 @@
 #define AID_MOT_SHARED    9323  /* motorola shared uid, IKSWM-342 */
 #define AID_MOT_COMMON    9341  /* motorola common uid, IKSWM-342 */
 
-#define AID_LENOVO_MUSICKEY    9535 /* Lenovo, zengzm, 06/02/2017, INDRIYAPRO-2327 */
+#define AID_MUSICKEY    9535 /* Lenovo, zengzm, 06/02/2017, INDRIYAPRO-2327 */
 
 #define AID_EVERYBODY 9997 /* shared between all apps in the same profile */
 #define AID_MISC 9998      /* access to misc storage */
