@@ -20,6 +20,7 @@
 #include <fnmatch.h>
 #include <sys/sysmacros.h>
 #include <unistd.h>
+#include <fts.h>
 
 #include <memory>
 
@@ -154,18 +155,48 @@ bool SysfsPermissions::MatchWithSubsystem(const std::string& path,
 }
 
 void SysfsPermissions::SetPermissions(const std::string& path) const {
-    std::string attribute_file = path + "/" + attribute_;
-    LOG(VERBOSE) << "fixup " << attribute_file << " " << uid() << " " << gid() << " " << std::oct
-                 << perm();
+    if (strchr(attribute_.c_str(), '*') || strchr(attribute_.c_str(), '?')) {
+        FTS *ftsp;
+        FTSENT *entp;
 
-    if (access(attribute_file.c_str(), F_OK) == 0) {
-        if (chown(attribute_file.c_str(), uid(), gid()) != 0) {
-            PLOG(ERROR) << "chown(" << attribute_file << ", " << uid() << ", " << gid()
-                        << ") failed";
+        char * const dirs[] = { const_cast<char *>(path.c_str()), NULL };
+
+        int fts_options = FTS_COMFOLLOW | FTS_LOGICAL | FTS_NOCHDIR | FTS_NOSTAT;
+        if ((ftsp = fts_open(dirs, fts_options, NULL)) == NULL) {
+            continue;
         }
-        if (chmod(attribute_file.c_str(), perm()) != 0) {
-            PLOG(ERROR) << "chmod(" << attribute_file << ", " << perm() << ") failed";
+
+        while ((entp = fts_read(ftsp)) != NULL) {
+            switch (entp->fts_info) {
+            case FTS_D:
+            case FTS_F:
+                if (fnmatch(attribute_.c_str(), entp->fts_path + path.length() + 1, FNM_PATHNAME) == 0) {
+                    LOG(INFO) << "fixup " << entp->fts_path
+                              << " " << uid() << " " << gid() << " " << std::oct << perm();
+                    chown(entp->fts_path, uid(), gid());
+                    chmod(entp->fts_path, perm());
+                }
+                break;
+            default:
+                break;
+            }
         }
+        fts_close(ftsp);
+
+    } else {
+		std::string attribute_file = path + "/" + attribute_;
+		LOG(VERBOSE) << "fixup " << attribute_file << " " << uid() << " " << gid() << " " << std::oct
+					 << perm();
+
+		if (access(attribute_file.c_str(), F_OK) == 0) {
+			if (chown(attribute_file.c_str(), uid(), gid()) != 0) {
+				PLOG(ERROR) << "chown(" << attribute_file << ", " << uid() << ", " << gid()
+							<< ") failed";
+			}
+			if (chmod(attribute_file.c_str(), perm()) != 0) {
+				PLOG(ERROR) << "chmod(" << attribute_file << ", " << perm() << ") failed";
+			}
+		}
     }
 }
 
