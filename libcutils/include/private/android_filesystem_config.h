@@ -162,7 +162,7 @@
 
 /* AID_READPROC & AID_WAKELOCK needed by system_server
  * Please keep sync with ZygoteInit.java --setgroups */
-#define AID_READPROC 3014     /* Allow /proc read access */
+#define AID_READPROC 3009     /* Allow /proc read access */
 #define AID_WAKELOCK 3015     /* Allow system wakelock read/write access */
 
 /* The range 5000-5999 is also reserved for OEM, and must never be used here. */
