@@ -243,8 +243,6 @@ DeviceHandler CreateDeviceHandler() {
     std::string hardware = android::base::GetProperty("ro.hardware", "");
     parser.ParseConfig("/ueventd." + hardware + ".rc");
 
-    boot_device = android::base::GetProperty("ro.boot.bootdevice", "");
-
     return DeviceHandler(std::move(dev_permissions), std::move(sysfs_permissions),
                          std::move(subsystems), true);
 }
