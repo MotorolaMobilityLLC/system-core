@@ -37,6 +37,17 @@ std::string fs_mgr_get_slot_suffix() {
     return ab_suffix;
 }
 
+std::string fs_mgr_get_other_suffix(std::string suffix) {
+    if (suffix == "_a") {
+        return "_b";
+    }
+
+    if (suffix == "_b") {
+        return "_a";
+    }
+    return suffix;
+}
+
 // Updates |fstab| for slot_suffix. Returns true on success, false on error.
 bool fs_mgr_update_for_slotselect(struct fstab *fstab) {
     int n;
@@ -50,6 +61,11 @@ bool fs_mgr_update_for_slotselect(struct fstab *fstab) {
                 // Returns false as non A/B devices should not have MF_SLOTSELECT.
                 if (ab_suffix.empty()) return false;
             }
+
+            if (fstab->recs[n].fs_mgr_flags & MF_OTHER_SLOT) {
+                ab_suffix = fs_mgr_get_other_suffix(ab_suffix);
+            }
+
             if (asprintf(&tmp, "%s%s", fstab->recs[n].blk_device, ab_suffix.c_str()) > 0) {
                 free(fstab->recs[n].blk_device);
                 fstab->recs[n].blk_device = tmp;
