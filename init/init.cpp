@@ -530,7 +530,7 @@ static void export_kernel_boot_props() {
     int fd = open(boardIdPath1, O_RDONLY);
     int path2 = 0;
     if (fd < 0 && (path2 = 1, fd = open(boardIdPath2, O_RDONLY)) < 0) {
-        ERROR("board Id path:%s and %s are both NOT valid\n", boardIdPath1, boardIdPath2);
+        //ERROR("board Id path:%s and %s are both NOT valid\n", boardIdPath1, boardIdPath2);
     }
     else {
         char boardIdStr[20];
@@ -544,7 +544,7 @@ static void export_kernel_boot_props() {
         }
         if (path2) {
             skuid = atoi(boardIdStr);
-            NOTICE("longcheer - skuid = %d\n", skuid);
+            //NOTICE("longcheer - skuid = %d\n", skuid);
             if (0 <= skuid && skuid <= 4)
             {
                 hwTag = (char *)"EVT2";

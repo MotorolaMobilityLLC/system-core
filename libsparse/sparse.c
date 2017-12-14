@@ -203,7 +203,7 @@ struct chunk_data {
 	void		*priv;
 	unsigned int	block;
 	unsigned int	nr_blocks;
-	int (*write)(void *priv, const void *data, int64_t len, unsigned int block,
+	int (*write)(void *priv, const void *data, int len, unsigned int block,
 		     unsigned int nr_blocks);
 };
 

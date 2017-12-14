@@ -703,9 +703,9 @@ int write_fd_chunk(struct output_file *out, int64_t len,
 		int fd, int64_t offset)
 {
 	int ret;
-	off64_t aligned_offset;
+	int64_t aligned_offset;
 	int64_t aligned_diff;
-	int64_t buffer_size;
+	uint64_t buffer_size;
 	char *ptr;
 
 	aligned_offset = offset & ~(4096 - 1);
