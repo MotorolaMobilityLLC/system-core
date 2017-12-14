@@ -525,7 +525,7 @@ static void load_carrier_config(void) {
     for (int idx = 0; props[idx] != nullptr; idx++) {
         std::string bootprop = GetProperty(props[idx], "");
         if (!bootprop.empty()) {
-            std::string rcpath = StringPrintf("/vendor/etc/init/carrier/init.%s.rc", bootprop.c_str());
+            std::string rcpath = "/vendor/etc/init/carrier/init.%s.rc" + bootprop;
             if (access(rcpath.c_str(), R_OK) == 0) {
                 LOG(INFO) << "Reading specific config file [" << bootprop << "]";
                 parser.ParseConfig(rcpath.c_str());

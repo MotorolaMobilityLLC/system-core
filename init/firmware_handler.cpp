@@ -27,11 +27,14 @@
 #include <android-base/chrono_utils.h>
 #include <android-base/file.h>
 #include <android-base/logging.h>
+#include <android-base/stringprintf.h>
+#include <android-base/strings.h>
 #include <android-base/unique_fd.h>
 
 using android::base::Timer;
 using android::base::unique_fd;
 using android::base::WriteFully;
+using android::base::StringPrintf;
 
 namespace android {
 namespace init {
@@ -100,17 +103,17 @@ static int is_hard_link(const char *path)
     return(rv);
 }
 
-static int LoadOneExtended(uevent* uevent, int loading_fd, int data_fd, size_t index)
+static int LoadOneExtended(const Uevent& uevent, int loading_fd, int data_fd, size_t index)
 {
     int ret = 0;
-    std::string root = StringPrintf("/sys%s", uevent->path);
+    std::string root = StringPrintf("/sys%s", uevent.path.c_str());
 
     /* look for naming convention for the target firmware */
-    if (strstr(uevent->firmware, extended_paths[index].fw_substring) == NULL) {
+    if (strstr(uevent.firmware.c_str(), extended_paths[index].fw_substring) == NULL) {
         return 0;
     }
 
-    std::string file = StringPrintf("%s/%s", extended_paths[index].fw_path, uevent->firmware);
+    std::string file = StringPrintf("%s/%s", extended_paths[index].fw_path, uevent.firmware.c_str());
 
     if (is_hard_link(file.c_str())) {
         return 0;
@@ -138,7 +141,7 @@ static int LoadOneExtended(uevent* uevent, int loading_fd, int data_fd, size_t i
     -   -1 - Firmware loading was either success or failure. No need to look for further folders.
     -    0 - Firmware was not loaded. Further folders need to be looked up.
 */
-static int LoadFromExtended(uevent* uevent, int loading_fd, int data_fd)
+static int LoadFromExtended(const Uevent& uevent, int loading_fd, int data_fd)
 {
     size_t i;
 
