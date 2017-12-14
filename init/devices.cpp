@@ -21,6 +21,7 @@
 #include <sys/sysmacros.h>
 #include <unistd.h>
 #include <fts.h>
+#include <fcntl.h>
 
 #include <memory>
 
@@ -156,7 +157,7 @@ void SysfsPermissions::SetPermissions(const std::string& path) const {
 
         int fts_options = FTS_COMFOLLOW | FTS_LOGICAL | FTS_NOCHDIR | FTS_NOSTAT;
         if ((ftsp = fts_open(dirs, fts_options, NULL)) == NULL) {
-            continue;
+            return;
         }
 
         while ((entp = fts_read(ftsp)) != NULL) {
@@ -402,7 +403,7 @@ std::vector<std::string> DeviceHandler::GetBlockDeviceSymlinks(const Uevent& uev
 
     if (uevent.partition_num >= 0) {
         links.emplace_back(link_path + "/by-num/p" + std::to_string(uevent.partition_num));
-        if (is_bootdevice_linked && !boot_device.empty() && (device.find(boot_device) != std:string::npos)) {
+        if (is_bootdevice_linked && !boot_device.empty() && (device.find(boot_device) != std::string::npos)) {
             links.emplace_back("/dev/block/bootdevice/by-name/p" + std::to_string(uevent.partition_num));
         }
     }
@@ -463,7 +464,7 @@ void DeviceHandler::HandleDeviceEvent(const Uevent& uevent) {
 
     /* specially handle uevent of "mods_interface" to fix race with ModManager */
     if (uevent.subsystem == "mods_interfaces" && uevent.action == "online") {
-        std::string uevent_path = StringPrintf("%s/%s/uevent", "/sys", uevent.path);
+        std::string uevent_path = StringPrintf("%s/%s/uevent", "/sys", uevent.path.c_str());
         int fd = open(uevent_path.c_str(), O_WRONLY);
         if (fd >= 0) {
             write(fd, "add\n", 4);

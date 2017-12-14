@@ -110,6 +110,7 @@ cc_binary {
         "signal_handler.cpp",
         "ueventd.cpp",
         "watchdogd.cpp",
+        "hw_mappings.cpp",
     ],
     include_dirs: [
         "system/core/mkbootimg"

@@ -39,6 +39,7 @@ endif
 
 ifeq ($(TARGET_USER_MODE_LINUX), true)
     init_cflags += -DUSER_MODE_LINUX
+endif
 
 ifeq ($(BOARD_HAS_AUDIO_DSP_XMCS),true)
 init_options += -DMOTO_AOV_WITH_XMCS
