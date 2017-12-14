@@ -708,3 +708,18 @@ on property:ro.debuggable=1
 service flash_recovery /system/bin/install-recovery.sh
     class main
     oneshot
+
+#Added by dingying for runin
+
+on property:persist.sys.runin=enable
+    write /sys/class/power_supply/battery/device/BatteryTestStatus 1
+
+on property:persist.sys.runin=disable
+    write /sys/class/power_supply/battery/device/BatteryTestStatus 0
+
+#Added by zhaoyang for VZM Operator charging
+on property:persist.mot.demo_mode_charging=1
+    write /sys/class/power_supply/battery/device/force_demo_mode 70
+
+on property:persist.mot.demo_mode_charging=1 && property:ro.carrier=vzw
+    write /sys/class/power_supply/battery/device/force_demo_mode 35
