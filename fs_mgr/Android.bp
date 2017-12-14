@@ -36,7 +36,7 @@ cc_library_static {
     export_include_dirs: ["include"],
     include_dirs: [
         "system/vold",
-        "external/libselinux/include",
+        "external/selinux/libselinux/include",
     ],
     srcs: [
         "fs_mgr.cpp",
