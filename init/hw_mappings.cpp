@@ -9,13 +9,16 @@
 #include <ctype.h>
 #include <errno.h>
 
+#include <android-base/logging.h>
+#include <android-base/file.h>
 #include <android-base/properties.h>
 #include <cutils/android_reboot.h>
+#include <cutils/properties.h>
 #include <log/log.h>
 
+#include "hw_tags.h"
 #include "log.h"
 #include "util.h"
-#include "hw_tags.h"
 
 //#define XML_EXTREME_DEBUG
 #define pr_debug(fmt, args...)	if(debug_on) ALOGE(fmt, ##args)
@@ -30,6 +33,9 @@ static bool debug_on;
 #define PROP_PATH_OEM_OVERRIDE "/oem/oem.prop"
 
 #define BUFFSIZE 8192
+
+namespace android {
+namespace init {
 
 typedef struct param_s {
 	char *pname;
@@ -492,9 +498,9 @@ static void
 xml_load_properties_from_file(const char* filename, const char* filter)
 {
     std::string data;
-    int no_error = read_file(filename, &data);
-    pr_debug("reading file '%s' rc=%d\n", filename, no_error);
-    if (no_error) {
+    std::string err;
+
+    if (ReadFile(filename, &data, &err)) {
         data.push_back('\n');
         xml_load_properties(&data[0], filter);
     }
@@ -957,3 +963,6 @@ void verify_carrier_compatibility(void)
 	LOG(WARNING) << "[" << carrier_ro << "] compatibility check failed; rebooting to recovery...";
 	reboot_recovery();
 }
+
+} //namespace init
+} //namespace android
