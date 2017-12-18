@@ -29,6 +29,14 @@
 #include <time.h>
 #include <unistd.h>
 
+#include <dirent.h>
+#include <sys/cdefs.h>
+#include <sys/ioctl.h>
+#include <sys/reboot.h>
+#include <sys/syscall.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+
 #include <android-base/file.h>
 #include <android-base/properties.h>
 #include <android-base/strings.h>
@@ -76,6 +84,8 @@
 
 #define __STRINGIFY(x) #x
 #define STRINGIFY(x) __STRINGIFY(x)
+
+#include <cutils/android_reboot.h>
 
 struct verity_state {
     uint32_t header;
@@ -815,6 +825,16 @@ int fs_mgr_setup_verity(struct fstab_rec *fstab, bool wait_for_verity_dev)
             retval = FS_MGR_SETUP_VERITY_SUCCESS;
             goto out;
         }
+
+#ifdef LENOVO_RADIO_SECURE
+        // Invalid verity signature for the metadata, recomend to
+        // recover the system partition via the metadata reset
+        // since this should be caused by maliciously reflash from
+        // third party, thus reflash to official userbuild is needed.
+        LERROR << "DM-verity: Security failure,rebooting into bootloader mode...";
+        syscall(__NR_reboot, LINUX_REBOOT_MAGIC1, LINUX_REBOOT_MAGIC2, LINUX_REBOOT_CMD_RESTART2, "bootloader");
+#endif
+
 
         // invalidate root hash and salt to trigger device-specific recovery
         if (invalidate_table(params.table, verity.table_length) < 0) {

@@ -33,6 +33,7 @@ LOCAL_C_INCLUDES := \
     system/extras/ext4_utils
 LOCAL_MODULE:= libfs_mgr
 LOCAL_STATIC_LIBRARIES := $(common_static_libraries)
+LOCAL_STATIC_LIBRARIES += libselinux
 LOCAL_EXPORT_C_INCLUDE_DIRS := $(LOCAL_PATH)/include
 LOCAL_CFLAGS := -Werror
 ifneq (,$(filter userdebug,$(TARGET_BUILD_VARIANT)))
@@ -43,7 +44,14 @@ LOCAL_CFLAGS += -DALLOW_SKIP_SECURE_CHECK=1
 endif
 # add mtk fstab flags support
 LOCAL_CFLAGS += -DMTK_FSTAB_FLAGS
+ifeq ($(LENOVO_RADIO_SECURE), yes)
+LOCAL_CFLAGS += -DLENOVO_RADIO_SECURE=1
+endif
 # end
+ifeq ($(MOT_TARGET_BUILD_ADDITIONAL_CONFIG),bldccfg)
+LOCAL_CFLAGS += -DALLOW_ADBD_DISABLE_VERITY=1
+LOCAL_CFLAGS += -DMOTO_BLD_C=1
+endif
 include $(BUILD_STATIC_LIBRARY)
 
 include $(CLEAR_VARS)

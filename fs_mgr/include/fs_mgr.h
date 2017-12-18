@@ -141,6 +141,8 @@ int fs_mgr_is_quota(struct fstab_rec *fstab);
 int fs_mgr_swapon_all(struct fstab *fstab);
 
 int fs_mgr_do_format(struct fstab_rec *fstab, bool reserve_footer);
+int fs_mgr_is_partition_encrypted(struct fstab_rec *fstab);
+int fs_mgr_identify_fs(char *fs_type, char *blk_device);
 
 #define FS_MGR_SETUP_VERITY_SKIPPED  (-3)
 #define FS_MGR_SETUP_VERITY_DISABLED (-2)
