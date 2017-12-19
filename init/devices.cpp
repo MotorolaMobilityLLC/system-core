@@ -49,6 +49,7 @@
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
 #include <android-base/unique_fd.h>
+#include <android-base/properties.h>
 #include <cutils/list.h>
 #include <cutils/uevent.h>
 
@@ -58,6 +59,8 @@
 #include "log.h"
 #include "property_service.h"
 #include <zlib.h>
+
+using android::base::GetProperty;
 
 #define SYSFS_PREFIX    "/sys"
 static const char *firmware_dirs[] = { "/etc/firmware",
@@ -481,6 +484,20 @@ err:
     return NULL;
 }
 
+static void make_link_init(const char* oldpath, const char* newpath) {
+  const char* slash = strrchr(newpath, '/');
+  if (!slash) return;
+
+  if (mkdir_recursive(dirname(newpath), 0755)) {
+    PLOG(ERROR) << "Failed to create directory " << dirname(newpath);
+  }
+
+  if (symlink(oldpath, newpath) && errno != EEXIST) {
+    PLOG(ERROR) << "Failed to symlink " << oldpath << " to " << newpath;
+  }
+}
+
+
 char** get_block_device_symlinks(struct uevent* uevent) {
     const char *slash;
     const char *type;
@@ -548,27 +565,14 @@ char** get_block_device_symlinks(struct uevent* uevent) {
         links[link_num] = NULL;
 
     if (!bootdevice) {
-        std::string property = property_get("ro.boot.bootdevice");
+        std::string property = GetProperty("ro.boot.bootdevice", "");
         if (!property.empty())
             bootdevice = strdup(property.c_str());
     }
-    if (bootdevice && !strcmp(device, bootdevice))
+    if (bootdevice && !strcmp(device.c_str(), bootdevice))
         make_link_init(link_path, "/dev/block/bootdevice");
 
     return links;
-}
-
-static void make_link_init(const char* oldpath, const char* newpath) {
-  const char* slash = strrchr(newpath, '/');
-  if (!slash) return;
-
-  if (mkdir_recursive(dirname(newpath), 0755)) {
-    PLOG(ERROR) << "Failed to create directory " << dirname(newpath);
-  }
-
-  if (symlink(oldpath, newpath) && errno != EEXIST) {
-    PLOG(ERROR) << "Failed to symlink " << oldpath << " to " << newpath;
-  }
 }
 
 static void remove_link(const char* oldpath, const char* newpath) {
@@ -869,30 +873,33 @@ static int is_hard_link(const char *path)
         if((S_ISDIR(sb.st_mode)) || (sb.st_nlink == 1))
             rv = 0;
         else
-            ERROR("Invalid hard link (%s), nlink=%ld ignoring!\n", path,
-                  (long)sb.st_nlink);
+            PLOG(ERROR) << "Invalid hard link (" << path << "), nlink="
+                        << sb.st_nlink << "ignoring!";
     } else if (errno == ENOENT)
         rv = 0;
     return(rv);
 }
 
-static int load_one_extended(const char *firmware, int loading_fd, int data_fd, size_t index)
+#define ARRAY_SIZE(x) (sizeof(x) / sizeof (*(x)))
+
+static int load_one_extended(struct uevent *uevent, const std::string& root, int loading_fd, int data_fd, size_t index)
 {
-    int l, fw_fd;
+    int l;
     char *file = NULL;
     int ret = 0;
 
     /* look for naming convention for the target firmware */
-    if (strstr(firmware, extended_paths[index].fw_substring) == NULL) {
+    if (strstr(uevent->firmware, extended_paths[index].fw_substring) == NULL) {
         return 0;
     }
 
-    l = asprintf(&file, "%s/%s", extended_paths[index].fw_path, firmware);
+    l = asprintf(&file, "%s/%s", extended_paths[index].fw_path, uevent->firmware);
     if (l == -1)
         return 0;
 
     if (is_hard_link(file)) {
-        goto out_extended;
+        free(file);
+        return ret;
     }
 
 
@@ -904,11 +911,10 @@ static int load_one_extended(const char *firmware, int loading_fd, int data_fd, 
     if (fw_fd != -1 && fstat(fw_fd, &sb) != -1) {
         load_firmware(uevent, root, fw_fd, sb.st_size, loading_fd, data_fd, Z_NULL);
     } else {
-        goto out_extended;
+        return ret;
     }
     
     ret = -1;
-out_extended:
     free(file);
     return ret;
 }
@@ -918,13 +924,13 @@ out_extended:
     -   -1 - Firmware loading was either success or failure. No need to look for further folders.
     -    0 - Firmware was not loaded. Further folders need to be looked up.
 */
-static int load_from_extended(const char *firmware, int loading_fd, int data_fd)
+static int load_from_extended(struct uevent *uevent, const std::string& root, int loading_fd, int data_fd)
 {
     size_t i;
 
     /* Loop through all possible extended folders unless we find a firmware */
     for (i = 0; i < ARRAY_SIZE(extended_paths); i++)
-        if (load_one_extended(firmware, loading_fd, data_fd, i) == -1)
+        if (load_one_extended(uevent, root, loading_fd, data_fd, i) == -1)
             return -1;
 
     return 0;
@@ -969,8 +975,8 @@ static void process_firmware_event(struct uevent *uevent)
         return;
     }
 
-    if (load_from_extended(uevent->firmware, loading_fd, data_fd) < 0) {
-        goto data_close_out;
+    if (load_from_extended(uevent, root, loading_fd, data_fd) < 0) {
+        return;
     }
 
 try_loading_again:

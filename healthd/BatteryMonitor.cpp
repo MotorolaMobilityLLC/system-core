@@ -320,8 +320,8 @@ bool BatteryMonitor::update(void) {
 
     // get mod battery status
     if (access(mHealthdConfig->modStatusPath.string(), R_OK) == 0) {
-        if (readFromFile(mHealthdConfig->modStatusPath, buf, SIZE) > 0) {
-            props.modStatus = getBatteryStatus(buf);
+        if (readFromFile(mHealthdConfig->modStatusPath, &buf) > 0) {
+            props.modStatus = getBatteryStatus(buf.c_str());
         }
     }
 
@@ -506,7 +506,7 @@ status_t BatteryMonitor::getProperty(int id, struct BatteryProperty *val) {
         }
         break;
     // BEGIN MOT, a18273, IKSWM-23739
-    case BATTERY_PROP_CHARGE_FULL:
+    /* case BATTERY_PROP_CHARGE_FULL:
         if (!mHealthdConfig->batteryFullChargePath.isEmpty() &&
             (access(mHealthdConfig->batteryFullChargePath.string(), R_OK) == 0)) {
             val->valueInt64 = getIntField(mHealthdConfig->batteryFullChargePath);
@@ -514,7 +514,7 @@ status_t BatteryMonitor::getProperty(int id, struct BatteryProperty *val) {
         } else {
             ret = NAME_NOT_FOUND;
         }
-        break;
+        break;*/
     // END IKSWM-23739
         // BEGIN MOT, a18273, IKMODS-149
     case BATTERY_PROP_MOD_CHARGE_FULL:
