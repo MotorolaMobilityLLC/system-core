@@ -45,6 +45,7 @@
 #include <ext4_utils/ext4_sb.h>
 #include <ext4_utils/ext4_utils.h>
 #include <ext4_utils/wipe.h>
+#include <selinux/selinux.h>
 #include <linux/fs.h>
 #include <linux/loop.h>
 #include <linux/magic.h>
@@ -63,6 +64,8 @@
 #define F2FS_FSCK_BIN   "/system/bin/fsck.f2fs"
 #define MKSWAP_BIN      "/system/bin/mkswap"
 #define TUNE2FS_BIN     "/system/bin/tune2fs"
+#define MKSWAP_SECURITY_CONTEXT "u:r:motobox:s0"
+
 #ifdef MTK_FSTAB_FLAGS
 #define RESIZE2FS_BIN   "/system/bin/resize2fs"
 #endif
@@ -1337,6 +1340,9 @@ int fs_mgr_swapon_all(struct fstab *fstab)
         }
 
         /* Initialize the swap area */
+		if (setexeccon(MKSWAP_SECURITY_CONTEXT)) {
+            LERROR << "Failed to set security context for mkswap";
+        }
         mkswap_argv[1] = fstab->recs[i].blk_device;
         err = android_fork_execvp_ext(ARRAY_SIZE(mkswap_argv),
                                       const_cast<char **>(mkswap_argv),
@@ -1346,6 +1352,10 @@ int fs_mgr_swapon_all(struct fstab *fstab)
             LERROR << "mkswap failed for " << fstab->recs[i].blk_device;
             ret = -1;
             continue;
+        }
+		
+		if (setexeccon(NULL)) {
+            LERROR << "Failed to restore security context";
         }
 
         /* If -1, then no priority was specified in fstab, so don't set
