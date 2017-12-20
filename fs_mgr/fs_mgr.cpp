@@ -64,7 +64,7 @@
 #define F2FS_FSCK_BIN   "/system/bin/fsck.f2fs"
 #define MKSWAP_BIN      "/system/bin/mkswap"
 #define TUNE2FS_BIN     "/system/bin/tune2fs"
-#define MKSWAP_SECURITY_CONTEXT "u:r:motobox:s0"
+#define MKSWAP_SECURITY_CONTEXT "u:r:toolbox:s0"
 
 #ifdef MTK_FSTAB_FLAGS
 #define RESIZE2FS_BIN   "/system/bin/resize2fs"
