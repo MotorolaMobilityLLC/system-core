@@ -399,6 +399,7 @@ static void draw_percent(const animation& anim)
     gr_text(field.font, x, y, str.c_str(), false);
 }
 
+/* 
 static void draw_capacity(struct charger *charger)
 {
     char cap_str[64];
@@ -412,6 +413,7 @@ static void draw_capacity(struct charger *charger)
     android_green();
     gr_text(x, y, cap_str, 0);
 }
+*/
 
 /* returns the last y-offset of where the surface ends */
 static int draw_surface_centered(GRSurface* surface)

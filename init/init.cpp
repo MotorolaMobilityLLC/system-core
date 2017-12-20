@@ -703,9 +703,9 @@ static void export_kernel_boot_props() {
     }
     std::string tmp;
     std::size_t found;
-    tmp = property_get("ro.boot.revision");
+    tmp = GetProperty("ro.boot.revision", "");
     if (tmp.empty())
-        tmp = property_get("ro.hw.hwrev");
+        tmp = GetProperty("ro.hw.hwrev", "");
     if (!tmp.empty()) {
         found = tmp.find("0x");
         if (found!=std::string::npos) {

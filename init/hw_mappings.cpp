@@ -11,13 +11,16 @@
 
 #define _REALLY_INCLUDE_SYS__SYSTEM_PROPERTIES_H_
 #include <sys/_system_properties.h>
+#include <android-base/properties.h>
 
 #include "log.h"
 #include "util.h"
 #include "hw_tags.h"
 
 //#define DEBUG
-#define pr_debug(fmt, args...)	if(debug_on) NOTICE(fmt, ##args)
+#define NOTICE(fmt, args...)
+#define pr_debug(fmt, args...)	if(debug_on) {NOTICE(fmt, ##args)}
+#define ERROR(fmt, args...)
 
 #if defined(DEBUG)
 static bool debug_on = 1;
@@ -322,7 +325,7 @@ xml_preload_apply(char *key, char *value)
 		char new_value[PROP_VALUE_MAX];
 		int rc;
 		snprintf(new_value, PROP_VALUE_MAX-1, "%s%s", value, append->appendix);
-		rc = property_set(append->props[i], new_value);
+		rc = android::base::SetProperty(append->props[i], new_value);
 		if (rc != -1)
 			NOTICE("added hw variant: '%s'=>'%s'\n", append->props[i], new_value);
 	}
@@ -532,7 +535,7 @@ xml_handle_mappings(parse_ctrl_t *info)
 		/* match multiple choices */
 		bool found = xml_match_multiple_choices(cur, &export_prop);
 		if (found && export_prop) {
-			int rc = property_set(export_prop_name, export_prop);
+			int rc = android::base::SetProperty(export_prop_name, export_prop);
 			NOTICE("Match found '%s'\n", export_prop);
 			if (rc != -1)
 				NOTICE("exported '%s'=>'%s'\n", export_prop_name, export_prop);
@@ -541,7 +544,7 @@ xml_handle_mappings(parse_ctrl_t *info)
 				xml_preload_set_appendix(export_prop);
 				if (access(PROP_PATH_OEM_OVERRIDE, R_OK) == 0)
 					xml_load_properties_from_file(PROP_PATH_OEM_OVERRIDE, xml_preload_get_filter());
-				xml_load_properties_from_file(PROP_PATH_SYSTEM_BUILD, xml_preload_get_filter());
+				xml_load_properties_from_file("/system/build.prop", xml_preload_get_filter());
 				xml_preload_clear_all();
 			}
 		} else

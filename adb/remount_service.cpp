@@ -118,12 +118,11 @@ int MOT_check_system_is_write_protected(int out)
     adb_close(fd);
 
     if (strstr(buf, "write_protect=1") != NULL) {
-        char value[PROPERTY_VALUE_MAX];
-        property_get("ro.boot.secure_hardware", value, "");
+        std::string prop = android::base::GetProperty("ro.boot.secure_hardware", "");
 
         WriteFdExactly(out, "System folder is write protected. To disable use:\n");
 
-        if (strcmp(value, "1") == 0) {
+        if (prop == "1") {
             WriteFdExactly(out, "fastboot oem unlock\n");
         } else {
             WriteFdExactly(out, "fastboot oem wptest disable\n");

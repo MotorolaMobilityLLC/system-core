@@ -502,7 +502,8 @@ static void load_properties(char *data, const char *filter)
                 }
             }
 
-            property_set(key, value);
+            //property_set(key, value);
+            android::base::SetProperty(key, value);
         }
     }
 }
@@ -570,7 +571,7 @@ static void load_persistent_properties() {
         int length = read(fd, value, sizeof(value) - 1);
         if (length >= 0) {
             value[length] = 0;
-            property_set(entry->d_name, value);
+            android::base::SetProperty(entry->d_name, value);
         } else {
             PLOG(ERROR) << "Unable to read persistent property file " << entry->d_name;
         }
@@ -586,11 +587,11 @@ static void update_sys_usb_config() {
     bool is_debuggable = android::base::GetBoolProperty("ro.debuggable", false);
     std::string config = android::base::GetProperty("persist.sys.usb.config", "");
     if (config.empty()) {
-        property_set("persist.sys.usb.config", is_debuggable ? "adb" : "none");
+        android::base::SetProperty("persist.sys.usb.config", is_debuggable ? "adb" : "none");
     } else if (is_debuggable && config.find("adb") == std::string::npos &&
                config.length() + 4 < PROP_VALUE_MAX) {
         config.append(",adb");
-        property_set("persist.sys.usb.config", config);
+        android::base::SetProperty("persist.sys.usb.config", config);
     }
 }
 
@@ -625,7 +626,7 @@ void update_persistent_usb_property(void)
 	snprintf(newPath, sizeof(newPath), "%s/persist.mot.usb.config",
 				PERSISTENT_PROPERTY_DIR);
 	if (rename(currPath, newPath)) {
-		ERROR("Unable to rename persistent prop file %s\n", currPath);
+	    PLOG(ERROR) << "Unable to rename persistent prop file" << currPath;
 	}
 }
 /* END IKJB42MAIN-6952 */
@@ -644,7 +645,7 @@ void load_persist_props(void) {
 
     /* Read persistent properties after all default values have been loaded. */
     load_persistent_properties();
-    property_set("ro.persistent_properties.ready", "true");
+    android::base::SetProperty("ro.persistent_properties.ready", "true");
 }
 
 void load_recovery_id_prop() {
@@ -670,7 +671,7 @@ void load_recovery_id_prop() {
     boot_img_hdr hdr;
     if (android::base::ReadFully(fd, &hdr, sizeof(hdr))) {
         std::string hex = bytes_to_hex(reinterpret_cast<uint8_t*>(hdr.id), sizeof(hdr.id));
-        property_set("ro.recovery_id", hex.c_str());
+        android::base::SetProperty("ro.recovery_id", hex.c_str());
     } else {
         PLOG(ERROR) << "error reading /recovery";
     }
@@ -690,7 +691,7 @@ void load_system_props() {
 }
 
 void start_property_service() {
-    property_set("ro.property_service.version", "2");
+    android::base::SetProperty("ro.property_service.version", "2");
 
     property_set_fd = create_socket(PROP_SERVICE_NAME, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK,
                                     0666, 0, 0, NULL);

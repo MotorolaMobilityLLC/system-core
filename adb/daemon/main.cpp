@@ -97,33 +97,17 @@ static bool should_drop_privileges() {
     // BEGIN Motorola, Darren Shu - w36016, July 31,2012, IKSECURITY-199 */
     // Observe Motorola Access Token properties */
     if (drop) {
-        property_get("persist.atvc.adb", value, "");
-        if (strcmp(value, "1") == 0) {
+        prop = android::base::GetProperty("persist.atvc.adb", "");
+        if (prop == "1") {
             drop = false;
         }
-        property_get("ro.boot.adb_root", value, "");
-        if (strcmp(value, "enable") == 0) {
+        prop = android::base::GetProperty("ro.boot.adb_root", "");
+        if (prop == "enable") {
             drop = false;
         }
     }
     /* END IKSECURITY-199 */
     return drop;
-#else
-    // BEGIN Motorola, Darren Shu - w36016, July 31,2012, IKSECURITY-199
-    // Observe Motorola Access Token properties
-    bool drop = true;
-    char value[PROPERTY_VALUE_MAX];
-    value[0] = 0x00;
-    property_get("persist.atvc.adb", value, "");
-    if (strcmp(value, "1") == 0) {
-        drop = false;
-    }
-    property_get("ro.boot.adb_root", value, "");
-    if (strcmp(value, "enable") == 0) {
-        drop = false;
-    }
-    return drop; // "adb root" not allowed, always drop privileges.
-#endif // ALLOW_ADBD_ROOT
 }
 
 static void drop_privileges(int server_port) {
@@ -162,7 +146,7 @@ static void drop_privileges(int server_port) {
 
         if (root_seclabel != nullptr) {
             if (selinux_android_setcon(root_seclabel) < 0) {
-                drop_capabilities_bounding_set_if_needed();
+                drop_capabilities_bounding_set_if_needed(jail.get());
 
                 minijail_change_gid(jail.get(), AID_SHELL);
                 minijail_change_uid(jail.get(), AID_SHELL);
