@@ -43,6 +43,11 @@ endif
 ifneq (,$(filter eng,$(TARGET_BUILD_VARIANT)))
 LOCAL_CFLAGS += -DALLOW_SKIP_SECURE_CHECK=1
 endif
+
+ifeq ($(SECURE_BOOT), yes)
+LOCAL_CFLAGS += -DSECURE_BOOT=1
+endif
+
 # add mtk fstab flags support
 LOCAL_CFLAGS += -DMTK_FSTAB_FLAGS
 ifeq ($(LENOVO_RADIO_SECURE), yes)
