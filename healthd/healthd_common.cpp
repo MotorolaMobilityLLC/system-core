@@ -380,8 +380,6 @@ int healthd_main() {
 #ifdef QE
     qe_init();
 #endif
-    gBatteryMonitor = new BatteryMonitor();
-    gBatteryMonitor->init(&healthd_config);
 
     healthd_mainloop();
     KLOG_ERROR("Main loop terminated, exiting\n");
