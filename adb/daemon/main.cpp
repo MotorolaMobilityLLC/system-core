@@ -187,7 +187,7 @@ int adbd_main(int server_port) {
     }
 
     //START IKANGEROW-165, enable adb by default until do factory reset
-    if ( property_get_bool("ro.lenovo.need.fdr", 0) == 1 ){
+    if ( android::base::GetBoolProperty("ro.lenovo.need.fdr", false)){
         ///also see system/core/init/property_service.cpp changes
         auth_required = false;
     }

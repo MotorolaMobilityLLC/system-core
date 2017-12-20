@@ -730,8 +730,8 @@ bool Service::Start() {
                 .rlim_max = rl.max,
             };
             if (setrlimit(rl.resource, &limit)) {
-                ERROR("Failed to set pid %d rlimit %d %lu %lu\n",
-                      getpid(), rl.resource, limit.rlim_cur, limit.rlim_max);
+                PLOG(ERROR) << "Failed to set pid" << getpid() << "rlimit"
+                      <<  rl.resource << limit.rlim_cur << limit.rlim_max;
             }
         }
 

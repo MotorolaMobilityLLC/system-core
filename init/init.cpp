@@ -574,7 +574,7 @@ static void export_oem_lock_status() {
     if (!value.empty()) {
         property_set("ro.boot.flash.locked", value == "orange" ? "0" : "1");
     } else {
-        value = property_get("ro.boot.bl_state");
+        value = android::base::GetBoolProperty("ro.boot.bl_state", "");
         if (!value.empty()) {
             property_set("ro.boot.flash.locked", value == "2" ? "0" : "1");
         }

@@ -45,6 +45,8 @@
 #include "fastboot.h"
 #include "transport.h"
 
+#define BULK_SIZE 1024 * 1024
+
 static std::string g_error;
 
 const std::string fb_get_error() {
@@ -298,14 +300,16 @@ static int dump_file(Transport *transport, const char *file_name)
     /* get data size: DATA%016llx */
     r = transport->Read(buff, 20);
     if(r < 0) {
-        sprintf(ERROR, "status read failed (%s)", strerror(errno));
+       // sprintf(ERROR, "status read failed (%s)", strerror(errno));
+        g_error = android::base::StringPrintf("status read failed (%s)", strerror(errno));
         transport->Close();
         ret = -1;
         goto out;
     }
 
     if (sscanf(buff, "DATA%016llx", &size) == EOF) {
-        sprintf(ERROR, "invalid protocol(%s)", buff);
+        //sprintf(ERROR, "invalid protocol(%s)", buff);
+        g_error = android::base::StringPrintf("invalid protocol(%s)", buff);
         transport->Close();
         ret = -1;
         goto out;
@@ -318,14 +322,16 @@ static int dump_file(Transport *transport, const char *file_name)
         r = left_size > BULK_SIZE ? BULK_SIZE : left_size;
         r = transport->Read(buff, r);
         if (r < 0) {
-            sprintf(ERROR, "status read failed (%s)", strerror(errno));
+           // sprintf(ERROR, "status read failed (%s)", strerror(errno));
+             g_error = android::base::StringPrintf("status read failed (%s)", strerror(errno));
             transport->Close();
             ret = -1;
             goto out;
         }
         /* write data into file */
         if (fwrite(buff, 1, r, file) < (size_t)r) {
-            sprintf(ERROR, "status write failed (%s)", strerror(errno));
+            //sprintf(ERROR, "status write failed (%s)", strerror(errno));
+            g_error = android::base::StringPrintf("status write failed (%s)", strerror(errno));
             transport->Close();
             ret = -1;
             goto out;
@@ -392,14 +398,17 @@ static int create_ramdump_dir(void)
                 if (rename(RAM_DUMP_DIR, new_name) == 0)
                     break;
                 else {
-                    sprintf(ERROR, "failed to rename %s to %s: %s",
+                    //sprintf(ERROR, "failed to rename %s to %s: %s",
+                       // RAM_DUMP_DIR, new_name, strerror(errno));
+                    g_error = android::base::StringPrintf("failed to rename %s to %s: %s",
                         RAM_DUMP_DIR, new_name, strerror(errno));
                     return -1;
                 }
             }
         }
     } else if (ret == -1) {
-        sprintf(ERROR, "non-directory %s exists, please rename it", RAM_DUMP_DIR);
+        //sprintf(ERROR, "non-directory %s exists, please rename it", RAM_DUMP_DIR);
+        g_error = android::base::StringPrintf("non-directory %s exists, please rename it", RAM_DUMP_DIR);
         return -1;
     }
 
@@ -409,7 +418,8 @@ static int create_ramdump_dir(void)
 #else
     if (mkdir(RAM_DUMP_DIR, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) == -1) {
 #endif
-        sprintf(ERROR, "failed to create directory %s: %s", RAM_DUMP_DIR, strerror(errno));
+        g_error = android::base::StringPrintf("failed to create directory %s: %s", RAM_DUMP_DIR, strerror(errno));
+        //sprintf(ERROR, "failed to create directory %s: %s", RAM_DUMP_DIR, strerror(errno));
         return -1;
     }
 
@@ -441,12 +451,14 @@ int fb_dump_ram_files(Transport *transport)
         /* get ram file name: DUMP%04xfile */
         ret = transport->Read(cmd_buffer, 64);
         if(ret < 0) {
-             sprintf(ERROR, "status read failed (%s)", strerror(errno));
+             g_error = android::base::StringPrintf("status read failed (%s)", strerror(errno));
+             //sprintf(ERROR, "status read failed (%s)", strerror(errno));
              transport->Close();
              return -1;
         }
         if (ret < 8) {
-            sprintf(ERROR, "invalid dump command (%s)", cmd_buffer);
+            //sprintf(ERROR, "invalid dump command (%s)", cmd_buffer);
+            g_error = android::base::StringPrintf("invalid dump command (%s)", cmd_buffer);
             transport->Close();
             return -1;
         }
@@ -456,7 +468,8 @@ int fb_dump_ram_files(Transport *transport)
         }
 
         if (sscanf(cmd_buffer, "DUMP%04x", &file_name_len) == EOF) {
-            sprintf(ERROR, "invalid protocol(%s)", cmd_buffer);
+            //sprintf(ERROR, "invalid protocol(%s)", cmd_buffer);
+            g_error = android::base::StringPrintf("invalid protocol(%s)", cmd_buffer);
             transport->Close();
             return -1;
         }

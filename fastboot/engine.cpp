@@ -387,11 +387,11 @@ int fb_execute_queue(Transport* transport)
             transport->WaitForDisconnect();
         } else if (a->op == OP_DUMP) {
             status = fb_dump_data(transport, (char *)a->data);
-            status = a->func(a, status, status ? fb_get_error() : "");
+            status = a->func(a, status, status ? fb_get_error().c_str() : "");
             if (status) break;
         } else if (a->op == OP_RAMDUMP) {
             status = fb_dump_ram_files(transport);
-            status = a->func(a, status, status ? fb_get_error() : "");
+            status = a->func(a, status, status ? fb_get_error().c_str() : "");
             if (status) break;
         } else {
             die("bogus action");

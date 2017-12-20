@@ -80,7 +80,7 @@ static int Depth;
 static void
 hw_property_get(const char *prop_name, char *value)
 {
-	std::string prop_str = property_get(prop_name);
+	std::string prop_str = android::base::GetProperty(prop_name, "");
 	strncpy(value, prop_str.c_str(), prop_str.length());
 }
 

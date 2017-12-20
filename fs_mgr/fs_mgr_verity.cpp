@@ -675,7 +675,7 @@ int load_verity_state(struct fstab_rec* fstab, int* mode) {
     if (fs_mgr_get_boot_config("veritymode", &veritymode)) {
         if (veritymode == "enforcing") {
             *mode = VERITY_MODE_DEFAULT;
-        } else if (!strcmp(propbuf, "logging")) {
+        } else if (veritymode ==  "logging") {
             *mode = VERITY_MODE_LOGGING;
         }
         return 0;
