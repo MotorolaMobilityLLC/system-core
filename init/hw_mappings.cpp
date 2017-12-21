@@ -357,7 +357,7 @@ xml_preload_apply(char *key, char *value)
 		char new_value[PROP_VALUE_MAX];
 		int rc;
 		snprintf(new_value, PROP_VALUE_MAX-1, "%s%s", value, append->appendix);
-		rc = android::base::SetProperty(append->props[i], new_value);
+		rc = property_set(append->props[i], new_value);
 		if (rc != -1)
 			NOTICE("added hw variant: '%s'=>'%s'\n", append->props[i], new_value);
 	}
@@ -570,7 +570,7 @@ xml_handle_mappings(parse_ctrl_t *info)
                      if (!export_prop)
                                 continue;
 
-			rc = android::base::SetProperty(export_prop_name, export_prop);
+			rc = property_set(export_prop_name, export_prop);
 			NOTICE("Match found '%s'\n", export_prop);
 			if (rc != -1)
 				NOTICE("exported '%s'=>'%s'\n", export_prop_name, export_prop);

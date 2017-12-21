@@ -70,7 +70,7 @@
 #include "util.h"
 #include "watchdogd.h"
 
-using android::base::SetProperty;
+//using android::base::SetProperty;
 using android::base::GetProperty;
 using android::base::StringPrintf;
 
@@ -591,11 +591,11 @@ static void export_kernel_boot_reason(void)
     std::string tmpprop;
     tmpprop = GetProperty("ro.boot.last_powerup_reason", "");
     if (!tmpprop.empty()) {
-        SetProperty("ro.bootreason", "coldboot");
+        property_set("ro.bootreason", "coldboot");
     } else {
         tmpprop = GetProperty("ro.boot.bootreason", "");
         if (!tmpprop.empty())
-            SetProperty("ro.bootreason", tmpprop.c_str());
+            property_set("ro.bootreason", tmpprop.c_str());
     }
 }
 
