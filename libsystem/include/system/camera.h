@@ -276,6 +276,25 @@ typedef struct camera_face {
      */
     int32_t mouth[2];
 
+//#ifdef LENOVO_FLAWLESS_SUPPORTED
+    int32_t smile_degree;
+    int32_t smile_score;
+    int32_t blink_detected;
+    int32_t face_recognised;
+    int32_t gaze_angle;
+    int32_t updown_dir;
+    int32_t leftright_dir;
+    int32_t roll_dir;
+    int32_t left_right_gaze;
+    int32_t top_bottom_gaze;
+    int32_t leye_blink;
+    int32_t reye_blink;
+
+    int32_t sex;
+    int32_t age;
+    int32_t orientation;
+    int32_t is_pro;
+//#endif
 } camera_face_t;
 
 /**
