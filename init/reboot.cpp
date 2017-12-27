@@ -103,6 +103,9 @@ class MountEntry {
 
     void DoFsck() {
         int st;
+        if (!strcmp(mnt_dir_.c_str(), "/data") || !strcmp(mnt_dir_.c_str(), "/cache"))
+            return;
+
         if (IsF2Fs()) {
             const char* f2fs_argv[] = {
                 "/system/bin/fsck.f2fs", "-f", mnt_fsname_.c_str(),
