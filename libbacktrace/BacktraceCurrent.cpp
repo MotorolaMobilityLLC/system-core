@@ -118,6 +118,10 @@ static void SignalLogOnly(int, siginfo_t*, void*) {
                        THREAD_SIGNAL);
 }
 
+#ifdef DEBUG_DUMP_BACKTRACE_TIMEOUT
+time_t g_debug_tm[7];
+#endif
+
 static void SignalHandler(int, siginfo_t*, void* sigcontext) {
   ErrnoRestorer restore;
 
@@ -129,6 +133,9 @@ static void SignalHandler(int, siginfo_t*, void* sigcontext) {
 
   entry->CopyUcontextFromSigcontext(sigcontext);
 
+#ifdef DEBUG_DUMP_BACKTRACE_TIMEOUT
+  g_debug_tm[1] = time(nullptr);  // before wake 1
+#endif
   // Indicate the ucontext is now valid.
   entry->Wake();
 
@@ -139,8 +146,14 @@ static void SignalHandler(int, siginfo_t*, void* sigcontext) {
   if (entry->Wait(2)) {
     // Do not remove the entry here because that can result in a deadlock
     // if the code cannot properly send a signal to the thread under test.
+#ifdef DEBUG_DUMP_BACKTRACE_TIMEOUT
+    g_debug_tm[5] = time(nullptr);  // before wake 3
+#endif
     entry->Wake();
   } else {
+#ifdef DEBUG_DUMP_BACKTRACE_TIMEOUT
+    g_debug_tm[5] = time(nullptr);  // wait 2 fail
+#endif
     // At this point, it is possible that entry has been freed, so just exit.
     BACK_ASYNC_SAFE_LOGE("Timed out waiting for unwind thread to indicate it completed.");
   }
@@ -167,6 +180,10 @@ bool BacktraceCurrent::UnwindThread(size_t num_ignore_frames) {
     return false;
   }
 
+#ifdef DEBUG_DUMP_BACKTRACE_TIMEOUT
+  g_debug_tm[0] = time(nullptr);  // before THREAD_SIGNAL
+#endif
+
   if (tgkill(Pid(), Tid(), THREAD_SIGNAL) != 0) {
     // Do not emit an error message, this might be expected. Set the
     // error and let the caller decide.
@@ -185,6 +202,10 @@ bool BacktraceCurrent::UnwindThread(size_t num_ignore_frames) {
   // Wait for the thread to get the ucontext. The number indicates
   // that we are waiting for the first Wake() call made by the thread.
   bool wait_completed = entry->Wait(1);
+
+#ifdef DEBUG_DUMP_BACKTRACE_TIMEOUT
+  g_debug_tm[2] = time(nullptr);  // after wait 1
+#endif
 
   if (!wait_completed && oldact.sa_sigaction == nullptr) {
     // If the wait failed, it could be that the signal could not be delivered
@@ -205,7 +226,13 @@ bool BacktraceCurrent::UnwindThread(size_t num_ignore_frames) {
 
   bool unwind_done = false;
   if (wait_completed) {
+#ifdef DEBUG_DUMP_BACKTRACE_TIMEOUT
+    g_debug_tm[3] = time(nullptr);  // before unwind
+#endif
     unwind_done = UnwindFromContext(num_ignore_frames, entry->GetUcontext());
+#ifdef DEBUG_DUMP_BACKTRACE_TIMEOUT
+    g_debug_tm[4] = time(nullptr);  // after unwind
+#endif
 
     // Tell the signal handler to exit and release the entry.
     entry->Wake();
@@ -214,6 +241,13 @@ bool BacktraceCurrent::UnwindThread(size_t num_ignore_frames) {
     if (!entry->Wait(3)) {
       // Send a warning, but do not mark as a failure to unwind.
       BACK_ASYNC_SAFE_LOGW("Timed out waiting for signal handler to indicate it finished.");
+#ifdef DEBUG_DUMP_BACKTRACE_TIMEOUT
+     g_debug_tm[6] = time(nullptr);  // wait 3 timeout
+     BACK_ASYNC_SAFE_LOGE("unwind_done:%d, tid:%d, time:%lu-%lu-%lu-%lu-%lu-%lu-%lu",
+                         unwind_done, Tid(), g_debug_tm[0],
+                         g_debug_tm[1],g_debug_tm[2], g_debug_tm[3],
+                         g_debug_tm[4],g_debug_tm[5], g_debug_tm[6]);
+#endif
     }
   } else {
     // Check to see if the thread has disappeared.
