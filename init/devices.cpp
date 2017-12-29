@@ -424,7 +424,9 @@ void DeviceHandler::HandleDeviceEvent(const Uevent& uevent) {
     }
 
     // if it's not a /dev device, nothing to do
-    if (uevent.major < 0 || uevent.minor < 0) return;
+    if ((uevent.major < 0 || uevent.minor < 0) &&
+        (uevent.subsystem != "mods_interfaces"))
+            return;
 
     std::string devpath;
     std::vector<std::string> links;
