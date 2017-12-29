@@ -115,6 +115,13 @@ cc_library {
             exclude_shared_libs: ["libdexfile"],
         },
     },
+
+    product_variables: {
+        debuggable: {
+            cflags: ["-DDEBUG_DUMP_BACKTRACE_TIMEOUT"],
+        },
+    },
+
     whole_static_libs: ["libdemangle"],
 }
 
