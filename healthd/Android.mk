@@ -115,11 +115,6 @@ LOCAL_C_INCLUDES := $(LOCAL_PATH)/include
 
 LOCAL_CFLAGS := -Werror
 
-# MOT (IKXREL3KK-5478) - add capability to run root-detect on periodoc basis for verizon devices
-ifeq ($(TARGET_SUPPORTS_DAILY_ROOT_DETECT),true)
-LOCAL_CFLAGS += -DQE
-endif
-
 ifeq ($(strip $(LOCAL_CHARGER_NO_UI)),true)
 LOCAL_CFLAGS += -DCHARGER_NO_UI
 endif
