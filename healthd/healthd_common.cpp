@@ -87,12 +87,6 @@ static int epollfd;
 #ifndef QE
 // epoll_create() parameter is actually unused
 #define MAX_EPOLL_EVENTS 40
-#else
-#include <sys/wait.h>
-// epoll events += qe
-#define MAX_EPOLL_EVENTS 4
-static int qe_fd;
-static struct itimerspec qe_itval;
 #endif
 
 static int uevent_fd;
@@ -301,63 +295,6 @@ static int healthd_init() {
     return 0;
 }
 
-#ifdef QE
-static void qe_event(uint32_t /*epevents*/);
-static void qe_init(void) {
-
-    qe_fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
-    if (qe_fd == -1) {
-        KLOG_ERROR(LOG_TAG, "qe_init: timerfd_create failed\n");
-        return;
-    }
-
-    /* This schedules an event every 24 hours, with the first event
-       occuring one minute after boot. */
-    qe_itval.it_interval.tv_sec = (3600*24);
-    qe_itval.it_interval.tv_nsec = 0;
-    qe_itval.it_value.tv_sec = 60;
-    qe_itval.it_value.tv_nsec = 0;
-
-    if (timerfd_settime(qe_fd, 0, &qe_itval, NULL) == -1)
-        KLOG_ERROR(LOG_TAG, "qe_set_interval: timerfd_settime failed\n");
-    if (healthd_register_event(qe_fd, qe_event))
-        KLOG_ERROR(LOG_TAG,
-                   "register for uevent events failed\n");
-}
-static void qe_event(uint32_t /*epevents*/) {
-    unsigned long long wakeups;
-    int pid;
-    int ret;
-    int status;
-    char prop_value[PROPERTY_VALUE_MAX];
-
-    /*  If Android is up, send broadcast.  If not, wait another minute and try again */
-    property_get("sys.boot_completed", prop_value, "");
-    if (strncmp(prop_value, "1", 1) == 0) {
-       if (read(qe_fd, &wakeups, sizeof(wakeups)) == -1) {
-           KLOG_ERROR(LOG_TAG, "qe_event: read qe_fd failed\n");
-           return;
-       }
-
-       /* Trigger root-detect in 'init' via property. After root-detect via trigger
-          completes, broadcast will have been sent. */
-       property_set("persist.qe.trigger", "1");
-
-       /* Repeat every 24 hours.  When timerfd_settime() is called, the timer is rearmed
-          with the existing timeout value.  Thus, if value.tv_sec is not also changed, when
-          timerfd_settime() is called, this event will keep repeating every minute */
-       qe_itval.it_interval.tv_sec = (3600*24);
-       qe_itval.it_value.tv_sec = (3600*24);
-    } else {
-       /* If Android not ready, try again in 1 minute */
-       qe_itval.it_interval.tv_sec = 60;
-    }
-
-    if (timerfd_settime(qe_fd, 0, &qe_itval, NULL) == -1)
-        KLOG_ERROR(LOG_TAG, "qe_set_interval: timerfd_settime failed\n");
-   }
-#endif
-
 int healthd_main() {
     int ret;
 
@@ -373,10 +310,6 @@ int healthd_main() {
         KLOG_ERROR("Initialization failed, exiting\n");
         exit(2);
     }
-
-#ifdef QE
-    qe_init();
-#endif
 
     healthd_mainloop();
     KLOG_ERROR("Main loop terminated, exiting\n");
