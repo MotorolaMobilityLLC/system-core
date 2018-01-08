@@ -36,70 +36,6 @@ LOCAL_MODULE_PATH := $(TARGET_OUT)
 
 include $(BUILD_PREBUILT)
 
-# Modules for asan.options.X files.
-
-ASAN_OPTIONS_FILES :=
-
-define create-asan-options-module
-include $$(CLEAR_VARS)
-LOCAL_MODULE := asan.options.$(1)
-ASAN_OPTIONS_FILES += asan.options.$(1)
-LOCAL_MODULE_CLASS := ETC
-# The asan.options.off.template tries to turn off as much of ASAN as is possible.
-LOCAL_SRC_FILES := asan.options.off.template
-LOCAL_MODULE_PATH := $(TARGET_OUT)
-include $$(BUILD_PREBUILT)
-endef
-
-# Pretty comprehensive set of native services. This list is helpful if all that's to be checked is an
-# app.
-ifeq ($(SANITIZE_LITE_SERVICES),true)
-SANITIZE_ASAN_OPTIONS_FOR := \
-  adbd \
-  ATFWD-daemon \
-  audioserver \
-  bridgemgrd \
-  cameraserver \
-  cnd \
-  debuggerd \
-  dex2oat \
-  drmserver \
-  fingerprintd \
-  gatekeeperd \
-  installd \
-  keystore \
-  lmkd \
-  logcat \
-  logd \
-  lowi-server \
-  media.codec \
-  mediadrmserver \
-  media.extractor \
-  mediaserver \
-  mm-qcamera-daemon \
-  mpdecision \
-  netmgrd \
-  perfd \
-  perfprofd \
-  qmuxd \
-  qseecomd \
-  rild \
-  sdcard \
-  servicemanager \
-  slim_daemon \
-  surfaceflinger \
-  thermal-engine \
-  time_daemon \
-  update_engine \
-  vold \
-  wpa_supplicant \
-  zip
-endif
-
-ifneq ($(SANITIZE_ASAN_OPTIONS_FOR),)
-  $(foreach binary, $(SANITIZE_ASAN_OPTIONS_FOR), $(eval $(call create-asan-options-module,$(binary))))
-endif
-
 # ASAN extration.
 ASAN_EXTRACT_FILES :=
 ifeq ($(SANITIZE_TARGET_SYSTEM),true)
@@ -142,6 +78,7 @@ endif
 # create some directories (some are mount points) and symlinks
 LOCAL_POST_INSTALL_CMD := mkdir -p $(addprefix $(TARGET_ROOT_OUT)/, \
     sbin dev proc sys system data oem acct config storage mnt $(BOARD_ROOT_EXTRA_FOLDERS)); \
+    ln -sf /system/bin $(TARGET_ROOT_OUT)/bin; \
     ln -sf /system/etc $(TARGET_ROOT_OUT)/etc; \
     ln -sf /data/user_de/0/com.android.shell/files/bugreports $(TARGET_ROOT_OUT)/bugreports; \
     ln -sf /sys/kernel/debug $(TARGET_ROOT_OUT)/d; \
@@ -188,6 +125,18 @@ $(LOCAL_BUILT_MODULE): $(LOCAL_PATH)/init.environ.rc.in $(bcp_dep)
 bcp_md5 :=
 bcp_dep :=
 
+# If PLATFORM_VNDK_VERSION is defined and not "current", generate versioned
+# module names for ld.config.txt, llndk.libraries.txt and vndksp.libraries.txt
+# files.
+define versioned_module_name
+$(strip \
+  $(if $(filter-out current,$(PLATFORM_VNDK_VERSION)), \
+    $(basename $(LOCAL_MODULE)).$(PLATFORM_VNDK_VERSION)$(suffix $(LOCAL_MODULE)), \
+    $(LOCAL_MODULE) \
+  ) \
+)
+endef
+
 #######################################
 # ld.config.txt
 include $(CLEAR_VARS)
@@ -204,16 +153,22 @@ ifeq ($(_enforce_vndk_at_runtime),true)
 LOCAL_MODULE := ld.config.txt
 LOCAL_MODULE_CLASS := ETC
 LOCAL_MODULE_PATH := $(TARGET_OUT_ETC)
-LOCAL_MODULE_STEM := $(LOCAL_MODULE)
+LOCAL_MODULE_STEM := $(call versioned_module_name)
 include $(BUILD_SYSTEM)/base_rules.mk
 
-llndk_libraries := $(subst $(space),:,$(addsuffix .so,$(LLNDK_LIBRARIES)))
+llndk_libraries := $(call normalize-path-list,$(addsuffix .so,\
+$(filter-out $(VNDK_PRIVATE_LIBRARIES),$(LLNDK_LIBRARIES))))
 
-vndk_sameprocess_libraries := $(subst $(space),:,$(addsuffix .so,$(VNDK_SAMEPROCESS_LIBRARIES)))
+private_llndk_libraries := $(call normalize-path-list,$(addsuffix .so,\
+$(filter $(VNDK_PRIVATE_LIBRARIES),$(LLNDK_LIBRARIES))))
 
-vndk_core_libraries := $(subst $(space),:,$(addsuffix .so,$(VNDK_CORE_LIBRARIES)))
+vndk_sameprocess_libraries := $(call normalize-path-list,$(addsuffix .so,\
+$(filter-out $(VNDK_PRIVATE_LIBRARIES),$(VNDK_SAMEPROCESS_LIBRARIES))))
 
-sanitizer_runtime_libraries := $(subst $(space),:,$(addsuffix .so,\
+vndk_core_libraries := $(call normalize-path-list,$(addsuffix .so,\
+$(filter-out $(VNDK_PRIVATE_LIBRARIES),$(VNDK_CORE_LIBRARIES))))
+
+sanitizer_runtime_libraries := $(call normalize-path-list,$(addsuffix .so,\
 $(ADDRESS_SANITIZER_RUNTIME_LIBRARY) \
 $(UBSAN_RUNTIME_LIBRARY) \
 $(TSAN_RUNTIME_LIBRARY) \
@@ -222,6 +177,7 @@ $(2ND_UBSAN_RUNTIME_LIBRARY) \
 $(2ND_TSAN_RUNTIME_LIBRARY)))
 
 $(LOCAL_BUILT_MODULE): PRIVATE_LLNDK_LIBRARIES := $(llndk_libraries)
+$(LOCAL_BUILT_MODULE): PRIVATE_PRIVATE_LLNDK_LIBRARIES := $(private_llndk_libraries)
 $(LOCAL_BUILT_MODULE): PRIVATE_VNDK_SAMEPROCESS_LIBRARIES := $(vndk_sameprocess_libraries)
 $(LOCAL_BUILT_MODULE): PRIVATE_LLNDK_PRIVATE_LIBRARIES := $(llndk_private_libraries)
 $(LOCAL_BUILT_MODULE): PRIVATE_VNDK_CORE_LIBRARIES := $(vndk_core_libraries)
@@ -230,6 +186,7 @@ $(LOCAL_BUILT_MODULE): $(LOCAL_PATH)/etc/ld.config.txt.in
 	@echo "Generate: $< -> $@"
 	@mkdir -p $(dir $@)
 	$(hide) sed -e 's?%LLNDK_LIBRARIES%?$(PRIVATE_LLNDK_LIBRARIES)?g' $< >$@
+	$(hide) sed -i -e 's?%PRIVATE_LLNDK_LIBRARIES%?$(PRIVATE_PRIVATE_LLNDK_LIBRARIES)?g' $@
 	$(hide) sed -i -e 's?%VNDK_SAMEPROCESS_LIBRARIES%?$(PRIVATE_VNDK_SAMEPROCESS_LIBRARIES)?g' $@
 	$(hide) sed -i -e 's?%VNDK_CORE_LIBRARIES%?$(PRIVATE_VNDK_CORE_LIBRARIES)?g' $@
 	$(hide) sed -i -e 's?%SANITIZER_RUNTIME_LIBRARIES%?$(PRIVATE_SANITIZER_RUNTIME_LIBRARIES)?g' $@
@@ -241,14 +198,15 @@ sanitizer_runtime_libraries :=
 else # if _enforce_vndk_at_runtime is not true
 
 LOCAL_MODULE := ld.config.txt
-ifeq ($(PRODUCT_FULL_TREBLE)|$(SANITIZE_TARGET),true|)
-LOCAL_SRC_FILES := etc/ld.config.txt
+ifeq ($(PRODUCT_TREBLE_LINKER_NAMESPACES)|$(SANITIZE_TARGET),true|)
+  LOCAL_SRC_FILES := etc/ld.config.txt
+  LOCAL_MODULE_STEM := $(call versioned_module_name)
 else
-LOCAL_SRC_FILES := etc/ld.config.legacy.txt
+  LOCAL_SRC_FILES := etc/ld.config.legacy.txt
+  LOCAL_MODULE_STEM := $(LOCAL_MODULE)
 endif
 LOCAL_MODULE_CLASS := ETC
 LOCAL_MODULE_PATH := $(TARGET_OUT_ETC)
-LOCAL_MODULE_STEM := $(LOCAL_MODULE)
 include $(BUILD_PREBUILT)
 endif
 
@@ -258,7 +216,7 @@ include $(CLEAR_VARS)
 LOCAL_MODULE := llndk.libraries.txt
 LOCAL_MODULE_CLASS := ETC
 LOCAL_MODULE_PATH := $(TARGET_OUT_ETC)
-LOCAL_MODULE_STEM := $(LOCAL_MODULE)
+LOCAL_MODULE_STEM := $(call versioned_module_name)
 include $(BUILD_SYSTEM)/base_rules.mk
 $(LOCAL_BUILT_MODULE): PRIVATE_LLNDK_LIBRARIES := $(LLNDK_LIBRARIES)
 $(LOCAL_BUILT_MODULE):
@@ -274,7 +232,7 @@ include $(CLEAR_VARS)
 LOCAL_MODULE := vndksp.libraries.txt
 LOCAL_MODULE_CLASS := ETC
 LOCAL_MODULE_PATH := $(TARGET_OUT_ETC)
-LOCAL_MODULE_STEM := $(LOCAL_MODULE)
+LOCAL_MODULE_STEM := $(call versioned_module_name)
 include $(BUILD_SYSTEM)/base_rules.mk
 $(LOCAL_BUILT_MODULE): PRIVATE_VNDK_SAMEPROCESS_LIBRARIES := $(VNDK_SAMEPROCESS_LIBRARIES)
 $(LOCAL_BUILT_MODULE):

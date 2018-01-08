@@ -84,10 +84,14 @@ LOCAL_STATIC_LIBRARIES := \
     libavb \
     libkeyutils \
     libprotobuf-cpp-lite \
+    libpropertyinfoserializer \
+    libpropertyinfoparser \
 
 LOCAL_REQUIRED_MODULES := \
     e2fsdroid \
     mke2fs \
+    sload_f2fs \
+    make_f2fs \
 
 # Create symlinks.
 LOCAL_POST_INSTALL_CMD := $(hide) mkdir -p $(TARGET_ROOT_OUT)/sbin; \

@@ -36,6 +36,7 @@
 #include <android-base/parseint.h>
 #include <android-base/properties.h>
 #include <android-base/strings.h>
+#include <android-base/test_utils.h>
 #include <android-base/unique_fd.h>
 #include <cutils/sockets.h>
 #include <gtest/gtest.h>
@@ -74,22 +75,6 @@ constexpr char kWaitForGdbKey[] = "debug.debuggerd.wait_for_gdb";
     errno = saved_errno;                                           \
     return value;                                                  \
   }()
-
-#define ASSERT_MATCH(str, pattern)                                              \
-  do {                                                                          \
-    std::regex r((pattern));                                                    \
-    if (!std::regex_search((str), r)) {                                         \
-      FAIL() << "regex mismatch: expected " << (pattern) << " in: \n" << (str); \
-    }                                                                           \
-  } while (0)
-
-#define ASSERT_NOT_MATCH(str, pattern)                                                      \
-  do {                                                                                      \
-    std::regex r((pattern));                                                                \
-    if (std::regex_search((str), r)) {                                                      \
-      FAIL() << "regex mismatch: expected to not find " << (pattern) << " in: \n" << (str); \
-    }                                                                                       \
-  } while (0)
 
 #define ASSERT_BACKTRACE_FRAME(result, frame_name)                        \
   ASSERT_MATCH(result, R"(#\d\d pc [0-9a-f]+\s+ /system/lib)" ARCH_SUFFIX \
@@ -245,6 +230,8 @@ void CrasherTest::AssertDeath(int signo) {
   int status;
   pid_t pid = TIMEOUT(5, waitpid(crasher_pid, &status, 0));
   if (pid != crasher_pid) {
+    printf("failed to wait for crasher (pid %d)\n", crasher_pid);
+    sleep(100);
     FAIL() << "failed to wait for crasher: " << strerror(errno);
   }
 
@@ -341,13 +328,12 @@ TEST_F(CrasherTest, signal) {
   int intercept_result;
   unique_fd output_fd;
   StartProcess([]() {
-    abort();
+    while (true) {
+      sleep(1);
+    }
   });
   StartIntercept(&output_fd);
-
-  // Wait for a bit, or we might end up killing the process before the signal
-  // handler even gets a chance to be registered.
-  std::this_thread::sleep_for(100ms);
+  FinishCrasher();
   ASSERT_EQ(0, kill(crasher_pid, SIGSEGV));
 
   AssertDeath(SIGSEGV);
@@ -437,19 +423,6 @@ TEST_F(CrasherTest, wait_for_gdb) {
   ASSERT_EQ(0, kill(crasher_pid, SIGCONT));
 
   AssertDeath(SIGABRT);
-}
-
-// wait_for_gdb shouldn't trigger on manually sent signals.
-TEST_F(CrasherTest, wait_for_gdb_signal) {
-  if (!android::base::SetProperty(kWaitForGdbKey, "1")) {
-    FAIL() << "failed to enable wait_for_gdb";
-  }
-
-  StartProcess([]() {
-    abort();
-  });
-  ASSERT_EQ(0, kill(crasher_pid, SIGSEGV)) << strerror(errno);
-  AssertDeath(SIGSEGV);
 }
 
 TEST_F(CrasherTest, backtrace) {
@@ -596,15 +569,13 @@ TEST_F(CrasherTest, competing_tracer) {
   int intercept_result;
   unique_fd output_fd;
   StartProcess([]() {
-    while (true) {
-    }
+    raise(SIGABRT);
   });
 
   StartIntercept(&output_fd);
-  FinishCrasher();
 
   ASSERT_EQ(0, ptrace(PTRACE_SEIZE, crasher_pid, 0, 0));
-  ASSERT_EQ(0, kill(crasher_pid, SIGABRT));
+  FinishCrasher();
 
   int status;
   ASSERT_EQ(crasher_pid, waitpid(crasher_pid, &status, 0));
@@ -621,6 +592,10 @@ TEST_F(CrasherTest, competing_tracer) {
   regex += std::to_string(gettid());
   regex += R"( \(.+debuggerd_test)";
   ASSERT_MATCH(result, regex.c_str());
+
+  ASSERT_EQ(crasher_pid, waitpid(crasher_pid, &status, 0));
+  ASSERT_TRUE(WIFSTOPPED(status));
+  ASSERT_EQ(SIGABRT, WSTOPSIG(status));
 
   ASSERT_EQ(0, ptrace(PTRACE_DETACH, crasher_pid, 0, SIGABRT));
   AssertDeath(SIGABRT);

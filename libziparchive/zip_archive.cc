@@ -100,6 +100,11 @@ static uint32_t RoundUpPower2(uint32_t val) {
 }
 
 static uint32_t ComputeHash(const ZipString& name) {
+#if !defined(_WIN32)
+  return std::hash<std::string_view>{}(
+      std::string_view(reinterpret_cast<const char*>(name.name), name.name_length));
+#else
+  // Remove this code path once the windows compiler knows how to compile the above statement.
   uint32_t hash = 0;
   uint16_t len = name.name_length;
   const uint8_t* str = name.name;
@@ -109,6 +114,7 @@ static uint32_t ComputeHash(const ZipString& name) {
   }
 
   return hash;
+#endif
 }
 
 /*
@@ -777,12 +783,12 @@ class FileWriter : public zip_archive::Writer {
   // block device).
   //
   // Returns a valid FileWriter on success, |nullptr| if an error occurred.
-  static std::unique_ptr<FileWriter> Create(int fd, const ZipEntry* entry) {
+  static FileWriter Create(int fd, const ZipEntry* entry) {
     const uint32_t declared_length = entry->uncompressed_length;
     const off64_t current_offset = lseek64(fd, 0, SEEK_CUR);
     if (current_offset == -1) {
       ALOGW("Zip: unable to seek to current location on fd %d: %s", fd, strerror(errno));
-      return nullptr;
+      return FileWriter{};
     }
 
     int result = 0;
@@ -802,7 +808,7 @@ class FileWriter : public zip_archive::Writer {
         ALOGW("Zip: unable to allocate %" PRId64 " bytes at offset %" PRId64 ": %s",
               static_cast<int64_t>(declared_length), static_cast<int64_t>(current_offset),
               strerror(errno));
-        return std::unique_ptr<FileWriter>(nullptr);
+        return FileWriter{};
       }
     }
 #endif  // __linux__
@@ -810,7 +816,7 @@ class FileWriter : public zip_archive::Writer {
     struct stat sb;
     if (fstat(fd, &sb) == -1) {
       ALOGW("Zip: unable to fstat file: %s", strerror(errno));
-      return std::unique_ptr<FileWriter>(nullptr);
+      return FileWriter{};
     }
 
     // Block device doesn't support ftruncate(2).
@@ -819,12 +825,21 @@ class FileWriter : public zip_archive::Writer {
       if (result == -1) {
         ALOGW("Zip: unable to truncate file to %" PRId64 ": %s",
               static_cast<int64_t>(declared_length + current_offset), strerror(errno));
-        return std::unique_ptr<FileWriter>(nullptr);
+        return FileWriter{};
       }
     }
 
-    return std::unique_ptr<FileWriter>(new FileWriter(fd, declared_length));
+    return FileWriter(fd, declared_length);
   }
+
+  FileWriter(FileWriter&& other)
+      : fd_(other.fd_),
+        declared_length_(other.declared_length_),
+        total_bytes_written_(other.total_bytes_written_) {
+    other.fd_ = -1;
+  }
+
+  bool IsValid() const { return fd_ != -1; }
 
   virtual bool Append(uint8_t* buf, size_t buf_size) override {
     if (total_bytes_written_ + buf_size > declared_length_) {
@@ -844,10 +859,10 @@ class FileWriter : public zip_archive::Writer {
   }
 
  private:
-  FileWriter(const int fd, const size_t declared_length)
+  explicit FileWriter(const int fd = -1, const size_t declared_length = 0)
       : Writer(), fd_(fd), declared_length_(declared_length), total_bytes_written_(0) {}
 
-  const int fd_;
+  int fd_;
   const size_t declared_length_;
   size_t total_bytes_written_;
 };
@@ -1060,17 +1075,17 @@ int32_t ExtractToWriter(ZipArchiveHandle handle, ZipEntry* entry, zip_archive::W
 }
 
 int32_t ExtractToMemory(ZipArchiveHandle handle, ZipEntry* entry, uint8_t* begin, uint32_t size) {
-  std::unique_ptr<zip_archive::Writer> writer(new MemoryWriter(begin, size));
-  return ExtractToWriter(handle, entry, writer.get());
+  MemoryWriter writer(begin, size);
+  return ExtractToWriter(handle, entry, &writer);
 }
 
 int32_t ExtractEntryToFile(ZipArchiveHandle handle, ZipEntry* entry, int fd) {
-  std::unique_ptr<zip_archive::Writer> writer(FileWriter::Create(fd, entry));
-  if (writer.get() == nullptr) {
+  auto writer = FileWriter::Create(fd, entry);
+  if (!writer.IsValid()) {
     return kIoError;
   }
 
-  return ExtractToWriter(handle, entry, writer.get());
+  return ExtractToWriter(handle, entry, &writer);
 }
 
 const char* ErrorCodeString(int32_t error_code) {

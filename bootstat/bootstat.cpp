@@ -228,6 +228,50 @@ const std::map<std::string, int32_t> kBootReasonMap = {
     {"reboot,its_just_so_hard", 88},  // produced by boot_reason_test
     {"reboot,Its Just So Hard", 89},  // produced by boot_reason_test
     {"usb", 90},
+    {"charge", 91},
+    {"oem_tz_crash", 92},
+    {"uvlo", 93},
+    {"oem_ps_hold", 94},
+    {"abnormal_reset", 95},
+    {"oemerr_unknown", 96},
+    {"reboot_fastboot_mode", 97},
+    {"watchdog_apps_bite", 98},
+    {"xpu_err", 99},
+    {"power_on_usb", 100},
+    {"watchdog_rpm", 101},
+    {"watchdog_nonsec", 102},
+    {"watchdog_apps_bark", 103},
+    {"reboot_dmverity_corrupted", 104},
+    {"reboot_smpl", 105},
+    {"watchdog_sdi_apps_reset", 106},
+    {"smpl", 107},
+    {"oem_modem_failed_to_powerup", 108},
+    {"reboot_normal", 109},
+    {"oem_lpass_cfg", 110},
+    {"oem_xpu_ns_error", 111},
+    {"power_key_press", 112},
+    {"hardware_reset", 113},
+    {"reboot_by_powerkey", 114},
+    {"reboot_verity", 115},
+    {"oem_rpm_undef_error", 116},
+    {"oem_crash_on_the_lk", 117},
+    {"oem_rpm_reset", 118},
+    {"oem_lpass_cfg", 119},
+    {"oem_xpu_ns_error", 120},
+    {"factory_cable", 121},
+    {"oem_ar6320_failed_to_powerup", 122},
+    {"watchdog_rpm_bite", 123},
+    {"power_on_cable", 124},
+    {"reboot_unknown", 125},
+    {"wireless_charger", 126},
+    {"0x776655ff", 127},
+    {"oem_thermal_bite_reset", 128},
+    {"charger", 129},
+    {"pon1", 130},
+    {"unknown", 131},
+    {"reboot_rtc", 132},
+    {"cold_boot", 133},
+    {"hard_rst", 134},
 };
 
 // Converts a string value representing the reason the system booted to an
@@ -271,8 +315,7 @@ bool isStrongRebootReason(const std::string& r) {
   for (auto& s : knownReasons) {
     if (s == "cold") break;
     // Prefix defined as terminated by a nul or comma (,).
-    if (android::base::StartsWith(r, s.c_str()) &&
-        ((r.length() == s.length()) || (r[s.length()] == ','))) {
+    if (android::base::StartsWith(r, s) && ((r.length() == s.length()) || (r[s.length()] == ','))) {
       return true;
     }
   }
@@ -284,8 +327,7 @@ bool isKernelRebootReason(const std::string& r) {
   for (auto& s : knownReasons) {
     if (s == "recovery") break;
     // Prefix defined as terminated by a nul or comma (,).
-    if (android::base::StartsWith(r, s.c_str()) &&
-        ((r.length() == s.length()) || (r[s.length()] == ','))) {
+    if (android::base::StartsWith(r, s) && ((r.length() == s.length()) || (r[s.length()] == ','))) {
       return true;
     }
   }
@@ -296,8 +338,7 @@ bool isKernelRebootReason(const std::string& r) {
 bool isKnownRebootReason(const std::string& r) {
   for (auto& s : knownReasons) {
     // Prefix defined as terminated by a nul or comma (,).
-    if (android::base::StartsWith(r, s.c_str()) &&
-        ((r.length() == s.length()) || (r[s.length()] == ','))) {
+    if (android::base::StartsWith(r, s) && ((r.length() == s.length()) || (r[s.length()] == ','))) {
       return true;
     }
   }

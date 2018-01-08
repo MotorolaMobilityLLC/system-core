@@ -77,6 +77,7 @@ struct thread_t {
 
 struct dump_thread_t {
   thread_t thread;
+  BacktraceMap* map;
   Backtrace* backtrace;
   int32_t* now;
   int32_t done;
@@ -188,7 +189,7 @@ static void VerifyLevelBacktrace(void*) {
       Backtrace::Create(BACKTRACE_CURRENT_PROCESS, BACKTRACE_CURRENT_THREAD));
   ASSERT_TRUE(backtrace.get() != nullptr);
   ASSERT_TRUE(backtrace->Unwind(0));
-  ASSERT_EQ(BACKTRACE_UNWIND_NO_ERROR, backtrace->GetError());
+  ASSERT_EQ(BACKTRACE_UNWIND_NO_ERROR, backtrace->GetError().error_code);
 
   VerifyLevelDump(backtrace.get());
 }
@@ -210,7 +211,7 @@ static void VerifyMaxBacktrace(void*) {
       Backtrace::Create(BACKTRACE_CURRENT_PROCESS, BACKTRACE_CURRENT_THREAD));
   ASSERT_TRUE(backtrace.get() != nullptr);
   ASSERT_TRUE(backtrace->Unwind(0));
-  ASSERT_EQ(BACKTRACE_UNWIND_NO_ERROR, backtrace->GetError());
+  ASSERT_EQ(BACKTRACE_UNWIND_NO_ERROR, backtrace->GetError().error_code);
 
   VerifyMaxDump(backtrace.get());
 }
@@ -240,7 +241,7 @@ TEST(libbacktrace, local_no_unwind_frames) {
   std::unique_ptr<Backtrace> backtrace(Backtrace::Create(getpid(), getpid()));
   ASSERT_TRUE(backtrace.get() != nullptr);
   ASSERT_TRUE(backtrace->Unwind(0));
-  ASSERT_EQ(BACKTRACE_UNWIND_NO_ERROR, backtrace->GetError());
+  ASSERT_EQ(BACKTRACE_UNWIND_NO_ERROR, backtrace->GetError().error_code);
 
   ASSERT_TRUE(backtrace->NumFrames() != 0);
   for (const auto& frame : *backtrace ) {
@@ -291,19 +292,19 @@ static void VerifyLevelIgnoreFrames(void*) {
       Backtrace::Create(BACKTRACE_CURRENT_PROCESS, BACKTRACE_CURRENT_THREAD));
   ASSERT_TRUE(all.get() != nullptr);
   ASSERT_TRUE(all->Unwind(0));
-  ASSERT_EQ(BACKTRACE_UNWIND_NO_ERROR, all->GetError());
+  ASSERT_EQ(BACKTRACE_UNWIND_NO_ERROR, all->GetError().error_code);
 
   std::unique_ptr<Backtrace> ign1(
       Backtrace::Create(BACKTRACE_CURRENT_PROCESS, BACKTRACE_CURRENT_THREAD));
   ASSERT_TRUE(ign1.get() != nullptr);
   ASSERT_TRUE(ign1->Unwind(1));
-  ASSERT_EQ(BACKTRACE_UNWIND_NO_ERROR, ign1->GetError());
+  ASSERT_EQ(BACKTRACE_UNWIND_NO_ERROR, ign1->GetError().error_code);
 
   std::unique_ptr<Backtrace> ign2(
       Backtrace::Create(BACKTRACE_CURRENT_PROCESS, BACKTRACE_CURRENT_THREAD));
   ASSERT_TRUE(ign2.get() != nullptr);
   ASSERT_TRUE(ign2->Unwind(2));
-  ASSERT_EQ(BACKTRACE_UNWIND_NO_ERROR, ign2->GetError());
+  ASSERT_EQ(BACKTRACE_UNWIND_NO_ERROR, ign2->GetError().error_code);
 
   VerifyIgnoreFrames(all.get(), ign1.get(), ign2.get(), "VerifyLevelIgnoreFrames");
 }
@@ -339,7 +340,7 @@ static void VerifyProcTest(pid_t pid, pid_t tid, bool (*ReadyFunc)(Backtrace*),
       std::unique_ptr<Backtrace> backtrace(create_func(pid, tid, map.get()));
       ASSERT_TRUE(backtrace.get() != nullptr);
       ASSERT_TRUE(backtrace->Unwind(0));
-      ASSERT_EQ(BACKTRACE_UNWIND_NO_ERROR, backtrace->GetError());
+      ASSERT_EQ(BACKTRACE_UNWIND_NO_ERROR, backtrace->GetError().error_code);
       if (ReadyFunc(backtrace.get())) {
         VerifyFunc(backtrace.get(), create_func, map_create_func);
         verified = true;
@@ -388,12 +389,12 @@ static void VerifyProcessIgnoreFrames(Backtrace* bt_all, create_func_t create_fu
   std::unique_ptr<Backtrace> ign1(create_func(bt_all->Pid(), BACKTRACE_CURRENT_THREAD, map.get()));
   ASSERT_TRUE(ign1.get() != nullptr);
   ASSERT_TRUE(ign1->Unwind(1));
-  ASSERT_EQ(BACKTRACE_UNWIND_NO_ERROR, ign1->GetError());
+  ASSERT_EQ(BACKTRACE_UNWIND_NO_ERROR, ign1->GetError().error_code);
 
   std::unique_ptr<Backtrace> ign2(create_func(bt_all->Pid(), BACKTRACE_CURRENT_THREAD, map.get()));
   ASSERT_TRUE(ign2.get() != nullptr);
   ASSERT_TRUE(ign2->Unwind(2));
-  ASSERT_EQ(BACKTRACE_UNWIND_NO_ERROR, ign2->GetError());
+  ASSERT_EQ(BACKTRACE_UNWIND_NO_ERROR, ign2->GetError().error_code);
 
   VerifyIgnoreFrames(bt_all, ign1.get(), ign2.get(), nullptr);
 }
@@ -479,7 +480,7 @@ void VerifyLevelThread(void*) {
   std::unique_ptr<Backtrace> backtrace(Backtrace::Create(getpid(), gettid()));
   ASSERT_TRUE(backtrace.get() != nullptr);
   ASSERT_TRUE(backtrace->Unwind(0));
-  ASSERT_EQ(BACKTRACE_UNWIND_NO_ERROR, backtrace->GetError());
+  ASSERT_EQ(BACKTRACE_UNWIND_NO_ERROR, backtrace->GetError().error_code);
 
   VerifyLevelDump(backtrace.get());
 }
@@ -492,7 +493,7 @@ static void VerifyMaxThread(void*) {
   std::unique_ptr<Backtrace> backtrace(Backtrace::Create(getpid(), gettid()));
   ASSERT_TRUE(backtrace.get() != nullptr);
   ASSERT_TRUE(backtrace->Unwind(0));
-  ASSERT_EQ(BACKTRACE_UNWIND_NO_ERROR, backtrace->GetError());
+  ASSERT_EQ(BACKTRACE_UNWIND_NO_ERROR, backtrace->GetError().error_code);
 
   VerifyMaxDump(backtrace.get());
 }
@@ -534,7 +535,7 @@ TEST(libbacktrace, thread_level_trace) {
   std::unique_ptr<Backtrace> backtrace(Backtrace::Create(getpid(), thread_data.tid));
   ASSERT_TRUE(backtrace.get() != nullptr);
   ASSERT_TRUE(backtrace->Unwind(0));
-  ASSERT_EQ(BACKTRACE_UNWIND_NO_ERROR, backtrace->GetError());
+  ASSERT_EQ(BACKTRACE_UNWIND_NO_ERROR, backtrace->GetError().error_code);
 
   VerifyLevelDump(backtrace.get());
 
@@ -574,17 +575,17 @@ TEST(libbacktrace, thread_ignore_frames) {
   std::unique_ptr<Backtrace> all(Backtrace::Create(getpid(), thread_data.tid));
   ASSERT_TRUE(all.get() != nullptr);
   ASSERT_TRUE(all->Unwind(0));
-  ASSERT_EQ(BACKTRACE_UNWIND_NO_ERROR, all->GetError());
+  ASSERT_EQ(BACKTRACE_UNWIND_NO_ERROR, all->GetError().error_code);
 
   std::unique_ptr<Backtrace> ign1(Backtrace::Create(getpid(), thread_data.tid));
   ASSERT_TRUE(ign1.get() != nullptr);
   ASSERT_TRUE(ign1->Unwind(1));
-  ASSERT_EQ(BACKTRACE_UNWIND_NO_ERROR, ign1->GetError());
+  ASSERT_EQ(BACKTRACE_UNWIND_NO_ERROR, ign1->GetError().error_code);
 
   std::unique_ptr<Backtrace> ign2(Backtrace::Create(getpid(), thread_data.tid));
   ASSERT_TRUE(ign2.get() != nullptr);
   ASSERT_TRUE(ign2->Unwind(2));
-  ASSERT_EQ(BACKTRACE_UNWIND_NO_ERROR, ign2->GetError());
+  ASSERT_EQ(BACKTRACE_UNWIND_NO_ERROR, ign2->GetError().error_code);
 
   VerifyIgnoreFrames(all.get(), ign1.get(), ign2.get(), nullptr);
 
@@ -615,7 +616,7 @@ TEST(libbacktrace, thread_max_trace) {
   std::unique_ptr<Backtrace> backtrace(Backtrace::Create(getpid(), thread_data.tid));
   ASSERT_TRUE(backtrace.get() != nullptr);
   ASSERT_TRUE(backtrace->Unwind(0));
-  ASSERT_EQ(BACKTRACE_UNWIND_NO_ERROR, backtrace->GetError());
+  ASSERT_EQ(BACKTRACE_UNWIND_NO_ERROR, backtrace->GetError().error_code);
 
   VerifyMaxDump(backtrace.get());
 
@@ -632,7 +633,7 @@ static void* ThreadDump(void* data) {
   }
 
   // The status of the actual unwind will be checked elsewhere.
-  dump->backtrace = Backtrace::Create(getpid(), dump->thread.tid);
+  dump->backtrace = Backtrace::Create(getpid(), dump->thread.tid, dump->map);
   dump->backtrace->Unwind(0);
 
   android_atomic_acquire_store(1, &dump->done);
@@ -640,8 +641,8 @@ static void* ThreadDump(void* data) {
   return nullptr;
 }
 
-TEST(libbacktrace, thread_multiple_dump) {
-  // Dump NUM_THREADS simultaneously.
+static void MultipleThreadDumpTest(bool share_map) {
+  // Dump NUM_THREADS simultaneously using the same map.
   std::vector<thread_t> runners(NUM_THREADS);
   std::vector<dump_thread_t> dumpers(NUM_THREADS);
 
@@ -662,12 +663,17 @@ TEST(libbacktrace, thread_multiple_dump) {
 
   // Start all of the dumpers at once, they will spin until they are signalled
   // to begin their dump run.
+  std::unique_ptr<BacktraceMap> map;
+  if (share_map) {
+    map.reset(BacktraceMap::Create(getpid()));
+  }
   int32_t dump_now = 0;
   for (size_t i = 0; i < NUM_THREADS; i++) {
     dumpers[i].thread.tid = runners[i].tid;
     dumpers[i].thread.state = 0;
     dumpers[i].done = 0;
     dumpers[i].now = &dump_now;
+    dumpers[i].map = map.get();
 
     ASSERT_TRUE(pthread_create(&dumpers[i].thread.threadId, &attr, ThreadDump, &dumpers[i]) == 0);
   }
@@ -689,47 +695,12 @@ TEST(libbacktrace, thread_multiple_dump) {
   }
 }
 
-TEST(libbacktrace, thread_multiple_dump_same_thread) {
-  pthread_attr_t attr;
-  pthread_attr_init(&attr);
-  pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
-  thread_t runner;
-  runner.tid = 0;
-  runner.state = 0;
-  ASSERT_TRUE(pthread_create(&runner.threadId, &attr, ThreadMaxRun, &runner) == 0);
+TEST(libbacktrace, thread_multiple_dump) {
+  MultipleThreadDumpTest(false);
+}
 
-  // Wait for tids to be set.
-  ASSERT_TRUE(WaitForNonZero(&runner.state, 30));
-
-  // Start all of the dumpers at once, they will spin until they are signalled
-  // to begin their dump run.
-  int32_t dump_now = 0;
-  // Dump the same thread NUM_THREADS simultaneously.
-  std::vector<dump_thread_t> dumpers(NUM_THREADS);
-  for (size_t i = 0; i < NUM_THREADS; i++) {
-    dumpers[i].thread.tid = runner.tid;
-    dumpers[i].thread.state = 0;
-    dumpers[i].done = 0;
-    dumpers[i].now = &dump_now;
-
-    ASSERT_TRUE(pthread_create(&dumpers[i].thread.threadId, &attr, ThreadDump, &dumpers[i]) == 0);
-  }
-
-  // Start all of the dumpers going at once.
-  android_atomic_acquire_store(1, &dump_now);
-
-  for (size_t i = 0; i < NUM_THREADS; i++) {
-    ASSERT_TRUE(WaitForNonZero(&dumpers[i].done, 30));
-
-    ASSERT_TRUE(dumpers[i].backtrace != nullptr);
-    VerifyMaxDump(dumpers[i].backtrace);
-
-    delete dumpers[i].backtrace;
-    dumpers[i].backtrace = nullptr;
-  }
-
-  // Tell the runner thread to exit its infinite loop.
-  android_atomic_acquire_store(0, &runner.state);
+TEST(libbacktrace, thread_multiple_dump_same_map) {
+  MultipleThreadDumpTest(true);
 }
 
 // This test is for UnwindMaps that should share the same map cursor when
@@ -742,21 +713,21 @@ TEST(libbacktrace, simultaneous_maps) {
   Backtrace* back1 = Backtrace::Create(getpid(), BACKTRACE_CURRENT_THREAD, map1);
   ASSERT_TRUE(back1 != nullptr);
   EXPECT_TRUE(back1->Unwind(0));
-  ASSERT_EQ(BACKTRACE_UNWIND_NO_ERROR, back1->GetError());
+  ASSERT_EQ(BACKTRACE_UNWIND_NO_ERROR, back1->GetError().error_code);
   delete back1;
   delete map1;
 
   Backtrace* back2 = Backtrace::Create(getpid(), BACKTRACE_CURRENT_THREAD, map2);
   ASSERT_TRUE(back2 != nullptr);
   EXPECT_TRUE(back2->Unwind(0));
-  ASSERT_EQ(BACKTRACE_UNWIND_NO_ERROR, back2->GetError());
+  ASSERT_EQ(BACKTRACE_UNWIND_NO_ERROR, back2->GetError().error_code);
   delete back2;
   delete map2;
 
   Backtrace* back3 = Backtrace::Create(getpid(), BACKTRACE_CURRENT_THREAD, map3);
   ASSERT_TRUE(back3 != nullptr);
   EXPECT_TRUE(back3->Unwind(0));
-  ASSERT_EQ(BACKTRACE_UNWIND_NO_ERROR, back3->GetError());
+  ASSERT_EQ(BACKTRACE_UNWIND_NO_ERROR, back3->GetError().error_code);
   delete back3;
   delete map3;
 }
@@ -886,6 +857,34 @@ struct map_test_t {
 
 static bool map_sort(map_test_t i, map_test_t j) { return i.start < j.start; }
 
+static std::string GetTestMapsAsString(const std::vector<map_test_t>& maps) {
+  if (maps.size() == 0) {
+    return "No test map entries\n";
+  }
+  std::string map_txt;
+  for (auto map : maps) {
+    map_txt += android::base::StringPrintf("%" PRIxPTR "-%" PRIxPTR "\n", map.start, map.end);
+  }
+  return map_txt;
+}
+
+static std::string GetMapsAsString(BacktraceMap* maps) {
+  if (maps->size() == 0) {
+    return "No map entries\n";
+  }
+  std::string map_txt;
+  for (const backtrace_map_t* map : *maps) {
+    map_txt += android::base::StringPrintf(
+        "%" PRIxPTR "-%" PRIxPTR " flags: 0x%x offset: 0x%" PRIxPTR " load_bias: 0x%" PRIxPTR,
+        map->start, map->end, map->flags, map->offset, map->load_bias);
+    if (!map->name.empty()) {
+      map_txt += ' ' + map->name;
+    }
+    map_txt += '\n';
+  }
+  return map_txt;
+}
+
 static void VerifyMap(pid_t pid) {
   char buffer[4096];
   snprintf(buffer, sizeof(buffer), "/proc/%d/maps", pid);
@@ -904,12 +903,20 @@ static void VerifyMap(pid_t pid) {
   std::unique_ptr<BacktraceMap> map(BacktraceMap::Create(pid));
 
   // Basic test that verifies that the map is in the expected order.
-  ScopedBacktraceMapIteratorLock lock(map.get());
-  std::vector<map_test_t>::const_iterator test_it = test_maps.begin();
-  for (BacktraceMap::const_iterator it = map->begin(); it != map->end(); ++it) {
-    ASSERT_TRUE(test_it != test_maps.end());
-    ASSERT_EQ(test_it->start, it->start);
-    ASSERT_EQ(test_it->end, it->end);
+  auto test_it = test_maps.begin();
+  for (auto it = map->begin(); it != map->end(); ++it) {
+    ASSERT_TRUE(test_it != test_maps.end()) << "Mismatch in number of maps, expected test maps:\n"
+                                            << GetTestMapsAsString(test_maps) << "Actual maps:\n"
+                                            << GetMapsAsString(map.get());
+    ASSERT_EQ(test_it->start, (*it)->start) << "Mismatch in map data, expected test maps:\n"
+                                            << GetTestMapsAsString(test_maps) << "Actual maps:\n"
+                                            << GetMapsAsString(map.get());
+    ASSERT_EQ(test_it->end, (*it)->end) << "Mismatch maps in map data, expected test maps:\n"
+                                        << GetTestMapsAsString(test_maps) << "Actual maps:\n"
+                                        << GetMapsAsString(map.get());
+    // Make sure the load bias get set to a value.
+    ASSERT_NE(static_cast<uint64_t>(-1), (*it)->load_bias) << "Found uninitialized load_bias\n"
+                                                           << GetMapsAsString(map.get());
     ++test_it;
   }
   ASSERT_TRUE(test_it == test_maps.end());
@@ -1324,7 +1331,7 @@ static void VerifyUnreadableElfBacktrace(uintptr_t test_func) {
                                                          BACKTRACE_CURRENT_THREAD));
   ASSERT_TRUE(backtrace.get() != nullptr);
   ASSERT_TRUE(backtrace->Unwind(0));
-  ASSERT_EQ(BACKTRACE_UNWIND_NO_ERROR, backtrace->GetError());
+  ASSERT_EQ(BACKTRACE_UNWIND_NO_ERROR, backtrace->GetError().error_code);
 
   size_t frame_num;
   ASSERT_TRUE(FindFuncFrameInBacktrace(backtrace.get(), test_func, &frame_num));
@@ -1381,7 +1388,7 @@ TEST(libbacktrace, unwind_through_unreadable_elf_remote) {
     std::unique_ptr<Backtrace> backtrace(Backtrace::Create(pid, BACKTRACE_CURRENT_THREAD));
     ASSERT_TRUE(backtrace.get() != nullptr);
     ASSERT_TRUE(backtrace->Unwind(0));
-    ASSERT_EQ(BACKTRACE_UNWIND_NO_ERROR, backtrace->GetError());
+    ASSERT_EQ(BACKTRACE_UNWIND_NO_ERROR, backtrace->GetError().error_code);
 
     size_t frame_num;
     if (FindFuncFrameInBacktrace(backtrace.get(),
@@ -1410,7 +1417,7 @@ TEST(libbacktrace, unwind_thread_doesnt_exist) {
       Backtrace::Create(BACKTRACE_CURRENT_PROCESS, 99999999));
   ASSERT_TRUE(backtrace.get() != nullptr);
   ASSERT_FALSE(backtrace->Unwind(0));
-  ASSERT_EQ(BACKTRACE_UNWIND_ERROR_THREAD_DOESNT_EXIST, backtrace->GetError());
+  ASSERT_EQ(BACKTRACE_UNWIND_ERROR_THREAD_DOESNT_EXIST, backtrace->GetError().error_code);
 }
 
 TEST(libbacktrace, local_get_function_name_before_unwind) {
@@ -1778,7 +1785,7 @@ static void CheckForLeak(pid_t pid, pid_t tid) {
     Backtrace* backtrace = Backtrace::Create(pid, tid, map.get());
     ASSERT_TRUE(backtrace != nullptr);
     ASSERT_TRUE(backtrace->Unwind(0));
-    ASSERT_EQ(BACKTRACE_UNWIND_NO_ERROR, backtrace->GetError());
+    ASSERT_EQ(BACKTRACE_UNWIND_NO_ERROR, backtrace->GetError().error_code);
     delete backtrace;
   }
   size_t stable_pss = GetPssBytes();
@@ -1789,7 +1796,7 @@ static void CheckForLeak(pid_t pid, pid_t tid) {
     Backtrace* backtrace = Backtrace::Create(pid, tid, map.get());
     ASSERT_TRUE(backtrace != nullptr);
     ASSERT_TRUE(backtrace->Unwind(0));
-    ASSERT_EQ(BACKTRACE_UNWIND_NO_ERROR, backtrace->GetError());
+    ASSERT_EQ(BACKTRACE_UNWIND_NO_ERROR, backtrace->GetError().error_code);
     delete backtrace;
   }
   size_t new_pss = GetPssBytes();

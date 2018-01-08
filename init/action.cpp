@@ -358,7 +358,7 @@ Result<Success> ActionParser::ParseSection(std::vector<std::string>&& args,
     Subcontext* action_subcontext = nullptr;
     if (subcontexts_) {
         for (auto& subcontext : *subcontexts_) {
-            if (StartsWith(filename, subcontext.path_prefix().c_str())) {
+            if (StartsWith(filename, subcontext.path_prefix())) {
                 action_subcontext = &subcontext;
                 break;
             }
@@ -379,10 +379,12 @@ Result<Success> ActionParser::ParseLineSection(std::vector<std::string>&& args, 
     return action_ ? action_->AddCommand(std::move(args), line) : Success();
 }
 
-void ActionParser::EndSection() {
+Result<Success> ActionParser::EndSection() {
     if (action_ && action_->NumCommands() > 0) {
         action_manager_->AddAction(std::move(action_));
     }
+
+    return Success();
 }
 
 }  // namespace init

@@ -95,6 +95,8 @@ cc_library_static {
         "libprocessgroup",
         "libfs_mgr",
         "libprotobuf-cpp-lite",
+        "libpropertyinfoserializer",
+        "libpropertyinfoparser",
     ],
     include_dirs: [
         "system/core/mkbootimg",
@@ -118,6 +120,8 @@ cc_binary {
     required: [
         "e2fsdroid",
         "mke2fs",
+        "sload_f2fs",
+        "make_f2fs",
     ],
     static_executable: true,
     srcs: [
@@ -191,6 +195,7 @@ cc_test {
         "libselinux",
         "libcrypto",
         "libprotobuf-cpp-lite",
+        "libpropertyinfoparser",
     ],
 }
 
