@@ -438,7 +438,7 @@ static void tune_reserved_size(const std::string& blk_device, const FstabEntry& 
 static void tune_encrypt(const std::string& blk_device, const FstabEntry& entry,
                          const struct ext4_super_block* sb, int* fs_stat) {
     bool has_encrypt = (sb->s_feature_incompat & cpu_to_le32(EXT4_FEATURE_INCOMPAT_ENCRYPT)) != 0;
-    bool want_encrypt = entry.fs_mgr_flags.file_encryption;
+    bool want_encrypt = entry.fs_mgr_flags.file_encryption | entry.fs_mgr_flags.force_fde_or_fbe;
 
     if (has_encrypt || !want_encrypt) {
         return;
@@ -683,7 +683,7 @@ static int prepare_fs_for_mount(const std::string& blk_device, const FstabEntry&
 
     if (is_extfs(entry.fs_type) &&
         (entry.reserved_size != 0 || entry.fs_mgr_flags.file_encryption ||
-         entry.fs_mgr_flags.fs_verity)) {
+         entry.fs_mgr_flags.force_fde_or_fbe || entry.fs_mgr_flags.fs_verity)) {
         struct ext4_super_block sb;
 
         if (read_ext4_superblock(blk_device, &sb, &fs_stat)) {
