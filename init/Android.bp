@@ -54,6 +54,12 @@ cc_defaults {
                 "-DSHUTDOWN_ZERO_TIMEOUT=1",
             ],
         },
+        device_has_greybus: {
+            cppflags: ["-DMOTO_GREYBUS_FIRMWARE"],
+        },
+        device_has_xmcs: {
+            cppflags: ["-DMOTO_AOV_WITH_XMCS"],
+        },
     },
 }
 
