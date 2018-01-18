@@ -498,7 +498,18 @@ static void debuggerd_signal_handler(int signal_number, siginfo_t* info, void* c
   if (prctl(PR_SET_DUMPABLE, 1) != 0) {
      fatal_errno("failed to set dumpable");
   }
-           
+
+  // On kernels with yama_ptrace enabled, also allow any process to attach.
+  bool restore_orig_ptracer = true;
+  if (prctl(PR_SET_PTRACER, PR_SET_PTRACER_ANY) != 0) {
+    if (errno == EINVAL) {
+      // This kernel does not support PR_SET_PTRACER_ANY, or Yama is not enabled.
+      restore_orig_ptracer = false;
+    } else {
+      fatal_errno("failed to set traceable");
+    }
+  }
+
   // Essentially pthread_create without CLONE_FILES, so we still work during file descriptor
   // exhaustion.
   pid_t child_pid =
@@ -523,6 +534,11 @@ static void debuggerd_signal_handler(int signal_number, siginfo_t* info, void* c
   // to deregister our signal handler for that signal before continuing.
   if (signal_number != DEBUGGER_SIGNAL) {
     signal(signal_number, SIG_DFL);
+  }
+
+  // Restore PR_SET_PTRACER to its original value.
+  if (restore_orig_ptracer && prctl(PR_SET_PTRACER, 0) != 0) {
+    fatal_errno("failed to restore traceable");
   }
 
   if (info->si_signo == DEBUGGER_SIGNAL) {
