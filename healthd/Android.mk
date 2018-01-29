@@ -92,11 +92,6 @@ LOCAL_CFLAGS := -Werror
 ifeq ($(strip $(LOCAL_CHARGER_NO_UI)),true)
 LOCAL_CFLAGS += -DCHARGER_NO_UI
 
-# MOT (IKXREL3KK-5478) - add capability to run root-detect on periodoc basis for verizon devices
-ifeq ($(TARGET_SUPPORTS_DAILY_ROOT_DETECT),true)
-LOCAL_CFLAGS += -DQE
-endif
-
 endif
 ifneq ($(BOARD_PERIODIC_CHORES_INTERVAL_FAST),)
 LOCAL_CFLAGS += -DBOARD_PERIODIC_CHORES_INTERVAL_FAST=$(BOARD_PERIODIC_CHORES_INTERVAL_FAST)
