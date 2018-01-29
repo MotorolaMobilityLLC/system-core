@@ -27,12 +27,20 @@
 #include <utils/String16.h>
 
 #include <healthd/healthd.h>
+// BEGIN motorola, chenym7, 1/26/2018, IKSWO-35619
+// STOPSHIP : print the debug log
+#include <cutils/klog.h>
+// END motorola, IKSWO-35619
 
 namespace android {
 
 void BatteryPropertiesRegistrar::publish(
     const sp<BatteryPropertiesRegistrar>& service) {
     defaultServiceManager()->addService(String16("batteryproperties"), service);
+    // BEGIN motorola, chenym7, 1/26/2018, IKSWO-35619
+    // STOPSHIP : print the debug log
+    KLOG_WARNING("BatteryPropertiesRegistrar", "publish service: batteryproperties \n");
+    // END motorola, IKSWO-35619
 }
 
 void BatteryPropertiesRegistrar::notifyListeners(const struct BatteryProperties& props) {
