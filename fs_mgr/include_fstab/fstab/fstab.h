@@ -96,6 +96,7 @@ __END_DECLS
 // TODO: move this into separate header files under include/fs_mgr/*.h
 #ifdef __cplusplus
 std::string fs_mgr_get_slot_suffix();
+std::string fs_mgr_get_other_suffix(std::string suffix);
 #endif
 
 #endif /* __CORE_FS_TAB_H */
