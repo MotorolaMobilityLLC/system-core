@@ -707,13 +707,16 @@ int load_verity_state(struct fstab_rec* fstab, int* mode) {
 //   verity table token: /dev/block/platform/soc.0/7824900.sdhci/by-name/vendor
 //   blk_device:         /dev/block/platform/soc.0/7824900.sdhci/by-name/vendor_a
 static void update_verity_table_blk_device(const std::string& blk_device, char** table,
-                                           bool slot_select) {
+                                           bool slot_select, bool slot_other) {
     bool updated = false;
     std::string result, ab_suffix;
     auto tokens = android::base::Split(*table, " ");
 
     // If slot_select is set, it means blk_device is already updated with ab_suffix.
     if (slot_select) ab_suffix = fs_mgr_get_slot_suffix();
+
+    if (slot_other)
+       ab_suffix = fs_mgr_get_other_suffix(ab_suffix);
 
     for (const auto& token : tokens) {
         std::string new_token;
@@ -859,7 +862,7 @@ int fs_mgr_setup_verity(struct fstab_rec *fstab, bool wait_for_verity_dev)
 
     // Update the verity params using the actual block device path
     update_verity_table_blk_device(fstab->blk_device, &params.table,
-                                   fstab->fs_mgr_flags & MF_SLOTSELECT);
+                                   fstab->fs_mgr_flags & MF_SLOTSELECT, fstab->fs_mgr_flags & MF_OTHER_SLOT);
 
     // load the verity mapping table
     if (load_verity_table(io, mount_point, verity.data_size, fd, &params,
