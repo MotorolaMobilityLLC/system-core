@@ -733,6 +733,20 @@ int main(int argc, char** argv) {
     const char* avb_version = getenv("INIT_AVB_VERSION");
     if (avb_version) property_set("ro.boot.avb_version", avb_version);
 
+    // Set memcg property based on kernel cmdline argument
+    bool memcg_enabled = android::base::GetBoolProperty("ro.boot.memcg",false);
+    if (memcg_enabled) {
+       // root memory control cgroup
+       mkdir("/dev/memcg", 0700);
+       chown("/dev/memcg",AID_ROOT,AID_SYSTEM);
+       mount("none", "/dev/memcg", "cgroup", 0, "memory");
+       // app mem cgroups, used by activity manager, lmkd and zygote
+       mkdir("/dev/memcg/apps/",0755);
+       chown("/dev/memcg/apps/",AID_SYSTEM,AID_SYSTEM);
+       mkdir("/dev/memcg/system",0550);
+       chown("/dev/memcg/system",AID_SYSTEM,AID_SYSTEM);
+    }
+
     // Clean up our environment.
     unsetenv("INIT_SECOND_STAGE");
     unsetenv("INIT_STARTED_AT");

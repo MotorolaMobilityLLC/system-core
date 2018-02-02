@@ -30,14 +30,6 @@ on early-init
     chown system system /acct
     mkdir /acct/uid
 
-    # root memory control cgroup, used by lmkd
-    mkdir /dev/memcg 0700 root system
-    mount cgroup none /dev/memcg nodev noexec nosuid memory
-    # app mem cgroups, used by activity manager, lmkd and zygote
-    mkdir /dev/memcg/apps/ 0755 system system
-    # cgroup for system_server and surfaceflinger
-    mkdir /dev/memcg/system 0550 system system
-
     start ueventd
 
 on init
