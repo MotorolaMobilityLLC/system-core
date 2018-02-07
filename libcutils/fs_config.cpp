@@ -141,6 +141,7 @@ static const struct fs_path_config android_files[] = {
     { 00444, AID_ROOT,      AID_ROOT,      0, odm_conf_file + 1 },
     { 00444, AID_ROOT,      AID_ROOT,      0, oem_conf_dir + 1 },
     { 00444, AID_ROOT,      AID_ROOT,      0, oem_conf_file + 1 },
+    { 00600, AID_ROOT,      AID_ROOT,      0, "product/build.prop" },
     { 00750, AID_ROOT,      AID_SHELL,     0, "sbin/fs_mgr" },
     { 00755, AID_ROOT,      AID_SHELL,     0, "system/bin/crash_dump32" },
     { 00755, AID_ROOT,      AID_SHELL,     0, "system/bin/crash_dump64" },
@@ -185,10 +186,15 @@ static const struct fs_path_config android_files[] = {
     { 00755, AID_SYSTEM,    AID_GRAPHICS,  CAP_MASK_LONG(CAP_SYS_NICE),
                                               "system/bin/surfaceflinger" },
 
-    // Support hostapd administering a network interface.
+    // Support hostapd administering a network interface (Old Path: <= O-MR1 release).
     { 00755, AID_WIFI,      AID_WIFI,      CAP_MASK_LONG(CAP_NET_ADMIN) |
                                            CAP_MASK_LONG(CAP_NET_RAW),
                                               "vendor/bin/hostapd" },
+
+    // Support hostapd administering a network interface (New Path: >= P release).
+    { 00750, AID_WIFI,      AID_WIFI,      CAP_MASK_LONG(CAP_NET_ADMIN) |
+                                           CAP_MASK_LONG(CAP_NET_RAW),
+                                              "vendor/bin/hw/hostapd" },
 
     // Support Bluetooth legacy hal accessing /sys/class/rfkill
     // Support RT scheduling in Bluetooth

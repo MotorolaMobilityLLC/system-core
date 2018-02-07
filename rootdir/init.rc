@@ -86,7 +86,7 @@ on init
     restorecon_recursive /mnt
 
     mount configfs none /config
-    chmod 0775 /config/sdcardfs
+    chmod 0770 /config/sdcardfs
     chown system package_info /config/sdcardfs
 
     mkdir /mnt/secure 0700 root root
@@ -217,6 +217,12 @@ on init
     # Allow everybody to read the xt_qtaguid resource tracking misc dev.
     # This is needed by any process that uses socket tagging.
     chmod 0644 /dev/xt_qtaguid
+
+    mkdir /dev/cg2_bpf
+    mount cgroup2 cg2_bpf /dev/cg2_bpf
+    chown root root /dev/cg2_bpf
+    chmod 0600 /dev/cg2_bpf
+    mount bpf bpf /sys/fs/bpf
 
     # Create location for fs_mgr to store abbreviated output from filesystem
     # checker programs.
@@ -449,11 +455,14 @@ on post-fs-data
     mkdir /data/misc/gcov 0770 root root
 
     mkdir /data/vendor 0771 root root
+    mkdir /data/vendor_ce 0771 root root
+    mkdir /data/vendor_de 0771 root root
     mkdir /data/vendor/hardware 0771 root root
 
     # For security reasons, /data/local/tmp should always be empty.
     # Do not place files or directories in /data/local/tmp
     mkdir /data/local/tmp 0771 shell shell
+    mkdir /data/local/traces 0777 shell shell
     mkdir /data/data 0771 system system
     mkdir /data/app-private 0771 system system
     mkdir /data/app-ephemeral 0771 system system
@@ -462,6 +471,8 @@ on post-fs-data
     mkdir /data/app 0771 system system
     mkdir /data/property 0700 root root
     mkdir /data/tombstones 0771 system system
+    mkdir /data/vendor/tombstones 0771 root root
+    mkdir /data/vendor/tombstones/wifi 0771 wifi wifi
 
     # create dalvik-cache, so as to enforce our permissions
     mkdir /data/dalvik-cache 0771 root root
