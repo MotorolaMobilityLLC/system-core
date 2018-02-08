@@ -205,6 +205,8 @@ bool InterceptManager::GetIntercept(pid_t pid, DebuggerdDumpType dump_type,
     return false;
   }
 
+// BEGIN Motorola, a5111c, 12/12/2017, IKSWO-20718
+#ifndef TOMBSTONED_KEEP_FILEHANDLE_DUMPING
   auto intercept = std::move(it->second);
   this->intercepts.erase(it);
 
@@ -214,6 +216,32 @@ bool InterceptManager::GetIntercept(pid_t pid, DebuggerdDumpType dump_type,
   response.status = InterceptStatus::kStarted;
   TEMP_FAILURE_RETRY(write(intercept->sockfd, &response, sizeof(response)));
   *out_fd = std::move(intercept->output_fd);
+#else
+  int moved_fd = fcntl(it->second->output_fd.get(), F_DUPFD, 512);
+  LOG(INFO) << "found intercept fd " << moved_fd << " for pid " << pid;
+  InterceptResponse response = {};
+  response.status = InterceptStatus::kStarted;
+  TEMP_FAILURE_RETRY(write(it->second->sockfd, &response, sizeof(response)));
+  out_fd->reset(moved_fd);
+#endif
+//END IKSWO-20718
 
   return true;
 }
+
+// BEGIN Motorola, a5111c, 12/12/2017, IKSWO-20718
+#ifdef TOMBSTONED_KEEP_FILEHANDLE_DUMPING
+bool InterceptManager::RemoveIntercept(pid_t pid) {
+  auto it = this->intercepts.find(pid);
+  if (it == this->intercepts.end()) {
+    return false;
+  }
+
+  auto intercept = std::move(it->second);
+  this->intercepts.erase(it);
+
+  LOG(INFO) << "remove intercept fd " << intercept->output_fd.get() << " for pid " << pid;
+  return true;
+}
+#endif
+//END IKSWO-20718
