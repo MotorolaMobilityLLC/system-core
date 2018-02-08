@@ -45,7 +45,9 @@ static inline SchedPolicy _policy(SchedPolicy p)
 #define POLICY_DEBUG 0
 
 // timer slack value in nS enforced when the thread moves to background
-#define TIMER_SLACK_BG 40000000
+/* Motorola, jiayh2 02/06/2018 IKSWO-46801 */
+/* Modify TIMER_SLACK_BG from 40000000 to 10000000 */
+#define TIMER_SLACK_BG 10000000
 #define TIMER_SLACK_FG 50000
 
 static pthread_once_t the_once = PTHREAD_ONCE_INIT;
