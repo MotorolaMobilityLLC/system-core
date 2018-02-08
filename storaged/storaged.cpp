@@ -123,11 +123,18 @@ void storaged_t::init_health_service() {
     health->linkToDeath(this, 0 /* cookie */);
 }
 
-void storaged_t::serviceDied(uint64_t cookie, const wp<::android::hidl::base::V1_0::IBase>& who) {
-    if (health != NULL && interfacesEqual(health, who.promote())) {
-        LOG_TO(SYSTEM, ERROR) << "health service died, exiting";
-        android::hardware::IPCThreadState::self()->stopProcess();
-        exit(1);
+void storaged_t::binderDied(const wp<IBinder>& who) {
+    if (battery_properties != NULL &&
+        IInterface::asBinder(battery_properties) == who) {
+        char property[256] = {0};
+        property_get("sys.powerctl", property,"");
+        if (strlen(property) != 0 ) {
+            LOG_TO(SYSTEM, ERROR) << "sys.powerctl = "<<property;
+        } else {
+            LOG_TO(SYSTEM, ERROR) << "batteryproperties service died, exiting";
+            IPCThreadState::self()->stopProcess();
+            exit(1);
+        }
     } else {
         LOG_TO(SYSTEM, ERROR) << "unknown service died";
     }
