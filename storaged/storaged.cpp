@@ -187,7 +187,15 @@ void storaged_t::init_health_service() {
 void hidl_health_death_recipient::serviceDied(uint64_t cookie,
                                               const wp<::android::hidl::base::V1_0::IBase>& who) {
     if (mHealth != nullptr && interfacesEqual(mHealth, who.promote())) {
-        onHealthBinderDied(reinterpret_cast<void*>(cookie));
+        char property[256] = {0};
+        property_get("sys.powerctl", property,"");
+        if (strlen(property) != 0 ) {
+            LOG(ERROR) << "sys.powerctl = "<<property;
+        } else {
+            LOG(ERROR) << "health service died, exiting";
+            onHealthBinderDied(reinterpret_cast<void*>(cookie));
+            exit(1);
+        }
     } else {
         LOG(ERROR) << "unknown service died";
     }
