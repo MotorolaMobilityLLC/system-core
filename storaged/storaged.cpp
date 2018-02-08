@@ -125,9 +125,15 @@ void storaged_t::init_health_service() {
 
 void storaged_t::serviceDied(uint64_t cookie, const wp<::android::hidl::base::V1_0::IBase>& who) {
     if (health != NULL && interfacesEqual(health, who.promote())) {
-        LOG_TO(SYSTEM, ERROR) << "health service died, exiting";
-        android::hardware::IPCThreadState::self()->stopProcess();
-        exit(1);
+        char property[256] = {0};
+        property_get("sys.powerctl", property,"");
+        if (strlen(property) != 0 ) {
+            LOG_TO(SYSTEM, ERROR) << "sys.powerctl = "<<property;
+        } else {
+            LOG_TO(SYSTEM, ERROR) << "health service died, exiting";
+            android::hardware::IPCThreadState::self()->stopProcess();
+            exit(1);
+        }
     } else {
         LOG_TO(SYSTEM, ERROR) << "unknown service died";
     }
