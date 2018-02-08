@@ -350,6 +350,13 @@ static void crash_completed_cb(evutil_socket_t sockfd, short ev, void* arg) {
                  << uint32_t(request.packet_type);
     goto fail;
   }
+// BEGIN Motorola, a5111c, 12/12/2017, IKSWO-20718
+#ifdef TOMBSTONED_KEEP_FILEHANDLE_DUMPING
+  else {
+    intercept_manager->RemoveIntercept(crash->crash_pid);
+  }
+#endif
+//END IKSWO-20718
 
   if (crash->crash_tombstone_fd != -1) {
     std::string fd_path = StringPrintf("/proc/self/fd/%d", crash->crash_tombstone_fd.get());
