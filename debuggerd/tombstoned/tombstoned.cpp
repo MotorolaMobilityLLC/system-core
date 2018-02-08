@@ -447,6 +447,13 @@ static void crash_completed(borrowed_fd sockfd, std::unique_ptr<Crash> crash) {
                  << uint32_t(request.packet_type);
     return;
   }
+// BEGIN Motorola, a5111c, 12/12/2017, IKSWO-20718
+#ifdef TOMBSTONED_KEEP_FILEHANDLE_DUMPING
+  else {
+    intercept_manager->RemoveIntercept(crash->crash_pid);
+  }
+#endif
+//END IKSWO-20718
 
   if (crash->output.text.fd == -1) {
     LOG(WARNING) << "missing output fd";

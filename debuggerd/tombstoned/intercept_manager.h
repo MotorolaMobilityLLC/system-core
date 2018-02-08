@@ -27,6 +27,12 @@
 
 #include "dump_type.h"
 
+// BEGIN Motorola, a5111c, 12/12/2017, IKSWO-20718
+#ifndef TOMBSTONED_KEEP_FILEHANDLE_DUMPING
+#define TOMBSTONED_KEEP_FILEHANDLE_DUMPING
+#endif
+//END IKSWO-20718
+
 struct InterceptManager;
 
 struct Intercept {
@@ -54,4 +60,9 @@ struct InterceptManager {
   InterceptManager(InterceptManager&& move) = delete;
 
   bool GetIntercept(pid_t pid, DebuggerdDumpType dump_type, android::base::unique_fd* out_fd);
+// BEGIN Motorola, a5111c, 12/12/2017, IKSWO-20718
+#ifdef TOMBSTONED_KEEP_FILEHANDLE_DUMPING
+  bool RemoveIntercept(pid_t pid);
+#endif
+//END IKSWO-20718
 };
