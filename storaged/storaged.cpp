@@ -192,9 +192,15 @@ void storaged_t::init_battery_service() {
 void storaged_t::binderDied(const wp<IBinder>& who) {
     if (battery_properties != NULL &&
         IInterface::asBinder(battery_properties) == who) {
-        LOG_TO(SYSTEM, ERROR) << "batteryproperties service died, exiting";
-        IPCThreadState::self()->stopProcess();
-        exit(1);
+        char property[256] = {0};
+        property_get("sys.powerctl", property,"");
+        if (strlen(property) != 0 ) {
+            LOG_TO(SYSTEM, ERROR) << "sys.powerctl = "<<property;
+        } else {
+            LOG_TO(SYSTEM, ERROR) << "batteryproperties service died, exiting";
+            IPCThreadState::self()->stopProcess();
+            exit(1);
+        }
     } else {
         LOG_TO(SYSTEM, ERROR) << "unknown service died";
     }
