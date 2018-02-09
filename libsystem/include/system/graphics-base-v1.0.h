@@ -30,6 +30,7 @@ typedef enum {
     HAL_PIXEL_FORMAT_Y8 = 538982489,
     HAL_PIXEL_FORMAT_Y16 = 540422489,
     HAL_PIXEL_FORMAT_YV12 = 842094169,
+    HAL_PIXEL_FORMAT_JPEG = 256,
 } android_pixel_format_t;
 
 typedef enum {
