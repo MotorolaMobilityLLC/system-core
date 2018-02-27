@@ -48,19 +48,25 @@ void Unwinder::FillInDexFrame() {
   size_t frame_num = frames_.size();
   frames_.resize(frame_num + 1);
   FrameData* frame = &frames_.at(frame_num);
+  frame->num = frame_num;
 
   uint64_t dex_pc = regs_->dex_pc();
   frame->pc = dex_pc;
   frame->sp = regs_->sp();
 
   MapInfo* info = maps_->Find(dex_pc);
-  frame->map_start = info->start;
-  frame->map_end = info->end;
-  frame->map_offset = info->offset;
-  frame->map_load_bias = info->load_bias;
-  frame->map_flags = info->flags;
-  frame->map_name = info->name;
-  frame->rel_pc = dex_pc - info->start;
+  if (info != nullptr) {
+    frame->map_start = info->start;
+    frame->map_end = info->end;
+    frame->map_offset = info->offset;
+    frame->map_load_bias = info->load_bias;
+    frame->map_flags = info->flags;
+    frame->map_name = info->name;
+    frame->rel_pc = dex_pc - info->start;
+  } else {
+    frame->rel_pc = dex_pc;
+    return;
+  }
 
 #if !defined(NO_LIBDEXFILE_SUPPORT)
   if (dex_files_ == nullptr) {
@@ -86,7 +92,7 @@ void Unwinder::FillInFrame(MapInfo* map_info, Elf* elf, uint64_t adjusted_rel_pc
     return;
   }
 
-  frame->pc = map_info->start + adjusted_rel_pc;
+  frame->pc = map_info->start + adjusted_rel_pc - elf->GetLoadBias() - map_info->elf_offset;
   frame->map_name = map_info->name;
   frame->map_offset = map_info->offset;
   frame->map_start = map_info->start;
@@ -170,6 +176,8 @@ void Unwinder::Unwind(const std::vector<std::string>* initial_map_names_to_skip,
       if (regs_->dex_pc() != 0) {
         // Add a frame to represent the dex file.
         FillInDexFrame();
+        // Clear the dex pc so that we don't repeat this frame later.
+        regs_->set_dex_pc(0);
       }
 
       FillInFrame(map_info, elf, adjusted_rel_pc, adjusted_pc);

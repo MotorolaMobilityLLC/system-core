@@ -72,6 +72,11 @@ bool FdConnection::Read(apacket* packet) {
         return false;
     }
 
+    if (packet->msg.data_length > sizeof(packet->data)) {
+        D("remote local: read overflow (data length = %" PRIu32 ")", packet->msg.data_length);
+        return false;
+    }
+
     if (!ReadFdExactly(fd_.get(), &packet->data, packet->msg.data_length)) {
         D("remote local: terminated (data)");
         return false;
@@ -373,9 +378,9 @@ static fdevent transport_registration_fde;
  */
 struct device_tracker {
     asocket socket;
-    bool update_needed;
-    bool long_output;
-    device_tracker* next;
+    bool update_needed = false;
+    bool long_output = false;
+    device_tracker* next = nullptr;
 };
 
 /* linked list of all device trackers */
@@ -406,24 +411,25 @@ static void device_tracker_close(asocket* socket) {
         peer->close(peer);
     }
     device_tracker_remove(tracker);
-    free(tracker);
+    delete tracker;
 }
 
-static int device_tracker_enqueue(asocket* socket, apacket* p) {
+static int device_tracker_enqueue(asocket* socket, std::string) {
     /* you can't read from a device tracker, close immediately */
-    put_apacket(p);
     device_tracker_close(socket);
     return -1;
 }
 
 static int device_tracker_send(device_tracker* tracker, const std::string& string) {
-    apacket* p = get_apacket();
     asocket* peer = tracker->socket.peer;
 
-    snprintf(reinterpret_cast<char*>(p->data), 5, "%04x", static_cast<int>(string.size()));
-    memcpy(&p->data[4], string.data(), string.size());
-    p->len = 4 + string.size();
-    return peer->enqueue(peer, p);
+    std::string data;
+    data.resize(4 + string.size());
+    char buf[5];
+    snprintf(buf, sizeof(buf), "%04x", static_cast<int>(string.size()));
+    memcpy(&data[0], buf, 4);
+    memcpy(&data[4], string.data(), string.size());
+    return peer->enqueue(peer, std::move(data));
 }
 
 static void device_tracker_ready(asocket* socket) {
@@ -440,7 +446,7 @@ static void device_tracker_ready(asocket* socket) {
 }
 
 asocket* create_device_tracker(bool long_output) {
-    device_tracker* tracker = reinterpret_cast<device_tracker*>(calloc(1, sizeof(*tracker)));
+    device_tracker* tracker = new device_tracker();
     if (tracker == nullptr) fatal("cannot allocate device tracker");
 
     D("device tracker %p created", tracker);
