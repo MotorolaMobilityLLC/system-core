@@ -42,12 +42,12 @@ class BatteryMonitor {
     int getChargeStatus();
     status_t getProperty(int id, struct BatteryProperty *val);
     void dumpState(int fd);
+    friend struct BatteryProperties getBatteryProperties(BatteryMonitor* batteryMonitor);
 
   private:
     struct healthd_config *mHealthdConfig;
     Vector<String8> mChargerNames;
     bool mBatteryDevicePresent;
-    bool mAlwaysPluggedDevice;
     int mBatteryFixedCapacity;
     int mBatteryFixedTemperature;
     struct BatteryProperties props;

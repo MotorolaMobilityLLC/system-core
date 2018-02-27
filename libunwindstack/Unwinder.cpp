@@ -40,6 +40,7 @@ void Unwinder::FillInFrame(MapInfo* map_info, Elf* elf, uint64_t adjusted_rel_pc
   frame->num = frame_num;
   frame->sp = regs_->sp();
   frame->rel_pc = adjusted_rel_pc;
+  frame->dex_pc = regs_->dex_pc();
 
   if (map_info == nullptr) {
     frame->pc = regs_->pc();
@@ -77,6 +78,8 @@ static bool ShouldStop(const std::vector<std::string>* map_suffixes_to_ignore,
 void Unwinder::Unwind(const std::vector<std::string>* initial_map_names_to_skip,
                       const std::vector<std::string>* map_suffixes_to_ignore) {
   frames_.clear();
+  last_error_.code = ERROR_NONE;
+  last_error_.address = 0;
 
   bool return_address_attempt = false;
   bool adjust_pc = false;
@@ -94,6 +97,7 @@ void Unwinder::Unwind(const std::vector<std::string>* initial_map_names_to_skip,
       rel_pc = regs_->pc();
       adjusted_rel_pc = rel_pc;
       adjusted_pc = rel_pc;
+      last_error_.code = ERROR_INVALID_MAP;
     } else {
       if (ShouldStop(map_suffixes_to_ignore, map_info->name)) {
         break;
@@ -154,6 +158,7 @@ void Unwinder::Unwind(const std::vector<std::string>* initial_map_names_to_skip,
           bool finished;
           stepped = elf->Step(rel_pc, adjusted_pc, map_info->elf_offset, regs_,
                               process_memory_.get(), &finished);
+          elf->GetLastError(&last_error_);
           if (stepped && finished) {
             break;
           }
@@ -179,10 +184,14 @@ void Unwinder::Unwind(const std::vector<std::string>* initial_map_names_to_skip,
       }
     } else {
       return_address_attempt = false;
+      if (max_frames_ == frames_.size()) {
+        last_error_.code = ERROR_MAX_FRAMES_EXCEEDED;
+      }
     }
 
     // If the pc and sp didn't change, then consider everything stopped.
     if (cur_pc == regs_->pc() && cur_sp == regs_->sp()) {
+      last_error_.code = ERROR_REPEATED_FRAME;
       break;
     }
   }

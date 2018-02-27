@@ -4,10 +4,29 @@ cc_binary {
     srcs: ["lmkd.c"],
     shared_libs: [
         "liblog",
-        "libprocessgroup",
         "libcutils",
     ],
     cflags: ["-Werror"],
 
     init_rc: ["lmkd.rc"],
+
+    product_variables: {
+        debuggable: {
+            cflags: [
+                "-DLMKD_TRACE_KILLS"
+            ],
+        },
+    },
+}
+
+cc_library_shared {
+    name: "libstatslogc",
+    srcs: ["statslog.c"],
+    cflags: [
+        "-Wall",
+        "-Werror",
+    ],
+    shared_libs: [
+        "liblog",
+    ],
 }
