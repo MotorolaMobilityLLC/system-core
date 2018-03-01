@@ -19,6 +19,7 @@
 #include <dirent.h>
 #include <fcntl.h>
 #include <paths.h>
+#include <pthread.h>
 #include <seccomp_policy.h>
 #include <signal.h>
 #include <stdlib.h>
@@ -293,6 +294,10 @@ void handle_control_message(const std::string& msg, const std::string& name) {
 
 static Result<Success> wait_for_coldboot_done_action(const BuiltinArguments& args) {
     Timer t;
+    std::chrono::nanoseconds timeout = 60s;
+#ifdef SLOW_BOARD
+    timeout = 6000s;
+#endif
 
     LOG(VERBOSE) << "Waiting for " COLDBOOT_DONE "...";
 
@@ -304,7 +309,7 @@ static Result<Success> wait_for_coldboot_done_action(const BuiltinArguments& arg
     // property. We still panic if it takes more than a minute though,
     // because any build that slow isn't likely to boot at all, and we'd
     // rather any test lab devices fail back to the bootloader.
-    if (wait_for_file(COLDBOOT_DONE, 60s) < 0) {
+    if (wait_for_file(COLDBOOT_DONE, timeout) < 0) {
         LOG(FATAL) << "Timed out waiting for " COLDBOOT_DONE;
     }
 
@@ -491,6 +496,16 @@ static void HandleSigtermSignal() {
     HandlePowerctlMessage("shutdown,container");
 }
 
+static void UnblockSigterm() {
+    sigset_t mask;
+    sigemptyset(&mask);
+    sigaddset(&mask, SIGTERM);
+
+    if (sigprocmask(SIG_UNBLOCK, &mask, nullptr) == -1) {
+        PLOG(FATAL) << "failed to unblock SIGTERM for PID " << getpid();
+    }
+}
+
 static void InstallSigtermHandler() {
     sigset_t mask;
     sigemptyset(&mask);
@@ -498,6 +513,12 @@ static void InstallSigtermHandler() {
 
     if (sigprocmask(SIG_BLOCK, &mask, nullptr) == -1) {
         PLOG(FATAL) << "failed to block SIGTERM";
+    }
+
+    // Register a handler to unblock SIGTERM in the child processes.
+    const int result = pthread_atfork(nullptr, nullptr, &UnblockSigterm);
+    if (result != 0) {
+        LOG(FATAL) << "Failed to register a fork handler: " << strerror(result);
     }
 
     sigterm_signal_fd = signalfd(-1, &mask, SFD_CLOEXEC);

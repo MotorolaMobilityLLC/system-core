@@ -26,19 +26,10 @@
 #include <unwindstack/MapInfo.h>
 #include <unwindstack/Maps.h>
 
-#include "UnwindDexFile.h"
 #include "UnwindStackMap.h"
 
 //-------------------------------------------------------------------------
 UnwindStackMap::UnwindStackMap(pid_t pid) : BacktraceMap(pid) {}
-
-UnwindStackMap::~UnwindStackMap() {
-#ifndef NO_LIBDEXFILE
-  for (auto& entry : dex_files_) {
-    delete entry.second;
-  }
-#endif
-}
 
 bool UnwindStackMap::Build() {
   if (pid_ == 0) {
@@ -54,6 +45,9 @@ bool UnwindStackMap::Build() {
   // Create a JitDebug object for getting jit unwind information.
   std::vector<std::string> search_libs_{"libart.so", "libartd.so"};
   jit_debug_.reset(new unwindstack::JitDebug(process_memory_, search_libs_));
+#if !defined(NO_LIBDEXFILE_SUPPORT)
+  dex_files_.reset(new unwindstack::DexFiles(process_memory_, search_libs_));
+#endif
 
   if (!stack_maps_->Parse()) {
     return false;
@@ -127,25 +121,42 @@ std::shared_ptr<unwindstack::Memory> UnwindStackMap::GetProcessMemory() {
   return process_memory_;
 }
 
-#ifdef NO_LIBDEXFILE
-UnwindDexFile* UnwindStackMap::GetDexFile(uint64_t, unwindstack::MapInfo*) {
-  return nullptr;
+UnwindStackOfflineMap::UnwindStackOfflineMap(pid_t pid) : UnwindStackMap(pid) {}
+
+bool UnwindStackOfflineMap::Build() {
+  return false;
 }
-#else
-UnwindDexFile* UnwindStackMap::GetDexFile(uint64_t dex_file_offset, unwindstack::MapInfo* info) {
-  // Lock while we get the data.
-  std::lock_guard<std::mutex> guard(dex_lock_);
-  UnwindDexFile* dex_file;
-  auto entry = dex_files_.find(dex_file_offset);
-  if (entry == dex_files_.end()) {
-    dex_file = UnwindDexFile::Create(dex_file_offset, process_memory_.get(), info);
-    dex_files_[dex_file_offset] = dex_file;
-  } else {
-    dex_file = entry->second;
+
+bool UnwindStackOfflineMap::Build(const std::vector<backtrace_map_t>& backtrace_maps,
+                                  const backtrace_stackinfo_t& stack) {
+  if (stack.start >= stack.end) {
+    return false;
   }
-  return dex_file;
+
+  for (const backtrace_map_t& map : backtrace_maps) {
+    maps_.push_back(map);
+  }
+
+  std::sort(maps_.begin(), maps_.end(),
+            [](const backtrace_map_t& a, const backtrace_map_t& b) { return a.start < b.start; });
+
+  unwindstack::Maps* maps = new unwindstack::Maps;
+  stack_maps_.reset(maps);
+  for (const backtrace_map_t& map : maps_) {
+    maps->Add(map.start, map.end, map.offset, map.flags, map.name, map.load_bias);
+  }
+
+  // Create the process memory from the stack data.
+  uint64_t size = stack.end - stack.start;
+  unwindstack::MemoryBuffer* memory = new unwindstack::MemoryBuffer;
+  memory->Resize(size);
+  memcpy(memory->GetPtr(0), stack.data, size);
+  std::shared_ptr<unwindstack::Memory> shared_memory(memory);
+
+  process_memory_.reset(new unwindstack::MemoryRange(shared_memory, 0, size, stack.start));
+
+  return true;
 }
-#endif
 
 //-------------------------------------------------------------------------
 // BacktraceMap create function.
@@ -162,6 +173,19 @@ BacktraceMap* BacktraceMap::Create(pid_t pid, bool uncached) {
     map = new UnwindStackMap(pid);
   }
   if (!map->Build()) {
+    delete map;
+    return nullptr;
+  }
+  return map;
+}
+
+//-------------------------------------------------------------------------
+// BacktraceMap create offline function.
+//-------------------------------------------------------------------------
+BacktraceMap* BacktraceMap::CreateOffline(pid_t pid, const std::vector<backtrace_map_t>& maps,
+                                          const backtrace_stackinfo_t& stack) {
+  UnwindStackOfflineMap* map = new UnwindStackOfflineMap(pid);
+  if (!map->Build(maps, stack)) {
     delete map;
     return nullptr;
   }

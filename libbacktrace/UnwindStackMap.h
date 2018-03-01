@@ -23,8 +23,13 @@
 #include <memory>
 #include <mutex>
 #include <unordered_map>
+#include <vector>
 
+#include <backtrace/Backtrace.h>
 #include <backtrace/BacktraceMap.h>
+#if !defined(NO_LIBDEXFILE_SUPPORT)
+#include <unwindstack/DexFiles.h>
+#endif
 #include <unwindstack/JitDebug.h>
 #include <unwindstack/Maps.h>
 
@@ -34,7 +39,7 @@ class UnwindDexFile;
 class UnwindStackMap : public BacktraceMap {
  public:
   explicit UnwindStackMap(pid_t pid);
-  ~UnwindStackMap();
+  ~UnwindStackMap() = default;
 
   bool Build() override;
 
@@ -49,7 +54,9 @@ class UnwindStackMap : public BacktraceMap {
 
   unwindstack::JitDebug* GetJitDebug() { return jit_debug_.get(); }
 
-  UnwindDexFile* GetDexFile(uint64_t dex_file_offset, unwindstack::MapInfo* info);
+#if !defined(NO_LIBDEXFILE_SUPPORT)
+  unwindstack::DexFiles* GetDexFiles() { return dex_files_.get(); }
+#endif
 
  protected:
   uint64_t GetLoadBias(size_t index) override;
@@ -57,10 +64,19 @@ class UnwindStackMap : public BacktraceMap {
   std::unique_ptr<unwindstack::Maps> stack_maps_;
   std::shared_ptr<unwindstack::Memory> process_memory_;
   std::unique_ptr<unwindstack::JitDebug> jit_debug_;
-#ifndef NO_LIBDEXFILE
-  std::mutex dex_lock_;
-  std::unordered_map<uint64_t, UnwindDexFile*> dex_files_;
+#if !defined(NO_LIBDEXFILE_SUPPORT)
+  std::unique_ptr<unwindstack::DexFiles> dex_files_;
 #endif
+};
+
+class UnwindStackOfflineMap : public UnwindStackMap {
+ public:
+  UnwindStackOfflineMap(pid_t pid);
+  ~UnwindStackOfflineMap() = default;
+
+  bool Build() override;
+
+  bool Build(const std::vector<backtrace_map_t>& maps, const backtrace_stackinfo_t& stack);
 };
 
 #endif  // _LIBBACKTRACE_UNWINDSTACK_MAP_H
