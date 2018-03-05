@@ -80,7 +80,13 @@ cc_library {
         host: {
             cflags: ["-O0", "-g"],
         },
+        vendor: {
+            cflags: ["-DNO_LIBDEXFILE_SUPPORT"],
+            exclude_static_libs: ["libunwindstack_dex"],
+            exclude_shared_libs: ["libdexfile"],
+        },
     },
+    whole_static_libs: ["libunwindstack_dex"],
 
     arch: {
         x86: {
@@ -99,14 +105,81 @@ cc_library {
 
     shared_libs: [
         "libbase",
+        "libdexfile",
         "liblog",
         "liblzma",
+    ],
+}
+
+// Isolate the dex file processing into a separate library. Currently,
+// it is necessary to add art include directories directly, which also
+// adds the art elf.h file in the include path, overriding the system one.
+// Work to isolate libdexfile is b/72216369.
+cc_library_static {
+    name: "libunwindstack_dex",
+    vendor_available: false,
+    defaults: ["libunwindstack_flags"],
+
+    cflags: [
+        "-Wexit-time-destructors",
+    ],
+
+    srcs: [
+        "DexFile.cpp",
+        "DexFiles.cpp",
+    ],
+    target: {
+        // Always disable optimizations for host to make it easier to debug.
+        host: {
+            cflags: ["-O0", "-g"],
+        },
+    },
+
+    shared_libs: [
+        "libbase",
+        "libdexfile",
+    ],
+    local_include_dirs: ["include"],
+    allow_undefined_symbols: true,
+
+    // libdexfile will eventually properly export headers, for now include
+    // these directly.
+    include_dirs: [
+        "art/runtime",
     ],
 }
 
 //-------------------------------------------------------------------------
 // Unit Tests
 //-------------------------------------------------------------------------
+cc_test_library {
+    name: "libunwindstack_dex_test",
+    vendor_available: false,
+    defaults: ["libunwindstack_flags"],
+
+    shared: {
+        enabled: false,
+    },
+
+    srcs: [
+        "tests/DexFileTest.cpp",
+        "tests/DexFilesTest.cpp",
+    ],
+    local_include_dirs: ["include"],
+    allow_undefined_symbols: true,
+
+    shared_libs: [
+        "libbase",
+        "libunwindstack",
+    ],
+
+    // libdexfile will eventually properly export headers, for now include
+    // these directly.
+    include_dirs: [
+        "art/runtime",
+    ],
+}
+
 cc_test {
     name: "libunwindstack_test",
     defaults: ["libunwindstack_flags"],
@@ -168,15 +241,17 @@ cc_test {
         "libgmock",
     ],
 
+    whole_static_libs: ["libunwindstack_dex_test"],
+
     data: [
         "tests/files/elf32.xz",
         "tests/files/elf64.xz",
         "tests/files/offline/bad_eh_frame_hdr_arm64/*",
         "tests/files/offline/debug_frame_first_x86/*",
-        "tests/files/offline/jit_debug_arm32/*",
-        "tests/files/offline/jit_debug_x86_32/*",
-        "tests/files/offline/gnu_debugdata_arm32/*",
-        "tests/files/offline/straddle_arm32/*",
+        "tests/files/offline/jit_debug_arm/*",
+        "tests/files/offline/jit_debug_x86/*",
+        "tests/files/offline/gnu_debugdata_arm/*",
+        "tests/files/offline/straddle_arm/*",
         "tests/files/offline/straddle_arm64/*",
     ],
 }

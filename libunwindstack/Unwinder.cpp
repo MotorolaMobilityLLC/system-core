@@ -31,7 +31,47 @@
 #include <unwindstack/MapInfo.h>
 #include <unwindstack/Unwinder.h>
 
+#if !defined(NO_LIBDEXFILE_SUPPORT)
+#include <unwindstack/DexFiles.h>
+#endif
+
 namespace unwindstack {
+
+// Inject extra 'virtual' frame that represents the dex pc data.
+// The dex pc is a magic register defined in the Mterp interpreter,
+// and thus it will be restored/observed in the frame after it.
+// Adding the dex frame first here will create something like:
+//   #7 pc 0015fa20 core.vdex   java.util.Arrays.binarySearch+8
+//   #8 pc 006b1ba1 libartd.so  ExecuteMterpImpl+14625
+//   #9 pc 0039a1ef libartd.so  art::interpreter::Execute+719
+void Unwinder::FillInDexFrame() {
+  size_t frame_num = frames_.size();
+  frames_.resize(frame_num + 1);
+  FrameData* frame = &frames_.at(frame_num);
+
+  uint64_t dex_pc = regs_->dex_pc();
+  frame->pc = dex_pc;
+  frame->sp = regs_->sp();
+
+  MapInfo* info = maps_->Find(dex_pc);
+  frame->map_start = info->start;
+  frame->map_end = info->end;
+  frame->map_offset = info->offset;
+  frame->map_load_bias = info->load_bias;
+  frame->map_flags = info->flags;
+  frame->map_name = info->name;
+  frame->rel_pc = dex_pc - info->start;
+
+#if !defined(NO_LIBDEXFILE_SUPPORT)
+  if (dex_files_ == nullptr) {
+    return;
+  }
+
+  // dex_files_->GetMethodInformation(dex_pc - dex_offset, dex_offset, info, &frame->function_name,
+  dex_files_->GetMethodInformation(maps_, info, dex_pc, &frame->function_name,
+                                   &frame->function_offset);
+#endif
+}
 
 void Unwinder::FillInFrame(MapInfo* map_info, Elf* elf, uint64_t adjusted_rel_pc, uint64_t func_pc) {
   size_t frame_num = frames_.size();
@@ -40,7 +80,6 @@ void Unwinder::FillInFrame(MapInfo* map_info, Elf* elf, uint64_t adjusted_rel_pc
   frame->num = frame_num;
   frame->sp = regs_->sp();
   frame->rel_pc = adjusted_rel_pc;
-  frame->dex_pc = regs_->dex_pc();
 
   if (map_info == nullptr) {
     frame->pc = regs_->pc();
@@ -128,6 +167,11 @@ void Unwinder::Unwind(const std::vector<std::string>* initial_map_names_to_skip,
     if (map_info == nullptr || initial_map_names_to_skip == nullptr ||
         std::find(initial_map_names_to_skip->begin(), initial_map_names_to_skip->end(),
                   basename(map_info->name.c_str())) == initial_map_names_to_skip->end()) {
+      if (regs_->dex_pc() != 0) {
+        // Add a frame to represent the dex file.
+        FillInDexFrame();
+      }
+
       FillInFrame(map_info, elf, adjusted_rel_pc, adjusted_pc);
 
       // Once a frame is added, stop skipping frames.
@@ -239,5 +283,12 @@ void Unwinder::SetJitDebug(JitDebug* jit_debug, ArchEnum arch) {
   jit_debug->SetArch(arch);
   jit_debug_ = jit_debug;
 }
+
+#if !defined(NO_LIBDEXFILE_SUPPORT)
+void Unwinder::SetDexFiles(DexFiles* dex_files, ArchEnum arch) {
+  dex_files->SetArch(arch);
+  dex_files_ = dex_files;
+}
+#endif
 
 }  // namespace unwindstack

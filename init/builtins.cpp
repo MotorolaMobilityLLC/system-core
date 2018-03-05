@@ -514,8 +514,9 @@ static Result<Success> queue_fs_event(int code) {
         property_set("ro.crypto.state", "encrypted");
         property_set("ro.crypto.type", "file");
 
-        // defaultcrypto detects file/block encryption. init flow is same for each.
-        ActionManager::GetInstance().QueueEventTrigger("defaultcrypto");
+        // Although encrypted, vold has already set the device up, so we do not need to
+        // do anything different from the nonencrypted case.
+        ActionManager::GetInstance().QueueEventTrigger("nonencrypted");
         return Success();
     } else if (code == FS_MGR_MNTALL_DEV_NEEDS_METADATA_ENCRYPTION) {
         if (e4crypt_install_keyring()) {
@@ -523,8 +524,9 @@ static Result<Success> queue_fs_event(int code) {
         }
         property_set("ro.crypto.type", "file");
 
-        // encrypt detects file/block encryption. init flow is same for each.
-        ActionManager::GetInstance().QueueEventTrigger("encrypt");
+        // Although encrypted, vold has already set the device up, so we do not need to
+        // do anything different from the nonencrypted case.
+        ActionManager::GetInstance().QueueEventTrigger("nonencrypted");
         return Success();
     } else if (code > 0) {
         Error() << "fs_mgr_mount_all() returned unexpected error " << code;
@@ -1030,6 +1032,10 @@ const BuiltinFunctionMap::Map& BuiltinFunctionMap::map() const {
         {"load_system_props",       {0,     0,    {false,  do_load_system_props}}},
         {"loglevel",                {1,     1,    {false,  do_loglevel}}},
         {"mkdir",                   {1,     4,    {true,   do_mkdir}}},
+        // TODO: Do mount operations in vendor_init.
+        // mount_all is currently too complex to run in vendor_init as it queues action triggers,
+        // imports rc scripts, etc.  It should be simplified and run in vendor_init context.
+        // mount and umount are run in the same context as mount_all for symmetry.
         {"mount_all",               {1,     kMax, {false,  do_mount_all}}},
         {"mount",                   {3,     kMax, {false,  do_mount}}},
         {"umount",                  {1,     1,    {false,  do_umount}}},

@@ -30,6 +30,10 @@ endif
 
 init_options += -DLOG_UEVENTS=0
 
+ifeq ($(TARGET_PRESIL_SLOW_BOARD), true)
+init_options += -DSLOW_BOARD=1
+endif
+
 init_cflags += \
     $(init_options) \
     -Wall -Wextra \
