@@ -55,8 +55,8 @@
 
 #else /* LMKD_TRACE_KILLS */
 
-#define TRACE_KILL_START(pid)
-#define TRACE_KILL_END()
+#define TRACE_KILL_START(pid) ((void)(pid))
+#define TRACE_KILL_END() ((void)0)
 
 #endif /* LMKD_TRACE_KILLS */
 
@@ -605,7 +605,7 @@ static int memory_stat_parse(struct memory_stat *mem_st,  int pid, uid_t uid) {
    fp = fopen(buf, "r");
 
    if (fp == NULL) {
-       ALOGE("%s open failed: %s", path, strerror(errno));
+       ALOGE("%s open failed: %s", buf, strerror(errno));
        return -1;
    }
 
@@ -715,7 +715,7 @@ static int kill_one_process(struct proc* procp, int min_score_adj,
     int r;
 
 #ifdef LMKD_LOG_STATS
-    struct memory_stat mem_st;
+    struct memory_stat mem_st = {};
     int memory_stat_parse_result = -1;
 #endif
 
