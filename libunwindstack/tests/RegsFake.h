@@ -47,7 +47,7 @@ class RegsFake : public Regs {
 
   bool Is32Bit() { return false; }
 
-  uint64_t GetAdjustedPc(uint64_t rel_pc, Elf*) override { return rel_pc - 2; }
+  uint64_t GetPcAdjustment(uint64_t, Elf*) override { return 2; }
 
   bool StepIfSignalHandler(uint64_t, Elf*, Memory*) override { return false; }
 
@@ -56,6 +56,7 @@ class RegsFake : public Regs {
   void FakeSetArch(ArchEnum arch) { fake_arch_ = arch; }
   void FakeSetPc(uint64_t pc) { fake_pc_ = pc; }
   void FakeSetSp(uint64_t sp) { fake_sp_ = sp; }
+  void FakeSetDexPc(uint64_t dex_pc) { dex_pc_ = dex_pc; }
   void FakeSetReturnAddress(uint64_t return_address) { fake_return_address_ = return_address; }
   void FakeSetReturnAddressValid(bool valid) { fake_return_address_valid_ = valid; }
 
@@ -76,7 +77,7 @@ class RegsImplFake : public RegsImpl<TypeParam> {
 
   ArchEnum Arch() override { return ARCH_UNKNOWN; }
 
-  uint64_t GetAdjustedPc(uint64_t, Elf*) override { return 0; }
+  uint64_t GetPcAdjustment(uint64_t, Elf*) override { return 0; }
   void SetFromRaw() override {}
   bool SetPcFromReturnAddress(Memory*) override { return false; }
   bool StepIfSignalHandler(uint64_t, Elf*, Memory*) override { return false; }
