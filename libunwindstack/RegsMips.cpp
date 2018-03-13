@@ -19,13 +19,12 @@
 #include <functional>
 
 #include <unwindstack/Elf.h>
+#include <unwindstack/MachineMips.h>
 #include <unwindstack/MapInfo.h>
 #include <unwindstack/Memory.h>
 #include <unwindstack/RegsMips.h>
-
-#include "MachineMips.h"
-#include "UcontextMips.h"
-#include "UserMips.h"
+#include <unwindstack/UcontextMips.h>
+#include <unwindstack/UserMips.h>
 
 namespace unwindstack {
 
@@ -36,16 +35,12 @@ ArchEnum RegsMips::Arch() {
   return ARCH_MIPS;
 }
 
-uint64_t RegsMips::GetAdjustedPc(uint64_t rel_pc, Elf* elf) {
-  if (!elf->valid()) {
-    return rel_pc;
+uint64_t RegsMips::GetPcAdjustment(uint64_t rel_pc, Elf* elf) {
+  if (!elf->valid() || rel_pc < 8) {
+    return 0;
   }
-
-  // For now, just assuming no compact branches
-  if (rel_pc < 8) {
-    return rel_pc;
-  }
-  return rel_pc - 8;
+  // For now, just assume no compact branches
+  return 8;
 }
 
 void RegsMips::SetFromRaw() {

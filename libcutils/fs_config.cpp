@@ -205,23 +205,7 @@ static const struct fs_path_config android_files[] = {
     { 00755, AID_WIFI,      AID_WIFI,      CAP_MASK_LONG(CAP_NET_ADMIN) |
                                            CAP_MASK_LONG(CAP_NET_RAW) |
                                            CAP_MASK_LONG(CAP_SYS_MODULE),
-                                              "system/vendor/bin/hw/android.hardware.wifi@1.0-service" },
-
-    /* Support wifi_hal_legacy administering a network interface. */
-    { 00755, AID_WIFI,      AID_WIFI,      CAP_MASK_LONG(CAP_NET_ADMIN) |
-                                           CAP_MASK_LONG(CAP_NET_RAW) |
-                                           CAP_MASK_LONG(CAP_SYS_MODULE),
-                                              "vendor/bin/hw/android.hardware.wifi@1.0-service" },
-
-    // A non-privileged zygote that spawns isolated processes for web rendering.
-    { 0750,  AID_ROOT,      AID_ROOT,      CAP_MASK_LONG(CAP_SETUID) |
-                                           CAP_MASK_LONG(CAP_SETGID) |
-                                           CAP_MASK_LONG(CAP_SETPCAP),
-                                              "system/bin/webview_zygote32" },
-    { 0750,  AID_ROOT,      AID_ROOT,      CAP_MASK_LONG(CAP_SETUID) |
-                                           CAP_MASK_LONG(CAP_SETGID) |
-                                           CAP_MASK_LONG(CAP_SETPCAP),
-                                              "system/bin/webview_zygote64" },
+                                           "vendor/bin/hw/android.hardware.wifi@1.0-service" },
 
     // generic defaults
     { 00755, AID_ROOT,      AID_ROOT,      0, "bin/*" },

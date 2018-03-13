@@ -72,7 +72,14 @@ bool FdConnection::Read(apacket* packet) {
         return false;
     }
 
-    if (!ReadFdExactly(fd_.get(), &packet->data, packet->msg.data_length)) {
+    if (packet->msg.data_length > MAX_PAYLOAD) {
+        D("remote local: read overflow (data length = %" PRIu32 ")", packet->msg.data_length);
+        return false;
+    }
+
+    packet->payload.resize(packet->msg.data_length);
+
+    if (!ReadFdExactly(fd_.get(), &packet->payload[0], packet->payload.size())) {
         D("remote local: terminated (data)");
         return false;
     }
@@ -81,11 +88,16 @@ bool FdConnection::Read(apacket* packet) {
 }
 
 bool FdConnection::Write(apacket* packet) {
-    uint32_t length = packet->msg.data_length;
-
-    if (!WriteFdExactly(fd_.get(), &packet->msg, sizeof(amessage) + length)) {
+    if (!WriteFdExactly(fd_.get(), &packet->msg, sizeof(packet->msg))) {
         D("remote local: write terminated");
         return false;
+    }
+
+    if (packet->msg.data_length) {
+        if (!WriteFdExactly(fd_.get(), &packet->payload[0], packet->msg.data_length)) {
+            D("remote local: write terminated");
+            return false;
+        }
     }
 
     return true;
@@ -128,7 +140,7 @@ static std::string dump_packet(const char* name, const char* func, apacket* p) {
 
     std::string result = android::base::StringPrintf("%s: %s: [%s] arg0=%s arg1=%s (len=%d) ", name,
                                                      func, cmd, arg0, arg1, len);
-    result += dump_hex(p->data, len);
+    result += dump_hex(p->payload.data(), p->payload.size());
     return result;
 }
 
@@ -186,9 +198,10 @@ static void transport_socket_events(int fd, unsigned events, void* _t) {
         apacket* p = 0;
         if (read_packet(fd, t->serial, &p)) {
             D("%s: failed to read packet from transport socket on fd %d", t->serial, fd);
-        } else {
-            handle_packet(p, (atransport*)_t);
+            return;
         }
+
+        handle_packet(p, (atransport*)_t);
     }
 }
 
@@ -238,6 +251,7 @@ static void read_transport_thread(void* _t) {
     p->msg.arg0 = 1;
     p->msg.arg1 = ++(t->sync_token);
     p->msg.magic = A_SYNC ^ 0xffffffff;
+    D("sending SYNC packet (len = %u, payload.size() = %zu)", p->msg.data_length, p->payload.size());
     if (write_packet(t->fd, t->serial, &p)) {
         put_apacket(p);
         D("%s: failed to write SYNC packet", t->serial);
@@ -331,6 +345,13 @@ static void write_transport_thread(void* _t) {
             if (active) {
                 D("%s: transport got packet, sending to remote", t->serial);
                 ATRACE_NAME("write_transport write_remote");
+
+                // Allow sending the payload's implicit null terminator.
+                if (p->msg.data_length != p->payload.size()) {
+                    LOG(FATAL) << "packet data length doesn't match payload: msg.data_length = "
+                               << p->msg.data_length << ", payload.size() = " << p->payload.size();
+                }
+
                 if (t->Write(p) != 0) {
                     D("%s: remote write failed for transport", t->serial);
                     put_apacket(p);
@@ -373,9 +394,9 @@ static fdevent transport_registration_fde;
  */
 struct device_tracker {
     asocket socket;
-    bool update_needed;
-    bool long_output;
-    device_tracker* next;
+    bool update_needed = false;
+    bool long_output = false;
+    device_tracker* next = nullptr;
 };
 
 /* linked list of all device trackers */
@@ -406,24 +427,25 @@ static void device_tracker_close(asocket* socket) {
         peer->close(peer);
     }
     device_tracker_remove(tracker);
-    free(tracker);
+    delete tracker;
 }
 
-static int device_tracker_enqueue(asocket* socket, apacket* p) {
+static int device_tracker_enqueue(asocket* socket, std::string) {
     /* you can't read from a device tracker, close immediately */
-    put_apacket(p);
     device_tracker_close(socket);
     return -1;
 }
 
 static int device_tracker_send(device_tracker* tracker, const std::string& string) {
-    apacket* p = get_apacket();
     asocket* peer = tracker->socket.peer;
 
-    snprintf(reinterpret_cast<char*>(p->data), 5, "%04x", static_cast<int>(string.size()));
-    memcpy(&p->data[4], string.data(), string.size());
-    p->len = 4 + string.size();
-    return peer->enqueue(peer, p);
+    std::string data;
+    data.resize(4 + string.size());
+    char buf[5];
+    snprintf(buf, sizeof(buf), "%04x", static_cast<int>(string.size()));
+    memcpy(&data[0], buf, 4);
+    memcpy(&data[4], string.data(), string.size());
+    return peer->enqueue(peer, std::move(data));
 }
 
 static void device_tracker_ready(asocket* socket) {
@@ -440,7 +462,7 @@ static void device_tracker_ready(asocket* socket) {
 }
 
 asocket* create_device_tracker(bool long_output) {
-    device_tracker* tracker = reinterpret_cast<device_tracker*>(calloc(1, sizeof(*tracker)));
+    device_tracker* tracker = new device_tracker();
     if (tracker == nullptr) fatal("cannot allocate device tracker");
 
     D("device tracker %p created", tracker);

@@ -19,13 +19,12 @@
 #include <functional>
 
 #include <unwindstack/Elf.h>
+#include <unwindstack/MachineX86_64.h>
 #include <unwindstack/MapInfo.h>
 #include <unwindstack/Memory.h>
 #include <unwindstack/RegsX86_64.h>
-
-#include "MachineX86_64.h"
-#include "UcontextX86_64.h"
-#include "UserX86_64.h"
+#include <unwindstack/UcontextX86_64.h>
+#include <unwindstack/UserX86_64.h>
 
 namespace unwindstack {
 
@@ -36,16 +35,11 @@ ArchEnum RegsX86_64::Arch() {
   return ARCH_X86_64;
 }
 
-uint64_t RegsX86_64::GetAdjustedPc(uint64_t rel_pc, Elf* elf) {
-  if (!elf->valid()) {
-    return rel_pc;
-  }
-
-  if (rel_pc == 0) {
+uint64_t RegsX86_64::GetPcAdjustment(uint64_t rel_pc, Elf* elf) {
+  if (!elf->valid() || rel_pc == 0) {
     return 0;
   }
-
-  return rel_pc - 1;
+  return 1;
 }
 
 void RegsX86_64::SetFromRaw() {

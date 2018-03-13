@@ -45,14 +45,14 @@ struct FrameData {
   uint64_t sp;
 
   std::string function_name;
-  uint64_t function_offset;
+  uint64_t function_offset = 0;
 
   std::string map_name;
-  uint64_t map_offset;
-  uint64_t map_start;
-  uint64_t map_end;
-  uint64_t map_load_bias;
-  int map_flags;
+  uint64_t map_offset = 0;
+  uint64_t map_start = 0;
+  uint64_t map_end = 0;
+  uint64_t map_load_bias = 0;
+  int map_flags = 0;
 };
 
 class Unwinder {
@@ -75,6 +75,10 @@ class Unwinder {
 
   void SetJitDebug(JitDebug* jit_debug, ArchEnum arch);
 
+  // Disabling the resolving of names results in the function name being
+  // set to an empty string and the function offset being set to zero.
+  void SetResolveNames(bool resolve) { resolve_names_ = resolve; }
+
 #if !defined(NO_LIBDEXFILE_SUPPORT)
   void SetDexFiles(DexFiles* dex_files, ArchEnum arch);
 #endif
@@ -84,7 +88,8 @@ class Unwinder {
 
  private:
   void FillInDexFrame();
-  void FillInFrame(MapInfo* map_info, Elf* elf, uint64_t adjusted_rel_pc, uint64_t adjusted_pc);
+  void FillInFrame(MapInfo* map_info, Elf* elf, uint64_t rel_pc, uint64_t func_pc,
+                   uint64_t pc_adjustment);
 
   size_t max_frames_;
   Maps* maps_;
@@ -95,6 +100,7 @@ class Unwinder {
 #if !defined(NO_LIBDEXFILE_SUPPORT)
   DexFiles* dex_files_ = nullptr;
 #endif
+  bool resolve_names_ = true;
   ErrorData last_error_;
 };
 
