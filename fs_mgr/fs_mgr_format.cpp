@@ -106,17 +106,23 @@ static int format_f2fs(char *fs_blkdev, bool crypt_footer)
 {
     char footer_size[10];
     int footer = crypt_footer ? CRYPT_FOOTER_OFFSET : 0;
+    int err = 0;
 
     snprintf(footer_size, sizeof(footer_size), "%d", footer);
     const char* const args[] = {MKFS_F2FS_PATH, "-r", footer_size, "-f", "-O encrypt", fs_blkdev, nullptr};
 
     /* This doesn't return */
     if (setexeccon(MKFS_SECURITY_CONTEXT)) {
-         "LERROR << Failed to set security context for mkfs";
+         LERROR << "Failed to set security context for mkfs";
+         return -1;
     }
 
-    return android_fork_execvp_ext(arraysize(args), const_cast<char**>(args), NULL, true,
+    err = android_fork_execvp_ext(arraysize(args), const_cast<char**>(args), NULL, true,
                                    LOG_KLOG, true, nullptr, nullptr, 0);
+    if (setexeccon(NULL)) {
+          LERROR << "Failed to restore security context";
+    }
+    return err;
 }
 
 int fs_mgr_do_format(struct fstab_rec *fstab, bool crypt_footer)
