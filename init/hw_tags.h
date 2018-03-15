@@ -6,7 +6,14 @@
 namespace android {
 namespace init {
 
+#if defined(NO_HW_MAPPING)
+static inline int process_hw_mappings(const char *xml_name) {
+	return 0;
+}
+#else
 int process_hw_mappings(const char *xml_name);
+#endif
+
 void verify_carrier_compatibility(void);
 
 } //namesapce init

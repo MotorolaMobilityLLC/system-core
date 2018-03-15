@@ -59,6 +59,7 @@ init_cflags += \
     -Wno-unused-parameter \
     -Werror \
     -std=gnu++1z \
+    -DNO_HW_MAPPING
 
 # --
 
