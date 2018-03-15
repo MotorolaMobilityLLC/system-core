@@ -32,6 +32,7 @@ cc_defaults {
         "-DWORLD_WRITABLE_KMSG=0",
         "-DDUMP_ON_UMOUNT_FAILURE=0",
         "-DSHUTDOWN_ZERO_TIMEOUT=0",
+        "-DNO_HW_MAPPING",
     ],
     product_variables: {
         debuggable: {
