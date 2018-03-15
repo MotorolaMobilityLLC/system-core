@@ -19,6 +19,7 @@
 #include "hw_tags.h"
 #include "log.h"
 #include "util.h"
+#include "property_service.h"
 
 //#define XML_EXTREME_DEBUG
 #define pr_debug(fmt, args...)	if(debug_on) ALOGE(fmt, ##args)
@@ -72,19 +73,20 @@ typedef struct {
 	char *filter;
 } append_var_t;
 
-static append_var_t hwVariant;
-static void xml_load_properties_from_file(const char* , const char* );
-
-static element_t *NodesList;
-static char Buff[BUFFSIZE];
-static int Depth;
-
 static void
 hw_property_get(const char *prop_name, char *value)
 {
 	std::string prop_str = android::base::GetProperty(prop_name, "");
 	strncpy(value, prop_str.c_str(), prop_str.length());
 }
+
+#if !defined(NO_HW_MAPPING)
+static append_var_t hwVariant;
+static void xml_load_properties_from_file(const char* , const char* );
+
+static element_t *NodesList;
+static char Buff[BUFFSIZE];
+static int Depth;
 
 static void
 xml_update_name(parse_ctrl_t *info, const char *name)
@@ -882,6 +884,7 @@ cleanup_and_exit:
 just_exit:
 	return(error);
 }
+#endif
 
 #define CARRIER_RO_PROP "ro.carrier"
 #define CARRIER_SUBSIDY_PROP "ro.carrier.subsidized"
