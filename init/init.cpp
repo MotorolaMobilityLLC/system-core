@@ -404,23 +404,11 @@ static void export_kernel_boot_props() {
         const char *default_value;
     } prop_map[] = {
         { "ro.boot.serialno",   "ro.serialno",   "", },
-        { "ro.boot.fsg-id", "ro.fsg-id", NULL, },
         { "ro.boot.mode",       "ro.bootmode",   "unknown", },
         { "ro.boot.baseband",   "ro.baseband",   "unknown", },
         { "ro.boot.bootloader", "ro.bootloader", "unknown", },
         { "ro.boot.hardware",   "ro.hardware",   "unknown", },
-        { "ro.boot.revision",   "ro.revision",        NULL, },
-        { "ro.boot.revision",   "ro.hw.revision",     NULL, },
-        { "ro.boot.carrier", "ro.carrier", NULL, },
-        { "ro.boot.carrier", "ro.oem.key1", NULL, },
-        { "ro.boot.radio", "ro.hw.radio", NULL, },
-        { "ro.boot.dualsim", "ro.hw.dualsim", NULL, },
-        { "ro.boot.device", "ro.hw.device", NULL, },
-        { "ro.boot.hwrev", "ro.hw.hwrev", NULL, },
-        { "ro.boot.modelno", "ro.hw.modelno", NULL, },
-        { "ro.boot.nav_keys", "ro.hw.nav_keys", NULL, },
-        { "ro.boot.lcd_density", "ro.sf.lcd_density", NULL, },
-        { "ro.boot.wff", "ro.wff", "recovery", },
+        { "ro.boot.revision",   "ro.revision",   NULL, },
     };
     for (size_t i = 0; i < arraysize(prop_map); i++) {
         std::string value = GetProperty(prop_map[i].src_prop, "");
