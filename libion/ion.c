@@ -69,8 +69,10 @@ int ion_close(int fd) {
 static int ion_ioctl(int fd, int req, void* arg) {
     int ret = ioctl(fd, req, arg);
     if (ret < 0) {
-        ALOGE("ioctl %x failed with code %d: %s\n", req, ret, strerror(errno));
-        return -errno;
+        int ret_errno = errno;
+
+        ALOGE("ioctl %x failed with code %d: %s\n", req, ret, strerror(ret_errno));
+        return -ret_errno;
     }
     return ret;
 }
@@ -120,8 +122,10 @@ int ion_map(int fd, ion_user_handle_t handle, size_t length, int prot, int flags
     }
     tmp_ptr = mmap(NULL, length, prot, flags, data.fd, offset);
     if (tmp_ptr == MAP_FAILED) {
-        ALOGE("mmap failed: %s\n", strerror(errno));
-        return -errno;
+        int ret_errno = errno;
+
+        ALOGE("mmap failed: %s\n", strerror(ret_errno));
+        return -ret_errno;
     }
     *map_fd = data.fd;
     *ptr = tmp_ptr;
