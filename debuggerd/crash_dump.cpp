@@ -187,8 +187,14 @@ static bool activity_manager_notify(pid_t pid, int signal, const std::string& am
 // Globals used by the abort handler.
 static pid_t g_target_thread = -1;
 static bool g_tombstoned_connected = false;
+static bool g_tombstoned_crash_dump_connected = false;
 static unique_fd g_tombstoned_socket;
+static unique_fd g_tombstoned_crash_dump_socket;
 static unique_fd g_output_fd;
+static unique_fd g_crash_dump_fd;
+
+// Flag to indicate if crash dump will be generated.
+static bool isCrashDumpEnabled = false;
 
 static void DefuseSignalHandlers() {
   // Don't try to dump ourselves.
@@ -249,7 +255,9 @@ static void ParseArgs(int argc, char** argv, pid_t* pseudothread_tid, DebuggerdD
 }
 
 static void ReadCrashInfo(unique_fd& fd, siginfo_t* siginfo,
-                          std::unique_ptr<unwindstack::Regs>* regs, uintptr_t* abort_address) {
+                          std::unique_ptr<unwindstack::Regs>* regs,
+                          std::unique_ptr<unwindstack::Regs>* crash_dump_regs,
+                          uintptr_t* abort_address) {
   std::aligned_storage<sizeof(CrashInfo) + 1, alignof(CrashInfo)>::type buf;
   ssize_t rc = TEMP_FAILURE_RETRY(read(fd.get(), &buf, sizeof(buf)));
   if (rc == -1) {
@@ -266,6 +274,9 @@ static void ReadCrashInfo(unique_fd& fd, siginfo_t* siginfo,
 
   *siginfo = crash_info->siginfo;
   regs->reset(Regs::CreateFromUcontext(Regs::CurrentArch(), &crash_info->ucontext));
+  if (crash_dump_regs != NULL && isCrashDumpEnabled) {
+    crash_dump_regs->reset(Regs::CreateFromUcontext(Regs::CurrentArch(), &crash_info->ucontext));
+  }
   *abort_address = crash_info->abort_msg_address;
 }
 
@@ -341,6 +352,7 @@ int main(int argc, char** argv) {
   }
   atrace_end(ATRACE_TAG);
 
+
   // Reparent ourselves to init, so that the signal handler can waitpid on the
   // original process to avoid leaving a zombie for non-fatal dumps.
   // Move the input/output pipes off of stdout/stderr, out of paranoia.
@@ -351,6 +363,10 @@ int main(int argc, char** argv) {
   if (!Pipe(&fork_exit_read, &fork_exit_write)) {
     PLOG(FATAL) << "failed to create pipe";
   }
+
+  bool isSecureBuild = android::base::GetBoolProperty("ro.secure", true);
+  bool isDebuggable = android::base::GetBoolProperty("ro.debuggable", false);
+  isCrashDumpEnabled = isDebuggable || !isSecureBuild;
 
   pid_t forkpid = fork();
   if (forkpid == -1) {
@@ -399,6 +415,8 @@ int main(int argc, char** argv) {
   }
 
   std::map<pid_t, ThreadInfo> thread_info;
+  std::map<pid_t, ThreadInfo> crash_dump_thread_info;
+
   siginfo_t siginfo;
   std::string error;
 
@@ -421,6 +439,12 @@ int main(int argc, char** argv) {
       info.process_name = process_name;
       info.thread_name = get_thread_name(thread);
 
+      ThreadInfo crash_dump_info;
+      crash_dump_info.pid = target_process;
+      crash_dump_info.tid = thread;
+      crash_dump_info.process_name = process_name;
+      crash_dump_info.thread_name = get_thread_name(thread);
+
       if (!ptrace_interrupt(thread, &info.signo)) {
         PLOG(WARNING) << "failed to ptrace interrupt thread " << thread;
         ptrace(PTRACE_DETACH, thread, 0, 0);
@@ -428,12 +452,27 @@ int main(int argc, char** argv) {
       }
 
       if (thread == g_target_thread) {
-        // Read the thread's registers along with the rest of the crash info out of the pipe.
-        ReadCrashInfo(input_pipe, &siginfo, &info.registers, &abort_address);
+        if (isCrashDumpEnabled) {
+          // Read the thread's registers along with the rest of the crash info out of the pipe.
+          ReadCrashInfo(input_pipe, &siginfo, &info.registers,
+                                &crash_dump_info.registers,
+                                &abort_address);
+
+          crash_dump_info.siginfo = &siginfo;
+          crash_dump_info.signo = crash_dump_info.siginfo->si_signo;
+        } else {
+          // Read the thread's registers along with the rest of the crash info out of the pipe.
+          ReadCrashInfo(input_pipe, &siginfo, &info.registers,
+                                NULL,
+                                &abort_address);
+        }
         info.siginfo = &siginfo;
         info.signo = info.siginfo->si_signo;
       } else {
         info.registers.reset(Regs::RemoteGet(thread));
+        if (isCrashDumpEnabled) {
+          crash_dump_info.registers.reset(Regs::RemoteGet(thread));
+        }
         if (!info.registers) {
           PLOG(WARNING) << "failed to fetch registers for thread " << thread;
           ptrace(PTRACE_DETACH, thread, 0, 0);
@@ -442,6 +481,9 @@ int main(int argc, char** argv) {
       }
 
       thread_info[thread] = std::move(info);
+      if (isCrashDumpEnabled) {
+        crash_dump_thread_info[thread] = std::move(crash_dump_info);
+      }
     }
   }
 
@@ -492,6 +534,12 @@ int main(int argc, char** argv) {
     LOG(INFO) << "obtaining output fd from tombstoned, type: " << dump_type;
     g_tombstoned_connected =
         tombstoned_connect(g_target_thread, &g_tombstoned_socket, &g_output_fd, dump_type);
+    if (isCrashDumpEnabled) {
+      if (dump_type == kDebuggerdTombstone) {
+        g_tombstoned_crash_dump_connected =
+            tombstoned_connect(g_target_thread, &g_tombstoned_crash_dump_socket, &g_crash_dump_fd, kDebuggerdCrashDump);
+      }
+    }
   }
 
   if (g_tombstoned_connected) {
@@ -502,6 +550,20 @@ int main(int argc, char** argv) {
     unique_fd devnull(TEMP_FAILURE_RETRY(open("/dev/null", O_RDWR)));
     TEMP_FAILURE_RETRY(dup2(devnull.get(), STDOUT_FILENO));
     g_output_fd = std::move(devnull);
+  }
+
+  if (isCrashDumpEnabled) {
+    if (dump_type == kDebuggerdTombstone) {
+      if (g_tombstoned_crash_dump_connected) {
+        if (TEMP_FAILURE_RETRY(dup2(g_crash_dump_fd.get(), STDOUT_FILENO)) == -1) {
+          PLOG(ERROR) << "failed to dup2 crash dump fd (" << g_crash_dump_fd.get() << ") to STDOUT_FILENO";
+        }
+      } else {
+        unique_fd devnull(TEMP_FAILURE_RETRY(open("/dev/null", O_RDWR)));
+        TEMP_FAILURE_RETRY(dup2(devnull.get(), STDOUT_FILENO));
+        g_crash_dump_fd = std::move(devnull);
+      }
+    }
   }
 
   LOG(INFO) << "performing dump of process " << target_process << " (target tid = " << g_target_thread
@@ -544,6 +606,11 @@ int main(int argc, char** argv) {
     ATRACE_NAME("engrave_tombstone");
     engrave_tombstone(std::move(g_output_fd), map.get(), process_memory.get(), thread_info,
                       g_target_thread, abort_address, &open_files, &amfd_data);
+    if (isCrashDumpEnabled) {
+      if (dump_type == kDebuggerdTombstone) {
+        capture_crash_dump(std::move(g_crash_dump_fd), map.get(), process_memory.get(), g_target_thread, crash_dump_thread_info);
+      }
+    }
   }
 
   if (fatal_signal) {
@@ -570,6 +637,14 @@ int main(int argc, char** argv) {
   close(STDOUT_FILENO);
   if (g_tombstoned_connected && !tombstoned_notify_completion(g_tombstoned_socket.get())) {
     LOG(ERROR) << "failed to notify tombstoned of completion";
+  }
+
+  if (isCrashDumpEnabled) {
+    if (dump_type == kDebuggerdTombstone) {
+      if (g_tombstoned_crash_dump_connected && !tombstoned_notify_completion(g_tombstoned_crash_dump_socket.get())) {
+        LOG(ERROR) << "failed to notify tombstoned of completion";
+      }
+    }
   }
 
   return 0;

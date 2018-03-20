@@ -33,6 +33,7 @@
 
 #include <memory>
 #include <string>
+#include <elf.h>
 
 #include <android-base/file.h>
 #include <android-base/logging.h>
@@ -622,6 +623,222 @@ void engrave_tombstone_ucontext(int tombstone_fd, uint64_t abort_msg_address, si
   std::shared_ptr<Memory> process_memory = backtrace_map->GetProcessMemory();
   engrave_tombstone(unique_fd(dup(tombstone_fd)), backtrace_map.get(), process_memory.get(),
                     threads, tid, abort_msg_address, nullptr, nullptr);
+}
+
+int crash_dump_fd_write(int fd, char *buffer, size_t size)
+{
+  int written_bytes=0;
+
+  while (size) {
+    written_bytes = write(fd, buffer, size);
+    if (written_bytes < 0)
+    {
+      return written_bytes;
+    }
+    buffer = (char *)(buffer + written_bytes);
+    size = size - written_bytes;
+  }
+  return 0;
+}
+
+
+#define CRASH_DUMP_MAX_REGION_COUNT 200
+#define CRASH_DUMP_SCRATCH_SIZE 0x10000
+#define CRASH_DUMP_MAX_MAPS 50
+void capture_crash_dump(unique_fd crash_dump_fd, BacktraceMap* map, Memory* process_memory, pid_t target_thread, const std::map<pid_t, ThreadInfo>& threads)
+{
+  uint32_t offset=0, index=0;
+  uint64_t addr=0,first_sp=0, last_sp=0;;
+  char *buffer, *pmem;
+  size_t size, tmp_size, iter_size;
+  int read_bytes;
+  Elf64_Ehdr ehdr;
+  Elf64_Phdr phdr[CRASH_DUMP_MAX_REGION_COUNT];
+  uint32_t region_count=0;
+  uint32_t map_index=0;
+  char *scratch=new char[CRASH_DUMP_SCRATCH_SIZE];
+  int fd = crash_dump_fd.get();
+  std::string interested_maps[CRASH_DUMP_MAX_MAPS];
+  UNUSED(target_thread);
+
+  if (fd < 0) {
+    ALOGE("Crash dump fd open failed\n");
+    delete [] scratch;
+    return;
+  }
+
+  if (!scratch) {
+    ALOGE("Crash dump scratch space could not be allocated for size %x \n", (uint32_t)CRASH_DUMP_SCRATCH_SIZE);
+    close(fd);
+    return;
+  }
+
+  memset((void *)&ehdr, 0, sizeof(Elf64_Ehdr));
+  memset((void *)&phdr, 0, (sizeof(Elf64_Phdr)*CRASH_DUMP_MAX_REGION_COUNT));
+  memcpy(ehdr.e_ident, ELFMAG, SELFMAG);
+  ehdr.e_ident[EI_CLASS] = ELFCLASS64;
+  ehdr.e_ident[EI_DATA] = ELFDATA2LSB;
+  ehdr.e_ident[EI_VERSION] = EV_CURRENT;
+  ehdr.e_ident[EI_OSABI] = ELFOSABI_SYSV;
+  ehdr.e_type = ET_CORE;
+  ehdr.e_version = EV_CURRENT;
+  ehdr.e_phoff = sizeof(ehdr);
+  ehdr.e_ehsize = sizeof(ehdr);
+  ehdr.e_phentsize = sizeof(Elf64_Phdr);
+
+  for (auto& [tid, thread_info] : threads) {
+    if (region_count>=CRASH_DUMP_MAX_REGION_COUNT) {
+      break;
+    }
+    std::vector<backtrace_frame_data_t> frames;
+    BacktraceUnwindError error;
+    //ALOGE("Triggering Unwind %p\n", (void *)&thread_info);
+    Backtrace::Unwind(thread_info.registers.get(), map, &frames, 0, nullptr, &error);
+    if (error.error_code!=BACKTRACE_UNWIND_NO_ERROR)
+    {
+      ALOGE("Unwind error %x\n", (uint32_t)error.error_code);
+      continue;
+    }
+    if (!frames.empty()) {
+      first_sp=0;
+      last_sp=0;
+      //ALOGE("Frame size %x\n", (uint32_t)frames.size());
+      for (size_t frame_index = 0; frame_index < frames.size(); frame_index++) {
+        const backtrace_frame_data_t& frame = frames[frame_index];
+        /*Get the maps from callstacks of all the threads in process*/
+        if (BacktraceMap::IsValid(frame.map) && (map_index < CRASH_DUMP_MAX_MAPS) && (frame.map.name.length()>0)) {
+          for (index = 0; index < map_index; index++) {
+            if (strcmp((const char *)interested_maps[index].c_str(), frame.map.name.c_str()) == 0) {
+              //ALOGE("Interested MAP parsed %s\n", frame.map.name.c_str());
+              break;
+            }
+          }
+          if (index==map_index) {
+            interested_maps[map_index].assign(frame.map.name);
+            //ALOGE("Interested MAP saved %s\n", interested_maps[map_index].c_str());
+            map_index++;
+          }
+        }
+        if (frame.sp) {
+          if (!first_sp) {
+            first_sp = (uint64_t)frame.sp;
+          }
+          last_sp = (uint64_t)frame.sp;
+        }
+      }
+      //ALOGE("Frame Stack first sp %p last sp %p\n", (void *)first_sp, (void *)last_sp);
+      if (first_sp && last_sp && (last_sp>first_sp)) {
+        phdr[region_count].p_type = PT_LOAD;
+        phdr[region_count].p_vaddr = first_sp;
+        phdr[region_count].p_paddr = first_sp;
+        phdr[region_count].p_filesz = phdr[region_count].p_memsz = (size_t)(last_sp-first_sp);
+        phdr[region_count].p_flags = PF_R | PF_W;
+        region_count++;
+      }
+    }
+  }
+
+  /*Parse the maps to identify regions to be dumped*/
+  for (auto it = map->begin(); (it != map->end())&&(region_count < CRASH_DUMP_MAX_REGION_COUNT); ++it) {
+    const backtrace_map_t* entry = *it;
+    size = entry->end - entry->start;
+    if (!((entry->flags & PROT_WRITE)&&(entry->name.length()>0)&&(size>0))) {
+      continue;
+    }
+
+    for (index = 0; index < map_index; index++) {
+      if (strstr((const char *)entry->name.c_str(), interested_maps[index].c_str())) {
+        //ALOGE("Interested MAP found %s\n", entry->name.c_str());
+        break;
+      }
+    }
+
+    if ((index<map_index) ||
+         strstr((const char *)entry->name.c_str(), "libc_malloc") ||
+         strstr((const char *)entry->name.c_str(), "anon:.bss") ||
+         strstr((const char *)entry->name.c_str(), "libc.so")) {
+      //ALOGE("MAP found %p size %x\n", (void *)entry->start, (uint32_t)size);
+      phdr[region_count].p_type = PT_LOAD;
+      phdr[region_count].p_vaddr = entry->start;
+      phdr[region_count].p_paddr = entry->start;
+      phdr[region_count].p_filesz = phdr[region_count].p_memsz = size;
+      phdr[region_count].p_flags = PF_R | PF_W;
+      region_count++;
+    }
+  }
+
+
+  ALOGE("Crash dump elf region count %d\n", region_count);
+  offset = sizeof(Elf64_Ehdr)+(sizeof(Elf64_Phdr)*region_count/*number of headers*/);
+  ehdr.e_phnum = region_count;
+
+  for (index=0; index < region_count; index++) {
+    phdr[index].p_offset = offset;
+    offset += phdr[index].p_filesz;
+  }
+
+  /*Write ELF header*/
+  if (crash_dump_fd_write(fd, (char *)&ehdr, sizeof(Elf64_Ehdr)))
+  {
+    delete [] scratch;
+    close(fd);
+    return;
+  }
+
+  /*Write Program headers*/
+  if (crash_dump_fd_write(fd, (char *)&phdr, (sizeof(Elf64_Phdr)*region_count)))
+  {
+    delete [] scratch;
+    close(fd);
+    return;
+  }
+
+  /*Read actual data and append to the BT dump file*/
+  for (index=0; index< region_count ; index++) {
+    addr=phdr[index].p_vaddr;
+    size=phdr[index].p_memsz;
+
+    while (size) {
+      pmem = scratch;
+      if (size > CRASH_DUMP_SCRATCH_SIZE)
+      {
+        size-=CRASH_DUMP_SCRATCH_SIZE;
+        tmp_size = CRASH_DUMP_SCRATCH_SIZE;
+      } else {
+        tmp_size = size;
+        size=0;
+      }
+
+      /*Read from PID memory using Backtrace*/
+      read_bytes=0;
+      iter_size = tmp_size;
+      buffer = pmem;
+      while (iter_size) {
+        read_bytes = process_memory->Read(static_cast<uintptr_t>(addr) , reinterpret_cast<uint8_t*>(buffer), iter_size);
+        //ALOGE("Process memory %p read bytes %x\n", (void *)addr, read_bytes);
+        if (read_bytes < 0)
+        {
+          delete [] scratch;
+          close(fd);
+          return;
+        }
+        buffer = (char *)(buffer + read_bytes);
+        iter_size = iter_size - read_bytes;
+        addr = addr + read_bytes;
+      }
+
+      /*Write onto BT DUMP file*/
+      if (crash_dump_fd_write(fd, pmem, tmp_size))
+      {
+        delete [] scratch;
+        close(fd);
+        return;
+      }
+    }
+  }
+  delete [] scratch;
+  close(fd);
+  return;
 }
 
 void engrave_tombstone(unique_fd output_fd, BacktraceMap* map, Memory* process_memory,

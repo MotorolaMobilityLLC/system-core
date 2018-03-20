@@ -93,12 +93,19 @@ class CrashQueue {
   }
 
   static CrashQueue* for_crash(const Crash* crash) {
-    return (crash->crash_type == kDebuggerdJavaBacktrace) ? for_anrs() : for_tombstones();
+    return ((crash->crash_type == kDebuggerdJavaBacktrace) ? for_anrs() : ((crash->crash_type == kDebuggerdCrashDump) ? for_crash_dump() : for_tombstones()));
   }
 
   static CrashQueue* for_tombstones() {
     static CrashQueue queue("/data/tombstones", "tombstone_" /* file_name_prefix */,
                             GetIntProperty("tombstoned.max_tombstone_count", 10),
+                            1 /* max_concurrent_dumps */);
+    return &queue;
+  }
+
+  static CrashQueue* for_crash_dump() {
+    static CrashQueue queue("/data/tombstones", "crash_dump_" /* file_name_prefix */,
+                            GetIntProperty("tombstoned.max_crash_dump_count", 10),
                             1 /* max_concurrent_dumps */);
     return &queue;
   }
@@ -411,15 +418,23 @@ int main(int, char* []) {
   };
   debuggerd_register_handlers(&action);
 
+  bool isSecureBuild = android::base::GetBoolProperty("ro.secure", true);
+  bool isDebuggable = android::base::GetBoolProperty("ro.debuggable", false);
+  bool isCrashDumpEnabled = isDebuggable || !isSecureBuild;
+
   int intercept_socket = android_get_control_socket(kTombstonedInterceptSocketName);
   int crash_socket = android_get_control_socket(kTombstonedCrashSocketName);
+  int crash_dump_socket = android_get_control_socket(kTombstonedCrashDumpSocketName);
 
-  if (intercept_socket == -1 || crash_socket == -1) {
+
+  if (intercept_socket == -1 || crash_socket == -1 || (isCrashDumpEnabled && crash_dump_socket == -1)) {
     PLOG(FATAL) << "failed to get socket from init";
   }
 
   evutil_make_socket_nonblocking(intercept_socket);
   evutil_make_socket_nonblocking(crash_socket);
+  evutil_make_socket_nonblocking(crash_dump_socket);
+
 
   event_base* base = event_base_new();
   if (!base) {
@@ -433,6 +448,16 @@ int main(int, char* []) {
                          -1 /* backlog */, crash_socket);
   if (!tombstone_listener) {
     LOG(FATAL) << "failed to create evconnlistener for tombstones.";
+  }
+
+  if (isCrashDumpEnabled) {
+    evconnlistener* crash_dump_listener =
+        evconnlistener_new(base, crash_accept_cb, CrashQueue::for_crash_dump(), LEV_OPT_CLOSE_ON_FREE,
+                           -1 /* backlog */, crash_dump_socket);
+
+    if (!crash_dump_listener) {
+      LOG(FATAL) << "failed to create evconnlistener for crash dump.";
+    }
   }
 
   if (kJavaTraceDumpsEnabled) {

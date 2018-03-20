@@ -23,6 +23,7 @@
 enum DebuggerdDumpType : uint8_t {
   kDebuggerdNativeBacktrace,
   kDebuggerdTombstone,
+  kDebuggerdCrashDump,
   kDebuggerdJavaBacktrace,
   kDebuggerdAnyIntercept
 };
