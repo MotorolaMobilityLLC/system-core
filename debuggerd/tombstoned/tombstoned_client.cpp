@@ -33,8 +33,8 @@ using android::base::unique_fd;
 bool tombstoned_connect(pid_t pid, unique_fd* tombstoned_socket, unique_fd* output_fd,
                         DebuggerdDumpType dump_type) {
   unique_fd sockfd(
-      socket_local_client((dump_type != kDebuggerdJavaBacktrace ? kTombstonedCrashSocketName
-                                                                : kTombstonedJavaTraceSocketName),
+      socket_local_client(((dump_type == kDebuggerdTombstone) ? kTombstonedCrashSocketName
+                                                                : ((dump_type == kDebuggerdCrashDump) ? kTombstonedCrashDumpSocketName : kTombstonedJavaTraceSocketName)),
                           ANDROID_SOCKET_NAMESPACE_RESERVED, SOCK_SEQPACKET));
   if (sockfd == -1) {
     async_safe_format_log(ANDROID_LOG_ERROR, "libc", "failed to connect to tombstoned: %s",
