@@ -27,12 +27,14 @@
 #include <selinux/android.h>
 
 #include "action.h"
-#include "property_service.h"
-#include "selinux.h"
 #include "util.h"
 
-#define _REALLY_INCLUDE_SYS__SYSTEM_PROPERTIES_H_
-#include <sys/_system_properties.h>
+#if defined(__ANDROID__)
+#include "property_service.h"
+#include "selinux.h"
+#else
+#include "host_init_stubs.h"
+#endif
 
 using android::base::GetExecutablePath;
 using android::base::Join;
@@ -46,6 +48,11 @@ namespace init {
 
 const std::string kInitContext = "u:r:init:s0";
 const std::string kVendorContext = "u:r:vendor_init:s0";
+
+const char* const paths_and_secontexts[2][2] = {
+    {"/vendor", kVendorContext.c_str()},
+    {"/odm", kVendorContext.c_str()},
+};
 
 namespace {
 
@@ -83,7 +90,7 @@ std::vector<std::pair<std::string, std::string>> properties_to_set;
 
 uint32_t SubcontextPropertySet(const std::string& name, const std::string& value) {
     properties_to_set.emplace_back(name, value);
-    return PROP_SUCCESS;
+    return 0;
 }
 
 class SubcontextProcess {
@@ -295,7 +302,11 @@ Result<Success> Subcontext::Execute(const std::vector<std::string>& args) {
 
     for (const auto& property : subcontext_reply->properties_to_set()) {
         ucred cr = {.pid = pid_, .uid = 0, .gid = 0};
-        HandlePropertySet(property.name(), property.value(), context_, cr);
+        std::string error;
+        if (HandlePropertySet(property.name(), property.value(), context_, cr, &error) != 0) {
+            LOG(ERROR) << "Subcontext init could not set '" << property.name() << "' to '"
+                       << property.value() << "': " << error;
+        }
     }
 
     if (subcontext_reply->reply_case() == SubcontextReply::kFailure) {
@@ -343,9 +354,6 @@ Result<std::vector<std::string>> Subcontext::ExpandArgs(const std::vector<std::s
 static std::vector<Subcontext> subcontexts;
 
 std::vector<Subcontext>* InitializeSubcontexts() {
-    static const char* const paths_and_secontexts[][2] = {
-        {"/vendor", kVendorContext.c_str()},
-    };
     for (const auto& [path_prefix, secontext] : paths_and_secontexts) {
         subcontexts.emplace_back(path_prefix, secontext);
     }
