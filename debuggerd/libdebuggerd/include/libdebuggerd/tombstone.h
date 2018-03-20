@@ -52,4 +52,7 @@ void engrave_tombstone(android::base::unique_fd output_fd, BacktraceMap* map,
                        uint64_t abort_msg_address, OpenFilesList* open_files,
                        std::string* amfd_data);
 
+void capture_crash_dump(android::base::unique_fd crash_dump_fd, BacktraceMap* map, unwindstack::Memory* process_memory,
+	                   pid_t target_thread, const std::map<pid_t, ThreadInfo>& threads);
+
 #endif  // _DEBUGGERD_TOMBSTONE_H
