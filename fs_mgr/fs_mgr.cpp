@@ -1231,7 +1231,7 @@ int fs_mgr_do_mount(struct fstab *fstab, const char *n_name, char *n_blk_device,
         }
     } else {
         /* We didn't find a match, say so and return an error */
-        LERROR << "Cannot find mount point " << fstab->recs[i].mount_point
+        LERROR << "Cannot find mount point " << n_name
                << " in fstab";
     }
 
