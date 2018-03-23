@@ -190,8 +190,6 @@ bool DwarfSectionImpl<AddressType>::Eval(const DwarfCie* cie, Memory* regular_me
   // Always set the dex pc to zero when evaluating.
   cur_regs->set_dex_pc(0);
 
-  AddressType prev_cfa = regs->sp();
-
   EvalInfo<AddressType> eval_info{.loc_regs = &loc_regs,
                                   .cie = cie,
                                   .regular_memory = regular_memory,
@@ -204,31 +202,16 @@ bool DwarfSectionImpl<AddressType>::Eval(const DwarfCie* cie, Memory* regular_me
         last_error_.code = DWARF_ERROR_ILLEGAL_VALUE;
         return false;
       }
-      // If the stack pointer register is the CFA, and the stack
-      // pointer register does not have any associated location
-      // information, use the current cfa value.
-      if (regs->sp_reg() == loc->values[0] && loc_regs.count(regs->sp_reg()) == 0) {
-        eval_info.cfa = prev_cfa;
-      } else {
-        eval_info.cfa = (*cur_regs)[loc->values[0]];
-      }
+      eval_info.cfa = (*cur_regs)[loc->values[0]];
       eval_info.cfa += loc->values[1];
       break;
-    case DWARF_LOCATION_EXPRESSION:
     case DWARF_LOCATION_VAL_EXPRESSION: {
       AddressType value;
       if (!EvalExpression(*loc, regular_memory, &value, &eval_info.regs_info, nullptr)) {
         return false;
       }
-      if (loc->type == DWARF_LOCATION_EXPRESSION) {
-        if (!regular_memory->ReadFully(value, &eval_info.cfa, sizeof(AddressType))) {
-          last_error_.code = DWARF_ERROR_MEMORY_INVALID;
-          last_error_.address = value;
-          return false;
-        }
-      } else {
-        eval_info.cfa = value;
-      }
+      // There is only one type of valid expression for CFA evaluation.
+      eval_info.cfa = value;
       break;
     }
     default:
