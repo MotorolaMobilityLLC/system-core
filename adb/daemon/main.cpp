@@ -26,8 +26,6 @@
 #include <sys/prctl.h>
 
 #include <memory>
-#include <thread>
-#include <chrono>
 
 #include <android-base/logging.h>
 #include <android-base/macros.h>
@@ -183,11 +181,6 @@ int adbd_main(int server_port) {
         // Listen on USB.
         usb_init();
         is_usb = true;
-
-        using namespace std::chrono_literals;
-        std::string prop_port = android::base::GetProperty("sys.usb.config", "");
-        android::base::SetProperty("sys.usb.config", prop_port);
-        std::this_thread::sleep_for(500ms);
     }
 
     // If one of these properties is set, also listen on that port.
