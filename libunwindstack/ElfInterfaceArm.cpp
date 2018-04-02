@@ -127,13 +127,9 @@ bool ElfInterfaceArm::StepExidx(uint64_t pc, uint64_t load_bias, Regs* regs, Mem
   if (arm.ExtractEntryData(entry_offset) && arm.Eval()) {
     // If the pc was not set, then use the LR registers for the PC.
     if (!arm.pc_set()) {
-      regs_arm->set_pc((*regs_arm)[ARM_REG_LR]);
-      (*regs_arm)[ARM_REG_PC] = regs_arm->pc();
-    } else {
-      regs_arm->set_pc((*regs_arm)[ARM_REG_PC]);
+      (*regs_arm)[ARM_REG_PC] = (*regs_arm)[ARM_REG_LR];
     }
-    regs_arm->set_sp(arm.cfa());
-    (*regs_arm)[ARM_REG_SP] = regs_arm->sp();
+    (*regs_arm)[ARM_REG_SP] = arm.cfa();
     return_value = true;
 
     // If the pc was set to zero, consider this the final frame.
@@ -169,6 +165,19 @@ bool ElfInterfaceArm::StepExidx(uint64_t pc, uint64_t load_bias, Regs* regs, Mem
     }
   }
   return return_value;
+}
+
+bool ElfInterfaceArm::GetFunctionName(uint64_t addr, uint64_t load_bias, std::string* name,
+                                      uint64_t* offset) {
+  // For ARM, thumb function symbols have bit 0 set, but the address passed
+  // in here might not have this bit set and result in a failure to find
+  // the thumb function names. Adjust the address and offset to account
+  // for this possible case.
+  if (ElfInterface32::GetFunctionName(addr | 1, load_bias, name, offset)) {
+    *offset &= ~1;
+    return true;
+  }
+  return false;
 }
 
 }  // namespace unwindstack
