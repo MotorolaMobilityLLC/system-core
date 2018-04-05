@@ -678,6 +678,10 @@ on boot
     chown system system /sys/kernel/ipv4/tcp_rmem_max
     chown root radio /proc/cmdline
 
+    # IKSWO-79121, IKSWO-50249: Disable tcp_window_scaling for USC CDMA network.
+    # Dynamically change tcp_window_scaling based on mobile RAT and carrier name
+    chown system system /proc/sys/net/ipv4/tcp_window_scaling
+
     # Define default initial receive window size in segments.
     setprop net.tcp.default_init_rwnd 60
 
