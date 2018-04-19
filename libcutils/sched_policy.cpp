@@ -58,6 +58,7 @@ static int bg_cpuset_fd = -1;
 static int fg_cpuset_fd = -1;
 static int ta_cpuset_fd = -1; // special cpuset for top app
 static int aa_cpuset_fd = -1; // special cpuset for audio app
+static int rs_cpuset_fd = -1;  // special cpuset for screen off restrictions
 
 // File descriptors open to /dev/stune/../tasks, setup by initialize, or -1 on error
 static int bg_schedboost_fd = -1;
@@ -189,6 +190,8 @@ static void __initialize() {
             aa_cpuset_fd = open(filename, O_WRONLY | O_CLOEXEC);
 
 
+            filename = "/dev/cpuset/restricted/tasks";
+            rs_cpuset_fd = open(filename, O_WRONLY | O_CLOEXEC);
 
             if (schedboost_enabled()) {
                 filename = "/dev/stune/audio-app/tasks";
@@ -360,6 +363,9 @@ int set_cpuset_policy(int tid, SchedPolicy policy)
         fd = aa_cpuset_fd;
         boost_fd = aa_schedboost_fd;
         blkio_fd = fg_blkio_fd;
+        break;
+    case SP_RESTRICTED:
+        fd = rs_cpuset_fd;
         break;
     default:
         boost_fd = fd = -1;
@@ -542,14 +548,10 @@ int get_sched_policy(int /*tid*/, SchedPolicy* policy) {
 const char *get_sched_policy_name(SchedPolicy policy)
 {
     policy = _policy(policy);
-    static const char * const strings[SP_CNT] = {
-       [SP_BACKGROUND] = "bg",
-       [SP_FOREGROUND] = "fg",
-       [SP_SYSTEM]     = "  ",
-       [SP_AUDIO_APP]  = "aa",
-       [SP_AUDIO_SYS]  = "as",
-       [SP_TOP_APP]    = "ta",
-       [SP_RT_APP]    = "rt",
+    static const char* const strings[SP_CNT] = {
+            [SP_BACKGROUND] = "bg", [SP_FOREGROUND] = "fg", [SP_SYSTEM] = "  ",
+            [SP_AUDIO_APP] = "aa",  [SP_AUDIO_SYS] = "as",  [SP_TOP_APP] = "ta",
+            [SP_RT_APP] = "rt",     [SP_RESTRICTED] = "rs",
     };
     if ((policy < SP_CNT) && (strings[policy] != NULL))
         return strings[policy];
