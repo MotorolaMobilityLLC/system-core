@@ -29,16 +29,23 @@ static constexpr const char* kPartnerPrefixes[] = {
 };
 
 static const std::set<std::string> kExportedActionableProperties = {
+    "dev.bootcomplete",
     "init.svc.console",
     "init.svc.mediadrm",
+    "init.svc.surfaceflinger",
     "init.svc.zygote",
     "persist.bluetooth.btsnoopenable",
     "persist.sys.crash_rcu",
     "persist.sys.usb.usbradio.config",
     "persist.sys.zram_enabled",
+    "ro.board.platform",
     "ro.bootmode",
     "ro.build.type",
+    "ro.crypto.state",
+    "ro.crypto.type",
+    "ro.debuggable",
     "sys.boot_completed",
+    "sys.boot_from_charger_mode",
     "sys.retaildemo.enabled",
     "sys.shutdown.requested",
     "sys.usb.config",
@@ -47,7 +54,10 @@ static const std::set<std::string> kExportedActionableProperties = {
     "sys.usb.ffs.ready",
     "sys.user.0.ce_available",
     "sys.vdso",
+    "vold.decrypt",
+    "vold.post_fs_data_done",
     "vts.native_server.on",
+    "wlan.driver.status",
 };
 
 }  // namespace init
