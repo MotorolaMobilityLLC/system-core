@@ -66,7 +66,8 @@
 #define MEMCG_SYSFS_PATH "/dev/memcg/"
 #define MEMCG_MEMORY_USAGE "/dev/memcg/memory.usage_in_bytes"
 #define MEMCG_MEMORYSW_USAGE "/dev/memcg/memory.memsw.usage_in_bytes"
-
+#define ZONEINFO_PATH "/proc/zoneinfo"
+#define MEMINFO_PATH "/proc/meminfo"
 #define LINE_MAX 128
 
 #define INKERNEL_MINFREE_PATH "/sys/module/lowmemorykiller/parameters/minfree"
@@ -96,14 +97,9 @@ static const char *level_name[] = {
     "critical"
 };
 
-struct mem_size {
-    int free_mem;
-    int free_swap;
-};
-
 struct {
-    int min_free; /* recorded but not used yet */
-    int max_free;
+    int64_t min_nr_free_pages; /* recorded but not used yet */
+    int64_t max_nr_free_pages;
 } low_pressure_mem = { -1, -1 };
 
 static int level_oomadj[VMPRESS_LEVEL_COUNT];
@@ -112,9 +108,10 @@ static bool debug_process_killing;
 static bool enable_pressure_upgrade;
 static int64_t upgrade_pressure;
 static int64_t downgrade_pressure;
-static bool is_go_device;
+static bool low_ram_device;
 static bool kill_heaviest_task;
 static unsigned long kill_timeout_ms;
+static bool use_minfree_levels;
 
 /* data required to handle events */
 struct event_handler_info {
@@ -151,11 +148,84 @@ static int lowmem_adj[MAX_TARGETS];
 static int lowmem_minfree[MAX_TARGETS];
 static int lowmem_targets_size;
 
-struct sysmeminfo {
-    int nr_free_pages;
-    int nr_file_pages;
-    int nr_shmem;
-    int totalreserve_pages;
+/* Fields to parse in /proc/zoneinfo */
+enum zoneinfo_field {
+    ZI_NR_FREE_PAGES = 0,
+    ZI_NR_FILE_PAGES,
+    ZI_NR_SHMEM,
+    ZI_NR_UNEVICTABLE,
+    ZI_WORKINGSET_REFAULT,
+    ZI_HIGH,
+    ZI_FIELD_COUNT
+};
+
+static const char* const zoneinfo_field_names[ZI_FIELD_COUNT] = {
+    "nr_free_pages",
+    "nr_file_pages",
+    "nr_shmem",
+    "nr_unevictable",
+    "workingset_refault",
+    "high",
+};
+
+union zoneinfo {
+    struct {
+        int64_t nr_free_pages;
+        int64_t nr_file_pages;
+        int64_t nr_shmem;
+        int64_t nr_unevictable;
+        int64_t workingset_refault;
+        int64_t high;
+        /* fields below are calculated rather than read from the file */
+        int64_t totalreserve_pages;
+    } field;
+    int64_t arr[ZI_FIELD_COUNT];
+};
+
+/* Fields to parse in /proc/meminfo */
+enum meminfo_field {
+    MI_NR_FREE_PAGES = 0,
+    MI_CACHED,
+    MI_SWAP_CACHED,
+    MI_BUFFERS,
+    MI_SHMEM,
+    MI_UNEVICTABLE,
+    MI_FREE_SWAP,
+    MI_DIRTY,
+    MI_FIELD_COUNT
+};
+
+static const char* const meminfo_field_names[MI_FIELD_COUNT] = {
+    "MemFree:",
+    "Cached:",
+    "SwapCached:",
+    "Buffers:",
+    "Shmem:",
+    "Unevictable:",
+    "SwapFree:",
+    "Dirty:",
+};
+
+union meminfo {
+    struct {
+        int64_t nr_free_pages;
+        int64_t cached;
+        int64_t swap_cached;
+        int64_t buffers;
+        int64_t shmem;
+        int64_t unevictable;
+        int64_t free_swap;
+        int64_t dirty;
+        /* fields below are calculated rather than read from the file */
+        int64_t nr_file_pages;
+    } field;
+    int64_t arr[MI_FIELD_COUNT];
+};
+
+enum field_match_result {
+    NO_MATCH,
+    PARSE_FAIL,
+    PARSE_SUCCESS
 };
 
 struct adjslot_list {
@@ -169,6 +239,11 @@ struct proc {
     uid_t uid;
     int oomadj;
     struct proc *pidhash_next;
+};
+
+struct reread_data {
+    const char* const filename;
+    int fd;
 };
 
 #ifdef LMKD_LOG_STATS
@@ -186,12 +261,43 @@ static struct adjslot_list procadjslot_list[ADJTOSLOT(OOM_SCORE_ADJ_MAX) + 1];
 /* PAGE_SIZE / 1024 */
 static long page_k;
 
+static bool parse_int64(const char* str, int64_t* ret) {
+    char* endptr;
+    long long val = strtoll(str, &endptr, 10);
+    if (str == endptr || val > INT64_MAX) {
+        return false;
+    }
+    *ret = (int64_t)val;
+    return true;
+}
+
+static enum field_match_result match_field(const char* cp, const char* ap,
+                                   const char* const field_names[],
+                                   int field_count, int64_t* field,
+                                   int *field_idx) {
+    int64_t val;
+    int i;
+
+    for (i = 0; i < field_count; i++) {
+        if (!strcmp(cp, field_names[i])) {
+            *field_idx = i;
+            return parse_int64(ap, field) ? PARSE_SUCCESS : PARSE_FAIL;
+        }
+    }
+    return NO_MATCH;
+}
+
+/*
+ * Read file content from the beginning up to max_len bytes or EOF
+ * whichever happens first.
+ */
 static ssize_t read_all(int fd, char *buf, size_t max_len)
 {
     ssize_t ret = 0;
+    off_t offset = 0;
 
     while (max_len > 0) {
-        ssize_t r = read(fd, buf, max_len);
+        ssize_t r = TEMP_FAILURE_RETRY(pread(fd, buf, max_len, offset));
         if (r == 0) {
             break;
         }
@@ -200,10 +306,42 @@ static ssize_t read_all(int fd, char *buf, size_t max_len)
         }
         ret += r;
         buf += r;
+        offset += r;
         max_len -= r;
     }
 
     return ret;
+}
+
+/*
+ * Read a new or already opened file from the beginning.
+ * If the file has not been opened yet data->fd should be set to -1.
+ * To be used with files which are read often and possibly during high
+ * memory pressure to minimize file opening which by itself requires kernel
+ * memory allocation and might result in a stall on memory stressed system.
+ */
+static int reread_file(struct reread_data *data, char *buf, size_t buf_size) {
+    ssize_t size;
+
+    if (data->fd == -1) {
+        data->fd = open(data->filename, O_RDONLY | O_CLOEXEC);
+        if (data->fd == -1) {
+            ALOGE("%s open: %s", data->filename, strerror(errno));
+            return -1;
+        }
+    }
+
+    size = read_all(data->fd, buf, buf_size - 1);
+    if (size < 0) {
+        ALOGE("%s read: %s", data->filename, strerror(errno));
+        close(data->fd);
+        data->fd = -1;
+        return -1;
+    }
+    ALOG_ASSERT((size_t)size < buf_size - 1, data->filename " too large");
+    buf[size] = 0;
+
+    return 0;
 }
 
 static struct proc *pid_lookup(int pid) {
@@ -442,7 +580,7 @@ static void ctrl_data_close(int dsock_idx) {
 static int ctrl_data_read(int dsock_idx, char *buf, size_t bufsz) {
     int ret = 0;
 
-    ret = read(data_sock[dsock_idx].sock, buf, bufsz);
+    ret = TEMP_FAILURE_RETRY(read(data_sock[dsock_idx].sock, buf, bufsz));
 
     if (ret == -1) {
         ALOGE("control data socket read failed; errno=%d", errno);
@@ -601,14 +739,141 @@ static int memory_stat_parse(struct memory_stat *mem_st,  int pid, uid_t uid) {
 }
 #endif
 
-static int get_free_memory(struct mem_size *ms) {
-    struct sysinfo si;
+/* /prop/zoneinfo parsing routines */
+static int64_t zoneinfo_parse_protection(char *cp) {
+    int64_t max = 0;
+    long long zoneval;
+    char *save_ptr;
 
-    if (sysinfo(&si) < 0)
+    for (cp = strtok_r(cp, "(), ", &save_ptr); cp;
+         cp = strtok_r(NULL, "), ", &save_ptr)) {
+        zoneval = strtoll(cp, &cp, 0);
+        if (zoneval > max) {
+            max = (zoneval > INT64_MAX) ? INT64_MAX : zoneval;
+        }
+    }
+
+    return max;
+}
+
+static bool zoneinfo_parse_line(char *line, union zoneinfo *zi) {
+    char *cp = line;
+    char *ap;
+    char *save_ptr;
+    int64_t val;
+    int field_idx;
+
+    cp = strtok_r(line, " ", &save_ptr);
+    if (!cp) {
+        return true;
+    }
+
+    if (!strcmp(cp, "protection:")) {
+        ap = strtok_r(NULL, ")", &save_ptr);
+    } else {
+        ap = strtok_r(NULL, " ", &save_ptr);
+    }
+
+    if (!ap) {
+        return true;
+    }
+
+    switch (match_field(cp, ap, zoneinfo_field_names,
+                        ZI_FIELD_COUNT, &val, &field_idx)) {
+    case (PARSE_SUCCESS):
+        zi->arr[field_idx] += val;
+        break;
+    case (NO_MATCH):
+        if (!strcmp(cp, "protection:")) {
+            zi->field.totalreserve_pages +=
+                zoneinfo_parse_protection(ap);
+        }
+        break;
+    case (PARSE_FAIL):
+    default:
+        return false;
+    }
+    return true;
+}
+
+static int zoneinfo_parse(union zoneinfo *zi) {
+    static struct reread_data file_data = {
+        .filename = ZONEINFO_PATH,
+        .fd = -1,
+    };
+    char buf[PAGE_SIZE];
+    char *save_ptr;
+    char *line;
+
+    memset(zi, 0, sizeof(union zoneinfo));
+
+    if (reread_file(&file_data, buf, sizeof(buf)) < 0) {
         return -1;
+    }
 
-    ms->free_mem = (int)(si.freeram * si.mem_unit / PAGE_SIZE);
-    ms->free_swap = (int)(si.freeswap * si.mem_unit / PAGE_SIZE);
+    for (line = strtok_r(buf, "\n", &save_ptr); line;
+         line = strtok_r(NULL, "\n", &save_ptr)) {
+        if (!zoneinfo_parse_line(line, zi)) {
+            ALOGE("%s parse error", file_data.filename);
+            return -1;
+        }
+    }
+    zi->field.totalreserve_pages += zi->field.high;
+
+    return 0;
+}
+
+/* /prop/meminfo parsing routines */
+static bool meminfo_parse_line(char *line, union meminfo *mi) {
+    char *cp = line;
+    char *ap;
+    char *save_ptr;
+    int64_t val;
+    int field_idx;
+    enum field_match_result match_res;
+
+    cp = strtok_r(line, " ", &save_ptr);
+    if (!cp) {
+        return false;
+    }
+
+    ap = strtok_r(NULL, " ", &save_ptr);
+    if (!ap) {
+        return false;
+    }
+
+    match_res = match_field(cp, ap, meminfo_field_names, MI_FIELD_COUNT,
+        &val, &field_idx);
+    if (match_res == PARSE_SUCCESS) {
+        mi->arr[field_idx] = val / page_k;
+    }
+    return (match_res != PARSE_FAIL);
+}
+
+static int meminfo_parse(union meminfo *mi) {
+    static struct reread_data file_data = {
+        .filename = MEMINFO_PATH,
+        .fd = -1,
+    };
+    char buf[PAGE_SIZE];
+    char *save_ptr;
+    char *line;
+
+    memset(mi, 0, sizeof(union meminfo));
+
+    if (reread_file(&file_data, buf, sizeof(buf)) < 0) {
+        return -1;
+    }
+
+    for (line = strtok_r(buf, "\n", &save_ptr); line;
+         line = strtok_r(NULL, "\n", &save_ptr)) {
+        if (!meminfo_parse_line(line, mi)) {
+            ALOGE("%s parse error", file_data.filename);
+            return -1;
+        }
+    }
+    mi->field.nr_file_pages = mi->field.cached + mi->field.swap_cached +
+        mi->field.buffers;
 
     return 0;
 }
@@ -755,11 +1020,10 @@ static int kill_one_process(struct proc* procp, int min_score_adj,
  * Returns the size of the killed processes.
  */
 static int find_and_kill_processes(enum vmpressure_level level,
-                                   int pages_to_free) {
+                                   int min_score_adj, int pages_to_free) {
     int i;
     int killed_size;
     int pages_freed = 0;
-    int min_score_adj = level_oomadj[level];
 
 #ifdef LMKD_LOG_STATS
     if (enable_stats_log) {
@@ -771,10 +1035,8 @@ static int find_and_kill_processes(enum vmpressure_level level,
         struct proc *procp;
 
         while (true) {
-            if (is_go_device)
-                procp = proc_adj_lru(i);
-            else
-                procp = proc_get_heaviest(i);
+            procp = kill_heaviest_task ?
+                proc_get_heaviest(i) : proc_adj_lru(i);
 
             if (!procp)
                 break;
@@ -805,23 +1067,19 @@ static int find_and_kill_processes(enum vmpressure_level level,
     return pages_freed;
 }
 
-static int64_t get_memory_usage(const char* path) {
+static int64_t get_memory_usage(struct reread_data *file_data) {
     int ret;
     int64_t mem_usage;
     char buf[32];
-    int fd = open(path, O_RDONLY | O_CLOEXEC);
-    if (fd == -1) {
-        ALOGE("%s open: errno=%d", path, errno);
+
+    if (reread_file(file_data, buf, sizeof(buf)) < 0) {
         return -1;
     }
 
-    ret = read_all(fd, buf, sizeof(buf) - 1);
-    close(fd);
-    if (ret < 0) {
-        ALOGE("%s error: errno=%d", path, errno);
+    if (!parse_int64(buf, &mem_usage)) {
+        ALOGE("%s parse error", file_data->filename);
         return -1;
     }
-    sscanf(buf, "%" SCNd64, &mem_usage);
     if (mem_usage == 0) {
         ALOGE("No memory!");
         return -1;
@@ -829,29 +1087,30 @@ static int64_t get_memory_usage(const char* path) {
     return mem_usage;
 }
 
-void record_low_pressure_levels(struct mem_size *free_mem) {
-    if (low_pressure_mem.min_free == -1 ||
-        low_pressure_mem.min_free > free_mem->free_mem) {
+void record_low_pressure_levels(union meminfo *mi) {
+    if (low_pressure_mem.min_nr_free_pages == -1 ||
+        low_pressure_mem.min_nr_free_pages > mi->field.nr_free_pages) {
         if (debug_process_killing) {
-            ALOGI("Low pressure min memory update from %d to %d",
-                low_pressure_mem.min_free, free_mem->free_mem);
+            ALOGI("Low pressure min memory update from %" PRId64 " to %" PRId64,
+                low_pressure_mem.min_nr_free_pages, mi->field.nr_free_pages);
         }
-        low_pressure_mem.min_free = free_mem->free_mem;
+        low_pressure_mem.min_nr_free_pages = mi->field.nr_free_pages;
     }
     /*
      * Free memory at low vmpressure events occasionally gets spikes,
      * possibly a stale low vmpressure event with memory already
      * freed up (no memory pressure should have been reported).
-     * Ignore large jumps in max_free that would mess up our stats.
+     * Ignore large jumps in max_nr_free_pages that would mess up our stats.
      */
-    if (low_pressure_mem.max_free == -1 ||
-        (low_pressure_mem.max_free < free_mem->free_mem &&
-         free_mem->free_mem - low_pressure_mem.max_free < low_pressure_mem.max_free * 0.1)) {
+    if (low_pressure_mem.max_nr_free_pages == -1 ||
+        (low_pressure_mem.max_nr_free_pages < mi->field.nr_free_pages &&
+         mi->field.nr_free_pages - low_pressure_mem.max_nr_free_pages <
+         low_pressure_mem.max_nr_free_pages * 0.1)) {
         if (debug_process_killing) {
-            ALOGI("Low pressure max memory update from %d to %d",
-                low_pressure_mem.max_free, free_mem->free_mem);
+            ALOGI("Low pressure max memory update from %" PRId64 " to %" PRId64,
+                low_pressure_mem.max_nr_free_pages, mi->field.nr_free_pages);
         }
-        low_pressure_mem.max_free = free_mem->free_mem;
+        low_pressure_mem.max_nr_free_pages = mi->field.nr_free_pages;
     }
 }
 
@@ -877,10 +1136,23 @@ static void mp_event_common(int data, uint32_t events __unused) {
     int64_t mem_usage, memsw_usage;
     int64_t mem_pressure;
     enum vmpressure_level lvl;
-    struct mem_size free_mem;
+    union meminfo mi;
+    union zoneinfo zi;
     static struct timeval last_report_tm;
     static unsigned long skip_count = 0;
     enum vmpressure_level level = (enum vmpressure_level)data;
+    long other_free = 0, other_file = 0;
+    int min_score_adj;
+    int pages_to_free = 0;
+    int minfree = 0;
+    static struct reread_data mem_usage_file_data = {
+        .filename = MEMCG_MEMORY_USAGE,
+        .fd = -1,
+    };
+    static struct reread_data memsw_usage_file_data = {
+        .filename = MEMCG_MEMORYSW_USAGE,
+        .fd = -1,
+    };
 
     /*
      * Check all event counters from low to critical
@@ -889,7 +1161,8 @@ static void mp_event_common(int data, uint32_t events __unused) {
      */
     for (lvl = VMPRESS_LEVEL_LOW; lvl < VMPRESS_LEVEL_COUNT; lvl++) {
         if (mpevfd[lvl] != -1 &&
-            read(mpevfd[lvl], &evcount, sizeof(evcount)) > 0 &&
+            TEMP_FAILURE_RETRY(read(mpevfd[lvl],
+                               &evcount, sizeof(evcount))) > 0 &&
             evcount > 0 && lvl > level) {
             level = lvl;
         }
@@ -912,13 +1185,42 @@ static void mp_event_common(int data, uint32_t events __unused) {
         skip_count = 0;
     }
 
-    if (get_free_memory(&free_mem) == 0) {
-        if (level == VMPRESS_LEVEL_LOW) {
-            record_low_pressure_levels(&free_mem);
-        }
-    } else {
+    if (meminfo_parse(&mi) < 0 || zoneinfo_parse(&zi) < 0) {
         ALOGE("Failed to get free memory!");
         return;
+    }
+
+    if (use_minfree_levels) {
+        int i;
+
+        other_free = mi.field.nr_free_pages - zi.field.totalreserve_pages;
+        if (mi.field.nr_file_pages > (mi.field.shmem + mi.field.unevictable + mi.field.swap_cached)) {
+            other_file = (mi.field.nr_file_pages - mi.field.shmem -
+                          mi.field.unevictable - mi.field.swap_cached);
+        } else {
+            other_file = 0;
+        }
+
+        min_score_adj = OOM_SCORE_ADJ_MAX + 1;
+        for (i = 0; i < lowmem_targets_size; i++) {
+            minfree = lowmem_minfree[i];
+            if (other_free < minfree && other_file < minfree) {
+                min_score_adj = lowmem_adj[i];
+                break;
+            }
+        }
+
+        if (min_score_adj == OOM_SCORE_ADJ_MAX + 1)
+            return;
+
+        /* Free up enough pages to push over the highest minfree level */
+        pages_to_free = lowmem_minfree[lowmem_targets_size - 1] -
+            ((other_free < other_file) ? other_free : other_file);
+        goto do_kill;
+    }
+
+    if (level == VMPRESS_LEVEL_LOW) {
+        record_low_pressure_levels(&mi);
     }
 
     if (level_oomadj[level] > OOM_SCORE_ADJ_MAX) {
@@ -926,9 +1228,10 @@ static void mp_event_common(int data, uint32_t events __unused) {
         return;
     }
 
-    mem_usage = get_memory_usage(MEMCG_MEMORY_USAGE);
-    memsw_usage = get_memory_usage(MEMCG_MEMORYSW_USAGE);
-    if (memsw_usage < 0 || mem_usage < 0) {
+    if ((mem_usage = get_memory_usage(&mem_usage_file_data)) < 0) {
+        goto do_kill;
+    }
+    if ((memsw_usage = get_memory_usage(&memsw_usage_file_data)) < 0) {
         goto do_kill;
     }
 
@@ -962,37 +1265,60 @@ static void mp_event_common(int data, uint32_t events __unused) {
     }
 
 do_kill:
-    if (is_go_device) {
+    if (low_ram_device) {
         /* For Go devices kill only one task */
-        if (find_and_kill_processes(level, 0) == 0) {
+        if (find_and_kill_processes(level, level_oomadj[level], 0) == 0) {
             if (debug_process_killing) {
                 ALOGI("Nothing to kill");
             }
         }
     } else {
-        /* If pressure level is less than critical and enough free swap then ignore */
-        if (level < VMPRESS_LEVEL_CRITICAL && free_mem.free_swap > low_pressure_mem.max_free) {
-            if (debug_process_killing) {
-                ALOGI("Ignoring pressure since %d swap pages are available ", free_mem.free_swap);
+        int pages_freed;
+
+        if (!use_minfree_levels) {
+            /* If pressure level is less than critical and enough free swap then ignore */
+            if (level < VMPRESS_LEVEL_CRITICAL &&
+                mi.field.free_swap > low_pressure_mem.max_nr_free_pages) {
+                if (debug_process_killing) {
+                    ALOGI("Ignoring pressure since %" PRId64
+                          " swap pages are available ",
+                          mi.field.free_swap);
+                }
+                return;
             }
-            return;
+            /* Free up enough memory to downgrate the memory pressure to low level */
+            if (mi.field.nr_free_pages < low_pressure_mem.max_nr_free_pages) {
+                pages_to_free = low_pressure_mem.max_nr_free_pages -
+                    mi.field.nr_free_pages;
+            } else {
+                if (debug_process_killing) {
+                    ALOGI("Ignoring pressure since more memory is "
+                        "available (%" PRId64 ") than watermark (%" PRId64 ")",
+                        mi.field.nr_free_pages, low_pressure_mem.max_nr_free_pages);
+                }
+                return;
+            }
+            min_score_adj = level_oomadj[level];
+        } else {
+            if (debug_process_killing) {
+                ALOGI("Killing because cache %ldkB is below "
+                      "limit %ldkB for oom_adj %d\n"
+                      "   Free memory is %ldkB %s reserved",
+                      other_file * page_k, minfree * page_k, min_score_adj,
+                      other_free * page_k, other_free >= 0 ? "above" : "below");
+            }
         }
 
-        /* Free up enough memory to downgrate the memory pressure to low level */
-        if (free_mem.free_mem < low_pressure_mem.max_free) {
-            int pages_to_free = low_pressure_mem.max_free - free_mem.free_mem;
+        if (debug_process_killing) {
+            ALOGI("Trying to free %d pages", pages_to_free);
+        }
+        pages_freed = find_and_kill_processes(level, min_score_adj, pages_to_free);
+        if (pages_freed < pages_to_free) {
             if (debug_process_killing) {
-                ALOGI("Trying to free %d pages", pages_to_free);
+                ALOGI("Unable to free enough memory (pages freed=%d)", pages_freed);
             }
-            int pages_freed = find_and_kill_processes(level, pages_to_free);
-            if (pages_freed < pages_to_free) {
-                if (debug_process_killing) {
-                    ALOGI("Unable to free enough memory (pages freed=%d)",
-                        pages_freed);
-                }
-            } else {
-                gettimeofday(&last_report_tm, NULL);
-            }
+        } else {
+            gettimeofday(&last_report_tm, NULL);
         }
     }
 }
@@ -1198,10 +1524,12 @@ int main(int argc __unused, char **argv __unused) {
     downgrade_pressure =
         (int64_t)property_get_int32("ro.lmk.downgrade_pressure", 100);
     kill_heaviest_task =
-        property_get_bool("ro.lmk.kill_heaviest_task", true);
-    is_go_device = property_get_bool("ro.config.low_ram", false);
+        property_get_bool("ro.lmk.kill_heaviest_task", false);
+    low_ram_device = property_get_bool("ro.config.low_ram", false);
     kill_timeout_ms =
         (unsigned long)property_get_int32("ro.lmk.kill_timeout_ms", 0);
+    use_minfree_levels =
+        property_get_bool("ro.lmk.use_minfree_levels", false);
 
 #ifdef LMKD_LOG_STATS
     statslog_init(&log_ctx, &enable_stats_log);
