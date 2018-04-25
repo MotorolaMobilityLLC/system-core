@@ -177,7 +177,11 @@ static int __android_log_level(const char* tag, size_t len, int default_prio) {
     strncpy(key + sizeof(log_namespace) - 1, tag, len);
     key[sizeof(log_namespace) - 1 + len] = '\0';
 
+#if defined(MTK_LOGD_ENHANCE) && defined(MTK_LOGD_FILTER)
+    kp = key + base_offset;
+#else
     kp = key;
+#endif
     for (i = 0; i < (sizeof(tag_cache) / sizeof(tag_cache[0])); ++i) {
       struct cache_char* cache = &tag_cache[i];
       struct cache_char temp_cache;
@@ -195,8 +199,11 @@ static int __android_log_level(const char* tag, size_t len, int default_prio) {
         c = cache->c;
         break;
       }
-
+#if defined(MTK_LOGD_ENHANCE) && defined(MTK_LOGD_FILTER)
+      kp = key;
+#else
       kp = key + base_offset;
+#endif
     }
   }
 
@@ -215,7 +222,11 @@ static int __android_log_level(const char* tag, size_t len, int default_prio) {
       /* clear '.' after log.tag */
       key[sizeof(log_namespace) - 2] = '\0';
 
+#if defined(MTK_LOGD_ENHANCE) && defined(MTK_LOGD_FILTER)
+      kp = key + base_offset;
+#else
       kp = key;
+#endif
       for (i = 0; i < (sizeof(global_cache) / sizeof(global_cache[0])); ++i) {
         struct cache_char* cache = &global_cache[i];
         struct cache_char temp_cache;
@@ -236,8 +247,11 @@ static int __android_log_level(const char* tag, size_t len, int default_prio) {
           c = cache->c;
           break;
         }
-
+#if defined(MTK_LOGD_ENHANCE) && defined(MTK_LOGD_FILTER)
+        kp = key;
+#else
         kp = key + base_offset;
+#endif
       }
       break;
   }
@@ -266,12 +280,30 @@ static int __android_log_level(const char* tag, size_t len, int default_prio) {
 LIBLOG_ABI_PUBLIC int __android_log_is_loggable_len(int prio, const char* tag,
                                                     size_t len,
                                                     int default_prio) {
+#if defined(MTK_LOGD_ENHANCE) && defined(ANDROID_LOG_MUCH_COUNT)
+  char* ptr = NULL;
+
+  if (tag != NULL && (ptr = strstr(tag, "-0x")) != NULL) {
+      tag = ptr + 3;
+      len = strlen(tag);
+  }
+#endif
+
   int logLevel = __android_log_level(tag, len, default_prio);
   return logLevel >= 0 && prio >= logLevel;
 }
 
 LIBLOG_ABI_PUBLIC int __android_log_is_loggable(int prio, const char* tag,
                                                 int default_prio) {
+#if defined(MTK_LOGD_ENHANCE) && defined(ANDROID_LOG_MUCH_COUNT)
+  char* ptr = NULL;
+
+  if (tag != NULL && (ptr = strstr(tag, "-0x")) != NULL) {
+      tag = ptr + 3;
+  }
+
+#endif
+
   int logLevel =
       __android_log_level(tag, (tag && *tag) ? strlen(tag) : 0, default_prio);
   return logLevel >= 0 && prio >= logLevel;

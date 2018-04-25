@@ -25,7 +25,15 @@
 #include <sys/user.h>
 #include <time.h>
 #include <unistd.h>
-
+#ifdef MTK_LOGD_ENHANCE
+#include <sys/prctl.h>
+#include <sys/klog.h>
+#include <cutils/sched_policy.h>
+#include <utils/threads.h>
+#ifdef HAVE_AEE_FEATURE
+#include "aee.h"
+#endif
+#endif
 #include <unordered_map>
 
 #include <cutils/properties.h>
@@ -43,9 +51,85 @@
 // Default
 #define log_buffer_size(id) mMaxSize[id]
 
+#ifdef MTK_LOGD_ENHANCE
+#if defined(HAVE_AEE_FEATURE) && defined(ANDROID_LOG_MUCH_COUNT)
+#include <cutils/sockets.h>
+
+char aee_string[70];
+char *log_much_buf;
+int log_much_used_size;
+bool log_much_detected = false;
+int log_much_alloc_size;
+#define EACH_LOG_SIZE 300   /* each log size * detect count = alloc size*/
+
+static void *logmuchaee_thread_start(void * /*obj*/) {
+    prctl(PR_SET_NAME, "logd.logmuch");
+    android::prdebug("logmuch file total size %d.\n", log_much_used_size);
+    if (log_much_used_size < log_much_alloc_size)
+        log_much_buf[log_much_used_size] = 0;
+    set_sched_policy(0, SP_FOREGROUND);
+    aee_system_warning(aee_string, NULL, DB_OPT_DUMMY_DUMP|DB_OPT_PRINTK_TOO_MUCH, log_much_buf);
+    if (log_much_buf != NULL) {
+       free(log_much_buf);
+       log_much_buf = NULL;
+    }
+    log_much_used_size = 0;
+    log_much_detected = false;
+    return NULL;
+}
+#endif
+
+#if defined(HAVE_AEE_FEATURE) && defined(LOGD_MEM_CONTROL)
+static void *logd_memory_leak_thread_start(void * /*obj*/) {
+    prctl(PR_SET_NAME, "logd.memoryleak");
+    set_sched_policy(0, SP_FOREGROUND);
+    aee_system_warning("Logd memory leak", NULL, DB_OPT_DEFAULT, "Logd memory leak");
+    return NULL;
+}
+#endif
+
+#if defined(HAVE_AEE_FEATURE) && defined(MTK_LOGD_DEBUG_PERFORMANCE)
+static void *logd_performance_issue_thread_start(void * /*obj*/) {
+    prctl(PR_SET_NAME, "logd.performance");
+    set_sched_policy(0, SP_FOREGROUND);
+    aee_system_warning("Logd cpu usage high", NULL, DB_OPT_DEFAULT, "Logd cpu usage high");
+    return NULL;
+}
+#endif
+#endif
+
+#if defined(MTK_LOGD_ENHANCE) && defined(CONFIG_MT_DEBUG_BUILD) && defined(MTK_LOGDW_SOCK_BLOCK)
+const log_time LogBuffer::pruneMargin(6, 0);
+#else
 const log_time LogBuffer::pruneMargin(3, 0);
+#endif
 
 void LogBuffer::init() {
+#if defined(MTK_LOGD_ENHANCE) && defined(ANDROID_LOG_MUCH_COUNT) && defined(HAVE_AEE_FEATURE)
+    unsigned long default_size;
+    int rc;
+    unsigned long klog_size = 0;
+
+    log_id_for_each(i) {
+        mLastSet[i] = false;
+        mLast[i] = mLogElements.begin();
+        default_size = __android_logger_get_buffer_size(i);
+        if (i == LOG_ID_MAIN || i == LOG_ID_RADIO) {
+            default_size = 5 * default_size;
+        } else if (i == LOG_ID_KERNEL) {
+            rc = klogctl(KLOG_SIZE_BUFFER, nullptr, 0);
+
+            if (rc > 0)
+                klog_size = rc + 64 * 1024UL; // kernel log buffer len + 64KB
+            if (klog_size > default_size)
+                default_size = klog_size;
+        }
+
+        if (setSize(i, default_size)) {
+            setSize(i, LOG_BUFFER_MIN_SIZE);
+        }
+    }
+#else
     log_id_for_each(i) {
         mLastSet[i] = false;
         mLast[i] = mLogElements.begin();
@@ -54,6 +138,8 @@ void LogBuffer::init() {
             setSize(i, LOG_BUFFER_MIN_SIZE);
         }
     }
+#endif
+
     bool lastMonotonic = monotonic;
     monotonic = android_log_clockid() == CLOCK_MONOTONIC;
     if (lastMonotonic != monotonic) {
@@ -237,6 +323,11 @@ int LogBuffer::log(log_id_t log_id, log_time realtime, uid_t uid, pid_t pid,
     }
 
     wrlock();
+
+#if defined(MTK_LOGD_ENHANCE) && defined(HAVE_AEE_FEATURE) && defined(ANDROID_LOG_MUCH_COUNT)
+    logMuchDetect(log_id, realtime);
+#endif
+
     LogBufferElement* currentLast = lastLoggedElements[log_id];
     if (currentLast) {
         LogBufferElement* dropped = droppedElements[log_id];
@@ -723,6 +814,64 @@ bool LogBuffer::prune(log_id_t id, unsigned long pruneRows, uid_t caller_uid) {
     if (oldest) watermark = oldest->mStart - pruneMargin;
 
     LogBufferElementCollection::iterator it;
+#ifdef MTK_LOGD_ENHANCE
+    if (stats.sizes(id) > (100 * log_buffer_size(id))) {
+#if defined(__LP64__)
+        android::prdebug("the %d log size is %lu.\n", id, stats.sizes(id));
+#else
+        android::prdebug("the %d log size is %d.\n", id, stats.sizes(id));
+#endif
+    if (pruneRows == maxPrune) {
+        pruneRows = stats.realElements(id) * (stats.sizes(id) - log_buffer_size(id)) / stats.sizes(id);
+    }
+
+        times = mTimes.begin();
+        while (times != mTimes.end()) {
+            LogTimeEntry *entry = (*times);
+            if (entry->owned_Locked() && entry->isWatching(id)) {
+                entry->release_Locked();
+            }
+            times++;
+        }
+        it = mLogElements.begin();
+        while ((it != mLogElements.end()) && (pruneRows > 0)) {
+            LogBufferElement *e = *it;
+
+            if (e->getLogId() != id) {
+                ++it;
+                continue;
+            }
+
+            it = erase(it);
+            pruneRows--;
+        }
+
+
+        LogTimeEntry::unlock();
+#if defined(HAVE_AEE_FEATURE) && defined(LOGD_MEM_CONTROL)
+        pthread_attr_t attr_m;
+        static bool memory_issue;
+
+        if (memory_issue == true)
+            return true;
+
+        if (!pthread_attr_init(&attr_m)) {
+            struct sched_param param_m;
+
+            memory_issue = true;
+            memset(&param_m, 0, sizeof(param_m));
+            pthread_attr_setschedparam(&attr_m, &param_m);
+            pthread_attr_setschedpolicy(&attr_m, SCHED_BATCH);
+            if (!pthread_attr_setdetachstate(&attr_m, PTHREAD_CREATE_DETACHED)) {
+                pthread_t thread;
+                pthread_create(&thread, &attr_m, logd_memory_leak_thread_start, NULL);
+            }
+            pthread_attr_destroy(&attr_m);
+       }
+#endif
+        return true;
+    }
+#endif
 
     if (__predict_false(caller_uid != AID_ROOT)) {  // unlikely
         // Only here if clear all request from non system source, so chatty
@@ -759,6 +908,7 @@ bool LogBuffer::prune(log_id_t id, unsigned long pruneRows, uid_t caller_uid) {
 
     // prune by worst offenders; by blacklist, UID, and by PID of system UID
     bool hasBlacklist = (id != LOG_ID_SECURITY) && mPrune.naughty();
+#ifndef MTK_LOGD_ENHANCE
     while (!clearAll && (pruneRows > 0)) {
         // recalculate the worst offender on every batched pass
         int worst = -1;  // not valid for getUid() or getKey()
@@ -965,7 +1115,7 @@ bool LogBuffer::prune(log_id_t id, unsigned long pruneRows, uid_t caller_uid) {
             break;  // the following loop will ask bad clients to skip/drop
         }
     }
-
+#endif
     bool whitelist = false;
     bool hasWhitelist = (id != LOG_ID_SECURITY) && mPrune.nice() && !clearAll;
     it = mLastSet[id] ? mLast[id] : mLogElements.begin();
@@ -985,6 +1135,14 @@ bool LogBuffer::prune(log_id_t id, unsigned long pruneRows, uid_t caller_uid) {
         if (oldest && (watermark <= element->getRealTime())) {
             busy = isBusy(watermark);
             if (!whitelist && busy) kickMe(oldest, id, pruneRows);
+#ifdef MTK_LOGD_ENHANCE
+            if (!busy && stats.sizes(id) > (2 * log_buffer_size(id))) {
+                // if system time jump back, and reader is still at old big time.
+                // The reader can not go on reading logs. But this may show not busy.
+                // So, kick readers for prune
+                oldest->release_Locked();
+            }
+#endif
             break;
         }
 
@@ -1018,6 +1176,14 @@ bool LogBuffer::prune(log_id_t id, unsigned long pruneRows, uid_t caller_uid) {
             if (oldest && (watermark <= element->getRealTime())) {
                 busy = isBusy(watermark);
                 if (busy) kickMe(oldest, id, pruneRows);
+#ifdef MTK_LOGD_ENHANCE
+                if (!busy && stats.sizes(id) > (2 * log_buffer_size(id))) {
+                    // if system time jump back, and reader is still at old big time.
+                    // The reader can not go on reading logs. But this may show not busy.
+                    // So, kick readers for prune
+                    oldest->release_Locked();
+                }
+#endif
                 break;
             }
 
@@ -1197,6 +1363,20 @@ log_time LogBuffer::flushTo(SocketClient* reader, const log_time& start,
 
         skip = maxSkip;
         rdlock();
+#if defined(MTK_LOGD_ENHANCE) && ((defined(HAVE_AEE_FEATURE) && defined(LOGD_MEM_CONTROL)) ||\
+    (defined(CONFIG_MT_DEBUG_BUILD) && defined(MTK_LOGDW_SOCK_BLOCK)))
+        LogTimeEntry::rdlock();
+
+        LogTimeEntry* readerEntry = reinterpret_cast<LogTimeEntry*>(arg);
+
+        if (readerEntry->isError_Locked()) {
+            LogTimeEntry::unlock();
+            //android::prdebug("WaterMark: %" PRIu32 ".%09" PRIu32 "\n",
+            //    mWaterMark.tv_sec, mWaterMark.tv_nsec);
+            break;
+        }
+        LogTimeEntry::unlock();
+#endif
     }
     unlock();
 
@@ -1213,3 +1393,273 @@ std::string LogBuffer::formatStatistics(uid_t uid, pid_t pid,
 
     return ret;
 }
+
+#if defined(MTK_LOGD_ENHANCE) && defined(HAVE_AEE_FEATURE) && defined(ANDROID_LOG_MUCH_COUNT)
+void LogBuffer::logMuchDetect(log_id_t log_id, log_time realtime) {
+    static int line_count = 0;
+    time_t logs_time, now_time;
+    static time_t old_time;
+    static struct timespec pause_time = {0, 0};
+    struct timespec pause_time_now;
+    static int pause_detect = 1;
+    static int original_detect_value;
+    static int delay_time = 3*60;
+    int file_count = 0;
+    char *buff = NULL;
+    #define BUFF_MAX_SIZE 1024
+    const char *log_type;
+    const char *log_tag = NULL;
+    const char *log_msg;
+    char *msg_buf = NULL;
+    int log_prio = ANDROID_LOG_INFO;
+    int buf_len;
+    char property[PROPERTY_VALUE_MAX];
+    int prop_value;
+#if !defined(_WIN32)
+    struct tm tmBuf;
+#endif
+    struct tm* ptm;
+
+    if (log_detect_value == 0) {
+        pause_detect = 0;
+        delay_time = 0;
+        original_detect_value = 0;
+    }
+    if (pause_detect == 1) {
+        if (pause_time.tv_sec == 0) {
+            clock_gettime(CLOCK_MONOTONIC, &pause_time);
+        }
+        clock_gettime(CLOCK_MONOTONIC, &pause_time_now);
+        if (pause_time_now.tv_sec - pause_time.tv_sec > delay_time) {
+            pause_detect = 0;
+            delay_time = 0;
+            log_detect_value = original_detect_value;
+            original_detect_value = 0;
+            android::prdebug("detect delay end:level %d,old level %d.\n",
+            log_detect_value, original_detect_value);
+        }
+    }
+
+  if (log_detect_value > 0 && log_much_detected == false) {
+    if (log_id == LOG_ID_KERNEL) {
+        goto log_much_exit;
+    }
+
+    now_time = realtime.tv_sec;
+    if (old_time == 0) {
+        log_much_delay_detect = 181;
+    }
+
+    if (log_much_delay_detect == 1) {
+        line_count = 1;
+        if (now_time >= old_time)
+            old_time = now_time + 1;
+        log_much_delay_detect = 0;
+        pause_detect = 0;
+        delay_time = 0;
+        original_detect_value = log_detect_value;
+    }
+
+    if (log_much_delay_detect > 0) {
+        pause_detect = 1;
+        clock_gettime(CLOCK_MONOTONIC, &pause_time);
+        delay_time = log_much_delay_detect;
+        log_much_delay_detect = 0;
+        if (now_time >= old_time) {
+            old_time = now_time;
+            line_count = 1;
+        }
+        if (original_detect_value == 0) {
+            original_detect_value = log_detect_value;
+        } else {
+            log_detect_value = original_detect_value;
+        }
+        log_detect_value = 2 * log_detect_value;
+        detect_time = (log_detect_value > 1000) ? 1 : 6;
+        android::prdebug("detect delay:time %d, level %d,old level %d.\n",
+            delay_time, log_detect_value, original_detect_value);
+     }
+
+    if (old_time > now_time) {
+        line_count = 0;
+        goto log_much_exit;
+    }
+
+    if (now_time > (old_time + detect_time - 1)) {
+      if (line_count > (log_detect_value * detect_time)) {
+        property_get("vendor.logmuch.value", property, "-1");
+        prop_value = atoi(property);
+        if (prop_value > log_detect_value) {
+            log_detect_value = prop_value;
+            line_count = 1;
+            old_time = now_time + detect_time;
+            if (log_detect_value > 1000) {
+                detect_time = 1;
+            } else {
+                detect_time = 6;
+            }
+            goto log_much_exit;
+        }
+
+        buff = new char[BUFF_MAX_SIZE];
+        msg_buf = new char[BUFF_MAX_SIZE];
+        if (buff == NULL || msg_buf == NULL)
+            goto log_much_exit;
+
+        if (log_much_buf == NULL) {
+            log_much_alloc_size = (log_detect_value * detect_time) * EACH_LOG_SIZE;
+            log_much_buf = (char*) malloc(log_much_alloc_size);
+            if (log_much_buf == NULL)
+                goto log_much_exit;
+            log_much_used_size = 0;
+        } else {
+            memset(log_much_buf, 0, log_much_alloc_size);
+            log_much_used_size = 0;
+        }
+
+#if !defined(_WIN32)
+        ptm = localtime_r(&now_time, &tmBuf);
+#else
+        ptm = localtime(&now_time);
+#endif
+        strftime(buff, BUFF_MAX_SIZE, "%m-%d %H:%M:%S", ptm);
+
+        android::prdebug("android log much:line %d, time %d, %lu.\n",
+            line_count, realtime.tv_sec, old_time);
+
+        LogTimeEntry::rdlock();
+        LogBufferElementCollection::iterator test = mLogElements.end();
+        LogBufferElementCollection::iterator test_last = test;
+        uint16_t msg_len = 0;
+        const char *pMsg = nullptr;
+        while (test_last != mLogElements.begin()) {
+            --test;
+            logs_time = (*test)->getRealTime().tv_sec;
+            if (logs_time < old_time || logs_time > (old_time + detect_time -1)) {
+                goto next_log;
+            }
+#if !defined(_WIN32)
+            ptm = localtime_r(&logs_time, &tmBuf);
+#else
+            ptm = localtime(&logs_time);
+#endif
+            switch ((*test)->getLogId()) {
+                case LOG_ID_KERNEL:
+                    goto next_log;
+
+                case LOG_ID_EVENTS:
+                    log_type = android_log_id_to_name((*test)->getLogId());
+                    log_tag = tagToName((*test)->getTag());
+                    // log_tag = android::tagToName((*test)->getTag());
+                    log_msg = NULL;
+                    break;
+
+                case LOG_ID_MAIN:
+                case LOG_ID_SYSTEM:
+                case LOG_ID_CRASH:
+                case LOG_ID_RADIO:
+                    log_type = android_log_id_to_name((*test)->getLogId());
+                    msg_len = (*test)->getMsgLen();
+                    pMsg = (*test)->getMsg();
+                    if ((pMsg == nullptr) ||
+                        (msg_len == 0) || (msg_len >= BUFF_MAX_SIZE))
+                        goto next_log;
+                    // store the pMsg
+                    memcpy(msg_buf, pMsg, msg_len);
+                    msg_buf[msg_len] = '\0';
+                    log_prio = msg_buf[0];
+                    log_tag = msg_buf + 1;
+                    if (strlen(log_tag) + 2 >= msg_len)
+                        log_msg = NULL;
+                    else
+                        log_msg = msg_buf + strlen(log_tag) + 2;
+                    msg_buf[BUFF_MAX_SIZE - 1] = '\0';
+                    break;
+
+                default:
+                    goto next_log;
+            }
+
+            /* strftime(timeBuf, sizeof(timeBuf), "%Y-%m-%d %H:%M:%S", ptm); */
+            buff[0]='\n';
+            strftime(buff + 1, BUFF_MAX_SIZE - 1, "%m-%d %H:%M:%S", ptm);
+            buf_len = strlen(buff);
+            buf_len += snprintf(buff + buf_len, BUFF_MAX_SIZE - buf_len, ".%06d ", (*test)->getRealTime().tv_nsec / 1000);
+            /* event log tag */
+            buf_len += snprintf(buff + buf_len, BUFF_MAX_SIZE - buf_len, "%d, %d,[%s],[%d],[Tag]%s[TAG]:",
+                        (*test)->getPid(), (*test)->getTid(), log_type, log_prio, log_tag);
+            if ((*test)->getLogId() == LOG_ID_EVENTS || log_msg == NULL) {
+               /* event log message*/
+            } else if (BUFF_MAX_SIZE - 1 - buf_len > (int)strlen(log_msg)) {
+                snprintf(buff + buf_len, BUFF_MAX_SIZE - buf_len, "%s", log_msg);
+                buf_len += strlen(log_msg);
+            } else {
+                strncpy(buff + buf_len, log_msg, BUFF_MAX_SIZE - 1 - buf_len);
+                buff[BUFF_MAX_SIZE - 2] = '\n';
+                buff[BUFF_MAX_SIZE - 1] = '\0';
+                buf_len = BUFF_MAX_SIZE - 1;
+            }
+            file_count++;
+
+            if (buf_len < log_much_alloc_size - log_much_used_size) {
+                memcpy(log_much_buf + log_much_used_size, buff, buf_len);
+                log_much_used_size += buf_len;
+            } else {
+                buf_len = log_much_alloc_size - log_much_used_size;
+                memcpy(log_much_buf + log_much_used_size, buff, buf_len);
+                log_much_used_size += buf_len;
+                log_much_buf[log_much_alloc_size - 1] = 0;
+                break;
+            }
+next_log:
+            test_last = test;
+        }
+        LogTimeEntry::unlock();
+
+        pthread_attr_t attr;
+        if ((file_count > log_detect_value * detect_time) && !pthread_attr_init(&attr)) {
+            struct sched_param param;
+
+            memset(aee_string, 0, 70);
+            android::prdebug("logmuch file total size %d.\n", log_much_used_size);
+            snprintf(aee_string, sizeof(aee_string), "Android log much: %d, %d.detect time %d.level %d.",
+                line_count, file_count, detect_time, log_detect_value);
+            memset(&param, 0, sizeof(param));
+            pthread_attr_setschedparam(&attr, &param);
+            pthread_attr_setschedpolicy(&attr, SCHED_BATCH);
+            if (!pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED)) {
+                pthread_t thread;
+                log_much_detected  = true;
+                pthread_create(&thread, &attr, logmuchaee_thread_start, NULL);
+            }
+            pthread_attr_destroy(&attr);
+        }
+
+        old_time = now_time + DETECT_DELAY_TIME;
+        line_count = 0;
+        delete[] buff;
+        buff = NULL;
+        delete[] msg_buf;
+        msg_buf = NULL;
+      } else {
+        line_count = 1;
+        old_time = now_time + detect_time;
+      }
+    } else {
+      line_count++;
+    }
+  }
+
+log_much_exit:
+    if (buff != NULL) {
+        delete[] buff;
+        buff = NULL;
+    }
+    if (msg_buf != NULL) {
+        delete[] msg_buf;
+        msg_buf = NULL;
+    }
+
+}
+#endif
+

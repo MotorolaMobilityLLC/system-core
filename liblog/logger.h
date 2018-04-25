@@ -194,7 +194,9 @@ LIBLOG_HIDDEN int __android_log_trylock();
 LIBLOG_HIDDEN void __android_log_unlock();
 
 LIBLOG_HIDDEN int __android_log_transport;
-
+#if defined(MTK_LOGD_ENHANCE) && defined(ANDROID_LOG_MUCH_COUNT)
+LIBLOG_HIDDEN int tag_add_size;
+#endif
 __END_DECLS
 
 #endif /* _LIBLOG_LOGGER_H__ */

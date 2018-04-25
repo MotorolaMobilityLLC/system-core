@@ -293,6 +293,10 @@ void LogKlog::calculateCorrection(const log_time& monotonic,
     }
 }
 
+#if defined(MTK_LOGD_ENHANCE) && defined(MTK_KLOG_PREFIX)
+char nowtimestr[64] = {0};
+#endif
+
 void LogKlog::sniffTime(log_time& now, const char*& buf, ssize_t len,
                         bool reverse) {
     if (len <= 0) return;
@@ -303,6 +307,10 @@ void LogKlog::sniffTime(log_time& now, const char*& buf, ssize_t len,
         if (cp && (cp > &buf[len - 1])) cp = nullptr;
     }
     if (cp) {
+#if defined(MTK_LOGD_ENHANCE) && defined(MTK_KLOG_PREFIX)
+        snprintf(nowtimestr, sizeof(nowtimestr), "[%5lu.%06lu]",
+               (unsigned long)now.tv_sec, (unsigned long)now.tv_nsec/1000);
+#endif
         len -= cp - buf;
         if ((len > 0) && isspace(*cp)) {
             ++cp;
@@ -359,8 +367,16 @@ void LogKlog::sniffTime(log_time& now, const char*& buf, ssize_t len,
     } else {
         if (isMonotonic()) {
             now = log_time(CLOCK_MONOTONIC);
+#if defined(MTK_LOGD_ENHANCE) && defined(MTK_KLOG_PREFIX)
+            snprintf(nowtimestr, sizeof(nowtimestr), "[%5lu.%06lu]",
+                 (unsigned long)now.tv_sec, (unsigned long)now.tv_nsec/1000);
+#endif
         } else {
             now = log_time(CLOCK_REALTIME);
+#if defined(MTK_LOGD_ENHANCE) && defined(MTK_KLOG_PREFIX)
+            snprintf(nowtimestr, sizeof(nowtimestr), "[%5lu.%06lu]",
+                 (unsigned long)now.tv_sec, (unsigned long)now.tv_nsec/1000);
+#endif
         }
     }
 }
@@ -733,6 +749,44 @@ int LogKlog::log(const char* buf, ssize_t len) {
     //   eg: [143:healthd]healthd -> [143:healthd]
     taglen = etag - tag;
     // Mediatek-special printk induced stutter
+#if defined(MTK_LOGD_ENHANCE) && defined(MTK_KLOG_PREFIX)
+
+    /*Add by MTK*/
+    if (!taglen) {
+        tag = bt;
+        const char *mp = strstr(tag, "][");
+        if (mp) {
+            char *tp;
+            mp += 1;  // '['
+            if (!strncmp(mp, "[name:", 6)) {  // [name:xxxx&]
+                const char *end = mp;
+                while (*end != ']') end++;  // [name:xxxx&]
+                if (*(end - 1) == '&') {  // *end == ']'
+                    etag = end + 1;
+                    taglen = etag - tag;
+                    p = end + 1;
+                } else {
+                    etag = mp;
+                    taglen = etag - tag;
+                    p = mp;
+                }
+            } else {
+                etag = mp;
+                taglen = etag - tag;
+                p = mp;
+            }
+        } else {
+            /*for log like: (1)[141:kworker/u20:1]typec typec@0: ADC on VBUS=5014*/
+            mp = strchr(tag , ']');
+            if (mp) {
+                mp++;
+                etag = mp;
+                taglen = etag - tag;
+                p = mp;
+            }
+        }
+    } /*end of if*/
+#else
     const char* mp = strnrchr(tag, taglen, ']');
     if (mp && (++mp < etag)) {
         ssize_t s = etag - mp;
@@ -740,6 +794,7 @@ int LogKlog::log(const char* buf, ssize_t len) {
             taglen = mp - tag;
         }
     }
+#endif
     // Deal with sloppy and simplistic harmless p = cp + 1 etc above.
     if (len < (p - buf)) {
         p = &buf[len];
@@ -778,13 +833,22 @@ int LogKlog::log(const char* buf, ssize_t len) {
     // test above, but we would then required a max(n, USHRT_MAX) as
     // truncating length argument to logbuf->log() below. Gain is protection
     // of stack sanity and speedup, loss is truncated long-line content.
+#if defined(MTK_LOGD_ENHANCE) && defined(MTK_KLOG_PREFIX)
+    int timelen = strlen(nowtimestr);
+    char newstr[n + timelen];
+#else
     char newstr[n];
+#endif
     char* np = newstr;
 
     // Convert priority into single-byte Android logger priority
     *np = convertKernelPrioToAndroidPrio(pri);
     ++np;
 
+#if defined(MTK_LOGD_ENHANCE) && defined(MTK_KLOG_PREFIX)
+    memcpy(np, nowtimestr, timelen);
+    np += timelen;
+#endif
     // Copy parsed tag following priority
     memcpy(np, tag, taglen);
     np += taglen;
@@ -821,9 +885,13 @@ int LogKlog::log(const char* buf, ssize_t len) {
     }
 
     // Log message
+#if defined(MTK_LOGD_ENHANCE) && defined(MTK_KLOG_PREFIX)
+    int rc = logbuf->log(LOG_ID_KERNEL, now, uid, pid, tid, newstr,
+                         (unsigned short) (n + timelen));
+#else
     int rc = logbuf->log(LOG_ID_KERNEL, now, uid, pid, tid, newstr,
                          (unsigned short)n);
-
+#endif
     // notify readers
     if (!rc) {
         reader->notifyNewLog(static_cast<log_mask_t>(1 << LOG_ID_KERNEL));
