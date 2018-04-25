@@ -2,6 +2,7 @@ cc_defaults {
     name: "logwrapper_defaults",
     cflags: [
         "-Werror",
+        "-DMTK_LOGD_ENHANCE",
     ],
 }
 
