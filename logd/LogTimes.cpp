@@ -132,7 +132,12 @@ void* LogTimeEntry::threadStart(void* obj) {
     bool security = FlushCommand::hasSecurityLogs(client);
 
     me->leadingDropped = true;
-
+#ifdef MTK_LOGD_ENHANCE
+#if defined(MTK_LOGD_FILTER)
+    logd_reader_add();
+#endif
+    prdebug_ratelimit("logd.reader.per thread start.\n");
+#endif
     wrlock();
 
     log_time start = me->mStart;
@@ -183,6 +188,12 @@ void* LogTimeEntry::threadStart(void* obj) {
 
     pthread_cleanup_pop(true);
 
+#ifdef MTK_LOGD_ENHANCE
+#if defined(MTK_LOGD_FILTER)
+    logd_reader_del();
+#endif
+    prdebug_ratelimit("logd.reader.per thread stop.\n");
+#endif
     return nullptr;
 }
 
