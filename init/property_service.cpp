@@ -162,6 +162,15 @@ static uint32_t PropertySet(const std::string& name, const std::string& value, s
         WritePersistentProperty(name, value);
     }
     property_changed(name, value);
+
+    // MTK add log
+    if (!(android::base::StartsWith(name, "ro.") ||
+          android::base::StartsWith(name, "persist.log.tag") ||
+          android::base::StartsWith(name, "vendor.debug.mtk.aee") ||
+          android::base::StartsWith(name, "init.svc."))) {
+        LOG(INFO) << "PropSet [" << name << "]=[" << value << "] Done";
+    }
+
     return PROP_SUCCESS;
 }
 
