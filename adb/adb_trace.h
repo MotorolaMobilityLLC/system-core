@@ -54,6 +54,22 @@ enum AdbTrace {
     VLOG(TRACE_TAG) << android::base::StringPrintf(__VA_ARGS__)
 
 
+#if !ADB_HOST
+#include <log/log.h>
+
+#define ADBLOG(...) \
+    __android_log_print(ANDROID_LOG_INFO, "ADB_SERVICES", __VA_ARGS__ );
+
+#if defined(ENG_LOG)
+#define ADBLOGDBG(...) \
+    __android_log_print(ANDROID_LOG_INFO, "ADB_SERVICES", __VA_ARGS__ );
+#else
+#define ADBLOGDBG(...) \
+    ;
+#endif
+
+#endif
+
 extern int adb_trace_mask;
 void adb_trace_init(char**);
 void adb_trace_enable(AdbTrace trace_tag);

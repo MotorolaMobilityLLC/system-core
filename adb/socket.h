@@ -96,6 +96,9 @@ struct asocket {
     atransport* transport = nullptr;
 
     size_t get_max_payload() const;
+#if !ADB_HOST
+    int ref_cnt;
+#endif
 };
 
 asocket *find_local_socket(unsigned local_id, unsigned remote_id);
