@@ -123,18 +123,27 @@ static int remote_read(apacket* p, usb_handle* usb) {
 static int remote_read(apacket* p, usb_handle* usb) {
     if (usb_read(usb, &p->msg, sizeof(amessage))) {
         PLOG(ERROR) << "remote usb: read terminated (message)";
+#if !ADB_HOST
+        ADBLOG("remote usb: read terminated (message)\n");
+#endif
         return -1;
     }
 
     if (p->msg.data_length) {
         if (p->msg.data_length > MAX_PAYLOAD) {
             PLOG(ERROR) << "remote usb: read overflow (data length = " << p->msg.data_length << ")";
+#if !ADB_HOST
+            ADBLOG("remote usb: read overflow (data length = %zu)", p->msg.data_length);
+#endif
             return -1;
         }
 
         p->payload.resize(p->msg.data_length);
         if (usb_read(usb, &p->payload[0], p->payload.size())) {
             PLOG(ERROR) << "remote usb: terminated (data)";
+#if !ADB_HOST
+            ADBLOG("remote usb: terminated (data)");
+#endif
             return -1;
         }
     }
@@ -157,11 +166,17 @@ bool UsbConnection::Write(apacket* packet) {
 
     if (usb_write(handle_, &packet->msg, sizeof(packet->msg)) != 0) {
         PLOG(ERROR) << "remote usb: 1 - write terminated";
+#if !ADB_HOST
+        ADBLOG("remote usb: 1 - write terminated");
+#endif
         return false;
     }
 
     if (packet->msg.data_length != 0 && usb_write(handle_, packet->payload.data(), size) != 0) {
         PLOG(ERROR) << "remote usb: 2 - write terminated";
+#if !ADB_HOST
+        ADBLOG("remote usb: 2 - write terminated");
+#endif
         return false;
     }
 

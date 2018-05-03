@@ -265,11 +265,24 @@ static int create_service_thread(const char* service_name, void (*func)(int, voi
     std::thread(service_bootstrap_func, sti).detach();
 
     D("service thread started, %d:%d",s[0], s[1]);
+#if !ADB_HOST
+    ADBLOGDBG("service thread started, %d:%d",s[0], s[1]);
+#endif
     return s[0];
 }
 
 int service_to_fd(const char* name, atransport* transport) {
     int ret = -1;
+#if !ADB_HOST
+    if(!strncmp(name, "shell:logcat", 12)||!strncmp(name, "shell,v2:logcat", 15)||
+      !strncmp(name, "jdwp:", 5)){
+        // Do not print logcat command because its parameter may contain keywords
+        // which lead to false alarm in some tests
+        // No need to print jdwp command
+    } else {
+        ADBLOG("service_to_fd %s\n", name);
+    }
+#endif
 
     if (is_socket_spec(name)) {
         std::string error;

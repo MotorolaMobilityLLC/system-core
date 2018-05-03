@@ -42,6 +42,11 @@
 #include "adb_unique_fd.h"
 #include "adb_utils.h"
 
+#if !ADB_HOST
+static time_t fd_dump_time = 0;
+static time_t fd_curr_time = 0;
+#endif
+
 #define FDE_EVENTMASK  0x00ff
 #define FDE_STATEMASK  0xff00
 
@@ -259,10 +264,16 @@ static void fdevent_process() {
             // We fake a read, as the rest of the code assumes that errors will
             // be detected at that point.
             events |= FDE_READ | FDE_ERROR;
+#if !ADB_HOST
+            ADBLOG("for fd %d, revents = %x", pollfd.fd, pollfd.revents);
+#endif
         }
 #if defined(__linux__)
         if (pollfd.revents & POLLRDHUP) {
             events |= FDE_READ | FDE_ERROR;
+#if !ADB_HOST
+            ADBLOG("for fd %d, revents = %x", pollfd.fd, pollfd.revents);
+#endif
         }
 #endif
         if (events != 0) {
@@ -372,6 +383,13 @@ void fdevent_loop() {
         fdevent_process();
 
         while (!g_pending_list.empty()) {
+#if !ADB_HOST
+            time(&fd_curr_time);
+            if ( difftime(fd_curr_time, fd_dump_time) > 30.0 ) {
+                ADBLOGDBG("fdevent_loop length=%zu\n", g_pending_list.size());
+                fd_dump_time = fd_curr_time;
+            }
+#endif
             fdevent* fde = g_pending_list.front();
             g_pending_list.pop_front();
             fdevent_call_fdfunc(fde);
