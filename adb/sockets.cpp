@@ -40,6 +40,14 @@
 #include "range.h"
 #include "transport.h"
 
+#if !ADB_HOST
+static time_t read_time = 0;
+static int read_data = 0;
+static time_t write_time = 0;
+static int write_data = 0;
+static time_t curr_time = 0;
+#endif
+
 static std::recursive_mutex& local_socket_list_lock = *new std::recursive_mutex();
 static unsigned local_socket_next_id = 1;
 
@@ -118,8 +126,14 @@ static SocketFlushResult local_socket_flush_incoming(asocket* s) {
 
         int rc = adb_write(s->fd, r.data(), r.size());
         if (rc == static_cast<int>(r.size())) {
+#if !ADB_HOST
+            write_data += rc;
+#endif
             s->packet_queue.pop_front();
         } else if (rc > 0) {
+#if !ADB_HOST
+            write_data += rc;
+#endif
             r.drop_front(rc);
             fdevent_add(&s->fde, FDE_WRITE);
             return SocketFlushResult::TryAgain;
@@ -133,6 +147,15 @@ static SocketFlushResult local_socket_flush_incoming(asocket* s) {
         s->has_write_error = true;
         break;
     }
+
+#if !ADB_HOST
+    time(&curr_time);
+    if (difftime(curr_time, write_time) > 20.0) {
+        ADBLOGDBG("local_socket_flush_incoming write_data=%d\n", write_data);
+        write_time = curr_time;
+        write_data = 0;
+    }
+#endif
 
     // If we sent the last packet of a closing socket, we can now destroy it.
     if (s->closing) {
@@ -165,6 +188,9 @@ static bool local_socket_flush_outgoing(asocket* s) {
         } else if (r > 0) {
             avail -= r;
             x += r;
+#if !ADB_HOST
+            read_data += r;
+#endif
             continue;
         }
 
@@ -175,6 +201,15 @@ static bool local_socket_flush_outgoing(asocket* s) {
     D("LS(%d): fd=%d post avail loop. r=%d is_eof=%d forced_eof=%d", s->id, s->fd, r, is_eof,
       s->fde.force_eof);
 
+#if !ADB_HOST //Debug purpose
+    time(&curr_time);
+    if (difftime(curr_time, read_time) > 20.0) {
+        ADBLOGDBG("local_socket_flush_outgoing read_data=%d\n", read_data);
+        read_time = curr_time;
+        read_data = 0;
+    }
+#endif
+
     if (avail != max_payload && s->peer) {
         data.resize(max_payload - avail);
 
@@ -184,6 +219,12 @@ static bool local_socket_flush_outgoing(asocket* s) {
         int saved_fd = s->fd;
         r = s->peer->enqueue(s->peer, std::move(data));
         D("LS(%u): fd=%d post peer->enqueue(). r=%d", saved_id, saved_fd, r);
+#if !ADB_HOST
+        s->ref_cnt--;
+        if (s->ref_cnt != 0) {
+            ADBLOGDBG("ref_cnt != 0 ref_cnt=%d, id=%d, peer->id=%d\n", s->ref_cnt, s->id, s->peer->id);
+        }
+#endif
 
         if (r < 0) {
             // Error return means they closed us as a side-effect and we must
@@ -237,6 +278,12 @@ static void local_socket_ready(asocket* s) {
     /* far side is ready for data, pay attention to
        readable events */
     fdevent_add(&s->fde, FDE_READ);
+#if !ADB_HOST
+    s->ref_cnt++;
+    if (s->ref_cnt != 1) {
+        ADBLOGDBG("ref_cnt != 1 ref_cnt=%d, id=%d, peer->id=%d\n", s->ref_cnt, s->id, s->peer->id);
+    }
+#endif
 }
 
 // be sure to hold the socket list lock when calling this
@@ -342,6 +389,9 @@ asocket* create_local_socket(int fd) {
     s->shutdown = NULL;
     s->close = local_socket_close;
     install_local_socket(s);
+#if !ADB_HOST
+    s->ref_cnt = 0;
+#endif
 
     fdevent_install(&s->fde, fd, local_socket_event_func, s);
     D("LS(%d): created (fd=%d)", s->id, s->fd);

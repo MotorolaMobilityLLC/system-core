@@ -17,6 +17,7 @@ ADB_COMMON_CFLAGS := \
     -Wno-missing-field-initializers \
     -Wvla \
     -DADB_VERSION="\"$(tool_version)\"" \
+    -DENG_LOG=$(if $(filter userdebug eng,$(TARGET_BUILD_VARIANT)),1,0)
 
 ADB_COMMON_posix_CFLAGS := \
     -Wexit-time-destructors \

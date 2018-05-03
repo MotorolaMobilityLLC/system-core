@@ -245,6 +245,10 @@ static void read_transport_thread(void* _t) {
         android::base::StringPrintf("<-%s", (t->serial != nullptr ? t->serial : "transport")));
     D("%s: starting read_transport thread on fd %d, SYNC online (%d)", t->serial, t->fd,
       t->sync_token + 1);
+#if !ADB_HOST
+    ADBLOG("%s: starting read_transport thread on fd %d, SYNC online (%d)", t->serial, t->fd,
+      t->sync_token + 1);
+#endif
     p = get_apacket();
     p->msg.command = A_SYNC;
     p->msg.arg0 = 1;
@@ -266,12 +270,18 @@ static void read_transport_thread(void* _t) {
             ATRACE_NAME("read_transport read_remote");
             if (!t->connection->Read(p)) {
                 D("%s: remote read failed for transport", t->serial);
+#if !ADB_HOST
+                ADBLOG("%s: remote read failed for transport", t->serial);
+#endif
                 put_apacket(p);
                 break;
             }
 
             if (!check_header(p, t)) {
                 D("%s: remote read: bad header", t->serial);
+#if !ADB_HOST
+                ADBLOG("%s: remote read: bad header", t->serial);
+#endif
                 put_apacket(p);
                 break;
             }
@@ -285,6 +295,11 @@ static void read_transport_thread(void* _t) {
         }
 
         D("%s: received remote packet, sending to transport", t->serial);
+#if !ADB_HOST
+        if (p->msg.command == A_CNXN) {
+            ADBLOG("%s: read_transport thread read CNXN (count=%zu)", t->serial, t->ref_count);
+        }
+#endif
         if (write_packet(t->fd, t->serial, &p)) {
             put_apacket(p);
             D("%s: failed to write apacket to transport", t->serial);
@@ -305,6 +320,9 @@ static void read_transport_thread(void* _t) {
 
 oops:
     D("%s: read_transport thread is exiting", t->serial);
+#if !ADB_HOST
+    ADBLOG("%s: read_transport thread is exiting", t->serial);
+#endif
     kick_transport(t);
     transport_unref(t);
 }
@@ -319,6 +337,9 @@ static void write_transport_thread(void* _t) {
     adb_thread_setname(
         android::base::StringPrintf("->%s", (t->serial != nullptr ? t->serial : "transport")));
     D("%s: starting write_transport thread, reading from fd %d", t->serial, t->fd);
+#if !ADB_HOST
+    ADBLOG("%s: starting write_transport thread, reading from fd %d", t->serial, t->fd);
+#endif
 
     for (;;) {
         ATRACE_NAME("write_transport loop");
@@ -326,6 +347,13 @@ static void write_transport_thread(void* _t) {
             D("%s: failed to read apacket from transport on fd %d", t->serial, t->fd);
             break;
         }
+
+#if !ADB_HOST
+        if (p->msg.command == A_CNXN) {
+            ADBLOG("%s: write_transport thread send CNXN, (count=%zu), active(%d)",
+              t->serial, t->ref_count, active);
+        }
+#endif
 
         if (p->msg.command == A_SYNC) {
             if (p->msg.arg0 == 0) {
@@ -356,6 +384,11 @@ static void write_transport_thread(void* _t) {
                     put_apacket(p);
                     break;
                 }
+#if !ADB_HOST
+                if (p->msg.command == A_CNXN) {
+                    ADBLOG("%s: write_transport sent CNXN", t->serial);
+                }
+#endif
             } else {
                 D("%s: transport ignoring packet while offline", t->serial);
             }
@@ -365,6 +398,9 @@ static void write_transport_thread(void* _t) {
     }
 
     D("%s: write_transport thread is exiting, fd %d", t->serial, t->fd);
+#if !ADB_HOST
+    ADBLOG("%s: write_transport thread is exiting, fd %d", t->serial, t->fd);
+#endif
     kick_transport(t);
     transport_unref(t);
 }
