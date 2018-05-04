@@ -133,7 +133,7 @@ static int remote_read(apacket* p, usb_handle* usb) {
         if (p->msg.data_length > MAX_PAYLOAD) {
             PLOG(ERROR) << "remote usb: read overflow (data length = " << p->msg.data_length << ")";
 #if !ADB_HOST
-            ADBLOG("remote usb: read overflow (data length = %zu)", p->msg.data_length);
+            ADBLOG("remote usb: read overflow (data length = %u)", p->msg.data_length);
 #endif
             return -1;
         }
