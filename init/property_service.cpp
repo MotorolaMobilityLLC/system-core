@@ -62,6 +62,7 @@
 #include "selinux.h"
 #include "subcontext.h"
 #include "util.h"
+#include "hw_tags.h"
 
 using namespace std::literals;
 
@@ -757,6 +758,9 @@ void load_recovery_id_prop() {
 }
 
 void load_system_props() {
+    /* needs to be called prior loading the rest of properties */
+    process_hw_mappings("/system/etc/vhw.xml");
+
     load_properties_from_file("/system/build.prop", NULL);
     load_properties_from_file("/odm/build.prop", NULL);
     load_properties_from_file("/vendor/build.prop", NULL);
