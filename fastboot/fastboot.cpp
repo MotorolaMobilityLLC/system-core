@@ -1579,6 +1579,7 @@ int main(int argc, char **argv)
 
     /* register oem handlers */
     register_oem_handler("dump", oem_dump_handler);
+    register_oem_handler("ramdump", oem_ramdump_handler);
 
     serial = getenv("ANDROID_SERIAL");
 
