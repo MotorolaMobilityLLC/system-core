@@ -74,6 +74,7 @@ LOCAL_STATIC_LIBRARIES := \
     libcrypto \
     libc++_static \
     libdl \
+    libexpat \
     libsparse \
     libz \
     libprocessgroup \
