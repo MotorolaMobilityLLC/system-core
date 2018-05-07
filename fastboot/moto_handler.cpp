@@ -48,3 +48,28 @@ int oem_dump_handler(const std::string& cmd, std::vector<std::string>* args)
 
     return 0;
 }
+
+int oem_ramdump_handler(const std::string& cmd, std::vector<std::string>* args)
+{
+    if (args->empty()) die("empty oem command");
+
+    int is_pull = 0;
+
+    if (args->size() >= 2 && (args->at(1) == std::string("pull") || args->at(1) == std::string("moto-pull"))) {
+        /* translate "pull" to "moto-pull" */
+        args->at(1) = std::string("moto-pull");
+        is_pull = 1;
+    }
+
+    std::string command(cmd);
+    while (!args->empty()) {
+        command += " " + next_arg(args);
+    }
+
+    fb_queue_command(command.c_str(),"Sending command");
+    if (is_pull) {
+        fb_queue_ramdump();
+    }
+
+    return 0;
+}
