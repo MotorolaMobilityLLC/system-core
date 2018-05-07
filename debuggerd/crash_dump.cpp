@@ -191,6 +191,19 @@ static bool g_tombstoned_connected = false;
 static unique_fd g_tombstoned_socket;
 static unique_fd g_output_fd;
 
+static void DefuseSignalHandlers() {
+  // Don't try to dump ourselves.
+  struct sigaction action = {};
+  action.sa_handler = SIG_DFL;
+  debuggerd_register_handlers(&action);
+
+  sigset_t mask;
+  sigemptyset(&mask);
+  if (sigprocmask(SIG_SETMASK, &mask, nullptr) != 0) {
+    PLOG(FATAL) << "failed to set signal mask";
+  }
+}
+
 static void Initialize(char** argv) {
   android::base::InitLogging(argv);
   android::base::SetAborter([](const char* abort_msg) {
@@ -214,17 +227,6 @@ static void Initialize(char** argv) {
 
     _exit(1);
   });
-
-  // Don't try to dump ourselves.
-  struct sigaction action = {};
-  action.sa_handler = SIG_DFL;
-  debuggerd_register_handlers(&action);
-
-  sigset_t mask;
-  sigemptyset(&mask);
-  if (sigprocmask(SIG_SETMASK, &mask, nullptr) != 0) {
-    PLOG(FATAL) << "failed to set signal mask";
-  }
 }
 
 static void ParseArgs(int argc, char** argv, pid_t* pseudothread_tid, DebuggerdDumpType* dump_type) {
@@ -361,6 +363,8 @@ static bool is_debuggerd_register_signal(int signo) {
 }
 
 int main(int argc, char** argv) {
+  DefuseSignalHandlers();
+
   atrace_begin(ATRACE_TAG, "before reparent");
   pid_t target_process = getppid();
 
