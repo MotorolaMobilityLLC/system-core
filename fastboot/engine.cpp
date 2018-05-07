@@ -52,6 +52,7 @@ enum Op {
     OP_DOWNLOAD_FD,
     OP_UPLOAD,
     OP_DUMP = 10,
+    OP_RAMDUMP = 11,
 };
 
 struct Action {
@@ -308,14 +309,19 @@ void fb_queue_wait_for_disconnect() {
     queue_action(OP_WAIT_FOR_DISCONNECT, "");
 }
 
-void fb_queue_dump(const std::string partition)
-{
+void fb_queue_dump(const std::string partition) {
     char *file_name = (char *)calloc(36, sizeof(char));
     if (!file_name) die("no memory");
     snprintf(file_name, 36, "%s.img", partition.c_str());
-    Action *ap = queue_action(OP_DUMP, "");
-    ap->data = file_name;
-    ap->msg = mkmsg("Dumping partition %s to %s", partition.c_str(), file_name);
+
+    Action& a = queue_action(OP_DUMP, "");
+    a.data = file_name;
+    a.msg = "Dumping partition " + partition.c_str() + "to " + file_name;
+}
+
+void fb_queue_ramdump(void) {
+    Action& a = queue_action(OP_RAMDUMP, "");
+    ap.msg = "Ready to receive ramdumps";
 }
 
 int64_t fb_execute_queue(Transport* transport) {
@@ -356,7 +362,15 @@ int64_t fb_execute_queue(Transport* transport) {
             transport->WaitForDisconnect();
         } else if (a->op == OP_UPLOAD) {
             status = fb_upload_data(transport, reinterpret_cast<char*>(a->data));
+<<<<<<< HEAD
             status = a->func(*a, status, status ? fb_get_error().c_str() : "");
+=======
+            status = a->func(a, status, status ? fb_get_error().c_str() : "");
+        } else if (a->op == OP_RAMDUMP) {
+            status = fb_dump_ram_files(transport);
+            status = a->func(a, status, status ? fb_get_error().c_str() : "");
+            if (status) break;
+>>>>>>> 028b801... IKSWO-548 fastboot: Support "oem ramdump pull" command
         } else {
             die("unknown action: %d", a->op);
         }
