@@ -42,6 +42,8 @@ struct sparse_file;
 int fb_command(Transport* transport, const std::string& cmd);
 int fb_command_response(Transport* transport, const std::string& cmd, char* response);
 int fb_dump_data(Transport *transport, const char *file_name);
+int fb_query_ramdump_files(Transport *transport);
+int fb_dump_ram_files(Transport *transport);
 int64_t fb_download_data(Transport* transport, const void* data, uint32_t size);
 int64_t fb_download_data_fd(Transport* transport, int fd, uint32_t size);
 int fb_download_data_sparse(Transport* transport, struct sparse_file* s);
@@ -71,6 +73,7 @@ void fb_queue_upload(const std::string& outfile);
 void fb_queue_notice(const std::string& notice);
 void fb_queue_wait_for_disconnect(void);
 void fb_queue_dump(const std::string partition);
+void fb_queue_ramdump(void);
 int64_t fb_execute_queue(Transport* transport);
 void fb_set_active(const std::string& slot);
 
