@@ -85,6 +85,7 @@ cc_defaults {
         "libprotobuf-cpp-lite",
         "libpropertyinfoserializer",
         "libpropertyinfoparser",
+        "libexpat",
     ],
 }
 
@@ -101,6 +102,7 @@ cc_library_static {
         "descriptors.cpp",
         "devices.cpp",
         "firmware_handler.cpp",
+        "hw_mappings.cpp",
         "import_parser.cpp",
         "init.cpp",
         "init_first_stage.cpp",
