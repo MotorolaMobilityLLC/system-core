@@ -52,6 +52,8 @@ static std::string g_error;
 using android::base::unique_fd;
 using android::base::WriteStringToFile;
 
+#define BULK_SIZE    (4*1024 * 1024)
+
 const std::string fb_get_error() {
     return g_error;
 }
@@ -355,4 +357,80 @@ int fb_download_data_sparse(Transport* transport, struct sparse_file* s) {
     }
 
     return _command_end(transport);
+}
+
+static int dump_file(Transport *transport, const char *file_name)
+{
+    static unsigned long long size, read_size, left_size;
+    int r, ret = 0;
+    char *buff = (char *)malloc(BULK_SIZE);
+    FILE *file = NULL;
+
+    if (!buff)
+        die("out of memory");
+    memset(buff, 0, BULK_SIZE);
+
+    file = fopen(file_name, "wb");
+    if (file == NULL) {
+        die("open file failed");
+    }
+
+    /* get data size: DATA%016llx */
+    r = transport->Read(buff, 20);
+    if(r < 0) {
+        g_error = android::base::StringPrintf("status read failed (%s)", strerror(errno));
+        transport->Close();
+        ret = -1;
+        goto out;
+    }
+
+    if (sscanf(buff, "DATA%016llx", &size) == EOF) {
+        g_error = android::base::StringPrintf("invalid protocol(%s)", buff);
+        transport->Close();
+        ret = -1;
+        goto out;
+    }
+
+    left_size = size; read_size = 0;
+
+    /* start to read the data */
+    while (left_size > 0) {
+        r = left_size > BULK_SIZE ? BULK_SIZE : left_size;
+        r = transport->Read(buff, r);
+        if (r < 0) {
+            g_error = android::base::StringPrintf("status read failed (%s)", strerror(errno));
+            transport->Close();
+            ret = -1;
+            goto out;
+        }
+        /* write data into file */
+        if (fwrite(buff, 1, r, file) < (size_t)r) {
+            g_error = android::base::StringPrintf("status write failed (%s)", strerror(errno));
+            transport->Close();
+            ret = -1;
+            goto out;
+        }
+        left_size -= r;
+        read_size += r;
+        fprintf(stderr, "\b\b\b\b\b\b\b");
+        fprintf(stderr, "%.2f%%", (100.0 * read_size / size));
+    }
+
+    fprintf(stderr, "\b\b\b\b\b\b\b");
+out:
+    if (file != NULL) fclose(file);
+    if (buff) free(buff);
+    return ret;
+}
+
+int fb_dump_data(Transport *transport, const char *file_name)
+{
+    if (dump_file(transport, file_name) < 0) {
+        return -1;
+    }
+
+    if (check_response(transport, 0, 0) < 0)
+        return -1;
+
+    return 0;
 }

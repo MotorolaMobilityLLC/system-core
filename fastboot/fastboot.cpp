@@ -66,6 +66,7 @@
 #include "transport.h"
 #include "udp.h"
 #include "usb.h"
+#include "moto_handler.h"
 
 using android::base::unique_fd;
 
@@ -95,6 +96,10 @@ static unsigned tags_offset    = 0x00000100;
 
 static bool g_disable_verity = false;
 static bool g_disable_verification = false;
+
+#define MAX_OEM_CMD_LINE    64
+typedef struct OEMHandler OEMHandler;
+typedef int (*oem_handler)(const std::string& cmd, std::vector<std::string>* args);
 
 static const std::string convert_fbe_marker_filename("convert_fbe");
 
@@ -133,6 +138,33 @@ static struct {
     { nullptr,    "vendor_other.img", "vendor.sig",   "vendor",   true,  true  },
     // clang-format on
 };
+
+struct OEMHandler
+{
+	char cmd[MAX_OEM_CMD_LINE];
+	OEMHandler *next;
+	oem_handler handler;
+};
+
+static OEMHandler *oem_handler_list = 0;
+static OEMHandler *oem_handler_last = 0;
+
+static void register_oem_handler(const char *cmd, oem_handler handler)
+{
+    OEMHandler *h;
+
+    h = (OEMHandler *)calloc(1, sizeof(OEMHandler));
+    if (h == 0) die("out of memory");
+
+    if (oem_handler_last) {
+        oem_handler_last->next = h;
+    } else {
+        oem_handler_list = h;
+    }
+    oem_handler_last = h;
+    strncpy(h->cmd, cmd, strlen(cmd));
+    h->handler = handler;
+}
 
 static std::string find_item_given_name(const char* img_name) {
     char* dir = getenv("ANDROID_PRODUCT_OUT");
@@ -186,7 +218,7 @@ oops:
     return 0;
 }
 
-static void* load_file(const std::string& path, int64_t* sz) {
+void* load_file(const std::string& path, int64_t* sz) {
     int fd = open(path.c_str(), O_RDONLY | O_BINARY);
     if (fd == -1) return nullptr;
     return load_fd(fd, sz);
@@ -1321,6 +1353,15 @@ static void do_bypass_unlock_command(std::vector<std::string>* args) {
 static void do_oem_command(const std::string& cmd, std::vector<std::string>* args) {
     if (args->empty()) syntax_error("empty oem command");
 
+    /* look for oem handler */
+    OEMHandler *h;
+    for (h = oem_handler_list; h; h = h->next) {
+        if (std::string(h->cmd) == args->at(0) && h->handler) {
+            h->handler(cmd, args);
+            return;
+        }
+    }
+
     std::string command(cmd);
     while (!args->empty()) {
         command += " " + next_arg(args);
@@ -1535,6 +1576,9 @@ int main(int argc, char **argv)
 #endif
         {0, 0, 0, 0}
     };
+
+    /* register oem handlers */
+    register_oem_handler("dump", oem_dump_handler);
 
     serial = getenv("ANDROID_SERIAL");
 

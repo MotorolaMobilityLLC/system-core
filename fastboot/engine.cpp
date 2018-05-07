@@ -51,6 +51,7 @@ enum Op {
     OP_WAIT_FOR_DISCONNECT,
     OP_DOWNLOAD_FD,
     OP_UPLOAD,
+    OP_DUMP = 10,
 };
 
 struct Action {
@@ -307,6 +308,16 @@ void fb_queue_wait_for_disconnect() {
     queue_action(OP_WAIT_FOR_DISCONNECT, "");
 }
 
+void fb_queue_dump(const std::string partition)
+{
+    char *file_name = (char *)calloc(36, sizeof(char));
+    if (!file_name) die("no memory");
+    snprintf(file_name, 36, "%s.img", partition.c_str());
+    Action *ap = queue_action(OP_DUMP, "");
+    ap->data = file_name;
+    ap->msg = mkmsg("Dumping partition %s to %s", partition.c_str(), file_name);
+}
+
 int64_t fb_execute_queue(Transport* transport) {
     int64_t status = 0;
     for (auto& a : action_list) {
@@ -336,6 +347,10 @@ int64_t fb_execute_queue(Transport* transport) {
         } else if (a->op == OP_DOWNLOAD_SPARSE) {
             status = fb_download_data_sparse(transport, reinterpret_cast<sparse_file*>(a->data));
             status = a->func(*a, status, status ? fb_get_error().c_str() : "");
+            if (status) break;
+        } else if (a->op == OP_DUMP) {
+            status = fb_dump_data(transport, (char *)a->data);
+            status = a->func(a, status, status ? fb_get_error().c_str() : "");
             if (status) break;
         } else if (a->op == OP_WAIT_FOR_DISCONNECT) {
             transport->WaitForDisconnect();
