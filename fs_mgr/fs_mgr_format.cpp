@@ -50,8 +50,6 @@ static int format_ext4(char *fs_blkdev, char *fs_mnt_point, bool crypt_footer)
         return -1;
     }
 
-    close(fd);
-
     /* Format the partition using the calculated length */
     if (crypt_footer) {
         dev_sz -= CRYPT_FOOTER_OFFSET;
@@ -71,6 +69,8 @@ static int format_ext4(char *fs_blkdev, char *fs_mnt_point, bool crypt_footer)
             return -1;
         }
     }
+
+    close(fd);
 
     std::string size_str = std::to_string(dev_sz / 4096);
     const char* const mke2fs_args[] = {
