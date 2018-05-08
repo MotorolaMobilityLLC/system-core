@@ -55,6 +55,7 @@ cc_library {
         support_system_process: true,
     },
     host_supported: true,
+    defaults: ["mtk_malloc_debug_defaults"],
     srcs: [
         "config_utils.cpp",
         "fs_config.cpp",
