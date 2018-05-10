@@ -150,13 +150,13 @@
  * Please keep sync with ZygoteInit.java --setgroups */
 #define AID_READPROC 3009     /* Allow /proc read access */
 #define AID_WAKELOCK 3010     /* Allow system wakelock read/write access */
-#define AID_UHID 3016         /* Allow read/write to /dev/uhid node */
+#define AID_UHID 3011         /* Allow read/write to /dev/uhid node */
 
 /* The range 5000-5999 is also reserved for OEM, and must never be used here. */
 #define AID_OEM_RESERVED_2_START 5000
 #define AID_BRIDGE_RW 5001    /* ATT_IQI_CHANGE: GID for iqi-bridge read/write */
 #define AID_OEM_RESERVED_2_END 5999
-#define AID_SENSORS       3011 /* access to /dev/socket/sensor_ctl_socket & QCCI/QCSI */
+#define AID_SENSORS       5011 /* access to /dev/socket/sensor_ctl_socket & QCCI/QCSI */
 
 #define AID_MOT_ACCY      9000  /* access to accessory */
 #define AID_MOT_PWRIC     9001  /* power IC */
