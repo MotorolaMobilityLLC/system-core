@@ -27,6 +27,11 @@
 static struct autosuspend_ops* autosuspend_ops = NULL;
 static bool autosuspend_enabled;
 
+#if defined(CONFIG_DEBUG_BUILD)
+// add for wakeup_source debugger
+static struct autosuspend_ops *autosuspend_debugger_ops;
+#endif /* CONFIG_DEBUG_BUILD */
+
 static int autosuspend_init(void) {
     if (autosuspend_ops != NULL) {
         return 0;
@@ -37,6 +42,14 @@ static int autosuspend_init(void) {
         ALOGE("failed to initialize autosuspend");
         return -1;
     }
+
+#if defined(CONFIG_DEBUG_BUILD)
+    // add for wakeup_source debugger
+    autosuspend_debugger_ops = autosuspend_debugger_init();
+    if (!autosuspend_debugger_ops) {
+        ALOGE("failed to initialize autosuspend debugger\n");
+    }
+#endif /* CONFIG_DEBUG_BUILD */
 
     ALOGV("autosuspend initialized");
     return 0;
@@ -61,6 +74,13 @@ int autosuspend_enable(void) {
         return ret;
     }
 
+#if defined(CONFIG_DEBUG_BUILD)
+    // add for wakeup_source debugger
+    if (autosuspend_debugger_ops) {
+        autosuspend_debugger_ops->enable();
+    }
+#endif /* CONFIG_DEBUG_BUILD */
+
     autosuspend_enabled = true;
     return 0;
 }
@@ -83,6 +103,13 @@ int autosuspend_disable(void) {
     if (ret) {
         return ret;
     }
+
+#if defined(CONFIG_DEBUG_BUILD)
+    // add for wakeup_source debugger
+    if (autosuspend_debugger_ops) {
+        autosuspend_debugger_ops->disable();
+    }
+#endif /* CONFIG_DEBUG_BUILD */
 
     autosuspend_enabled = false;
     return 0;
