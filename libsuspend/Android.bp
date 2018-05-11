@@ -2,6 +2,8 @@
 
 cc_library {
     name: "libsuspend",
+    defaults: ["mtk_libsuspend_defaults"],
+
     srcs: [
         "autosuspend.c",
         "autosuspend_wakeup_count.cpp",
@@ -16,5 +18,19 @@ cc_library {
     cflags: [
         "-Werror",
         // "-DLOG_NDEBUG=0",
+    ],
+}
+
+cc_defaults {
+    name: "mtk_libsuspend_defaults",
+    product_variables: {
+        debuggable: {
+            cflags: [
+                "-DCONFIG_DEBUG_BUILD",
+            ],
+        },
+    },
+    srcs: [
+        "autosuspend_debugger.cpp",
     ],
 }
