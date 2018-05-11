@@ -2,6 +2,7 @@
 
 cc_library {
     name: "libsuspend",
+    defaults: ["mtk_libsuspend_defaults"],
     vendor_available: true,
     vndk: {
         enabled: true,
@@ -21,5 +22,19 @@ cc_library {
     cflags: [
         "-Werror",
         // "-DLOG_NDEBUG=0",
+    ],
+}
+
+mtk_cc_defaults {
+    name: "mtk_libsuspend_defaults",
+    product_variables: {
+        debuggable: {
+            cflags: [
+                "-DCONFIG_DEBUG_BUILD",
+            ],
+        },
+    },
+    srcs: [
+        "autosuspend_debugger.cpp",
     ],
 }
