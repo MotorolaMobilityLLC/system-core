@@ -34,7 +34,7 @@
 #include "fs_mgr_priv.h"
 #include "cryptfs.h"
 
-static int get_dev_sz(char *fs_blkdev, uint64_t *dev_sz)
+static int get_dev_sz(char *fs_blkdev, uint64_t *dev_sz, bool format_footer)
 {
     int fd;
 
@@ -49,6 +49,27 @@ static int get_dev_sz(char *fs_blkdev, uint64_t *dev_sz)
         return -1;
     }
 
+    /* Format the partition using the calculated length */
+    if (format_footer) {
+        dev_sz -= CRYPT_FOOTER_OFFSET;
+
+        struct crypt_mnt_ftr crypt_ftr;
+        LINFO << "Wiping old crypto info.";
+        memset (&crypt_ftr, 0, sizeof(crypt_ftr));
+        if (lseek64(fd, (off64_t)dev_sz, SEEK_SET) == -1) {
+            PERROR << "Cannot seek to block device footer: ";
+            close(fd);
+            return -1;
+        }
+        write(fd, &crypt_ftr, sizeof(struct crypt_mnt_ftr));
+        if (lseek64(fd, 0ULL, SEEK_SET) == -1)  {
+            PERROR << "Cannot seek to start of block device: ";
+            close(fd);
+            return -1;
+        }
+    }
+
+
     close(fd);
     return 0;
 }
@@ -56,32 +77,12 @@ static int get_dev_sz(char *fs_blkdev, uint64_t *dev_sz)
 static int format_ext4(char *fs_blkdev, char *fs_mnt_point, bool crypt_footer)
 {
     uint64_t dev_sz;
-    int rc = 0;
+    int fd, rc = 0;
     int status;
 
-    rc = get_dev_sz(fs_blkdev, &dev_sz);
+    rc = get_dev_sz(fs_blkdev, &dev_sz, crypt_footer);
     if (rc) {
         return rc;
-    }
-
-    /* Format the partition using the calculated length */
-    if (crypt_footer) {
-        dev_sz -= CRYPT_FOOTER_OFFSET;
-
-        struct crypt_mnt_ftr crypt_ftr;
-        LINFO << "Wiping old crypto info.";
-        memset (&crypt_ftr, 0, sizeof(crypt_ftr));
-        if (lseek64(fd, dev_sz, SEEK_SET) == -1) {
-            PERROR << "Cannot seek to block device footer: ";
-            close(fd);
-            return -1;
-        }
-        write(fd, &crypt_ftr, sizeof(struct crypt_mnt_ftr));
-        if (lseek64(fd, 0ULL, SEEK_SET) == -1) {
-            PERROR << "Cannot seek to start of block device: ";
-            close(fd);
-            return -1;
-        }
     }
 
     std::string size_str = std::to_string(dev_sz / 4096);
@@ -119,7 +120,7 @@ static int format_f2fs(char *fs_blkdev, uint64_t dev_sz, bool crypt_footer)
     int status;
 
     if (!dev_sz) {
-        int rc = get_dev_sz(fs_blkdev, &dev_sz);
+        int rc = get_dev_sz(fs_blkdev, &dev_sz, false);
         if (rc) {
             return rc;
         }
@@ -148,7 +149,7 @@ static int format_f2fs(char *fs_blkdev, uint64_t dev_sz, bool crypt_footer)
 
     /* This doesn't return */
     if (setexeccon(MKFS_SECURITY_CONTEXT)) {
-         "LERROR << Failed to set security context for mkfs";
+         LERROR << "Failed to set security context for mkfs";
     }
 
     return android_fork_execvp_ext(arraysize(args), const_cast<char**>(args), NULL, true,

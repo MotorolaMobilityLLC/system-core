@@ -104,17 +104,6 @@ static bool FindVbdDevicePrefix(const std::string& path, std::string* result) {
     return true;
 }
 
-static bool FindBootDevicePrefix(const std::string& path, std::string* result) {
-    result->clear();
-
-    if (!boot_device.empty() && (path.find(boot_device) != std:string::npos)) {
-        *result = boot_device;
-        return true;
-    }
-
-    return false;
-}
-
 Permissions::Permissions(const std::string& name, mode_t perm, uid_t uid, gid_t gid)
     : name_(name), perm_(perm), uid_(uid), gid_(gid), prefix_(false), wildcard_(false) {
     // Set 'prefix_' or 'wildcard_' based on the below cases:
@@ -354,8 +343,6 @@ std::vector<std::string> DeviceHandler::GetBlockDeviceSymlinks(const Uevent& uev
         type = "pci";
     } else if (FindVbdDevicePrefix(uevent.path, &device)) {
         type = "vbd";
-    } else if (!FindBootDevicePrefix(uevent.path, &device) {
-        type = "platform";
     } else {
         return {};
     }

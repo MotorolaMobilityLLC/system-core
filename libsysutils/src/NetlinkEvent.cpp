@@ -29,6 +29,8 @@
 #include <linux/rtnetlink.h>
 #include <net/if.h>
 #include <netinet/icmp6.h>
+#include <netlink/msg.h>
+#include <netlink/attr.h>
 #include <netinet/in.h>
 #include <stdlib.h>
 #include <string.h>
