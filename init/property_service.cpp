@@ -684,17 +684,10 @@ static void load_override_properties() {
 /* BEGIN IKJB42MAIN-6952, 03/13/2013, w60013, rename persist.sys.usb.config */
 void update_persistent_usb_property(void)
 {
-	char currPath[PATH_MAX];
-	char newPath[PATH_MAX];
-
-	snprintf(currPath, sizeof(currPath), "%s/persist.sys.usb.config",
-				PERSISTENT_PROPERTY_DIR);
-	snprintf(newPath, sizeof(newPath), "%s/persist.mot.usb.config",
-				PERSISTENT_PROPERTY_DIR);
-	if (rename(currPath, newPath)) {
-		PLOG(ERROR) << "Unable to rename persistent prop file "
-                            << currPath;
-	}
+        std::string persist_usb_config = android::base::GetProperty("persist.sys.usb.config", "");
+        if (!persist_usb_config.empty()) {
+            property_set("persist.mot.usb.config", persist_usb_config);
+        }
 }
 /* END IKJB42MAIN-6952 */
 

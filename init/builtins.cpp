@@ -994,7 +994,7 @@ static Result<Success> do_wait_for_prop(const BuiltinArguments& args) {
     return Success();
 }
 
-int do_setfattr(const std::vector<std::string>& args)
+static Result<Success> do_setfattr(const BuiltinArguments& args)
 {
     /* setfattr <path> <name> [value] [flag] */
     const int nargs = args.size();
@@ -1011,13 +1011,13 @@ int do_setfattr(const std::vector<std::string>& args)
         value = args[3].c_str();
         size = strlen(value);
         if (nargs == 5)
-            flag = std::stoi(args[4]);
+            flag = std::stoi(args[4].c_str());
         setxattr(path, name, value, size, flag);
     } else if (nargs == 3) {
         removexattr(path, name);
     }
 
-    return 0;
+    return Success();
 }
 
 static bool is_file_crypto() {
@@ -1106,7 +1106,7 @@ const BuiltinFunctionMap::Map& BuiltinFunctionMap::map() const {
         {"restorecon_recursive",    {1,     kMax, {true,   do_restorecon_recursive}}},
         {"rm",                      {1,     1,    {true,   do_rm}}},
         {"rmdir",                   {1,     1,    {true,   do_rmdir}}},
-        {"setfattr",                {2,     4,    {true,  do_setattr}}},
+        {"setfattr",                {2,     4,    {true,   do_setfattr}}},
         {"setprop",                 {2,     2,    {true,   do_setprop}}},
         {"setrlimit",               {3,     3,    {false,  do_setrlimit}}},
         {"start",                   {1,     1,    {false,  do_start}}},

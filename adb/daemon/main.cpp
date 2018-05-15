@@ -154,7 +154,11 @@ static void drop_privileges(int server_port) {
 
         if (root_seclabel != nullptr) {
             if (selinux_android_setcon(root_seclabel) < 0) {
-                drop_capabilities_bounding_set_if_needed(jail.get());
+                const bool should_drop_caps = should_drop_capabilities_bounding_set();
+
+                if (should_drop_caps) {
+                    minijail_use_caps(jail.get(), CAP_TO_MASK(CAP_SETUID) | CAP_TO_MASK(CAP_SETGID));
+                }
 
                 minijail_change_gid(jail.get(), AID_SHELL);
                 minijail_change_uid(jail.get(), AID_SHELL);

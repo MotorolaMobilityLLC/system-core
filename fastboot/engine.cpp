@@ -316,7 +316,7 @@ void fb_queue_dump(const std::string partition) {
 
     Action& a = queue_action(OP_DUMP, "");
     a.data = file_name;
-    a.msg = "Dumping partition " + partition.c_str() + "to " + file_name;
+    a.msg = android::base::StringPrintf("Dumping partition %s to %s", partition.c_str(), file_name);
 }
 
 void fb_queue_ramdump(void) {

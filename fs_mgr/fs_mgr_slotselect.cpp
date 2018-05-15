@@ -30,6 +30,17 @@ std::string fs_mgr_get_slot_suffix() {
     return ab_suffix;
 }
 
+std::string fs_mgr_get_other_suffix(std::string suffix) {
+    if (suffix == "_a") {
+        return "_b";
+    }
+
+    if (suffix == "_b") {
+        return "_a";
+    }
+    return suffix;
+}
+
 // Updates |fstab| for slot_suffix. Returns true on success, false on error.
 bool fs_mgr_update_for_slotselect(struct fstab *fstab) {
     int n;
