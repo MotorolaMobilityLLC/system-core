@@ -497,12 +497,10 @@ xml_load_properties(char *data, const char *filter)
 static void
 xml_load_properties_from_file(const char* filename, const char* filter)
 {
-    std::string data;
-    std::string err;
-
-    if (ReadFile(filename, &data, &err)) {
-        data.push_back('\n');
-        xml_load_properties(&data[0], filter);
+    auto file_contents = ReadFile(filename);
+    if (file_contents) {
+       file_contents->push_back('\n');
+       xml_load_properties(file_contents->data(), filter);
     }
 }
 
