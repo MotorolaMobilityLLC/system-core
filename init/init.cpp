@@ -542,6 +542,22 @@ static void InstallSigtermHandler() {
     register_epoll_handler(sigterm_signal_fd, HandleSigtermSignal);
 }
 
+static void LoadRscRoProps() {
+    const std::string rscname = GetProperty("ro.boot.rsc", "");
+    const std::string rscpath = rscname == "" ? "" : "etc/rsc/"+rscname+"/";
+
+    load_properties_from_file (std::string("/system/" + rscpath + "ro.prop").c_str(), NULL);
+    load_properties_from_file (std::string("/vendor/" + rscpath + "ro.prop").c_str(), NULL);
+}
+
+void LoadRscRwProps() {
+    const std::string rscname = GetProperty("ro.boot.rsc", "");
+    const std::string rscpath = rscname == "" ? "" : "etc/rsc/"+rscname+"/";
+
+    load_properties_from_file (std::string("/system/" + rscpath + "rw.prop").c_str(), NULL);
+    load_properties_from_file (std::string("/vendor/" + rscpath + "rw.prop").c_str(), NULL);
+}
+
 int main(int argc, char** argv) {
     if (!strcmp(basename(argv[0]), "ueventd")) {
         return ueventd_main(argc, argv);
@@ -698,6 +714,7 @@ int main(int argc, char** argv) {
         InstallSigtermHandler();
     }
 
+    LoadRscRoProps();
     property_load_boot_defaults();
     export_oem_lock_status();
     start_property_service();
