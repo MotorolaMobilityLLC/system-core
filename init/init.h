@@ -50,6 +50,8 @@ void DumpState();
 
 void ResetWaitForProp();
 
+void LoadRscRwProps();
+
 int main(int argc, char** argv);
 
 }  // namespace init

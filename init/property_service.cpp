@@ -569,7 +569,7 @@ static void handle_property_set_fd() {
     }
 }
 
-static bool load_properties_from_file(const char *, const char *);
+//static bool load_properties_from_file(const char *, const char *);
 
 /*
  * Filter is used to decide which properties to load: NULL loads all keys,
@@ -655,7 +655,7 @@ static void LoadProperties(char* data, const char* filter, const char* filename)
 
 // Filter is used to decide which properties to load: NULL loads all keys,
 // "ro.foo.*" is a prefix match, and "ro.foo.bar" is an exact match.
-static bool load_properties_from_file(const char* filename, const char* filter) {
+bool load_properties_from_file(const char* filename, const char* filter) {
     Timer t;
     auto file_contents = ReadFile(filename);
     if (!file_contents) {
@@ -731,6 +731,7 @@ void load_persist_props(void) {
         property_set(persistent_property_record.name(), persistent_property_record.value());
     }
     persistent_properties_loaded = true;
+    LoadRscRwProps();
     property_set("ro.persistent_properties.ready", "true");
 }
 
