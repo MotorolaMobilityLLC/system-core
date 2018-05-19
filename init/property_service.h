@@ -36,6 +36,7 @@ void property_load_boot_defaults(void);
 void load_persist_props(void);
 void load_system_props(void);
 void start_property_service(void);
+bool load_properties_from_file(const char* filename, const char* filter);
 
 }  // namespace init
 }  // namespace android
