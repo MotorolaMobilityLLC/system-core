@@ -1026,9 +1026,7 @@ static int find_and_kill_processes(enum vmpressure_level level,
     int pages_freed = 0;
 
 #ifdef LMKD_LOG_STATS
-    if (enable_stats_log) {
-        stats_write_lmk_state_changed(log_ctx, LMK_STATE_CHANGED, LMK_STATE_CHANGE_START);
-    }
+    bool lmk_state_change_start = false;
 #endif
 
     for (i = OOM_SCORE_ADJ_MAX; i >= min_score_adj; i--) {
@@ -1043,11 +1041,19 @@ static int find_and_kill_processes(enum vmpressure_level level,
 
             killed_size = kill_one_process(procp, min_score_adj, level);
             if (killed_size >= 0) {
+#ifdef LMKD_LOG_STATS
+                if (enable_stats_log && !lmk_state_change_start) {
+                    lmk_state_change_start = true;
+                    stats_write_lmk_state_changed(log_ctx, LMK_STATE_CHANGED,
+                                                  LMK_STATE_CHANGE_START);
+                }
+#endif
+
                 pages_freed += killed_size;
                 if (pages_freed >= pages_to_free) {
 
 #ifdef LMKD_LOG_STATS
-                    if (enable_stats_log) {
+                    if (enable_stats_log && lmk_state_change_start) {
                         stats_write_lmk_state_changed(log_ctx, LMK_STATE_CHANGED,
                                 LMK_STATE_CHANGE_STOP);
                     }
@@ -1059,7 +1065,7 @@ static int find_and_kill_processes(enum vmpressure_level level,
     }
 
 #ifdef LMKD_LOG_STATS
-    if (enable_stats_log) {
+    if (enable_stats_log && lmk_state_change_start) {
         stats_write_lmk_state_changed(log_ctx, LMK_STATE_CHANGED, LMK_STATE_CHANGE_STOP);
     }
 #endif
@@ -1178,10 +1184,8 @@ static void mp_event_common(int data, uint32_t events __unused) {
     }
 
     if (skip_count > 0) {
-        if (debug_process_killing) {
-            ALOGI("%lu memory pressure events were skipped after a kill!",
-                skip_count);
-        }
+        ALOGI("%lu memory pressure events were skipped after a kill!",
+              skip_count);
         skip_count = 0;
     }
 
@@ -1299,25 +1303,24 @@ do_kill:
                 return;
             }
             min_score_adj = level_oomadj[level];
-        } else {
-            if (debug_process_killing) {
-                ALOGI("Killing because cache %ldkB is below "
-                      "limit %ldkB for oom_adj %d\n"
-                      "   Free memory is %ldkB %s reserved",
-                      other_file * page_k, minfree * page_k, min_score_adj,
-                      other_free * page_k, other_free >= 0 ? "above" : "below");
-            }
         }
 
-        if (debug_process_killing) {
-            ALOGI("Trying to free %d pages", pages_to_free);
-        }
         pages_freed = find_and_kill_processes(level, min_score_adj, pages_to_free);
+
+        if (use_minfree_levels) {
+            ALOGI("Killing because cache %ldkB is below "
+                  "limit %ldkB for oom_adj %d\n"
+                  "   Free memory is %ldkB %s reserved",
+                  other_file * page_k, minfree * page_k, min_score_adj,
+                  other_free * page_k, other_free >= 0 ? "above" : "below");
+        }
+
         if (pages_freed < pages_to_free) {
-            if (debug_process_killing) {
-                ALOGI("Unable to free enough memory (pages freed=%d)", pages_freed);
-            }
+            ALOGI("Unable to free enough memory (pages to free=%d, pages freed=%d)",
+                  pages_to_free, pages_freed);
         } else {
+            ALOGI("Reclaimed enough memory (pages to free=%d, pages freed=%d)",
+                  pages_to_free, pages_freed);
             gettimeofday(&last_report_tm, NULL);
         }
     }
