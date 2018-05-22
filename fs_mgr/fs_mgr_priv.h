@@ -112,6 +112,10 @@
 #define MF_KEYDIRECTORY    0X4000000
 #define MF_SYSFS           0X8000000
 
+#ifdef MTK_FSTAB_FLAGS
+#define MF_RESIZE         0x10000000
+#endif
+
 #define DM_BUF_SIZE 4096
 
 using namespace std::chrono_literals;

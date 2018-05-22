@@ -106,6 +106,9 @@ static struct flag_list fs_mgr_flags[] = {
     {"eraseblk=", MF_ERASEBLKSIZE},
     {"logicalblk=", MF_LOGICALBLKSIZE},
     {"sysfs_path=", MF_SYSFS},
+#ifdef MTK_FSTAB_FLAGS
+    {"resize", MF_RESIZE},
+#endif
     {"defaults", 0},
     {0, 0},
 };
