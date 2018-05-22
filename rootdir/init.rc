@@ -437,7 +437,7 @@ on post-fs-data
     mkdir /data/misc/cameraserver 0700 cameraserver cameraserver
     mkdir /data/misc/vold 0700 root root
     mkdir /data/misc/boottrace 0771 system shell
-    mkdir /data/misc/update_engine 0700 root root
+    mkdir /data/misc/update_engine 0771 root root
     mkdir /data/misc/trace 0700 root root
     mkdir /data/misc/reboot 0700 system system
     # profile file layout
