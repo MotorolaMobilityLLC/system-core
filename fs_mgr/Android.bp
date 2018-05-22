@@ -24,6 +24,7 @@ cc_defaults {
         "-Wall",
         "-Werror",
         "-Wno-unused-variable",
+	"-DMTK_FSTAB_FLAGS",
     ],
     cppflags: [
         "-std=gnu++1z",

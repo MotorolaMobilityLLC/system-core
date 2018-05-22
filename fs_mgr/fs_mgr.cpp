@@ -68,6 +68,11 @@
 #define F2FS_FSCK_BIN   "/system/bin/fsck.f2fs"
 #define MKSWAP_BIN      "/system/bin/mkswap"
 #define TUNE2FS_BIN     "/system/bin/tune2fs"
+#ifdef MTK_FSTAB_FLAGS
+#include "cryptfs.h"
+#define RESIZE2FS_BIN   "/system/bin/resize2fs"
+#define RESIZEF2FS_BIN  "/system/bin/resize.f2fs"
+#endif
 
 #define FSCK_LOG_FILE   "/dev/fscklogs/log"
 
@@ -126,6 +131,12 @@ static void log_fs_stat(const char* blk_device, int fs_stat)
 static bool is_extfs(const std::string& fs_type) {
     return fs_type == "ext4" || fs_type == "ext3" || fs_type == "ext2";
 }
+
+#ifdef MTK_FSTAB_FLAGS
+static bool is_f2fs(const std::string& fs_type) {
+    return fs_type == "f2fs";
+}
+#endif
 
 static bool should_force_check(int fs_stat) {
     return fs_stat &
@@ -407,6 +418,101 @@ static void tune_encrypt(const char* blk_device, const struct fstab_rec* rec,
     }
 }
 
+#ifdef MTK_FSTAB_FLAGS
+static void resize_fs(const char *blk_device, char *fs_type, char *key_loc) {
+    uint64_t device_sz;
+    uint64_t device_ss;
+    uint64_t device_sn;
+    int status = 0;
+    int ret = 0;
+
+    android::base::unique_fd fd(TEMP_FAILURE_RETRY(open(blk_device, O_RDONLY | O_CLOEXEC)));
+
+    if (fd < 0) {
+        PERROR << "Failed to open '" << blk_device << "'";
+        return;
+    }
+
+    /* Cannot use BLKGETSIZE to get the number of sectors,
+    * because need to do device_sz -= CRYPT_FOOTER_OFFSET
+    */
+    if ((ioctl(fd, BLKGETSIZE64, &device_sz)) == -1) {
+        PERROR << "(BLKGETSIZE64) Can't get '" << blk_device << "' size";
+        return;
+    }
+
+    if ((ioctl(fd, BLKSSZGET, &device_ss)) == -1) {
+        PERROR << "(BLKSSZGET) Can't get '" << blk_device << "' size";
+        return;
+    }
+
+    /* Format the partition using the calculated length */
+    if (!strcmp(key_loc, KEY_IN_FOOTER))
+        device_sz -= CRYPT_FOOTER_OFFSET;
+
+    if (is_extfs(fs_type)) {
+        if (access(RESIZE2FS_BIN, X_OK)) {
+            LINFO << "Not running " << RESIZE2FS_BIN << " on " << blk_device
+            << " (executable not in system image)";
+        } else {
+            std::string size_kb_str(android::base::StringPrintf("%" PRIu64 "K", device_sz / 1024));
+
+            LINFO << "Running " << RESIZE2FS_BIN << " on " << blk_device;
+
+            /* extX cmd */
+            const char *resize2fs_argv[] = {
+                RESIZE2FS_BIN,
+                "-f",
+                blk_device,
+                size_kb_str.c_str()
+            };
+
+            ret = android_fork_execvp_ext(ARRAY_SIZE(resize2fs_argv),
+                const_cast<char **>(resize2fs_argv),
+                &status, true, LOG_KLOG,
+                false, NULL, NULL, 0);
+
+            if (ret < 0) {
+                /* No need to check for error in fork, we can't really handle it now */
+                LERROR << "Failed trying to run " << RESIZE2FS_BIN;
+                return;
+            }
+        }
+    } else if (is_f2fs(fs_type)) {
+        if (access(RESIZEF2FS_BIN, X_OK)) {
+            LINFO << "Not running " << RESIZEF2FS_BIN << " on " << blk_device
+            << " (executable not in system image)";
+        } else {
+            device_sn = device_sz / device_ss;
+
+            std::string size_kb_str(android::base::StringPrintf("%" PRIu64, device_sn));
+
+            LINFO << "Running " << RESIZE2FS_BIN << " on " << blk_device;
+            LINFO << "F2FS total size is " << device_sz << "  sector size is " << device_ss;
+
+            /* F2FS cmd */
+            const char *resizef2fs_argv[] = {
+                RESIZEF2FS_BIN,
+                "-t",
+                size_kb_str.c_str(),
+                blk_device
+            };
+
+            ret = android_fork_execvp_ext(ARRAY_SIZE(resizef2fs_argv),
+                const_cast<char **>(resizef2fs_argv),
+                &status, true, LOG_KLOG,
+                false, NULL, NULL, 0);
+
+            if (ret < 0) {
+                /* No need to check for error in fork, we can't really handle it now */
+                LERROR << "F2FS Failed trying to run " << RESIZEF2FS_BIN;
+                return;
+            }
+        }
+    }
+}
+#endif
+
 //
 // Prepare the filesystem on the given block device to be mounted.
 //
@@ -442,6 +548,13 @@ static int prepare_fs_for_mount(const char* blk_device, const struct fstab_rec* 
         (fs_stat & (FS_STAT_UNCLEAN_SHUTDOWN | FS_STAT_QUOTA_ENABLED))) {
         check_fs(blk_device, rec->fs_type, rec->mount_point, &fs_stat);
     }
+
+#ifdef MTK_FSTAB_FLAGS
+    if ((rec->fs_mgr_flags & MF_RESIZE) && !strcmp(blk_device, rec->blk_device)) {
+        resize_fs(blk_device, rec->fs_type, rec->key_loc);
+        check_fs(blk_device, rec->fs_type, rec->mount_point, &fs_stat);
+    }
+#endif
 
     if (is_extfs(rec->fs_type) && (rec->fs_mgr_flags & (MF_RESERVEDSIZE
         | MF_FILEENCRYPTION | MF_FORCEFDEORFBE))) {
