@@ -87,6 +87,8 @@ static Result<std::string> ComputeContextFromExecutable(const std::string& servi
         computed_context = new_con;
         free(new_con);
     }
+    //MMI_STOPSHIP security: disable the context check fow now
+    /*
     if (rc == 0 && computed_context == mycon.get()) {
         return Error() << "File " << service_path << "(labeled \"" << filecon.get()
                        << "\") has incorrect label or no domain transition from " << mycon.get()
@@ -96,6 +98,7 @@ static Result<std::string> ComputeContextFromExecutable(const std::string& servi
                           "error shows up even in permissive mode in order to make auditing "
                           "denials possible.";
     }
+    */
     if (rc < 0) {
         return Error() << "Could not get process context";
     }
