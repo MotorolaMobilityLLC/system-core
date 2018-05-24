@@ -140,10 +140,6 @@
 #define AID_OEM_RESERVED_START 2900
 #define AID_OEM_RESERVED_END 2999
 
-/* Begin IKSWN-68812 keep RFS AIDs same as what tftp_server expects */
-#define AID_RFS           2951  /* Remote Filesystem for peripheral processors */
-#define AID_RFS_SHARED    2952  /* Shared files for Remote Filesystem for peripheral processors  */
-/* End IKSWN-68812 */
 
 /* The 3000 series are intended for use as supplemental group id's only.
  * They indicate special Android capabilities that the kernel is aware of. */
