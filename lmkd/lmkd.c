@@ -112,6 +112,8 @@ static bool low_ram_device;
 static bool kill_heaviest_task;
 static unsigned long kill_timeout_ms;
 static bool use_minfree_levels;
+static bool enhance_batch_kill;
+static bool enable_adaptive_lmk;
 
 /* data required to handle events */
 struct event_handler_info {
@@ -1212,6 +1214,11 @@ static void mp_event_common(int data, uint32_t events __unused) {
             minfree = lowmem_minfree[i];
             if (other_free < minfree && other_file < minfree) {
                 min_score_adj = lowmem_adj[i];
+                // Adaptive LMK
+                if (enable_adaptive_lmk && level == VMPRESS_LEVEL_CRITICAL &&
+                        i > lowmem_targets_size-4) {
+                    min_score_adj = lowmem_adj[i-1];
+                }
                 break;
             }
         }
@@ -1226,9 +1233,15 @@ static void mp_event_common(int data, uint32_t events __unused) {
             return;
         }
 
-        /* Free up enough pages to push over the highest minfree level */
-        pages_to_free = lowmem_minfree[lowmem_targets_size - 1] -
-            ((other_free < other_file) ? other_free : other_file);
+        if (enhance_batch_kill) {
+            // Kill one process at a time.
+            pages_to_free = 0;
+        } else {
+            /* Original minfree logic */
+            /* Free up enough pages to push over the highest minfree level */
+            pages_to_free = lowmem_minfree[lowmem_targets_size - 1] -
+                ((other_free < other_file) ? other_free : other_file);
+        }
         goto do_kill;
     }
 
@@ -1327,6 +1340,8 @@ do_kill:
         if (pages_freed < pages_to_free) {
             ALOGI("Unable to free enough memory (pages to free=%d, pages freed=%d)",
                   pages_to_free, pages_freed);
+        } else if (pages_freed == 0) {
+            ALOGI("No processes killed");
         } else {
             ALOGI("Reclaimed enough memory (pages to free=%d, pages freed=%d)",
                   pages_to_free, pages_freed);
@@ -1542,6 +1557,10 @@ int main(int argc __unused, char **argv __unused) {
         (unsigned long)property_get_int32("ro.lmk.kill_timeout_ms", 0);
     use_minfree_levels =
         property_get_bool("ro.lmk.use_minfree_levels", false);
+    enhance_batch_kill =
+        property_get_bool("ro.lmk.enhance_batch_kill", true);
+    enable_adaptive_lmk =
+        property_get_bool("ro.lmk.enable_adaptive_lmk", false);
 
 #ifdef LMKD_LOG_STATS
     statslog_init(&log_ctx, &enable_stats_log);
