@@ -30,6 +30,9 @@ void reinit_signal_handler(int /*signal*/);
 #if defined(HAVE_AEE_FEATURE) && defined(ANDROID_LOG_MUCH_COUNT)
 void trigger_logmuch_adjust();
 #endif
+#if defined(MTK_LOGD_FILTER)
+void trigger_loglevel_adjust();
+#endif
 #endif
 
 class CommandListener : public FrameworkListener {
@@ -85,6 +88,9 @@ class CommandListener : public FrameworkListener {
 #ifdef MTK_LOGD_ENHANCE
 #if defined(HAVE_AEE_FEATURE) && defined(ANDROID_LOG_MUCH_COUNT)
     LogCmd(Logmuch);
+#endif
+#if defined(MTK_LOGD_FILTER)
+    LogCmd(Loglevel);
 #endif
 #endif
 

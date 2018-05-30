@@ -88,12 +88,12 @@
 //
 
 #ifdef MTK_LOGD_ENHANCE
-#if defined(MTK_LOGD_FILTER)
-extern int log_reader_count;
-#endif
+int logd_adjust(const char* cmdStr);
 #if defined(HAVE_AEE_FEATURE) && defined(ANDROID_LOG_MUCH_COUNT)
 void logmuch_control_init();
-int logmuch_adjust();
+#endif
+#if defined(MTK_LOGD_FILTER)
+void loglevel_control_init();
 #endif
 #if defined(LOGD_FORCE_DIRECTCOREDUMP)
 void directcoredump_init();
@@ -340,14 +340,6 @@ static void* reinit_thread_start(void* /*obj*/) {
             logBuf->initPrune(nullptr);
         }
         android::ReReadEventLogTags();
-#ifdef MTK_LOGD_ENHANCE
-#if defined(MTK_LOGD_FILTER)    /*for default status */
-        if (log_reader_count == 0) {
-            property_set("log.tag", "I");
-            android::prdebug("logd no log reader, set log level to INFO!\n");
-        }
-#endif
-#endif
     }
 
     return nullptr;
@@ -473,7 +465,12 @@ int main(int argc, char* argv[]) {
 #ifdef MTK_LOGD_ENHANCE
 #if defined(HAVE_AEE_FEATURE) && defined(ANDROID_LOG_MUCH_COUNT)
     else if ((argc > 1) && argv[1] && !strcmp(argv[1], "--logmuch")) {
-        return logmuch_adjust();
+        return logd_adjust("logmuch");
+    }
+#endif
+#if defined(MTK_LOGD_FILTER)
+    else if ((argc > 1) && argv[1] && !strcmp(argv[1], "--loglevel")) {
+        return logd_adjust("loglevel");
     }
 #endif
 #endif
@@ -529,6 +526,10 @@ int main(int argc, char* argv[]) {
 #if defined(HAVE_AEE_FEATURE) && defined(ANDROID_LOG_MUCH_COUNT)
     logmuch_control_init();
 #endif
+#if defined(MTK_LOGD_FILTER)
+    loglevel_control_init();
+#endif
+
 #endif
 
     bool auditd =

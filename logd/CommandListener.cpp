@@ -54,6 +54,9 @@ CommandListener::CommandListener(LogBuffer* buf, LogReader* /*reader*/,
 #if defined(HAVE_AEE_FEATURE) && defined(ANDROID_LOG_MUCH_COUNT)
     registerCmd(new LogmuchCmd());
 #endif
+#if defined(MTK_LOGD_FILTER)
+    registerCmd(new LoglevelCmd());
+#endif
 #endif
     registerCmd(new ExitCmd(this));
 }
@@ -355,6 +358,21 @@ int CommandListener::LogmuchCmd::runCommand(SocketClient* cli, int /*argc*/,
     setname();
 
     trigger_logmuch_adjust();
+
+    cli->sendMsg("success");
+
+    return 0;
+}
+#endif
+#if defined(MTK_LOGD_FILTER)
+CommandListener::LoglevelCmd::LoglevelCmd() : LogCommand("loglevel") {
+}
+
+int CommandListener::LoglevelCmd::runCommand(SocketClient* cli, int /*argc*/,
+                                           char** /*argv*/) {
+    setname();
+
+    trigger_loglevel_adjust();
 
     cli->sendMsg("success");
 

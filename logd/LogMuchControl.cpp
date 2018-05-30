@@ -87,6 +87,41 @@ void prdebug_ratelimit(const char* fmt, ...) {
     }
 }
 
+// logd related info need to be adjusted.
+int logd_adjust(const char* cmdStr) {
+    cap_t caps = cap_init();
+    (void)cap_clear(caps);
+    (void)cap_set_proc(caps);
+    (void)cap_free(caps);
+
+    int sock = TEMP_FAILURE_RETRY(socket_local_client(
+        "logd", ANDROID_SOCKET_NAMESPACE_RESERVED, SOCK_STREAM));
+    if (sock < 0) return -errno;
+
+    //static const char logmuchStr[] = "logmuch";
+    char command[32] = {0};
+    strncpy(command, cmdStr, sizeof(command));
+    command[sizeof(command) - 1] = '\0';
+    ssize_t ret = TEMP_FAILURE_RETRY(write(sock, command, strlen(command) + 1));
+    if (ret < 0) return -errno;
+
+    struct pollfd p;
+    memset(&p, 0, sizeof(p));
+    p.fd = sock;
+    p.events = POLLIN;
+    ret = TEMP_FAILURE_RETRY(poll(&p, 1, 1000));
+    if (ret < 0) return -errno;
+    if ((ret == 0) || !(p.revents & POLLIN)) return -ETIME;
+
+    static const char success[] = "success";
+    char buffer[sizeof(success) - 1];
+    memset(buffer, 0, sizeof(buffer));
+    ret = TEMP_FAILURE_RETRY(read(sock, buffer, sizeof(buffer)));
+    if (ret < 0) return -errno;
+
+    return strncmp(buffer, success, sizeof(success) - 1) != 0;
+}
+
 #if defined(MTK_LOGD_FILTER)
 int log_reader_count = 0;
 void logd_reader_del(void) {
@@ -111,6 +146,49 @@ void logd_reader_add(void) {
     log_reader_count++;
 }
 
+static sem_t loglevel_sem;
+static void* loglevel_adjust_thread_start(void* /*obj*/) {
+    prctl(PR_SET_NAME, "logd.loglevel");
+
+    set_sched_policy(0, SP_FOREGROUND);
+    setpriority(PRIO_PROCESS, 0, ANDROID_PRIORITY_FOREGROUND);
+
+    cap_t caps = cap_init();
+    (void)cap_clear(caps);
+    (void)cap_set_proc(caps);
+    (void)cap_free(caps);
+
+    while (!sem_wait(&loglevel_sem)) {
+        android::prdebug("loglevel adjust thread wakeup");
+        if (log_reader_count == 0) {
+            property_set("log.tag", "I");
+            android::prdebug("logd no log reader, set loglevel to INFO!\n");
+        }
+    }
+
+    return nullptr;
+}
+
+void loglevel_control_init() {
+    sem_init(&loglevel_sem, 0, 0);
+    pthread_attr_t attr;
+    if (!pthread_attr_init(&attr)) {
+        struct sched_param param;
+
+        memset(&param, 0, sizeof(param));
+        pthread_attr_setschedparam(&attr, &param);
+        pthread_attr_setschedpolicy(&attr, SCHED_BATCH);
+        if (!pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED)) {
+            pthread_t thread;
+            pthread_create(&thread, &attr, loglevel_adjust_thread_start, nullptr);
+        }
+        pthread_attr_destroy(&attr);
+    }
+}
+
+void trigger_loglevel_adjust() {
+    sem_post(&loglevel_sem);
+}
 #endif
 
 #if defined(HAVE_AEE_FEATURE) && defined(ANDROID_LOG_MUCH_COUNT)
@@ -214,38 +292,6 @@ void logmuch_control_init() {
 
 void trigger_logmuch_adjust() {
     sem_post(&logmuch_sem);
-}
-
-// logmuch need to be adjusted.
-int logmuch_adjust() {
-    cap_t caps = cap_init();
-    (void)cap_clear(caps);
-    (void)cap_set_proc(caps);
-    (void)cap_free(caps);
-
-    int sock = TEMP_FAILURE_RETRY(socket_local_client(
-        "logd", ANDROID_SOCKET_NAMESPACE_RESERVED, SOCK_STREAM));
-    if (sock < 0) return -errno;
-
-    static const char logmuchStr[] = "logmuch";
-    ssize_t ret = TEMP_FAILURE_RETRY(write(sock, logmuchStr, sizeof(logmuchStr)));
-    if (ret < 0) return -errno;
-
-    struct pollfd p;
-    memset(&p, 0, sizeof(p));
-    p.fd = sock;
-    p.events = POLLIN;
-    ret = TEMP_FAILURE_RETRY(poll(&p, 1, 1000));
-    if (ret < 0) return -errno;
-    if ((ret == 0) || !(p.revents & POLLIN)) return -ETIME;
-
-    static const char success[] = "success";
-    char buffer[sizeof(success) - 1];
-    memset(buffer, 0, sizeof(buffer));
-    ret = TEMP_FAILURE_RETRY(read(sock, buffer, sizeof(buffer)));
-    if (ret < 0) return -errno;
-
-    return strncmp(buffer, success, sizeof(success) - 1) != 0;
 }
 #endif
 
