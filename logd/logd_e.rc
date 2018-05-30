@@ -19,6 +19,12 @@ service logd-adjust /system/bin/logd --logmuch
     user logd
     group logd
 
+service logd-loglevel /system/bin/logd --loglevel
+    oneshot
+    disabled
+    user logd
+    group logd
+
 on fs
     write /dev/event-log-tags "# content owned by logd
 "
@@ -41,3 +47,6 @@ on property:vendor.logmuch.value=*
 
 on property:vendor.logmuch.delay=1
     start logd-adjust
+
+on property:sys.boot_completed=1
+    start logd-loglevel
