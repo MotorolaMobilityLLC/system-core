@@ -37,7 +37,7 @@
 
 #define DEBUGGER_SLEEP_TIME 15000000
 
-static int wakeup_sources_fd;
+static int wakeup_sources_fd = -1;
 
 using android::base::ReadFdToString;
 using android::base::Trim;
@@ -46,6 +46,7 @@ using android::base::WriteStringToFd;
 static pthread_t debugger_thread;
 static sem_t debugger_lockout;
 static constexpr char debugfs_wakeup_sources[] = "/sys/kernel/debug/wakeup_sources";
+static bool autosuspend_debugger_setting_is_init = false;
 
 static void* debugger_thread_func(void* arg __attribute__((unused))) {
     char buf[512];
@@ -128,12 +129,29 @@ static void* debugger_thread_func(void* arg __attribute__((unused))) {
     return NULL;
 }
 
-static int autosuspend_debugger_setting_init(void) {
-    int ret;
+static int init_wakeup_fd(void) {
+    if (wakeup_sources_fd >= 0) {
+        return 0;
+    }
 
-    wakeup_sources_fd = TEMP_FAILURE_RETRY(open(debugfs_wakeup_sources, O_CLOEXEC | O_RDONLY));
-    if (wakeup_sources_fd < 0) {
+    int fd = TEMP_FAILURE_RETRY(open(debugfs_wakeup_sources, O_CLOEXEC | O_RDONLY));
+    if (fd < 0) {
         PLOG(ERROR) << "error opening " << debugfs_wakeup_sources;
+        return -1;
+    }
+
+    wakeup_sources_fd = fd;
+    LOG(INFO) << "init_wakeup_fd success";
+    return 0;
+}
+
+static int autosuspend_debugger_setting_init(void) {
+    if (autosuspend_debugger_setting_is_init) {
+        return 0;
+    }
+
+    int ret = init_wakeup_fd();
+    if (ret < 0) {
         return -1;
     }
 
@@ -150,6 +168,7 @@ static int autosuspend_debugger_setting_init(void) {
     }
 
     LOG(INFO) << "autosuspend_debugger_setting_init success";
+    autosuspend_debugger_setting_is_init = true;
     return 0;
 
 err_pthread_create:
@@ -180,6 +199,10 @@ static int autosuspend_debugger_enable(void) {
 
 static int autosuspend_debugger_disable(void) {
     LOG(INFO) << "autosuspend_debugger_disable";
+
+    if (!autosuspend_debugger_setting_is_init) {
+        return 0;  // always successful if no thread is running yet
+    }
 
     int ret = sem_wait(&debugger_lockout);
 
