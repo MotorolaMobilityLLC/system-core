@@ -261,6 +261,10 @@ static struct adjslot_list procadjslot_list[ADJTOSLOT(OOM_SCORE_ADJ_MAX) + 1];
 /* PAGE_SIZE / 1024 */
 static long page_k;
 
+/// M: Add for duraSpeed @{
+int duraspeed_fd = -1;
+/// @}
+
 static bool parse_int64(const char* str, int64_t* ret) {
     char* endptr;
     long long val = strtoll(str, &endptr, 10);
@@ -695,6 +699,52 @@ static void ctrl_connect_handler(int data __unused, uint32_t events __unused) {
     }
     maxevents++;
 }
+
+/// M: Add for duraSpeed @{
+/**
+ * When memory is not enough, trigger duraSpeed to handle it.
+ * Connect to duraSpeed socket and return a socket fd which will be used
+ * to communicate with server side.
+ */
+static int connect_socket() {
+    ALOGD("connect socket start");
+    int fd = socket_local_client("duraspeed_memory",
+                  ANDROID_SOCKET_NAMESPACE_ABSTRACT, SOCK_STREAM);
+    if(fd < 0) {
+        ALOGE("Fail to connect to socket duraSpeedMem. return code: %d", fd);
+        return -1;
+    }
+    ALOGI("connect_socket: fd = %d, end", fd);
+    return fd;
+}
+
+static void trigger_duraSpeed(int level, int64_t mem_pressure) {
+    ALOGE ("trigger duraSpeed Start, level = %d", level);
+    if (duraspeed_fd < 0) {
+        duraspeed_fd = connect_socket();
+        if (duraspeed_fd < 0) {
+            return;
+        }
+    }
+
+    int pressure = (int)mem_pressure;
+    char buf[16];
+    int ret = snprintf(buf, sizeof(buf), "%d:%d\r\n", level, pressure);
+    if (ret >= (ssize_t)sizeof(buf)) {
+        ALOGE ("trigger duraSpeed Error, out of size");
+    }
+
+    ssize_t written;
+    written = write(duraspeed_fd, buf, strlen(buf) + 1);
+    ALOGE ("trigger duraSpeed write, buf = %s", buf);
+    if (written < 0 && ((errno == EINTR) || (errno == EAGAIN))) {
+        ALOGE ("trigger duraSpeed written:%zu, errno:%d", written, errno);
+        close(duraspeed_fd);
+        duraspeed_fd = -1;
+        return;
+    }
+}
+/// @}
 
 #ifdef LMKD_LOG_STATS
 static void memory_stat_parse_line(char *line, struct memory_stat *mem_st) {
@@ -1260,6 +1310,12 @@ static void mp_event_common(int data, uint32_t events __unused) {
             }
         }
     }
+
+    /// M: Add for duraSpeed @{
+    if (mem_pressure <= downgrade_pressure + 10) {
+        trigger_duraSpeed(level, mem_pressure);
+    }
+    /// @}
 
     // If the pressure is larger than downgrade_pressure lmk will not
     // kill any process, since enough memory is available.
