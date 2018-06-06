@@ -1149,16 +1149,6 @@ int fs_mgr_do_mount(struct fstab *fstab, const char *n_name, char *n_blk_device,
             wait_for_file(n_blk_device, WAIT_TIMEOUT);
         }
 
-        if (fs_mgr_identify_fs(fstab->recs[i].fs_type, n_blk_device) == 0) {
-                LERROR << __FUNCTION__ << "(): skipping unidentified mountpoint="
-                    << fstab->recs[i].mount_point
-                    << ",i="
-                    << i
-                    << ",fs_type="
-                    << fstab->recs[i].fs_type;
-            continue;
-        }
-
         int fs_stat = 0;
         int force_check = do_quota_with_shutdown_check(n_blk_device, fstab->recs[i].fs_type,
                                                        &fstab->recs[i], &fs_stat);
