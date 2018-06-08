@@ -113,7 +113,7 @@ static int format_ext4(char *fs_blkdev, char *fs_mnt_point, bool crypt_footer)
     return rc;
 }
 
-#define MKFS_F2FS_PATH "/system/bin/make_f2fs"
+#define MKFS_F2FS_PATH "/vendor/bin/make_f2fs"
 #define MKFS_SECURITY_CONTEXT "u:r:mkfs:s0"
 static int format_f2fs(char *fs_blkdev, uint64_t dev_sz, bool crypt_footer)
 {
