@@ -553,18 +553,18 @@ void debuggerd_init(debuggerd_callbacks_t* callbacks) {
   }
 
   void* thread_stack_allocation =
-    mmap(nullptr, PAGE_SIZE * 3, PROT_NONE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+    mmap(nullptr, PAGE_SIZE * 5, PROT_NONE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
   if (thread_stack_allocation == MAP_FAILED) {
     fatal_errno("failed to allocate debuggerd thread stack");
   }
 
   char* stack = static_cast<char*>(thread_stack_allocation) + PAGE_SIZE;
-  if (mprotect(stack, PAGE_SIZE, PROT_READ | PROT_WRITE) != 0) {
+  if (mprotect(stack, PAGE_SIZE * 3, PROT_READ | PROT_WRITE) != 0) {
     fatal_errno("failed to mprotect debuggerd thread stack");
   }
 
   // Stack grows negatively, set it to the last byte in the page...
-  stack = (stack + PAGE_SIZE - 1);
+  stack = (stack + PAGE_SIZE * 3 - 1);
   // and align it.
   stack -= 15;
   pseudothread_stack = stack;
