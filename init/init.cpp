@@ -685,11 +685,6 @@ int main(int argc, char** argv) {
        mkdir("/dev/memcg", 0700);
        chown("/dev/memcg",AID_ROOT,AID_SYSTEM);
        mount("none", "/dev/memcg", "cgroup", 0, "memory");
-       // app mem cgroups, used by activity manager, lmkd and zygote
-       mkdir("/dev/memcg/apps/",0755);
-       chown("/dev/memcg/apps/",AID_SYSTEM,AID_SYSTEM);
-       mkdir("/dev/memcg/system",0550);
-       chown("/dev/memcg/system",AID_SYSTEM,AID_SYSTEM);
     }
 
     // Clean up our environment.
