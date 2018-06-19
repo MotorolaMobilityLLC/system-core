@@ -686,7 +686,7 @@ bool update_persistent_usb_property(const std::string& name, const std::string& 
 {
         std::string persist_usb_config = "persist.sys.usb.config";
         if (name == persist_usb_config) {
-            property_set("persist.mot.usb.config", value);
+            property_set("persist.vendor.mot.usb.config", value);
             property_set("persist.sys.usb.config", "");
             return true;
         } else {
