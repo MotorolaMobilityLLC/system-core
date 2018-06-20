@@ -55,7 +55,7 @@
 #define SVC_TEMPORARY 0x1000  // This service was started by 'exec' and should be removed from the
                               // service list once it is reaped.
 
-#define NR_SVC_SUPP_GIDS 32    // thirty two supplementary groups
+#define NR_SVC_SUPP_GIDS 64    // sixty four supplementary groups
 
 namespace android {
 namespace init {
