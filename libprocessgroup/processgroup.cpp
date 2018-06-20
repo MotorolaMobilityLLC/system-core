@@ -100,9 +100,21 @@ static std::string ConvertUidPidToPath(uid_t uid, int pid) {
 
 static int RemoveProcessGroup(uid_t uid, int pid) {
     int ret;
+    int retry = 100;
 
     auto uid_pid_path = ConvertUidPidToPath(uid, pid);
-    ret = rmdir(uid_pid_path.c_str());
+    do {
+        ret = rmdir(uid_pid_path.c_str());
+        if (ret == 0 || errno == ENOENT) {
+            break;
+        }
+        std::this_thread::sleep_for(2ms);
+    } while (--retry > 0);
+
+    // Something went wrong! Show more information for further check.
+    if (ret != 0 && retry <= 0) {
+        LOG(INFO) << "RemoveProcessGroup path:" << uid_pid_path << " errno:" << errno;
+    }
 
     auto uid_path = ConvertUidToPath(uid);
     rmdir(uid_path.c_str());
