@@ -45,7 +45,7 @@ on property:persist.vendor.logmuch=*
 on property:vendor.logmuch.value=*
     start logd-adjust
 
-on property:vendor.logmuch.delay=1
+on property:vendor.logmuch.delay=*
     start logd-adjust
 
 on property:sys.boot_completed=1

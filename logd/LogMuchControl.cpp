@@ -215,6 +215,7 @@ static void* logmuch_adjust_thread_start(void* /*obj*/) {
     char property[PROPERTY_VALUE_MAX];
     bool value;
     int count;
+    static int delay_old;
     int delay;
 
     while (!sem_wait(&logmuch_sem)) {
@@ -259,9 +260,9 @@ static void* logmuch_adjust_thread_start(void* /*obj*/) {
             property_get("vendor.logmuch.delay", property, "");
             delay = atoi(property);
 
-            if (delay > 0) {
+            if (delay > 0 && delay != delay_old) {
                 log_much_delay_detect = 3*60;
-                property_set("vendor.logmuch.delay", "0");
+                delay_old = delay;
             }
         } else {
             log_detect_value = 0;
