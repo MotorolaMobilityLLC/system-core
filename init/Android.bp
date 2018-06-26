@@ -38,6 +38,8 @@ cc_defaults {
             cppflags: [
                 "-UALLOW_LOCAL_PROP_OVERRIDE",
                 "-DALLOW_LOCAL_PROP_OVERRIDE=1",
+                "-UALLOW_PERMISSIVE_SELINUX",
+                "-DALLOW_PERMISSIVE_SELINUX=1",
                 "-UREBOOT_BOOTLOADER_ON_PANIC",
                 "-DREBOOT_BOOTLOADER_ON_PANIC=1",
                 "-UWORLD_WRITABLE_KMSG",
@@ -50,8 +52,6 @@ cc_defaults {
             cppflags: [
                 "-USHUTDOWN_ZERO_TIMEOUT",
                 "-DSHUTDOWN_ZERO_TIMEOUT=1",
-                "-UALLOW_PERMISSIVE_SELINUX",
-                "-DALLOW_PERMISSIVE_SELINUX=1",
             ],
         },
         uml: {
