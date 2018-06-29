@@ -139,14 +139,14 @@ int format_fs(char *fs_type, char *fs_real_blkdev, char *fs_mnt_point, long int 
         char * args[5];
         char footer_size[10];
         snprintf(footer_size, sizeof(footer_size), "%d", CRYPT_FOOTER_OFFSET);
-        args[0] = (char *)"/vendor/bin/make_f2fs";
+        args[0] = (char *)"/system/bin/make_f2fs";
         args[1] = (char *)"-r";
         args[2] = footer_size;
         args[3] = fs_real_blkdev;
         args[4] = (char *)0;
 	if (!fork()) {
 		/* This doesn't return */
-		execv("/vendor/bin/make_f2fs", args);
+		execv("/system/bin/make_f2fs", args);
 		return -1;
 	}
 	wait(&status);
