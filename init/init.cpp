@@ -409,6 +409,12 @@ static void export_kernel_boot_props() {
         { "ro.boot.bootloader", "ro.bootloader", "unknown", },
         { "ro.boot.hardware",   "ro.hardware",   "unknown", },
         { "ro.boot.revision",   "ro.revision",   NULL, },
+        { "ro.boot.revision",   "ro.vendor.hw.revision",     NULL, },
+        { "ro.boot.radio", "ro.vendor.hw.radio", NULL, },
+        { "ro.boot.dualsim", "ro.vendor.hw.dualsim", NULL, },
+        { "ro.boot.device", "ro.vendor.hw.device", NULL, },
+        { "ro.boot.hwrev", "ro.vendor.hw.hwrev", NULL, },
+        { "ro.boot.modelno", "ro.vendor.hw.modelno", NULL, },
     };
     for (size_t i = 0; i < arraysize(prop_map); i++) {
         std::string value = GetProperty(prop_map[i].src_prop, "");
