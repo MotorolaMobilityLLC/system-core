@@ -447,7 +447,7 @@ static void resize_fs(const char *blk_device, char *fs_type, char *key_loc) {
     }
 
     /* Format the partition using the calculated length */
-    if (!strcmp(key_loc, KEY_IN_FOOTER))
+    if (key_loc && !strcmp(key_loc, KEY_IN_FOOTER))
         device_sz -= CRYPT_FOOTER_OFFSET;
 
     if (is_extfs(fs_type)) {
