@@ -389,11 +389,11 @@ static void export_kernel_boot_reason(void)
     std::string tmpprop;
     tmpprop = GetProperty("ro.boot.last_powerup_reason", "");
     if (!tmpprop.empty()) {
-        property_set("ro.bootreason", "coldboot");
+        property_set("ro.vendor.bootreason", "coldboot");
     } else {
         tmpprop = GetProperty("ro.boot.bootreason", "");
         if (!tmpprop.empty())
-            property_set("ro.bootreason", tmpprop.c_str());
+            property_set("ro.vendor.bootreason", tmpprop.c_str());
     }
 }
 
