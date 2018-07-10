@@ -99,6 +99,7 @@ static struct flag_list fs_mgr_flags[] = {
     {"notrim", MF_NOTRIM},
     {"formattable", MF_FORMATTABLE},
     {"slotselect", MF_SLOTSELECT},
+    {"otherslot", MF_OTHER_SLOT},
     {"nofail", MF_NOFAIL},
     {"latemount", MF_LATEMOUNT},
     {"reservedsize=", MF_RESERVEDSIZE},

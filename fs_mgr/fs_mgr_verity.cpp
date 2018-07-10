@@ -828,6 +828,12 @@ int fs_mgr_setup_verity(struct fstab_rec *fstab, bool wait_for_verity_dev)
         params.mode = VERITY_MODE_EIO;
     }
 
+    /* IKSECURITY-2182 - Force FEC disabled and EIO mode for cppreopt partitions */
+    if (fstab->fs_mgr_flags & MF_OTHER_SLOT) {
+        params.ecc.valid = false;
+        params.mode = VERITY_MODE_EIO;
+    }
+
     if (!verity.table) {
         goto out;
     }
