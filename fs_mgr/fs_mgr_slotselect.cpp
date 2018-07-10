@@ -54,6 +54,12 @@ bool fs_mgr_update_for_slotselect(struct fstab *fstab) {
                 // Return false if failed to get ab_suffix when MF_SLOTSELECT is specified.
                 if (ab_suffix.empty()) return false;
             }
+
+            /* IKSECURITY-2182 - Support dm-verity on cppreopt partitions */
+            if (fstab->recs[n].fs_mgr_flags & MF_OTHER_SLOT) {
+                ab_suffix = fs_mgr_get_other_suffix(ab_suffix);
+            }
+
             if (asprintf(&tmp, "%s%s", fstab->recs[n].blk_device, ab_suffix.c_str()) > 0) {
                 free(fstab->recs[n].blk_device);
                 fstab->recs[n].blk_device = tmp;
