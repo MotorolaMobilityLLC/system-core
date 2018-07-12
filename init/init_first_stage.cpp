@@ -37,6 +37,10 @@
 #include "uevent_listener.h"
 #include "util.h"
 
+#ifdef MTK_BUILD_ROOT
+#include "init_first_stage_post.h"
+#endif
+
 using android::base::Timer;
 
 namespace android {
@@ -494,7 +498,14 @@ bool DoFirstStageMount() {
         LOG(ERROR) << "Failed to create FirstStageMount";
         return false;
     }
+#ifndef MTK_BUILD_ROOT
     return handle->DoFirstStageMount();
+#else
+    bool ret = handle->DoFirstStageMount();
+    if (ret)
+        DoFirstStageMountPost();
+    return ret;
+#endif
 }
 
 void SetInitAvbVersionInRecovery() {
