@@ -485,6 +485,7 @@ on post-fs-data
     mkdir /data/tombstones 0771 system system
     mkdir /data/vendor/tombstones 0771 root root
     mkdir /data/vendor/tombstones/wifi 0771 wifi wifi
+    mkdir /data/gbfirmware 0770 mot_mod mot_mod
 
     # create dalvik-cache, so as to enforce our permissions
     mkdir /data/dalvik-cache 0771 root root
