@@ -1,4 +1,6 @@
 TOOL(getevent)
 TOOL(getprop)
+TOOL(setfattr)
+TOOL(getfattr)
 TOOL(toolbox)
 TOOL(sendevent2)
