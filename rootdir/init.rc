@@ -531,6 +531,7 @@ on post-fs-data
 
     mkdir /data/misc_de 01771 system misc
     mkdir /data/misc_ce 01771 system misc
+    mkdir /data/misc_ne 0771 system cache
 
     mkdir /data/user 0711 system system
     mkdir /data/user_de 0711 system system
