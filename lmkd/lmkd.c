@@ -114,6 +114,7 @@ static unsigned long kill_timeout_ms;
 static bool use_minfree_levels;
 static bool enhance_batch_kill;
 static bool enable_adaptive_lmk;
+static bool enable_userspace_lmk;
 
 /* data required to handle events */
 struct event_handler_info {
@@ -1459,7 +1460,7 @@ static int init(void) {
     maxevents++;
 
     has_inkernel_module = !access(INKERNEL_MINFREE_PATH, W_OK);
-    use_inkernel_interface = has_inkernel_module;
+    use_inkernel_interface = has_inkernel_module && !enable_userspace_lmk;
 
     if (use_inkernel_interface) {
         ALOGI("Using in-kernel low memory killer interface");
@@ -1561,6 +1562,8 @@ int main(int argc __unused, char **argv __unused) {
         property_get_bool("ro.lmk.enhance_batch_kill", true);
     enable_adaptive_lmk =
         property_get_bool("ro.lmk.enable_adaptive_lmk", false);
+    enable_userspace_lmk =
+        property_get_bool("ro.lmk.enable_userspace_lmk", false);
 
 #ifdef LMKD_LOG_STATS
     statslog_init(&log_ctx, &enable_stats_log);
