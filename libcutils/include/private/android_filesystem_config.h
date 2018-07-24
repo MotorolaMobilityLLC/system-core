@@ -153,19 +153,6 @@
 #define AID_WAKELOCK 3010     /* Allow system wakelock read/write access */
 #define AID_UHID 3011         /* Allow read/write to /dev/uhid node */
 
-/* Added supplemental groups for Verizon Wireless MDMI security enforcement */
-#define AID_VZW_DEBUG     4101
-#define AID_VZW_LTE       4102
-#define AID_VZW_GSM       4103
-#define AID_VZW_UMTS      4104
-#define AID_VZW_WIFI      4105
-#define AID_VZW_IMS       4106
-#define AID_VZW_COMMANDS  4107
-#define AID_VZW_LTE_MW    4108
-#define AID_VZW_WCDMA     4109
-#define AID_VZW_HSUPA     4110
-#define AID_VZW_HSDPA     4111
-
 /* The range 5000-5999 is also reserved for OEM, and must never be used here. */
 #define AID_OEM_RESERVED_2_START 5000
 #define AID_OEM_RESERVED_2_END 5999
