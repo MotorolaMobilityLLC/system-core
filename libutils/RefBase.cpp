@@ -500,7 +500,7 @@ void RefBase::weakref_type::decWeak(const void* id)
     weakref_impl* const impl = static_cast<weakref_impl*>(this);
     impl->removeWeakRef(id);
     const int32_t c = impl->mWeak.fetch_sub(1, std::memory_order_release);
-    LOG_ALWAYS_FATAL_IF(BAD_WEAK(c), "decWeak called on %p too many times",
+    ALOGW_IF(BAD_WEAK(c), "decWeak called on %p too many times",
             this);
     if (c != 1) return;
     atomic_thread_fence(std::memory_order_acquire);
