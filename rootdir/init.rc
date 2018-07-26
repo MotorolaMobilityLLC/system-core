@@ -709,6 +709,8 @@ on property:vold.decrypt=trigger_restart_framework
     exec_start update_verifier
     class_start main
     class_start late_start
+    setprop service.bootanim.exit 0
+    start bootanim
 
 on property:vold.decrypt=trigger_shutdown_framework
     class_reset late_start
