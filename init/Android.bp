@@ -92,9 +92,17 @@ cc_defaults {
     ],
 }
 
+//IKSWP-4737: djc637,Add XMCS Audio for extended path firmware load
+xmcsaudio_defaults {
+    name: "build_xmcs_audio_load",
+}
+
 cc_library_static {
     name: "libinit",
-    defaults: ["init_defaults"],
+    defaults: ["init_defaults",
+               //IKSWP-4737: djc637,Add XMCS Audio support
+               "build_xmcs_audio_load",
+    ],
     srcs: [
         "action.cpp",
         "action_manager.cpp",
