@@ -30,6 +30,10 @@ namespace unwindstack {
 // Special flag to indicate a map is in /dev/. However, a map in
 // /dev/ashmem/... does not set this flag.
 static constexpr int MAPS_FLAGS_DEVICE_MAP = 0x8000;
+// Special flag to indicate that this map represents an elf file
+// created by ART for use with the gdb jit debug interface.
+// This should only ever appear in offline maps data.
+static constexpr int MAPS_FLAGS_JIT_SYMFILE_MAP = 0x4000;
 
 class Maps {
  public:
@@ -44,6 +48,8 @@ class Maps {
 
   void Add(uint64_t start, uint64_t end, uint64_t offset, uint64_t flags, const std::string& name,
            uint64_t load_bias);
+
+  void Sort();
 
   typedef std::vector<MapInfo*>::iterator iterator;
   iterator begin() { return maps_.begin(); }
@@ -79,6 +85,19 @@ class LocalMaps : public RemoteMaps {
  public:
   LocalMaps() : RemoteMaps(getpid()) {}
   virtual ~LocalMaps() = default;
+};
+
+class LocalUpdatableMaps : public Maps {
+ public:
+  LocalUpdatableMaps() : Maps() {}
+  virtual ~LocalUpdatableMaps();
+
+  bool Reparse();
+
+  const std::string GetMapsFile() const override;
+
+ private:
+  std::vector<MapInfo*> saved_maps_;
 };
 
 class BufferMaps : public Maps {

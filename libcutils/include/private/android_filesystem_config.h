@@ -129,6 +129,8 @@
 #define AID_STATSD 1066          /* statsd daemon */
 #define AID_INCIDENTD 1067       /* incidentd daemon */
 #define AID_SECURE_ELEMENT 1068  /* secure element subsystem */
+#define AID_LMKD 1069            /* low memory killer daemon */
+#define AID_LLKD 1070            /* live lock daemon */
 /* Changes to this file must be made in AOSP, *not* in internal branches. */
 
 #define AID_SHELL 2000 /* adb and debug shell user */

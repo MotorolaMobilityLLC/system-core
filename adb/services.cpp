@@ -291,7 +291,9 @@ int service_to_fd(const char* name, atransport* transport) {
     } else if(!strncmp(name, "sync:", 5)) {
         ret = create_service_thread("sync", file_sync_service, nullptr);
     } else if(!strncmp(name, "remount:", 8)) {
-        ret = create_service_thread("remount", remount_service, nullptr);
+        const char* options = name + strlen("remount:");
+        void* cookie = const_cast<void*>(reinterpret_cast<const void*>(options));
+        ret = create_service_thread("remount", remount_service, cookie);
     } else if(!strncmp(name, "reboot:", 7)) {
         void* arg = strdup(name + 7);
         if (arg == NULL) return -1;
@@ -350,7 +352,7 @@ static void wait_for_state(int fd, void* data) {
     while (true) {
         bool is_ambiguous = false;
         std::string error = "unknown error";
-        const char* serial = sinfo->serial.length() ? sinfo->serial.c_str() : NULL;
+        const char* serial = sinfo->serial.length() ? sinfo->serial.c_str() : nullptr;
         atransport* t = acquire_one_transport(sinfo->transport_type, serial, sinfo->transport_id,
                                               &is_ambiguous, &error);
         if (t != nullptr && (sinfo->state == kCsAny || sinfo->state == t->GetConnectionState())) {
@@ -387,8 +389,8 @@ void connect_emulator(const std::string& port_spec, std::string* response) {
         return;
     }
 
-    int console_port = strtol(pieces[0].c_str(), NULL, 0);
-    int adb_port = strtol(pieces[1].c_str(), NULL, 0);
+    int console_port = strtol(pieces[0].c_str(), nullptr, 0);
+    int adb_port = strtol(pieces[1].c_str(), nullptr, 0);
     if (console_port <= 0 || adb_port <= 0) {
         *response = android::base::StringPrintf("Invalid port numbers: %s", port_spec.c_str());
         return;
@@ -492,6 +494,6 @@ asocket* host_service_to_socket(const char* name, const char* serial, TransportI
         }
         return create_local_socket(fd);
     }
-    return NULL;
+    return nullptr;
 }
 #endif /* ADB_HOST */

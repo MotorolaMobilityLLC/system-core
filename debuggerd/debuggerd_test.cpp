@@ -80,8 +80,13 @@ constexpr char kWaitForGdbKey[] = "debug.debuggerd.wait_for_gdb";
     return value;                                                  \
   }()
 
+// Backtrace frame dump could contain:
+//   #01 pc 0001cded  /data/tmp/debuggerd_test32 (raise_debugger_signal+80)
+// or
+//   #01 pc 00022a09  /data/tmp/debuggerd_test32 (offset 0x12000) (raise_debugger_signal+80)
 #define ASSERT_BACKTRACE_FRAME(result, frame_name) \
-  ASSERT_MATCH(result, R"(#\d\d pc [0-9a-f]+\s+ \S+ \()" frame_name R"(\+)");
+  ASSERT_MATCH(result,                             \
+               R"(#\d\d pc [0-9a-f]+\s+ \S+ (\(offset 0x[0-9a-f]+\) )?\()" frame_name R"(\+)");
 
 static void tombstoned_intercept(pid_t target_pid, unique_fd* intercept_fd, unique_fd* output_fd,
                                  InterceptStatus* status, DebuggerdDumpType intercept_type) {
@@ -346,7 +351,9 @@ TEST_F(CrasherTest, signal) {
 
   std::string result;
   ConsumeFd(std::move(output_fd), &result);
-  ASSERT_MATCH(result, R"(signal 11 \(SIGSEGV\), code 0 \(SI_USER\), fault addr --------)");
+  ASSERT_MATCH(
+      result,
+      R"(signal 11 \(SIGSEGV\), code 0 \(SI_USER from pid \d+, uid \d+\), fault addr --------)");
   ASSERT_MATCH(result, R"(backtrace:)");
 }
 
@@ -354,7 +361,14 @@ TEST_F(CrasherTest, abort_message) {
   int intercept_result;
   unique_fd output_fd;
   StartProcess([]() {
-    android_set_abort_message("abort message goes here");
+    // Arrived at experimentally;
+    // logd truncates at 4062.
+    // strlen("Abort message: ''") is 17.
+    // That's 4045, but we also want a NUL.
+    char buf[4045 + 1];
+    memset(buf, 'x', sizeof(buf));
+    buf[sizeof(buf) - 1] = '\0';
+    android_set_abort_message(buf);
     abort();
   });
   StartIntercept(&output_fd);
@@ -366,7 +380,7 @@ TEST_F(CrasherTest, abort_message) {
 
   std::string result;
   ConsumeFd(std::move(output_fd), &result);
-  ASSERT_MATCH(result, R"(Abort message: 'abort message goes here')");
+  ASSERT_MATCH(result, R"(Abort message: 'x{4045}')");
 }
 
 TEST_F(CrasherTest, abort_message_backtrace) {

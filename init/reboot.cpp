@@ -466,10 +466,20 @@ void DoReboot(unsigned int cmd, const std::string& reason, const std::string& re
         if (kill_after_apps.count(s->name())) s->Stop();
     }
     // 4. sync, try umount, and optionally run fsck for user shutdown
-    sync();
+    {
+        Timer sync_timer;
+        LOG(INFO) << "sync() before umount...";
+        sync();
+        LOG(INFO) << "sync() before umount took" << sync_timer;
+    }
     UmountStat stat = TryUmountAndFsck(runFsck, shutdown_timeout - t.duration());
     // Follow what linux shutdown is doing: one more sync with little bit delay
-    sync();
+    {
+        Timer sync_timer;
+        LOG(INFO) << "sync() after umount...";
+        sync();
+        LOG(INFO) << "sync() after umount took" << sync_timer;
+    }
     if (!is_thermal_shutdown) std::this_thread::sleep_for(100ms);
     LogShutdownTime(stat, &t);
     // Reboot regardless of umount status. If umount fails, fsck after reboot will fix it.

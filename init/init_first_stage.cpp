@@ -29,15 +29,18 @@
 #include <android-base/file.h>
 #include <android-base/logging.h>
 #include <android-base/strings.h>
+#include <liblp/metadata_format.h>
 
 #include "devices.h"
 #include "fs_mgr.h"
 #include "fs_mgr_avb.h"
+#include "fs_mgr_dm_linear.h"
 #include "uevent.h"
 #include "uevent_listener.h"
 #include "util.h"
 
 using android::base::Timer;
+using android::fs_mgr::LogicalPartitionTable;
 
 namespace android {
 namespace init {
@@ -58,18 +61,22 @@ class FirstStageMount {
   protected:
     ListenerAction HandleBlockDevice(const std::string& name, const Uevent&);
     bool InitRequiredDevices();
-    bool InitVerityDevice(const std::string& verity_device);
+    bool InitMappedDevice(const std::string& verity_device);
+    bool CreateLogicalPartitions();
     bool MountPartitions();
+    bool GetBackingDmLinearDevices();
 
     virtual ListenerAction UeventCallback(const Uevent& uevent);
 
     // Pure virtual functions.
-    virtual bool GetRequiredDevices() = 0;
+    virtual bool GetDmVerityDevices() = 0;
     virtual bool SetUpDmVerity(fstab_rec* fstab_rec) = 0;
 
     bool need_dm_verity_;
 
     std::unique_ptr<fstab, decltype(&fs_mgr_free_fstab)> device_tree_fstab_;
+    std::unique_ptr<LogicalPartitionTable> dm_linear_table_;
+    std::string lp_metadata_partition_;
     std::vector<fstab_rec*> mount_fstab_recs_;
     std::set<std::string> required_devices_partition_names_;
     std::unique_ptr<DeviceHandler> device_handler_;
@@ -82,7 +89,7 @@ class FirstStageMountVBootV1 : public FirstStageMount {
     ~FirstStageMountVBootV1() override = default;
 
   protected:
-    bool GetRequiredDevices() override;
+    bool GetDmVerityDevices() override;
     bool SetUpDmVerity(fstab_rec* fstab_rec) override;
 };
 
@@ -95,7 +102,7 @@ class FirstStageMountVBootV2 : public FirstStageMount {
 
   protected:
     ListenerAction UeventCallback(const Uevent& uevent) override;
-    bool GetRequiredDevices() override;
+    bool GetDmVerityDevices() override;
     bool SetUpDmVerity(fstab_rec* fstab_rec) override;
     bool InitAvbHandle();
 
@@ -114,18 +121,37 @@ static bool inline IsRecoveryMode() {
     return access("/sbin/recovery", F_OK) == 0;
 }
 
+static inline bool IsDmLinearEnabled() {
+    static bool checked = false;
+    static bool enabled = false;
+    if (checked) {
+        return enabled;
+    }
+    import_kernel_cmdline(false, [](const std::string& key, const std::string& value, bool in_qemu) {
+        if (key == "androidboot.logical_partitions" && value == "1") {
+            enabled = true;
+        }
+    });
+    checked = true;
+    return enabled;
+}
+
 // Class Definitions
 // -----------------
 FirstStageMount::FirstStageMount()
     : need_dm_verity_(false), device_tree_fstab_(fs_mgr_read_fstab_dt(), fs_mgr_free_fstab) {
-    if (!device_tree_fstab_) {
+    if (device_tree_fstab_) {
+        // Stores device_tree_fstab_->recs[] into mount_fstab_recs_ (vector<fstab_rec*>)
+        // for easier manipulation later, e.g., range-base for loop.
+        for (int i = 0; i < device_tree_fstab_->num_entries; i++) {
+            mount_fstab_recs_.push_back(&device_tree_fstab_->recs[i]);
+        }
+    } else {
         LOG(INFO) << "Failed to read fstab from device tree";
-        return;
     }
-    // Stores device_tree_fstab_->recs[] into mount_fstab_recs_ (vector<fstab_rec*>)
-    // for easier manipulation later, e.g., range-base for loop.
-    for (int i = 0; i < device_tree_fstab_->num_entries; i++) {
-        mount_fstab_recs_.push_back(&device_tree_fstab_->recs[i]);
+
+    if (IsDmLinearEnabled()) {
+        dm_linear_table_ = android::fs_mgr::LoadPartitionsFromDeviceTree();
     }
 
     auto boot_devices = fs_mgr_get_boot_devices();
@@ -143,10 +169,15 @@ std::unique_ptr<FirstStageMount> FirstStageMount::Create() {
 }
 
 bool FirstStageMount::DoFirstStageMount() {
-    // Nothing to mount.
-    if (mount_fstab_recs_.empty()) return true;
+    if (!IsDmLinearEnabled() && mount_fstab_recs_.empty()) {
+        // Nothing to mount.
+        LOG(INFO) << "First stage mount skipped (missing/incompatible/empty fstab in device tree)";
+        return true;
+    }
 
     if (!InitDevices()) return false;
+
+    if (!CreateLogicalPartitions()) return false;
 
     if (!MountPartitions()) return false;
 
@@ -154,7 +185,26 @@ bool FirstStageMount::DoFirstStageMount() {
 }
 
 bool FirstStageMount::InitDevices() {
-    return GetRequiredDevices() && InitRequiredDevices();
+    return GetBackingDmLinearDevices() && GetDmVerityDevices() && InitRequiredDevices();
+}
+
+bool FirstStageMount::GetBackingDmLinearDevices() {
+    // Add any additional devices required for dm-linear mappings.
+    if (!IsDmLinearEnabled()) {
+        return true;
+    }
+
+    required_devices_partition_names_.emplace(LP_METADATA_PARTITION_NAME);
+
+    if (dm_linear_table_) {
+        for (const auto& partition : dm_linear_table_->partitions) {
+            for (const auto& extent : partition.extents) {
+                const std::string& partition_name = android::base::Basename(extent.block_device());
+                required_devices_partition_names_.emplace(partition_name);
+            }
+        }
+    }
+    return true;
 }
 
 // Creates devices with uevent->partition_name matching one in the member variable
@@ -165,7 +215,7 @@ bool FirstStageMount::InitRequiredDevices() {
         return true;
     }
 
-    if (need_dm_verity_) {
+    if (IsDmLinearEnabled() || need_dm_verity_) {
         const std::string dm_path = "/devices/virtual/misc/device-mapper";
         bool found = false;
         auto dm_callback = [this, &dm_path, &found](const Uevent& uevent) {
@@ -212,6 +262,24 @@ bool FirstStageMount::InitRequiredDevices() {
     return true;
 }
 
+bool FirstStageMount::CreateLogicalPartitions() {
+    if (!IsDmLinearEnabled()) {
+        return true;
+    }
+
+    if (lp_metadata_partition_.empty()) {
+        LOG(ERROR) << "Could not locate logical partition tables in partition "
+                   << LP_METADATA_PARTITION_NAME;
+        return false;
+    }
+    if (dm_linear_table_) {
+        if (!android::fs_mgr::CreateLogicalPartitions(*dm_linear_table_.get())) {
+            return false;
+        }
+    }
+    return android::fs_mgr::CreateLogicalPartitions(lp_metadata_partition_);
+}
+
 ListenerAction FirstStageMount::HandleBlockDevice(const std::string& name, const Uevent& uevent) {
     // Matches partition name to create device nodes.
     // Both required_devices_partition_names_ and uevent->partition_name have A/B
@@ -219,6 +287,10 @@ ListenerAction FirstStageMount::HandleBlockDevice(const std::string& name, const
     auto iter = required_devices_partition_names_.find(name);
     if (iter != required_devices_partition_names_.end()) {
         LOG(VERBOSE) << __PRETTY_FUNCTION__ << ": found partition: " << *iter;
+        if (IsDmLinearEnabled() && name == LP_METADATA_PARTITION_NAME) {
+            std::vector<std::string> links = device_handler_->GetBlockDeviceSymlinks(uevent);
+            lp_metadata_partition_ = links[0];
+        }
         required_devices_partition_names_.erase(iter);
         device_handler_->HandleDeviceEvent(uevent);
         if (required_devices_partition_names_.empty()) {
@@ -249,14 +321,14 @@ ListenerAction FirstStageMount::UeventCallback(const Uevent& uevent) {
 }
 
 // Creates "/dev/block/dm-XX" for dm-verity by running coldboot on /sys/block/dm-XX.
-bool FirstStageMount::InitVerityDevice(const std::string& verity_device) {
-    const std::string device_name(basename(verity_device.c_str()));
+bool FirstStageMount::InitMappedDevice(const std::string& dm_device) {
+    const std::string device_name(basename(dm_device.c_str()));
     const std::string syspath = "/sys/block/" + device_name;
     bool found = false;
 
-    auto verity_callback = [&device_name, &verity_device, this, &found](const Uevent& uevent) {
+    auto verity_callback = [&device_name, &dm_device, this, &found](const Uevent& uevent) {
         if (uevent.device_name == device_name) {
-            LOG(VERBOSE) << "Creating dm-verity device : " << verity_device;
+            LOG(VERBOSE) << "Creating device-mapper device : " << dm_device;
             device_handler_->HandleDeviceEvent(uevent);
             found = true;
             return ListenerAction::kStop;
@@ -281,6 +353,14 @@ bool FirstStageMount::InitVerityDevice(const std::string& verity_device) {
 
 bool FirstStageMount::MountPartitions() {
     for (auto fstab_rec : mount_fstab_recs_) {
+        if (fs_mgr_is_logical(fstab_rec)) {
+            if (!fs_mgr_update_logical_partition(fstab_rec)) {
+                return false;
+            }
+            if (!InitMappedDevice(fstab_rec->blk_device)) {
+                return false;
+            }
+        }
         if (!SetUpDmVerity(fstab_rec)) {
             PLOG(ERROR) << "Failed to setup verity for '" << fstab_rec->mount_point << "'";
             return false;
@@ -293,7 +373,7 @@ bool FirstStageMount::MountPartitions() {
     return true;
 }
 
-bool FirstStageMountVBootV1::GetRequiredDevices() {
+bool FirstStageMountVBootV1::GetDmVerityDevices() {
     std::string verity_loc_device;
     need_dm_verity_ = false;
 
@@ -346,7 +426,7 @@ bool FirstStageMountVBootV1::SetUpDmVerity(fstab_rec* fstab_rec) {
                 // The exact block device name (fstab_rec->blk_device) is changed to
                 // "/dev/block/dm-XX". Needs to create it because ueventd isn't started in init
                 // first stage.
-                return InitVerityDevice(fstab_rec->blk_device);
+                return InitMappedDevice(fstab_rec->blk_device);
             default:
                 return false;
         }
@@ -373,7 +453,7 @@ FirstStageMountVBootV2::FirstStageMountVBootV2() : avb_handle_(nullptr) {
     }
 }
 
-bool FirstStageMountVBootV2::GetRequiredDevices() {
+bool FirstStageMountVBootV2::GetDmVerityDevices() {
     need_dm_verity_ = false;
 
     // fstab_rec->blk_device has A/B suffix.
@@ -445,7 +525,7 @@ bool FirstStageMountVBootV2::SetUpDmVerity(fstab_rec* fstab_rec) {
                 // The exact block device name (fstab_rec->blk_device) is changed to
                 // "/dev/block/dm-XX". Needs to create it because ueventd isn't started in init
                 // first stage.
-                return InitVerityDevice(fstab_rec->blk_device);
+                return InitMappedDevice(fstab_rec->blk_device);
             default:
                 return false;
         }
@@ -480,12 +560,6 @@ bool DoFirstStageMount() {
     // Skips first stage mount if we're in recovery mode.
     if (IsRecoveryMode()) {
         LOG(INFO) << "First stage mount skipped (recovery mode)";
-        return true;
-    }
-
-    // Firstly checks if device tree fstab entries are compatible.
-    if (!is_android_dt_value_expected("fstab/compatible", "android,fstab")) {
-        LOG(INFO) << "First stage mount skipped (missing/incompatible fstab in device tree)";
         return true;
     }
 

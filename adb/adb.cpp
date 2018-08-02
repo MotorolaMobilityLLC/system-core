@@ -44,6 +44,7 @@
 #include <android-base/parsenetaddress.h>
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
+#include <build/version.h>
 
 #include "adb_auth.h"
 #include "adb_io.h"
@@ -66,8 +67,8 @@ std::string adb_version() {
         "Android Debug Bridge version %d.%d.%d\n"
         "Version %s\n"
         "Installed as %s\n",
-        ADB_VERSION_MAJOR, ADB_VERSION_MINOR, ADB_SERVER_VERSION, ADB_VERSION,
-        android::base::GetExecutablePath().c_str());
+        ADB_VERSION_MAJOR, ADB_VERSION_MINOR, ADB_SERVER_VERSION,
+        android::build::GetBuildNumber().c_str(), android::base::GetExecutablePath().c_str());
 }
 
 void fatal(const char *fmt, ...) {
@@ -131,12 +132,21 @@ void handle_online(atransport *t)
 {
     D("adb: online");
     t->online = 1;
+    t->SetConnectionEstablished(true);
 }
 
 void handle_offline(atransport *t)
 {
-    D("adb: offline");
-    //Close the associated usb
+    if (t->GetConnectionState() == kCsOffline) {
+        LOG(INFO) << t->serial_name() << ": already offline";
+        return;
+    }
+
+    LOG(INFO) << t->serial_name() << ": offline";
+
+    t->SetConnectionState(kCsOffline);
+
+    // Close the associated usb
     t->online = 0;
 
     // This is necessary to avoid a race condition that occurred when a transport closes
@@ -248,7 +258,7 @@ void send_connect(atransport* t) {
                    << connection_str.length() << ")";
     }
 
-    cp->payload = std::move(connection_str);
+    cp->payload.assign(connection_str.begin(), connection_str.end());
     cp->msg.data_length = cp->payload.size();
 
     send_packet(cp, t);
@@ -317,13 +327,11 @@ void parse_banner(const std::string& banner, atransport* t) {
 }
 
 static void handle_new_connection(atransport* t, apacket* p) {
-    if (t->GetConnectionState() != kCsOffline) {
-        t->SetConnectionState(kCsOffline);
-        handle_offline(t);
-    }
+    handle_offline(t);
 
     t->update_version(p->msg.arg0, p->msg.arg1);
-    parse_banner(p->payload, t);
+    std::string banner(p->payload.begin(), p->payload.end());
+    parse_banner(banner, t);
 
 #if ADB_HOST
     handle_online(t);
@@ -349,19 +357,6 @@ void handle_packet(apacket *p, atransport *t)
     CHECK_EQ(p->payload.size(), p->msg.data_length);
 
     switch(p->msg.command){
-    case A_SYNC:
-        if (p->msg.arg0){
-            send_packet(p, t);
-#if ADB_HOST
-            send_connect(t);
-#endif
-        } else {
-            t->SetConnectionState(kCsOffline);
-            handle_offline(t);
-            send_packet(p, t);
-        }
-        return;
-
     case A_CNXN:  // CONNECT(version, maxdata, "system-id-string")
         handle_new_connection(t, p);
         break;
@@ -370,14 +365,16 @@ void handle_packet(apacket *p, atransport *t)
         switch (p->msg.arg0) {
 #if ADB_HOST
             case ADB_AUTH_TOKEN:
-                if (t->GetConnectionState() == kCsOffline) {
-                    t->SetConnectionState(kCsUnauthorized);
+                if (t->GetConnectionState() != kCsAuthorizing) {
+                    t->SetConnectionState(kCsAuthorizing);
                 }
                 send_auth_response(p->payload.data(), p->msg.data_length, t);
                 break;
 #else
-            case ADB_AUTH_SIGNATURE:
-                if (adbd_auth_verify(t->token, sizeof(t->token), p->payload)) {
+            case ADB_AUTH_SIGNATURE: {
+                // TODO: Switch to string_view.
+                std::string signature(p->payload.begin(), p->payload.end());
+                if (adbd_auth_verify(t->token, sizeof(t->token), signature)) {
                     adbd_auth_verified(t);
                     t->failed_auth_attempts = 0;
                 } else {
@@ -385,6 +382,7 @@ void handle_packet(apacket *p, atransport *t)
                     send_auth_request(t);
                 }
                 break;
+            }
 
             case ADB_AUTH_RSAPUBLICKEY:
                 adbd_auth_confirm_key(p->payload.data(), p->msg.data_length, t);
@@ -399,7 +397,9 @@ void handle_packet(apacket *p, atransport *t)
 
     case A_OPEN: /* OPEN(local-id, 0, "destination") */
         if (t->online && p->msg.arg0 != 0 && p->msg.arg1 == 0) {
-            asocket* s = create_local_service_socket(p->payload.c_str(), t);
+            // TODO: Switch to string_view.
+            std::string address(p->payload.begin(), p->payload.end());
+            asocket* s = create_local_service_socket(address.c_str(), t);
             if (s == nullptr) {
                 send_close(0, p->msg.arg0, t);
             } else {
@@ -415,7 +415,7 @@ void handle_packet(apacket *p, atransport *t)
         if (t->online && p->msg.arg0 != 0 && p->msg.arg1 != 0) {
             asocket* s = find_local_socket(p->msg.arg1, 0);
             if (s) {
-                if(s->peer == 0) {
+                if(s->peer == nullptr) {
                     /* On first READY message, create the connection. */
                     s->peer = create_remote_socket(p->msg.arg0, t);
                     s->peer->peer = s;
@@ -885,9 +885,8 @@ int launch_server(const std::string& socket_spec) {
     }
 #else /* !defined(_WIN32) */
     // set up a pipe so the child can tell us when it is ready.
-    // fd[0] will be parent's end, and the child will write on fd[1]
-    int fd[2];
-    if (pipe(fd)) {
+    unique_fd pipe_read, pipe_write;
+    if (!Pipe(&pipe_read, &pipe_write)) {
         fprintf(stderr, "pipe failed in launch_server, errno: %d\n", errno);
         return -1;
     }
@@ -899,11 +898,10 @@ int launch_server(const std::string& socket_spec) {
 
     if (pid == 0) {
         // child side of the fork
-
-        adb_close(fd[0]);
+        pipe_read.reset();
 
         char reply_fd[30];
-        snprintf(reply_fd, sizeof(reply_fd), "%d", fd[1]);
+        snprintf(reply_fd, sizeof(reply_fd), "%d", pipe_write.get());
         // child process
         int result = execl(path.c_str(), "adb", "-L", socket_spec.c_str(), "fork-server", "server",
                            "--reply-fd", reply_fd, NULL);
@@ -913,10 +911,10 @@ int launch_server(const std::string& socket_spec) {
         // parent side of the fork
         char temp[3] = {};
         // wait for the "OK\n" message
-        adb_close(fd[1]);
-        int ret = adb_read(fd[0], temp, 3);
+        pipe_write.reset();
+        int ret = adb_read(pipe_read.get(), temp, 3);
         int saved_errno = errno;
-        adb_close(fd[0]);
+        pipe_read.reset();
         if (ret < 0) {
             fprintf(stderr, "could not read ok from ADB Server, errno = %d\n", saved_errno);
             return -1;
@@ -1103,14 +1101,11 @@ int handle_host_request(const char* service, TransportType type, const char* ser
     if (!strcmp(service, "reconnect-offline")) {
         std::string response;
         close_usb_devices([&response](const atransport* transport) {
-            switch (transport->GetConnectionState()) {
-                case kCsOffline:
-                case kCsUnauthorized:
-                    response += "reconnecting " + transport->serial_name() + "\n";
-                    return true;
-                default:
-                    return false;
+            if (!ConnectionStateIsOnline(transport->GetConnectionState())) {
+                response += "reconnecting " + transport->serial_name() + "\n";
+                return true;
             }
+            return false;
         });
         if (!response.empty()) {
             response.resize(response.size() - 1);

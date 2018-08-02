@@ -40,6 +40,10 @@ struct backtrace_stackinfo_t;
 // Special flag to indicate a map is in /dev/. However, a map in
 // /dev/ashmem/... does not set this flag.
 static constexpr int PROT_DEVICE_MAP = 0x8000;
+// Special flag to indicate that this map represents an elf file
+// created by ART for use with the gdb jit debug interface.
+// This should only ever appear in offline maps data.
+static constexpr int PROT_JIT_SYMFILE_MAP = 0x4000;
 
 struct backtrace_map_t {
   uint64_t start = 0;
@@ -164,8 +168,6 @@ public:
   BacktraceMap(pid_t pid);
 
   virtual uint64_t GetLoadBias(size_t /* index */) { return 0; }
-
-  virtual bool ParseLine(const char* line, backtrace_map_t* map);
 
   pid_t pid_;
   std::deque<backtrace_map_t> maps_;

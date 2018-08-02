@@ -102,18 +102,31 @@ static void dump_probable_cause(log_t* log, const siginfo_t* si) {
   if (!cause.empty()) _LOG(log, logtype::HEADER, "Cause: %s\n", cause.c_str());
 }
 
-static void dump_signal_info(log_t* log, const siginfo_t* si) {
-  char addr_desc[32]; // ", fault addr 0x1234"
-  if (signal_has_si_addr(si->si_signo, si->si_code)) {
-    snprintf(addr_desc, sizeof(addr_desc), "%p", si->si_addr);
+static void dump_signal_info(log_t* log, const ThreadInfo& thread_info, Memory* process_memory) {
+  char addr_desc[64];  // ", fault addr 0x1234"
+  if (signal_has_si_addr(thread_info.siginfo)) {
+    void* addr = thread_info.siginfo->si_addr;
+    if (thread_info.siginfo->si_signo == SIGILL) {
+      uint32_t instruction = {};
+      process_memory->Read(reinterpret_cast<uint64_t>(addr), &instruction, sizeof(instruction));
+      snprintf(addr_desc, sizeof(addr_desc), "%p (*pc=%#08x)", addr, instruction);
+    } else {
+      snprintf(addr_desc, sizeof(addr_desc), "%p", addr);
+    }
   } else {
     snprintf(addr_desc, sizeof(addr_desc), "--------");
   }
 
-  _LOG(log, logtype::HEADER, "signal %d (%s), code %d (%s), fault addr %s\n", si->si_signo,
-       get_signame(si->si_signo), si->si_code, get_sigcode(si->si_signo, si->si_code), addr_desc);
+  char sender_desc[32] = {};  // " from pid 1234, uid 666"
+  if (signal_has_sender(thread_info.siginfo, thread_info.pid)) {
+    get_signal_sender(sender_desc, sizeof(sender_desc), thread_info.siginfo);
+  }
 
-  dump_probable_cause(log, si);
+  _LOG(log, logtype::HEADER, "signal %d (%s), code %d (%s%s), fault addr %s\n",
+       thread_info.siginfo->si_signo, get_signame(thread_info.siginfo),
+       thread_info.siginfo->si_code, get_sigcode(thread_info.siginfo), sender_desc, addr_desc);
+
+  dump_probable_cause(log, thread_info.siginfo);
 }
 
 static void dump_thread_info(log_t* log, const ThreadInfo& thread_info) {
@@ -239,19 +252,22 @@ static void dump_abort_message(log_t* log, Memory* process_memory, uint64_t addr
     return;
   }
 
-  char msg[512];
-  if (length >= sizeof(msg)) {
-    _LOG(log, logtype::HEADER, "Abort message too long: claimed length = %zd\n", length);
+  // The length field includes the length of the length field itself.
+  if (length < sizeof(size_t)) {
+    _LOG(log, logtype::HEADER, "Abort message header malformed: claimed length = %zd\n", length);
     return;
   }
 
-  if (!process_memory->ReadFully(address + sizeof(length), msg, length)) {
+  length -= sizeof(size_t);
+
+  // The abort message should be null terminated already, but reserve a spot for NUL just in case.
+  std::vector<char> msg(length + 1);
+  if (!process_memory->ReadFully(address + sizeof(length), &msg[0], length)) {
     _LOG(log, logtype::HEADER, "Failed to read abort message: %s\n", strerror(errno));
     return;
   }
 
-  msg[length] = '\0';
-  _LOG(log, logtype::HEADER, "Abort message: '%s'\n", msg);
+  _LOG(log, logtype::HEADER, "Abort message: '%s'\n", &msg[0]);
 }
 
 static void dump_all_maps(log_t* log, BacktraceMap* map, Memory* process_memory, uint64_t addr) {
@@ -409,7 +425,7 @@ static bool dump_thread(log_t* log, BacktraceMap* map, Memory* process_memory,
   dump_thread_info(log, thread_info);
 
   if (thread_info.siginfo) {
-    dump_signal_info(log, thread_info.siginfo);
+    dump_signal_info(log, thread_info, process_memory);
   }
 
   if (primary_thread) {
@@ -439,7 +455,7 @@ static bool dump_thread(log_t* log, BacktraceMap* map, Memory* process_memory,
     if (map) {
       uint64_t addr = 0;
       siginfo_t* si = thread_info.siginfo;
-      if (signal_has_si_addr(si->si_signo, si->si_code)) {
+      if (signal_has_si_addr(si)) {
         addr = reinterpret_cast<uint64_t>(si->si_addr);
       }
       dump_all_maps(log, map, process_memory, addr);
@@ -458,7 +474,7 @@ static EventTagMap* g_eventTagMap = NULL;
 
 static void dump_log_file(log_t* log, pid_t pid, const char* filename, unsigned int tail) {
   bool first = true;
-  struct logger_list* logger_list;
+  logger_list* logger_list;
 
   if (!log->should_retrieve_logcat) {
     return;
@@ -472,11 +488,9 @@ static void dump_log_file(log_t* log, pid_t pid, const char* filename, unsigned 
     return;
   }
 
-  struct log_msg log_entry;
-
   while (true) {
+    log_msg log_entry;
     ssize_t actual = android_logger_list_read(logger_list, &log_entry);
-    struct logger_entry* entry;
 
     if (actual < 0) {
       if (actual == -EINTR) {
@@ -499,8 +513,6 @@ static void dump_log_file(log_t* log, pid_t pid, const char* filename, unsigned 
     // high-frequency debug diagnostics should just be written to
     // the tombstone file.
 
-    entry = &log_entry.entry_v1;
-
     if (first) {
       _LOG(log, logtype::LOGS, "--------- %slog %s\n",
         tail ? "tail end of " : "", filename);
@@ -511,19 +523,8 @@ static void dump_log_file(log_t* log, pid_t pid, const char* filename, unsigned 
     //
     // We want to display it in the same format as "logcat -v threadtime"
     // (although in this case the pid is redundant).
-    static const char* kPrioChars = "!.VDIWEFS";
-    unsigned hdr_size = log_entry.entry.hdr_size;
-    if (!hdr_size) {
-      hdr_size = sizeof(log_entry.entry_v1);
-    }
-    if ((hdr_size < sizeof(log_entry.entry_v1)) ||
-        (hdr_size > sizeof(log_entry.entry))) {
-      continue;
-    }
-    char* msg = reinterpret_cast<char*>(log_entry.buf) + hdr_size;
-
     char timeBuf[32];
-    time_t sec = static_cast<time_t>(entry->sec);
+    time_t sec = static_cast<time_t>(log_entry.entry.sec);
     struct tm tmBuf;
     struct tm* ptm;
     ptm = localtime_r(&sec, &tmBuf);
@@ -531,17 +532,23 @@ static void dump_log_file(log_t* log, pid_t pid, const char* filename, unsigned 
 
     if (log_entry.id() == LOG_ID_EVENTS) {
       if (!g_eventTagMap) {
-        g_eventTagMap = android_openEventTagMap(NULL);
+        g_eventTagMap = android_openEventTagMap(nullptr);
       }
       AndroidLogEntry e;
       char buf[512];
-      android_log_processBinaryLogBuffer(entry, &e, g_eventTagMap, buf, sizeof(buf));
-      _LOG(log, logtype::LOGS, "%s.%03d %5d %5d %c %-8.*s: %s\n",
-         timeBuf, entry->nsec / 1000000, entry->pid, entry->tid,
-         'I', (int)e.tagLen, e.tag, e.message);
+      if (android_log_processBinaryLogBuffer(&log_entry.entry_v1, &e, g_eventTagMap, buf,
+                                             sizeof(buf)) == 0) {
+        _LOG(log, logtype::LOGS, "%s.%03d %5d %5d %c %-8.*s: %s\n", timeBuf,
+             log_entry.entry.nsec / 1000000, log_entry.entry.pid, log_entry.entry.tid, 'I',
+             (int)e.tagLen, e.tag, e.message);
+      }
       continue;
     }
 
+    char* msg = log_entry.msg();
+    if (msg == nullptr) {
+      continue;
+    }
     unsigned char prio = msg[0];
     char* tag = msg + 1;
     msg = tag + strlen(tag) + 1;
@@ -552,20 +559,21 @@ static void dump_log_file(log_t* log, pid_t pid, const char* filename, unsigned 
       *nl-- = '\0';
     }
 
+    static const char* kPrioChars = "!.VDIWEFS";
     char prioChar = (prio < strlen(kPrioChars) ? kPrioChars[prio] : '?');
 
     // Look for line breaks ('\n') and display each text line
     // on a separate line, prefixed with the header, like logcat does.
     do {
       nl = strchr(msg, '\n');
-      if (nl) {
+      if (nl != nullptr) {
         *nl = '\0';
         ++nl;
       }
 
-      _LOG(log, logtype::LOGS, "%s.%03d %5d %5d %c %-8s: %s\n",
-         timeBuf, entry->nsec / 1000000, entry->pid, entry->tid,
-         prioChar, tag, msg);
+      _LOG(log, logtype::LOGS, "%s.%03d %5d %5d %c %-8s: %s\n", timeBuf,
+           log_entry.entry.nsec / 1000000, log_entry.entry.pid, log_entry.entry.tid, prioChar, tag,
+           msg);
     } while ((msg = nl));
   }
 

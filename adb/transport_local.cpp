@@ -45,6 +45,7 @@
 #include "adb_unique_fd.h"
 #include "adb_utils.h"
 #include "sysdeps/chrono.h"
+#include "sysdeps/memory.h"
 
 #if ADB_HOST
 
@@ -67,28 +68,24 @@ bool local_connect(int port) {
     return local_connect_arbitrary_ports(port - 1, port, &dummy) == 0;
 }
 
-void connect_device(const std::string& address, std::string* response) {
-    if (address.empty()) {
-        *response = "empty address";
-        return;
-    }
-
+std::tuple<unique_fd, int, std::string> tcp_connect(const std::string& address,
+                                                    std::string* response) {
     std::string serial;
     std::string host;
     int port = DEFAULT_ADB_LOCAL_TRANSPORT_PORT;
     if (!android::base::ParseNetAddress(address, &host, &port, &serial, response)) {
-        return;
+        return std::make_tuple(unique_fd(), port, serial);
     }
 
     std::string error;
-    int fd = network_connect(host.c_str(), port, SOCK_STREAM, 10, &error);
+    unique_fd fd(network_connect(host.c_str(), port, SOCK_STREAM, 10, &error));
     if (fd == -1) {
         *response = android::base::StringPrintf("unable to connect to %s: %s",
                                                 serial.c_str(), error.c_str());
-        return;
+        return std::make_tuple(std::move(fd), port, serial);
     }
 
-    D("client: connected %s remote on fd %d", serial.c_str(), fd);
+    D("client: connected %s remote on fd %d", serial.c_str(), fd.get());
     close_on_exec(fd);
     disable_tcp_nagle(fd);
 
@@ -97,10 +94,45 @@ void connect_device(const std::string& address, std::string* response) {
         D("warning: failed to configure TCP keepalives (%s)", strerror(errno));
     }
 
-    int ret = register_socket_transport(fd, serial.c_str(), port, 0);
+    return std::make_tuple(std::move(fd), port, serial);
+}
+
+void connect_device(const std::string& address, std::string* response) {
+    if (address.empty()) {
+        *response = "empty address";
+        return;
+    }
+
+    unique_fd fd;
+    int port;
+    std::string serial;
+    std::tie(fd, port, serial) = tcp_connect(address, response);
+    auto reconnect = [address](atransport* t) {
+        std::string response;
+        unique_fd fd;
+        int port;
+        std::string serial;
+        std::tie(fd, port, serial) = tcp_connect(address, &response);
+        if (fd == -1) {
+            D("reconnect failed: %s", response.c_str());
+            return false;
+        }
+
+        // This invokes the part of register_socket_transport() that needs to be
+        // invoked if the atransport* has already been setup. This eventually
+        // calls atransport->SetConnection() with a newly created Connection*
+        // that will in turn send the CNXN packet.
+        return init_socket_transport(t, fd.release(), port, 0) >= 0;
+    };
+
+    int ret = register_socket_transport(fd.release(), serial.c_str(), port, 0, std::move(reconnect));
     if (ret < 0) {
         adb_close(fd);
-        *response = android::base::StringPrintf("already connected to %s", serial.c_str());
+        if (ret == -EALREADY) {
+            *response = android::base::StringPrintf("already connected to %s", serial.c_str());
+        } else {
+            *response = android::base::StringPrintf("failed to connect to %s", serial.c_str());
+        }
     } else {
         *response = android::base::StringPrintf("connected to %s", serial.c_str());
     }
@@ -130,7 +162,8 @@ int local_connect_arbitrary_ports(int console_port, int adb_port, std::string* e
         close_on_exec(fd);
         disable_tcp_nagle(fd);
         std::string serial = getEmulatorSerialString(console_port);
-        if (register_socket_transport(fd, serial.c_str(), adb_port, 1) == 0) {
+        if (register_socket_transport(fd, serial.c_str(), adb_port, 1,
+                                      [](atransport*) { return false; }) == 0) {
             return 0;
         }
         adb_close(fd);
@@ -234,7 +267,8 @@ static void server_socket_thread(int port) {
             close_on_exec(fd);
             disable_tcp_nagle(fd);
             std::string serial = android::base::StringPrintf("host-%d", fd);
-            if (register_socket_transport(fd, serial.c_str(), port, 1) != 0) {
+            if (register_socket_transport(fd, serial.c_str(), port, 1,
+                                          [](atransport*) { return false; }) != 0) {
                 adb_close(fd);
             }
         }
@@ -333,7 +367,8 @@ static void qemu_socket_thread(int port) {
                 /* Host is connected. Register the transport, and start the
                  * exchange. */
                 std::string serial = android::base::StringPrintf("host-%d", fd);
-                if (register_socket_transport(fd, serial.c_str(), port, 1) != 0 ||
+                if (register_socket_transport(fd, serial.c_str(), port, 1,
+                                              [](atransport*) { return false; }) != 0 ||
                     !WriteFdExactly(fd, _start_req, strlen(_start_req))) {
                     adb_close(fd);
                 }
@@ -445,16 +480,17 @@ int init_socket_transport(atransport* t, int s, int adb_port, int local) {
     int fail = 0;
 
     unique_fd fd(s);
-    t->sync_token = 1;
     t->type = kTransportLocal;
 
 #if ADB_HOST
     // Emulator connection.
     if (local) {
-        t->connection.reset(new EmulatorConnection(std::move(fd), adb_port));
+        auto emulator_connection = std::make_unique<EmulatorConnection>(std::move(fd), adb_port);
+        t->SetConnection(
+            std::make_unique<BlockingConnectionAdapter>(std::move(emulator_connection)));
         std::lock_guard<std::mutex> lock(local_transports_lock);
         atransport* existing_transport = find_emulator_transport_by_adb_port_locked(adb_port);
-        if (existing_transport != NULL) {
+        if (existing_transport != nullptr) {
             D("local transport for port %d already registered (%p)?", adb_port, existing_transport);
             fail = -1;
         } else if (local_transports.size() >= ADB_LOCAL_TRANSPORT_MAX) {
@@ -470,6 +506,7 @@ int init_socket_transport(atransport* t, int s, int adb_port, int local) {
 #endif
 
     // Regular tcp connection.
-    t->connection.reset(new FdConnection(std::move(fd)));
+    auto fd_connection = std::make_unique<FdConnection>(std::move(fd));
+    t->SetConnection(std::make_unique<BlockingConnectionAdapter>(std::move(fd_connection)));
     return fail;
 }

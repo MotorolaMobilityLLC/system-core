@@ -39,19 +39,6 @@
 #include "sysdeps/network.h"
 #include "sysdeps/stat.h"
 
-// Some printf-like functions are implemented in terms of
-// android::base::StringAppendV, so they should use the same attribute for
-// compile-time format string checking. On Windows, if the mingw version of
-// vsnprintf is used in StringAppendV, use `gnu_printf' which allows z in %zd
-// and PRIu64 (and related) to be recognized by the compile-time checking.
-#define ADB_FORMAT_ARCHETYPE __printf__
-#ifdef __USE_MINGW_ANSI_STDIO
-#if __USE_MINGW_ANSI_STDIO
-#undef ADB_FORMAT_ARCHETYPE
-#define ADB_FORMAT_ARCHETYPE gnu_printf
-#endif
-#endif
-
 #ifdef _WIN32
 
 // Clang-only nullability specifiers
@@ -90,11 +77,6 @@ static __inline__ int adb_thread_setname(const std::string& name) {
     // the thread name in Windows. Unfortunately, it only works during debugging, but
     // our build process doesn't generate PDB files needed for debugging.
     return 0;
-}
-
-static __inline__  unsigned long adb_thread_id()
-{
-    return GetCurrentThreadId();
 }
 
 static __inline__ void  close_on_exec(int  fd)
@@ -217,14 +199,12 @@ extern int adb_closedir(DIR* dir);
 extern int adb_utime(const char *, struct utimbuf *);
 extern int adb_chmod(const char *, int);
 
-extern int adb_vfprintf(FILE *stream, const char *format, va_list ap)
-    __attribute__((__format__(ADB_FORMAT_ARCHETYPE, 2, 0)));
-extern int adb_vprintf(const char *format, va_list ap)
-    __attribute__((__format__(ADB_FORMAT_ARCHETYPE, 1, 0)));
-extern int adb_fprintf(FILE *stream, const char *format, ...)
-    __attribute__((__format__(ADB_FORMAT_ARCHETYPE, 2, 3)));
-extern int adb_printf(const char *format, ...)
-    __attribute__((__format__(ADB_FORMAT_ARCHETYPE, 1, 2)));
+extern int adb_vfprintf(FILE* stream, const char* format, va_list ap)
+        __attribute__((__format__(__printf__, 2, 0)));
+extern int adb_vprintf(const char* format, va_list ap) __attribute__((__format__(__printf__, 1, 0)));
+extern int adb_fprintf(FILE* stream, const char* format, ...)
+        __attribute__((__format__(__printf__, 2, 3)));
+extern int adb_printf(const char* format, ...) __attribute__((__format__(__printf__, 1, 2)));
 
 extern int adb_fputs(const char* buf, FILE* stream);
 extern int adb_fputc(int ch, FILE* stream);
@@ -334,7 +314,6 @@ size_t ParseCompleteUTF8(const char* first, const char* last, std::vector<char>*
 #else /* !_WIN32 a.k.a. Unix */
 
 #include <cutils/sockets.h>
-#include <cutils/threads.h>
 #include <fcntl.h>
 #include <poll.h>
 #include <signal.h>
@@ -619,11 +598,6 @@ static __inline__ int  adb_mkdir(const std::string& path, int mode)
 
 static __inline__ int adb_is_absolute_host_path(const char* path) {
     return path[0] == '/';
-}
-
-static __inline__ unsigned long adb_thread_id()
-{
-    return (unsigned long)gettid();
 }
 
 #endif /* !_WIN32 */

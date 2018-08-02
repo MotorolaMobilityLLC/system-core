@@ -16,6 +16,7 @@ cc_defaults {
 cc_library_headers {
     name: "libdebuggerd_common_headers",
     export_include_dirs: ["common/include"],
+    recovery_available: true,
 }
 
 cc_library_shared {
@@ -45,6 +46,7 @@ cc_library_shared {
 cc_library_static {
     name: "libtombstoned_client_static",
     defaults: ["debuggerd_defaults"],
+    recovery_available: true,
     srcs: [
         "tombstoned/tombstoned_client.cpp",
         "util.cpp",
@@ -66,6 +68,7 @@ cc_library_static {
 cc_library_static {
     name: "libdebuggerd_handler_core",
     defaults: ["debuggerd_defaults"],
+    recovery_available: true,
     srcs: ["handler/debuggerd_handler.cpp"],
 
     header_libs: [
@@ -100,6 +103,7 @@ cc_library_static {
 cc_library_static {
     name: "libdebuggerd_handler_fallback",
     defaults: ["debuggerd_defaults"],
+    recovery_available: true,
     srcs: [
         "handler/debuggerd_fallback.cpp",
     ],
@@ -111,12 +115,17 @@ cc_library_static {
         "libbase",
         "libdebuggerd",
         "libbacktrace",
-        "libunwind",
         "libunwindstack",
         "libdexfile",
         "liblzma",
         "libcutils",
     ],
+    target: {
+        recovery: {
+            cflags: ["-DNO_LIBDEXFILE_SUPPORT"],
+            exclude_static_libs: ["libdexfile"],
+        },
+    },
 
     export_include_dirs: ["include"],
 }
@@ -143,6 +152,7 @@ cc_library {
 cc_library_static {
     name: "libdebuggerd",
     defaults: ["debuggerd_defaults"],
+    recovery_available: true,
 
     srcs: [
         "libdebuggerd/backtrace.cpp",
@@ -157,7 +167,6 @@ cc_library_static {
 
     static_libs: [
         "libbacktrace",
-        "libunwind",
         "libunwindstack",
         "liblzma",
         "libbase",
@@ -220,6 +229,8 @@ cc_test {
             stem: "debuggerd_test64",
         },
     },
+
+    test_suites: ["device-tests"],
 }
 
 cc_benchmark {

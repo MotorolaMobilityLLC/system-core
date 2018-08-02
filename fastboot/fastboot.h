@@ -26,16 +26,18 @@
  * SUCH DAMAGE.
  */
 
-#ifndef _FASTBOOT_H_
-#define _FASTBOOT_H_
+#pragma once
 
 #include <inttypes.h>
 #include <stdlib.h>
 
 #include <string>
 
-#include "transport.h"
+#include <bootimg.h>
 
+#include "constants.h"
+
+class Transport;
 struct sparse_file;
 
 /* protocol.c - fastboot protocol */
@@ -46,9 +48,6 @@ int64_t fb_download_data_fd(Transport* transport, int fd, uint32_t size);
 int fb_download_data_sparse(Transport* transport, struct sparse_file* s);
 int64_t fb_upload_data(Transport* transport, const char* outfile);
 const std::string fb_get_error();
-
-#define FB_COMMAND_SZ 64
-#define FB_RESPONSE_SZ 64
 
 /* engine.c - high level command queue engine */
 bool fb_getvar(Transport* transport, const std::string& key, std::string* value);
@@ -75,24 +74,21 @@ void fb_set_active(const std::string& slot);
 /* util stuff */
 double now();
 char* xstrdup(const char*);
+void set_verbose();
 
 // These printf-like functions are implemented in terms of vsnprintf, so they
-// use the same attribute for compile-time format string checking. On Windows,
-// if the mingw version of vsnprintf is used, use `gnu_printf' which allows z
-// in %zd and PRIu64 (and related) to be recognized by the compile-time
-// checking.
-#define FASTBOOT_FORMAT_ARCHETYPE __printf__
-#ifdef __USE_MINGW_ANSI_STDIO
-#if __USE_MINGW_ANSI_STDIO
-#undef FASTBOOT_FORMAT_ARCHETYPE
-#define FASTBOOT_FORMAT_ARCHETYPE gnu_printf
-#endif
-#endif
+// use the same attribute for compile-time format string checking.
 void die(const char* fmt, ...) __attribute__((__noreturn__))
-__attribute__((__format__(FASTBOOT_FORMAT_ARCHETYPE, 1, 2)));
-#undef FASTBOOT_FORMAT_ARCHETYPE
+__attribute__((__format__(__printf__, 1, 2)));
+void verbose(const char* fmt, ...) __attribute__((__format__(__printf__, 1, 2)));
 
 /* Current product */
 extern char cur_product[FB_RESPONSE_SZ + 1];
 
-#endif
+class FastBoot {
+  public:
+    int Main(int argc, char* argv[]);
+
+    void ParseOsPatchLevel(boot_img_hdr_v1*, const char*);
+    void ParseOsVersion(boot_img_hdr_v1*, const char*);
+};

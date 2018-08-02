@@ -31,6 +31,7 @@
 #include <time.h>
 #include <unistd.h>
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <thread>
@@ -50,6 +51,7 @@
 #include <ext4_utils/ext4_sb.h>
 #include <ext4_utils/ext4_utils.h>
 #include <ext4_utils/wipe.h>
+#include <libdm/dm.h>
 #include <linux/fs.h>
 #include <linux/loop.h>
 #include <linux/magic.h>
@@ -59,7 +61,6 @@
 #include "fs_mgr.h"
 #include "fs_mgr_avb.h"
 #include "fs_mgr_priv.h"
-#include "fs_mgr_priv_dm_ioctl.h"
 
 #define KEY_LOC_PROP   "ro.crypto.keyfile.userdata"
 #define KEY_IN_FOOTER  "footer"
@@ -75,6 +76,8 @@
 #define ZRAM_CONF_MCS   "/sys/block/zram0/max_comp_streams"
 
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(*(a)))
+
+using DeviceMapper = android::dm::DeviceMapper;
 
 // record fs stat
 enum FsStatFlags {
@@ -794,6 +797,24 @@ static bool call_vdc(const std::vector<std::string>& args) {
     return true;
 }
 
+bool fs_mgr_update_logical_partition(struct fstab_rec* rec) {
+    // Logical partitions are specified with a named partition rather than a
+    // block device, so if the block device is a path, then it has already
+    // been updated.
+    if (rec->blk_device[0] == '/') {
+        return true;
+    }
+
+    DeviceMapper& dm = DeviceMapper::Instance();
+    std::string device_name;
+    if (!dm.GetDmDevicePathByName(rec->blk_device, &device_name)) {
+        return false;
+    }
+    free(rec->blk_device);
+    rec->blk_device = strdup(device_name.c_str());
+    return true;
+}
+
 /* When multiple fstab records share the same mount_point, it will
  * try to mount each one in turn, and ignore any duplicates after a
  * first successful mount.
@@ -853,6 +874,13 @@ int fs_mgr_mount_all(struct fstab *fstab, int mount_mode)
             int tret = translate_ext_labels(&fstab->recs[i]);
             if (tret < 0) {
                 LERROR << "Could not translate label to block device";
+                continue;
+            }
+        }
+
+        if ((fstab->recs[i].fs_mgr_flags & MF_LOGICAL)) {
+            if (!fs_mgr_update_logical_partition(&fstab->recs[i])) {
+                LERROR << "Could not set up logical partition, skipping!";
                 continue;
             }
         }
@@ -1077,6 +1105,13 @@ int fs_mgr_do_mount(struct fstab *fstab, const char *n_name, char *n_blk_device,
             return FS_MGR_DOMNT_FAILED;
         }
 
+        if ((fstab->recs[i].fs_mgr_flags & MF_LOGICAL)) {
+            if (!fs_mgr_update_logical_partition(&fstab->recs[i])) {
+                LERROR << "Could not set up logical partition, skipping!";
+                continue;
+            }
+        }
+
         /* First check the filesystem if requested */
         if (fstab->recs[i].fs_mgr_flags & MF_WAIT && !fs_mgr_wait_for_file(n_blk_device, 20s)) {
             LERROR << "Skipping mounting '" << n_blk_device << "'";
@@ -1163,27 +1198,6 @@ int fs_mgr_do_tmpfs_mount(const char *n_name)
 
     /* Success */
     return 0;
-}
-
-int fs_mgr_unmount_all(struct fstab *fstab)
-{
-    int i = 0;
-    int ret = 0;
-
-    if (!fstab) {
-        return -1;
-    }
-
-    while (fstab->recs[i].blk_device) {
-        if (umount(fstab->recs[i].mount_point)) {
-            LERROR << "Cannot unmount filesystem at "
-                   << fstab->recs[i].mount_point;
-            ret = -1;
-        }
-        i++;
-    }
-
-    return ret;
 }
 
 /* This must be called after mount_all, because the mkswap command needs to be
@@ -1355,19 +1369,13 @@ bool fs_mgr_load_verity_state(int* mode) {
     return true;
 }
 
-bool fs_mgr_update_verity_state(fs_mgr_verity_state_callback callback) {
+bool fs_mgr_update_verity_state(std::function<fs_mgr_verity_state_callback> callback) {
     if (!callback) {
         return false;
     }
 
     int mode;
     if (!fs_mgr_load_verity_state(&mode)) {
-        return false;
-    }
-
-    android::base::unique_fd fd(TEMP_FAILURE_RETRY(open("/dev/device-mapper", O_RDWR | O_CLOEXEC)));
-    if (fd == -1) {
-        PERROR << "Error opening device mapper";
         return false;
     }
 
@@ -1378,8 +1386,8 @@ bool fs_mgr_update_verity_state(fs_mgr_verity_state_callback callback) {
         return false;
     }
 
-    alignas(dm_ioctl) char buffer[DM_BUF_SIZE];
-    struct dm_ioctl* io = (struct dm_ioctl*)buffer;
+    DeviceMapper& dm = DeviceMapper::Instance();
+
     bool system_root = android::base::GetProperty("ro.build.system_root_image", "") == "true";
 
     for (int i = 0; i < fstab->num_entries; i++) {
@@ -1395,19 +1403,19 @@ bool fs_mgr_update_verity_state(fs_mgr_verity_state_callback callback) {
             mount_point = basename(fstab->recs[i].mount_point);
         }
 
-        fs_mgr_verity_ioctl_init(io, mount_point, 0);
+        const char* status = nullptr;
 
-        const char* status;
-        if (ioctl(fd, DM_TABLE_STATUS, io)) {
+        std::vector<DeviceMapper::TargetInfo> table;
+        if (!dm.GetTableStatus(mount_point, &table) || table.empty() || table[0].data.empty()) {
             if (fstab->recs[i].fs_mgr_flags & MF_VERIFYATBOOT) {
                 status = "V";
             } else {
                 PERROR << "Failed to query DM_TABLE_STATUS for " << mount_point.c_str();
                 continue;
             }
+        } else {
+            status = table[0].data.c_str();
         }
-
-        status = &buffer[io->data_start + sizeof(struct dm_target_spec)];
 
         // To be consistent in vboot 1.0 and vboot 2.0 (AVB), change the mount_point
         // back to 'system' for the callback. So it has property [partition.system.verified]

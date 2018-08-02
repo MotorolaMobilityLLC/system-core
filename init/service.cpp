@@ -18,6 +18,7 @@
 
 #include <fcntl.h>
 #include <inttypes.h>
+#include <linux/input.h>
 #include <linux/securebits.h>
 #include <sched.h>
 #include <sys/mount.h>
@@ -32,6 +33,7 @@
 #include <android-base/file.h>
 #include <android-base/logging.h>
 #include <android-base/parseint.h>
+#include <android-base/properties.h>
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
 #include <android-base/unique_fd.h>
@@ -45,8 +47,6 @@
 
 #if defined(__ANDROID__)
 #include <sys/system_properties.h>
-
-#include <android-base/properties.h>
 
 #include "init.h"
 #include "property_service.h"
@@ -130,7 +130,7 @@ Result<Success> Service::SetUpMountNamespace() const {
         if (umount2("/sys", MNT_DETACH) == -1) {
             return ErrnoError() << "Could not umount(/sys)";
         }
-        if (mount("", "/sys", "sys", kSafeFlags, "") == -1) {
+        if (mount("", "/sys", "sysfs", kSafeFlags, "") == -1) {
             return ErrnoError() << "Could not mount(/sys)";
         }
     }
@@ -183,7 +183,7 @@ Result<Success> Service::EnterNamespaces() const {
     return Success();
 }
 
-static bool ExpandArgsAndExecv(const std::vector<std::string>& args) {
+static bool ExpandArgsAndExecv(const std::vector<std::string>& args, bool sigstop) {
     std::vector<std::string> expanded_args;
     std::vector<char*> c_strings;
 
@@ -196,6 +196,10 @@ static bool ExpandArgsAndExecv(const std::vector<std::string>& args) {
         c_strings.push_back(expanded_args[i].data());
     }
     c_strings.push_back(nullptr);
+
+    if (sigstop) {
+        kill(getpid(), SIGSTOP);
+    }
 
     return execv(c_strings[0], c_strings.data()) == 0;
 }
@@ -224,7 +228,6 @@ Service::Service(const std::string& name, unsigned flags, uid_t uid, gid_t gid,
       seclabel_(seclabel),
       onrestart_(false, subcontext_for_restart_commands, "<Service '" + name + "' onrestart>", 0,
                  "onrestart", {}),
-      keychord_id_(0),
       ioprio_class_(IoSchedClass_NONE),
       ioprio_pri_(0),
       priority_(0),
@@ -492,8 +495,8 @@ Result<Success> Service::ParseInterface(const std::vector<std::string>& args) {
     const std::string& interface_name = args[1];
     const std::string& instance_name = args[2];
 
-    const FQName fq_name = FQName(interface_name);
-    if (!fq_name.isValid()) {
+    FQName fq_name;
+    if (!FQName::parse(interface_name, &fq_name)) {
         return Error() << "Invalid fully-qualified name for interface '" << interface_name << "'";
     }
 
@@ -540,10 +543,13 @@ Result<Success> Service::ParseIoprio(const std::vector<std::string>& args) {
 Result<Success> Service::ParseKeycodes(const std::vector<std::string>& args) {
     for (std::size_t i = 1; i < args.size(); i++) {
         int code;
-        if (ParseInt(args[i], &code)) {
-            keycodes_.emplace_back(code);
+        if (ParseInt(args[i], &code, 0, KEY_MAX)) {
+            for (auto& key : keycodes_) {
+                if (key == code) return Error() << "duplicate keycode: " << args[i];
+            }
+            keycodes_.insert(std::upper_bound(keycodes_.begin(), keycodes_.end(), code), code);
         } else {
-            LOG(WARNING) << "ignoring invalid keycode: " << args[i];
+            return Error() << "invalid keycode: " << args[i];
         }
     }
     return Success();
@@ -621,6 +627,11 @@ Result<Success> Service::ParseProcessRlimit(const std::vector<std::string>& args
 
 Result<Success> Service::ParseSeclabel(const std::vector<std::string>& args) {
     seclabel_ = args[1];
+    return Success();
+}
+
+Result<Success> Service::ParseSigstop(const std::vector<std::string>& args) {
+    sigstop_ = true;
     return Success();
 }
 
@@ -726,29 +737,30 @@ const Service::OptionParserMap::Map& Service::OptionParserMap::map() const {
         {"disabled",    {0,     0,    &Service::ParseDisabled}},
         {"enter_namespace",
                         {2,     2,    &Service::ParseEnterNamespace}},
+        {"file",        {2,     2,    &Service::ParseFile}},
         {"group",       {1,     NR_SVC_SUPP_GIDS + 1, &Service::ParseGroup}},
         {"interface",   {2,     2,    &Service::ParseInterface}},
         {"ioprio",      {2,     2,    &Service::ParseIoprio}},
-        {"priority",    {1,     1,    &Service::ParsePriority}},
         {"keycodes",    {1,     kMax, &Service::ParseKeycodes}},
-        {"oneshot",     {0,     0,    &Service::ParseOneshot}},
-        {"onrestart",   {1,     kMax, &Service::ParseOnrestart}},
-        {"override",    {0,     0,    &Service::ParseOverride}},
-        {"oom_score_adjust",
-                        {1,     1,    &Service::ParseOomScoreAdjust}},
-        {"memcg.swappiness",
-                        {1,     1,    &Service::ParseMemcgSwappiness}},
-        {"memcg.soft_limit_in_bytes",
-                        {1,     1,    &Service::ParseMemcgSoftLimitInBytes}},
         {"memcg.limit_in_bytes",
                         {1,     1,    &Service::ParseMemcgLimitInBytes}},
+        {"memcg.soft_limit_in_bytes",
+                        {1,     1,    &Service::ParseMemcgSoftLimitInBytes}},
+        {"memcg.swappiness",
+                        {1,     1,    &Service::ParseMemcgSwappiness}},
         {"namespace",   {1,     2,    &Service::ParseNamespace}},
+        {"oneshot",     {0,     0,    &Service::ParseOneshot}},
+        {"onrestart",   {1,     kMax, &Service::ParseOnrestart}},
+        {"oom_score_adjust",
+                        {1,     1,    &Service::ParseOomScoreAdjust}},
+        {"override",    {0,     0,    &Service::ParseOverride}},
+        {"priority",    {1,     1,    &Service::ParsePriority}},
         {"rlimit",      {3,     3,    &Service::ParseProcessRlimit}},
         {"seclabel",    {1,     1,    &Service::ParseSeclabel}},
         {"setenv",      {2,     2,    &Service::ParseSetenv}},
         {"shutdown",    {1,     1,    &Service::ParseShutdown}},
+        {"sigstop",     {0,     0,    &Service::ParseSigstop}},
         {"socket",      {3,     6,    &Service::ParseSocket}},
-        {"file",        {2,     2,    &Service::ParseFile}},
         {"user",        {1,     1,    &Service::ParseUser}},
         {"writepid",    {1,     kMax, &Service::ParseWritepid}},
     };
@@ -775,9 +787,9 @@ Result<Success> Service::ExecStart() {
     flags_ |= SVC_EXEC;
     is_exec_service_running_ = true;
 
-    LOG(INFO) << "SVC_EXEC pid " << pid_ << " (uid " << uid_ << " gid " << gid_ << "+"
-              << supp_gids_.size() << " context " << (!seclabel_.empty() ? seclabel_ : "default")
-              << ") started; waiting...";
+    LOG(INFO) << "SVC_EXEC service '" << name_ << "' pid " << pid_ << " (uid " << uid_ << " gid "
+              << gid_ << "+" << supp_gids_.size() << " context "
+              << (!seclabel_.empty() ? seclabel_ : "default") << ") started; waiting...";
 
     return Success();
 }
@@ -920,7 +932,7 @@ Result<Success> Service::Start() {
         // priority. Aborts on failure.
         SetProcessAttributes();
 
-        if (!ExpandArgsAndExecv(args_)) {
+        if (!ExpandArgsAndExecv(args_, sigstop_)) {
             PLOG(ERROR) << "cannot execve('" << args_[0] << "')";
         }
 

@@ -21,6 +21,7 @@
 #include "android-base/logging.h"
 
 #include <fcntl.h>
+#include <inttypes.h>
 #include <libgen.h>
 #include <time.h>
 
@@ -53,50 +54,19 @@
 #endif
 
 #include <android-base/macros.h>
+#include <android-base/parseint.h>
 #include <android-base/strings.h>
+#include <android-base/threads.h>
 
-// For gettid.
-#if defined(__APPLE__)
-#include "AvailabilityMacros.h"  // For MAC_OS_X_VERSION_MAX_ALLOWED
-#include <stdint.h>
-#include <stdlib.h>
-#include <sys/syscall.h>
-#include <sys/time.h>
-#include <unistd.h>
-#elif defined(__linux__) && !defined(__ANDROID__)
-#include <syscall.h>
-#include <unistd.h>
-#elif defined(_WIN32)
-#include <windows.h>
-#endif
+namespace android {
+namespace base {
 
-#if defined(_WIN32)
-typedef uint32_t thread_id;
-#else
-typedef pid_t thread_id;
-#endif
-
-static thread_id GetThreadId() {
-#if defined(__BIONIC__)
-  return gettid();
-#elif defined(__APPLE__)
-  uint64_t tid;
-  pthread_threadid_np(NULL, &tid);
-  return tid;
-#elif defined(__linux__)
-  return syscall(__NR_gettid);
-#elif defined(_WIN32)
-  return GetCurrentThreadId();
-#endif
-}
-
-namespace {
+// BSD-based systems like Android/macOS have getprogname(). Others need us to provide one.
+#if defined(__GLIBC__) || defined(_WIN32)
+static const char* getprogname() {
 #if defined(__GLIBC__)
-const char* getprogname() {
   return program_invocation_short_name;
-}
 #elif defined(_WIN32)
-const char* getprogname() {
   static bool first = true;
   static char progname[MAX_PATH] = {};
 
@@ -113,12 +83,42 @@ const char* getprogname() {
   }
 
   return progname;
+#endif
 }
 #endif
-} // namespace
 
-namespace android {
-namespace base {
+static const char* GetFileBasename(const char* file) {
+  // We can't use basename(3) even on Unix because the Mac doesn't
+  // have a non-modifying basename.
+  const char* last_slash = strrchr(file, '/');
+  if (last_slash != nullptr) {
+    return last_slash + 1;
+  }
+#if defined(_WIN32)
+  const char* last_backslash = strrchr(file, '\\');
+  if (last_backslash != nullptr) {
+    return last_backslash + 1;
+  }
+#endif
+  return file;
+}
+
+#if defined(__linux__)
+static int OpenKmsg() {
+#if defined(__ANDROID__)
+  // pick up 'file w /dev/kmsg' environment from daemon's init rc file
+  const auto val = getenv("ANDROID_FILE__dev_kmsg");
+  if (val != nullptr) {
+    int fd;
+    if (android::base::ParseInt(val, &fd, 0)) {
+      auto flags = fcntl(fd, F_GETFL);
+      if ((flags != -1) && ((flags & O_ACCMODE) == O_WRONLY)) return fd;
+    }
+  }
+#endif
+  return TEMP_FAILURE_RETRY(open("/dev/kmsg", O_WRONLY | O_CLOEXEC));
+}
+#endif
 
 static std::mutex& LoggingLock() {
   static auto& logging_lock = *new std::mutex();
@@ -183,7 +183,7 @@ void KernelLogger(android::base::LogId, android::base::LogSeverity severity,
   static_assert(arraysize(kLogSeverityToKernelLogLevel) == android::base::FATAL + 1,
                 "Mismatch in size of kLogSeverityToKernelLogLevel and values in LogSeverity");
 
-  static int klog_fd = TEMP_FAILURE_RETRY(open("/dev/kmsg", O_WRONLY | O_CLOEXEC));
+  static int klog_fd = OpenKmsg();
   if (klog_fd == -1) return;
 
   int level = kLogSeverityToKernelLogLevel[severity];
@@ -223,8 +223,18 @@ void StderrLogger(LogId, LogSeverity severity, const char* tag, const char* file
   static_assert(arraysize(log_characters) - 1 == FATAL + 1,
                 "Mismatch in size of log_characters and values in LogSeverity");
   char severity_char = log_characters[severity];
-  fprintf(stderr, "%s %c %s %5d %5d %s:%u] %s\n", tag ? tag : "nullptr", severity_char, timestamp,
-          getpid(), GetThreadId(), file, line, message);
+  fprintf(stderr, "%s %c %s %5d %5" PRIu64 " %s:%u] %s\n", tag ? tag : "nullptr", severity_char,
+          timestamp, getpid(), GetThreadId(), file, line, message);
+}
+
+void StdioLogger(LogId, LogSeverity severity, const char* /*tag*/, const char* /*file*/,
+                 unsigned int /*line*/, const char* message) {
+  if (severity >= WARNING) {
+    fflush(stdout);
+    fprintf(stderr, "%s: %s\n", GetFileBasename(getprogname()), message);
+  } else {
+    fprintf(stdout, "%s\n", message);
+  }
 }
 
 void DefaultAborter(const char* abort_message) {
@@ -339,22 +349,6 @@ void SetLogger(LogFunction&& logger) {
 void SetAborter(AbortFunction&& aborter) {
   std::lock_guard<std::mutex> lock(LoggingLock());
   Aborter() = std::move(aborter);
-}
-
-static const char* GetFileBasename(const char* file) {
-  // We can't use basename(3) even on Unix because the Mac doesn't
-  // have a non-modifying basename.
-  const char* last_slash = strrchr(file, '/');
-  if (last_slash != nullptr) {
-    return last_slash + 1;
-  }
-#if defined(_WIN32)
-  const char* last_backslash = strrchr(file, '\\');
-  if (last_backslash != nullptr) {
-    return last_backslash + 1;
-  }
-#endif
-  return file;
 }
 
 // This indirection greatly reduces the stack impact of having lots of

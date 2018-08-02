@@ -21,9 +21,11 @@ things. Most of these tests involve specific error messages or the help text.
 """
 from __future__ import print_function
 
+import binascii
 import contextlib
 import os
 import random
+import select
 import socket
 import struct
 import subprocess
@@ -33,8 +35,117 @@ import unittest
 import adb
 
 
-class NonApiTest(unittest.TestCase):
-    """Tests for ADB that aren't a part of the AndroidDevice API."""
+@contextlib.contextmanager
+def fake_adbd(protocol=socket.AF_INET, port=0):
+    """Creates a fake ADB daemon that just replies with a CNXN packet."""
+
+    serversock = socket.socket(protocol, socket.SOCK_STREAM)
+    serversock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    if protocol == socket.AF_INET:
+        serversock.bind(('127.0.0.1', port))
+    else:
+        serversock.bind(('::1', port))
+    serversock.listen(1)
+
+    # A pipe that is used to signal the thread that it should terminate.
+    readpipe, writepipe = os.pipe()
+
+    def _adb_packet(command, arg0, arg1, data):
+        bin_command = struct.unpack('I', command)[0]
+        buf = struct.pack('IIIIII', bin_command, arg0, arg1, len(data), 0,
+                          bin_command ^ 0xffffffff)
+        buf += data
+        return buf
+
+    def _handle():
+        rlist = [readpipe, serversock]
+        cnxn_sent = {}
+        while True:
+            read_ready, _, _ = select.select(rlist, [], [])
+            for ready in read_ready:
+                if ready == readpipe:
+                    # Closure pipe
+                    os.close(ready)
+                    serversock.shutdown(socket.SHUT_RDWR)
+                    serversock.close()
+                    return
+                elif ready == serversock:
+                    # Server socket
+                    conn, _ = ready.accept()
+                    rlist.append(conn)
+                else:
+                    # Client socket
+                    data = ready.recv(1024)
+                    if not data or data.startswith('OPEN'):
+                        if ready in cnxn_sent:
+                            del cnxn_sent[ready]
+                        ready.shutdown(socket.SHUT_RDWR)
+                        ready.close()
+                        rlist.remove(ready)
+                        continue
+                    if ready in cnxn_sent:
+                        continue
+                    cnxn_sent[ready] = True
+                    ready.sendall(_adb_packet('CNXN', 0x01000001, 1024 * 1024,
+                                              'device::ro.product.name=fakeadb'))
+
+    port = serversock.getsockname()[1]
+    server_thread = threading.Thread(target=_handle)
+    server_thread.start()
+
+    try:
+        yield port
+    finally:
+        os.close(writepipe)
+        server_thread.join()
+
+
+@contextlib.contextmanager
+def adb_connect(unittest, serial):
+    """Context manager for an ADB connection.
+
+    This automatically disconnects when done with the connection.
+    """
+
+    output = subprocess.check_output(['adb', 'connect', serial])
+    unittest.assertEqual(output.strip(), 'connected to {}'.format(serial))
+
+    try:
+        yield
+    finally:
+        # Perform best-effort disconnection. Discard the output.
+        subprocess.Popen(['adb', 'disconnect', serial],
+                         stdout=subprocess.PIPE,
+                         stderr=subprocess.PIPE).communicate()
+
+
+@contextlib.contextmanager
+def adb_server():
+    """Context manager for an ADB server.
+
+    This creates an ADB server and returns the port it's listening on.
+    """
+
+    port = 5038
+    # Kill any existing server on this non-default port.
+    subprocess.check_output(['adb', '-P', str(port), 'kill-server'],
+                            stderr=subprocess.STDOUT)
+    read_pipe, write_pipe = os.pipe()
+    proc = subprocess.Popen(['adb', '-L', 'tcp:localhost:{}'.format(port),
+                             'fork-server', 'server',
+                             '--reply-fd', str(write_pipe)])
+    try:
+        os.close(write_pipe)
+        greeting = os.read(read_pipe, 1024)
+        assert greeting == 'OK\n', repr(greeting)
+        yield port
+    finally:
+        proc.terminate()
+        proc.wait()
+
+
+class CommandlineTest(unittest.TestCase):
+    """Tests for the ADB commandline."""
 
     def test_help(self):
         """Make sure we get _something_ out of help."""
@@ -56,28 +167,37 @@ class NonApiTest(unittest.TestCase):
                 revision_line, r'^Revision [0-9a-f]{12}-android$')
 
     def test_tcpip_error_messages(self):
-        p = subprocess.Popen(['adb', 'tcpip'], stdout=subprocess.PIPE,
-                             stderr=subprocess.STDOUT)
-        out, _ = p.communicate()
-        self.assertEqual(1, p.returncode)
+        """Make sure 'adb tcpip' parsing is sane."""
+        proc = subprocess.Popen(['adb', 'tcpip'], stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT)
+        out, _ = proc.communicate()
+        self.assertEqual(1, proc.returncode)
         self.assertIn('requires an argument', out)
 
-        p = subprocess.Popen(['adb', 'tcpip', 'foo'], stdout=subprocess.PIPE,
-                             stderr=subprocess.STDOUT)
-        out, _ = p.communicate()
-        self.assertEqual(1, p.returncode)
+        proc = subprocess.Popen(['adb', 'tcpip', 'foo'], stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT)
+        out, _ = proc.communicate()
+        self.assertEqual(1, proc.returncode)
         self.assertIn('invalid port', out)
 
-    # Helper method that reads a pipe until it is closed, then sets the event.
-    def _read_pipe_and_set_event(self, pipe, event):
-        x = pipe.read()
+
+class ServerTest(unittest.TestCase):
+    """Tests for the ADB server."""
+
+    @staticmethod
+    def _read_pipe_and_set_event(pipe, event):
+        """Reads a pipe until it is closed, then sets the event."""
+        pipe.read()
         event.set()
 
-    # Test that launch_server() does not let the adb server inherit
-    # stdin/stdout/stderr handles which can cause callers of adb.exe to hang.
-    # This test also runs fine on unix even though the impetus is an issue
-    # unique to Windows.
     def test_handle_inheritance(self):
+        """Test that launch_server() does not inherit handles.
+
+        launch_server() should not let the adb server inherit
+        stdin/stdout/stderr handles, which can cause callers of adb.exe to hang.
+        This test also runs fine on unix even though the impetus is an issue
+        unique to Windows.
+        """
         # This test takes 5 seconds to run on Windows: if there is no adb server
         # running on the the port used below, adb kill-server tries to make a
         # TCP connection to a closed port and that takes 1 second on Windows;
@@ -99,29 +219,30 @@ class NonApiTest(unittest.TestCase):
 
         try:
             # Run the adb client and have it start the adb server.
-            p = subprocess.Popen(['adb', '-P', str(port), 'start-server'],
-                                 stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                 stderr=subprocess.PIPE)
+            proc = subprocess.Popen(['adb', '-P', str(port), 'start-server'],
+                                    stdin=subprocess.PIPE,
+                                    stdout=subprocess.PIPE,
+                                    stderr=subprocess.PIPE)
 
             # Start threads that set events when stdout/stderr are closed.
             stdout_event = threading.Event()
             stdout_thread = threading.Thread(
-                    target=self._read_pipe_and_set_event,
-                    args=(p.stdout, stdout_event))
+                target=ServerTest._read_pipe_and_set_event,
+                args=(proc.stdout, stdout_event))
             stdout_thread.daemon = True
             stdout_thread.start()
 
             stderr_event = threading.Event()
             stderr_thread = threading.Thread(
-                    target=self._read_pipe_and_set_event,
-                    args=(p.stderr, stderr_event))
+                target=ServerTest._read_pipe_and_set_event,
+                args=(proc.stderr, stderr_event))
             stderr_thread.daemon = True
             stderr_thread.start()
 
             # Wait for the adb client to finish. Once that has occurred, if
             # stdin/stderr/stdout are still open, it must be open in the adb
             # server.
-            p.wait()
+            proc.wait()
 
             # Try to write to stdin which we expect is closed. If it isn't
             # closed, we should get an IOError. If we don't get an IOError,
@@ -129,7 +250,7 @@ class NonApiTest(unittest.TestCase):
             # probably letting the adb server inherit stdin which would be
             # wrong.
             with self.assertRaises(IOError):
-                p.stdin.write('x')
+                proc.stdin.write('x')
 
             # Wait a few seconds for stdout/stderr to be closed (in the success
             # case, this won't wait at all). If there is a timeout, that means
@@ -143,8 +264,12 @@ class NonApiTest(unittest.TestCase):
             subprocess.check_output(['adb', '-P', str(port), 'kill-server'],
                                     stderr=subprocess.STDOUT)
 
-    # Use SO_LINGER to cause TCP RST segment to be sent on socket close.
+
+class EmulatorTest(unittest.TestCase):
+    """Tests for the emulator connection."""
+
     def _reset_socket_on_close(self, sock):
+        """Use SO_LINGER to cause TCP RST segment to be sent on socket close."""
         # The linger structure is two shorts on Windows, but two ints on Unix.
         linger_format = 'hh' if os.name == 'nt' else 'ii'
         l_onoff = 1
@@ -162,19 +287,18 @@ class NonApiTest(unittest.TestCase):
 
         Bug: https://code.google.com/p/android/issues/detail?id=21021
         """
-        port = 12345
-
         with contextlib.closing(
-                socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as listener:
+            socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as listener:
             # Use SO_REUSEADDR so subsequent runs of the test can grab the port
             # even if it is in TIME_WAIT.
             listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            listener.bind(('127.0.0.1', port))
+            listener.bind(('127.0.0.1', 0))
             listener.listen(4)
+            port = listener.getsockname()[1]
 
             # Now that listening has started, start adb emu kill, telling it to
             # connect to our mock emulator.
-            p = subprocess.Popen(
+            proc = subprocess.Popen(
                 ['adb', '-s', 'emulator-' + str(port), 'emu', 'kill'],
                 stderr=subprocess.STDOUT)
 
@@ -183,12 +307,16 @@ class NonApiTest(unittest.TestCase):
                 # If WSAECONNABORTED (10053) is raised by any socket calls,
                 # then adb probably isn't reading the data that we sent it.
                 conn.sendall('Android Console: type \'help\' for a list ' +
-                                'of commands\r\n')
+                             'of commands\r\n')
                 conn.sendall('OK\r\n')
 
-                with contextlib.closing(conn.makefile()) as f:
-                    self.assertEqual('kill\n', f.readline())
-                    self.assertEqual('quit\n', f.readline())
+                with contextlib.closing(conn.makefile()) as connf:
+                    line = connf.readline()
+                    if line.startswith('auth'):
+                        # Ignore the first auth line.
+                        line = connf.readline()
+                    self.assertEqual('kill\n', line)
+                    self.assertEqual('quit\n', connf.readline())
 
                 conn.sendall('OK: killing emulator, bye bye\r\n')
 
@@ -201,46 +329,117 @@ class NonApiTest(unittest.TestCase):
                 self._reset_socket_on_close(conn)
 
             # Wait for adb to finish, so we can check return code.
-            p.communicate()
+            proc.communicate()
 
             # If this fails, adb probably isn't ignoring WSAECONNRESET when
             # reading the response from the adb emu kill command (on Windows).
-            self.assertEqual(0, p.returncode)
+            self.assertEqual(0, proc.returncode)
+
+    def test_emulator_connect(self):
+        """Ensure that the emulator can connect.
+
+        Bug: http://b/78991667
+        """
+        with adb_server() as server_port:
+            with fake_adbd() as port:
+                serial = 'emulator-{}'.format(port - 1)
+                # Ensure that the emulator is not there.
+                try:
+                    subprocess.check_output(['adb', '-P', str(server_port),
+                                             '-s', serial, 'get-state'],
+                                            stderr=subprocess.STDOUT)
+                    self.fail('Device should not be available')
+                except subprocess.CalledProcessError as err:
+                    self.assertEqual(
+                        err.output.strip(),
+                        'error: device \'{}\' not found'.format(serial))
+
+                # Let the ADB server know that the emulator has started.
+                with contextlib.closing(
+                    socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as sock:
+                    sock.connect(('localhost', server_port))
+                    command = 'host:emulator:{}'.format(port)
+                    sock.sendall('%04x%s' % (len(command), command))
+
+                # Ensure the emulator is there.
+                subprocess.check_call(['adb', '-P', str(server_port),
+                                       '-s', serial, 'wait-for-device'])
+                output = subprocess.check_output(['adb', '-P', str(server_port),
+                                                  '-s', serial, 'get-state'])
+                self.assertEqual(output.strip(), 'device')
+
+
+class ConnectionTest(unittest.TestCase):
+    """Tests for adb connect."""
 
     def test_connect_ipv4_ipv6(self):
         """Ensure that `adb connect localhost:1234` will try both IPv4 and IPv6.
 
         Bug: http://b/30313466
         """
-        ipv4 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        ipv4.bind(('127.0.0.1', 0))
-        ipv4.listen(1)
+        for protocol in (socket.AF_INET, socket.AF_INET6):
+            try:
+                with fake_adbd(protocol=protocol) as port:
+                    serial = 'localhost:{}'.format(port)
+                    with adb_connect(self, serial):
+                        pass
+            except socket.error:
+                print("IPv6 not available, skipping")
+                continue
 
-        ipv6 = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
-        try:
-            ipv6.bind(('::1', ipv4.getsockname()[1] + 1))
-            ipv6.listen(1)
-        except socket.error:
-            print("IPv6 not available, skipping")
-            return
+    def test_already_connected(self):
+        """Ensure that an already-connected device stays connected."""
 
-        for s in (ipv4, ipv6):
-            port = s.getsockname()[1]
-            output = subprocess.check_output(
-                ['adb', 'connect', 'localhost:{}'.format(port)])
+        with fake_adbd() as port:
+            serial = 'localhost:{}'.format(port)
+            with adb_connect(self, serial):
+                # b/31250450: this always returns 0 but probably shouldn't.
+                output = subprocess.check_output(['adb', 'connect', serial])
+                self.assertEqual(
+                    output.strip(), 'already connected to {}'.format(serial))
 
-            self.assertEqual(
-                output.strip(), 'connected to localhost:{}'.format(port))
-            s.close()
+    def test_reconnect(self):
+        """Ensure that a disconnected device reconnects."""
+
+        with fake_adbd() as port:
+            serial = 'localhost:{}'.format(port)
+            with adb_connect(self, serial):
+                output = subprocess.check_output(['adb', '-s', serial,
+                                                  'get-state'])
+                self.assertEqual(output.strip(), 'device')
+
+                # This will fail.
+                proc = subprocess.Popen(['adb', '-s', serial, 'shell', 'true'],
+                                        stdout=subprocess.PIPE,
+                                        stderr=subprocess.STDOUT)
+                output, _ = proc.communicate()
+                self.assertEqual(output.strip(), 'error: closed')
+
+                subprocess.check_call(['adb', '-s', serial, 'wait-for-device'])
+
+                output = subprocess.check_output(['adb', '-s', serial,
+                                                  'get-state'])
+                self.assertEqual(output.strip(), 'device')
+
+                # Once we explicitly kick a device, it won't attempt to
+                # reconnect.
+                output = subprocess.check_output(['adb', 'disconnect', serial])
+                self.assertEqual(
+                    output.strip(), 'disconnected {}'.format(serial))
+                try:
+                    subprocess.check_output(['adb', '-s', serial, 'get-state'],
+                                            stderr=subprocess.STDOUT)
+                    self.fail('Device should not be available')
+                except subprocess.CalledProcessError as err:
+                    self.assertEqual(
+                        err.output.strip(),
+                        'error: device \'{}\' not found'.format(serial))
 
 
 def main():
+    """Main entrypoint."""
     random.seed(0)
-    if len(adb.get_devices()) > 0:
-        suite = unittest.TestLoader().loadTestsFromName(__name__)
-        unittest.TextTestRunner(verbosity=3).run(suite)
-    else:
-        print('Test suite must be run with attached devices')
+    unittest.main(verbosity=3)
 
 
 if __name__ == '__main__':

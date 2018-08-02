@@ -56,6 +56,7 @@
 #include <selinux/label.h>
 #include <selinux/selinux.h>
 
+#include "epoll.h"
 #include "init.h"
 #include "persistent_properties.h"
 #include "property_type.h"
@@ -65,7 +66,6 @@
 
 using namespace std::literals;
 
-using android::base::GetIntProperty;
 using android::base::ReadFileToString;
 using android::base::Split;
 using android::base::StartsWith;
@@ -377,11 +377,16 @@ class SocketConnection {
 
             int result = TEMP_FAILURE_RETRY(recv(socket_, data, bytes_left, MSG_DONTWAIT));
             if (result <= 0) {
+                PLOG(ERROR) << "sys_prop: recv error";
                 return false;
             }
 
             bytes_left -= result;
             data += result;
+        }
+
+        if (bytes_left != 0) {
+            LOG(ERROR) << "sys_prop: recv data is not properly obtained.";
         }
 
         return bytes_left == 0;
@@ -837,7 +842,7 @@ void CreateSerializedPropertyInfo() {
     selinux_android_restorecon(kPropertyInfosPath, 0);
 }
 
-void start_property_service() {
+void StartPropertyService(Epoll* epoll) {
     selinux_callback cb;
     cb.func_audit = SelinuxAuditCallback;
     selinux_set_callback(SELINUX_CB_AUDIT, cb);
@@ -852,7 +857,9 @@ void start_property_service() {
 
     listen(property_set_fd, 8);
 
-    register_epoll_handler(property_set_fd, handle_property_set_fd);
+    if (auto result = epoll->RegisterHandler(property_set_fd, handle_property_set_fd); !result) {
+        PLOG(FATAL) << result.error();
+    }
 }
 
 }  // namespace init

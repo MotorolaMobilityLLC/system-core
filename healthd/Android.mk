@@ -24,6 +24,8 @@ else
 LOCAL_CFLAGS += -DHEALTHD_DRAW_SPLIT_OFFSET=0
 endif
 
+LOCAL_HEADER_LIBRARIES := libbatteryservice_headers
+
 include $(BUILD_STATIC_LIBRARY)
 
 include $(CLEAR_VARS)
@@ -72,9 +74,6 @@ include $(BUILD_STATIC_LIBRARY)
 ### charger ###
 include $(CLEAR_VARS)
 ifeq ($(strip $(BOARD_CHARGER_NO_UI)),true)
-LOCAL_CHARGER_NO_UI := true
-endif
-ifdef BRILLO
 LOCAL_CHARGER_NO_UI := true
 endif
 

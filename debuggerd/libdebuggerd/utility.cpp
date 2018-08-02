@@ -74,25 +74,22 @@ void _LOG(log_t* log, enum logtype ltype, const char* fmt, ...) {
                       && (log->crashed_tid == log->current_tid);
   static bool write_to_kmsg = should_write_to_kmsg();
 
-  char buf[512];
+  std::string msg;
   va_list ap;
   va_start(ap, fmt);
-  vsnprintf(buf, sizeof(buf), fmt, ap);
+  android::base::StringAppendV(&msg, fmt, ap);
   va_end(ap);
 
-  size_t len = strlen(buf);
-  if (len <= 0) {
-    return;
-  }
+  if (msg.empty()) return;
 
   if (write_to_tombstone) {
-    TEMP_FAILURE_RETRY(write(log->tfd, buf, len));
+    TEMP_FAILURE_RETRY(write(log->tfd, msg.c_str(), msg.size()));
   }
 
   if (write_to_logcat) {
-    __android_log_buf_write(LOG_ID_CRASH, ANDROID_LOG_FATAL, LOG_TAG, buf);
+    __android_log_buf_write(LOG_ID_CRASH, ANDROID_LOG_FATAL, LOG_TAG, msg.c_str());
     if (log->amfd_data != nullptr) {
-      *log->amfd_data += buf;
+      *log->amfd_data += msg;
     }
 
     if (write_to_kmsg) {
@@ -100,11 +97,11 @@ void _LOG(log_t* log, enum logtype ltype, const char* fmt, ...) {
       if (kmsg_fd.get() >= 0) {
         // Our output might contain newlines which would otherwise be handled by the android logger.
         // Split the lines up ourselves before sending to the kernel logger.
-        if (buf[len - 1] == '\n') {
-          buf[len - 1] = '\0';
+        if (msg.back() == '\n') {
+          msg.back() = '\0';
         }
 
-        std::vector<std::string> fragments = android::base::Split(buf, "\n");
+        std::vector<std::string> fragments = android::base::Split(msg, "\n");
         for (const std::string& fragment : fragments) {
           static constexpr char prefix[] = "<3>DEBUG: ";
           struct iovec iov[3];
@@ -257,13 +254,13 @@ void drop_capabilities() {
   }
 }
 
-bool signal_has_si_addr(int si_signo, int si_code) {
+bool signal_has_si_addr(const siginfo_t* si) {
   // Manually sent signals won't have si_addr.
-  if (si_code == SI_USER || si_code == SI_QUEUE || si_code == SI_TKILL) {
+  if (si->si_code == SI_USER || si->si_code == SI_QUEUE || si->si_code == SI_TKILL) {
     return false;
   }
 
-  switch (si_signo) {
+  switch (si->si_signo) {
     case SIGBUS:
     case SIGFPE:
     case SIGILL:
@@ -275,16 +272,22 @@ bool signal_has_si_addr(int si_signo, int si_code) {
   }
 }
 
-const char* get_signame(int sig) {
-  switch (sig) {
+bool signal_has_sender(const siginfo_t* si, pid_t caller_pid) {
+  return SI_FROMUSER(si) && (si->si_pid != 0) && (si->si_pid != caller_pid);
+}
+
+void get_signal_sender(char* buf, size_t n, const siginfo_t* si) {
+  snprintf(buf, n, " from pid %d, uid %d", si->si_pid, si->si_uid);
+}
+
+const char* get_signame(const siginfo_t* si) {
+  switch (si->si_signo) {
     case SIGABRT: return "SIGABRT";
     case SIGBUS: return "SIGBUS";
     case SIGFPE: return "SIGFPE";
     case SIGILL: return "SIGILL";
     case SIGSEGV: return "SIGSEGV";
-#if defined(SIGSTKFLT)
     case SIGSTKFLT: return "SIGSTKFLT";
-#endif
     case SIGSTOP: return "SIGSTOP";
     case SIGSYS: return "SIGSYS";
     case SIGTRAP: return "SIGTRAP";
@@ -293,11 +296,11 @@ const char* get_signame(int sig) {
   }
 }
 
-const char* get_sigcode(int signo, int code) {
+const char* get_sigcode(const siginfo_t* si) {
   // Try the signal-specific codes...
-  switch (signo) {
+  switch (si->si_signo) {
     case SIGILL:
-      switch (code) {
+      switch (si->si_code) {
         case ILL_ILLOPC: return "ILL_ILLOPC";
         case ILL_ILLOPN: return "ILL_ILLOPN";
         case ILL_ILLADR: return "ILL_ILLADR";
@@ -306,11 +309,17 @@ const char* get_sigcode(int signo, int code) {
         case ILL_PRVREG: return "ILL_PRVREG";
         case ILL_COPROC: return "ILL_COPROC";
         case ILL_BADSTK: return "ILL_BADSTK";
+        case ILL_BADIADDR:
+          return "ILL_BADIADDR";
+        case __ILL_BREAK:
+          return "ILL_BREAK";
+        case __ILL_BNDMOD:
+          return "ILL_BNDMOD";
       }
-      static_assert(NSIGILL == ILL_BADSTK, "missing ILL_* si_code");
+      static_assert(NSIGILL == __ILL_BNDMOD, "missing ILL_* si_code");
       break;
     case SIGBUS:
-      switch (code) {
+      switch (si->si_code) {
         case BUS_ADRALN: return "BUS_ADRALN";
         case BUS_ADRERR: return "BUS_ADRERR";
         case BUS_OBJERR: return "BUS_OBJERR";
@@ -320,7 +329,7 @@ const char* get_sigcode(int signo, int code) {
       static_assert(NSIGBUS == BUS_MCEERR_AO, "missing BUS_* si_code");
       break;
     case SIGFPE:
-      switch (code) {
+      switch (si->si_code) {
         case FPE_INTDIV: return "FPE_INTDIV";
         case FPE_INTOVF: return "FPE_INTOVF";
         case FPE_FLTDIV: return "FPE_FLTDIV";
@@ -329,45 +338,53 @@ const char* get_sigcode(int signo, int code) {
         case FPE_FLTRES: return "FPE_FLTRES";
         case FPE_FLTINV: return "FPE_FLTINV";
         case FPE_FLTSUB: return "FPE_FLTSUB";
+        case __FPE_DECOVF:
+          return "FPE_DECOVF";
+        case __FPE_DECDIV:
+          return "FPE_DECDIV";
+        case __FPE_DECERR:
+          return "FPE_DECERR";
+        case __FPE_INVASC:
+          return "FPE_INVASC";
+        case __FPE_INVDEC:
+          return "FPE_INVDEC";
+        case FPE_FLTUNK:
+          return "FPE_FLTUNK";
+        case FPE_CONDTRAP:
+          return "FPE_CONDTRAP";
       }
-      static_assert(NSIGFPE == FPE_FLTSUB, "missing FPE_* si_code");
+      static_assert(NSIGFPE == FPE_CONDTRAP, "missing FPE_* si_code");
       break;
     case SIGSEGV:
-      switch (code) {
+      switch (si->si_code) {
         case SEGV_MAPERR: return "SEGV_MAPERR";
         case SEGV_ACCERR: return "SEGV_ACCERR";
-#if defined(SEGV_BNDERR)
         case SEGV_BNDERR: return "SEGV_BNDERR";
-#endif
-#if defined(SEGV_PKUERR)
         case SEGV_PKUERR: return "SEGV_PKUERR";
-#endif
+        case SEGV_ACCADI:
+          return "SEGV_ACCADI";
+        case SEGV_ADIDERR:
+          return "SEGV_ADIDERR";
+        case SEGV_ADIPERR:
+          return "SEGV_ADIPERR";
       }
-#if defined(SEGV_PKUERR)
-      static_assert(NSIGSEGV == SEGV_PKUERR, "missing SEGV_* si_code");
-#elif defined(SEGV_BNDERR)
-      static_assert(NSIGSEGV == SEGV_BNDERR, "missing SEGV_* si_code");
-#else
-      static_assert(NSIGSEGV == SEGV_ACCERR, "missing SEGV_* si_code");
-#endif
+      static_assert(NSIGSEGV == SEGV_ADIPERR, "missing SEGV_* si_code");
       break;
-#if defined(SYS_SECCOMP) // Our glibc is too old, and we build this for the host too.
     case SIGSYS:
-      switch (code) {
+      switch (si->si_code) {
         case SYS_SECCOMP: return "SYS_SECCOMP";
       }
       static_assert(NSIGSYS == SYS_SECCOMP, "missing SYS_* si_code");
       break;
-#endif
     case SIGTRAP:
-      switch (code) {
+      switch (si->si_code) {
         case TRAP_BRKPT: return "TRAP_BRKPT";
         case TRAP_TRACE: return "TRAP_TRACE";
         case TRAP_BRANCH: return "TRAP_BRANCH";
         case TRAP_HWBKPT: return "TRAP_HWBKPT";
       }
-      if ((code & 0xff) == SIGTRAP) {
-        switch ((code >> 8) & 0xff) {
+      if ((si->si_code & 0xff) == SIGTRAP) {
+        switch ((si->si_code >> 8) & 0xff) {
           case PTRACE_EVENT_FORK:
             return "PTRACE_EVENT_FORK";
           case PTRACE_EVENT_VFORK:
@@ -390,7 +407,7 @@ const char* get_sigcode(int signo, int code) {
       break;
   }
   // Then the other codes...
-  switch (code) {
+  switch (si->si_code) {
     case SI_USER: return "SI_USER";
     case SI_KERNEL: return "SI_KERNEL";
     case SI_QUEUE: return "SI_QUEUE";

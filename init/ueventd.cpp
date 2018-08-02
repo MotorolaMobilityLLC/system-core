@@ -240,8 +240,7 @@ int ueventd_main(int argc, char** argv) {
         auto hardware = android::base::GetProperty("ro.hardware", "");
 
         auto ueventd_configuration =
-                ParseConfig({"/ueventd.rc", "/vendor/ueventd.rc", "/odm/ueventd.rc",
-                             "/ueventd." + hardware + ".rc"});
+                ParseConfig({"/ueventd.rc", "/vendor/ueventd.rc", "/odm/ueventd.rc", hardware});
 
         device_handler = DeviceHandler{std::move(ueventd_configuration.dev_permissions),
                                        std::move(ueventd_configuration.sysfs_permissions),

@@ -28,6 +28,7 @@
 #include "adb_trace.h"
 #include "fdevent.h"
 #include "socket.h"
+#include "types.h"
 #include "usb.h"
 
 constexpr size_t MAX_PAYLOAD_V1 = 4 * 1024;
@@ -63,20 +64,6 @@ std::string adb_version();
 using TransportId = uint64_t;
 class atransport;
 
-struct amessage {
-    uint32_t command;     /* command identifier constant      */
-    uint32_t arg0;        /* first argument                   */
-    uint32_t arg1;        /* second argument                  */
-    uint32_t data_length; /* length of payload (0 is allowed) */
-    uint32_t data_check;  /* checksum of data payload         */
-    uint32_t magic;       /* command ^ 0xffffffff             */
-};
-
-struct apacket {
-    amessage msg;
-    std::string payload;
-};
-
 uint32_t calculate_apacket_checksum(const apacket* packet);
 
 /* the adisconnect structure is used to record a callback that
@@ -108,20 +95,35 @@ enum TransportType {
 
 enum ConnectionState {
     kCsAny = -1,
-    kCsOffline = 0,
+
+    kCsConnecting = 0,  // Haven't received a response from the device yet.
+    kCsAuthorizing,     // Authorizing with keys from ADB_VENDOR_KEYS.
+    kCsUnauthorized,    // ADB_VENDOR_KEYS exhausted, fell back to user prompt.
+    kCsNoPerm,          // Insufficient permissions to communicate with the device.
+    kCsOffline,
+
     kCsBootloader,
     kCsDevice,
     kCsHost,
     kCsRecovery,
-    kCsNoPerm,  // Insufficient permissions to communicate with the device.
     kCsSideload,
-    kCsUnauthorized,
 };
+
+inline bool ConnectionStateIsOnline(ConnectionState state) {
+    switch (state) {
+        case kCsBootloader:
+        case kCsDevice:
+        case kCsHost:
+        case kCsRecovery:
+        case kCsSideload:
+            return true;
+        default:
+            return false;
+    }
+}
 
 void print_packet(const char* label, apacket* p);
 
-// These use the system (v)fprintf, not the adb prefixed ones defined in sysdeps.h, so they
-// shouldn't be tagged with ADB_FORMAT_ARCHETYPE.
 void fatal(const char* fmt, ...) __attribute__((noreturn, format(__printf__, 1, 2)));
 void fatal_errno(const char* fmt, ...) __attribute__((noreturn, format(__printf__, 1, 2)));
 

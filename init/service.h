@@ -108,8 +108,6 @@ class Service {
     const std::vector<gid_t>& supp_gids() const { return supp_gids_; }
     const std::string& seclabel() const { return seclabel_; }
     const std::vector<int>& keycodes() const { return keycodes_; }
-    int keychord_id() const { return keychord_id_; }
-    void set_keychord_id(int keychord_id) { keychord_id_ = keychord_id; }
     IoSchedClass ioprio_class() const { return ioprio_class_; }
     int ioprio_pri() const { return ioprio_pri_; }
     const std::set<std::string>& interfaces() const { return interfaces_; }
@@ -118,6 +116,7 @@ class Service {
     bool is_override() const { return override_; }
     bool process_cgroup_empty() const { return process_cgroup_empty_; }
     unsigned long start_order() const { return start_order_; }
+    void set_sigstop(bool value) { sigstop_ = value; }
     const std::vector<std::string>& args() const { return args_; }
 
   private:
@@ -157,6 +156,7 @@ class Service {
     Result<Success> ParseSeclabel(const std::vector<std::string>& args);
     Result<Success> ParseSetenv(const std::vector<std::string>& args);
     Result<Success> ParseShutdown(const std::vector<std::string>& args);
+    Result<Success> ParseSigstop(const std::vector<std::string>& args);
     Result<Success> ParseSocket(const std::vector<std::string>& args);
     Result<Success> ParseFile(const std::vector<std::string>& args);
     Result<Success> ParseUser(const std::vector<std::string>& args);
@@ -197,9 +197,8 @@ class Service {
 
     std::set<std::string> interfaces_;  // e.g. some.package.foo@1.0::IBaz/instance-name
 
-    // keycodes for triggering this service via /dev/keychord
+    // keycodes for triggering this service via /dev/input/input*
     std::vector<int> keycodes_;
-    int keychord_id_;
 
     IoSchedClass ioprio_class_;
     int ioprio_pri_;
@@ -218,6 +217,8 @@ class Service {
     unsigned long start_order_;
 
     std::vector<std::pair<int, rlimit>> rlimits_;
+
+    bool sigstop_ = false;
 
     std::vector<std::string> args_;
 
@@ -243,6 +244,16 @@ class ServiceList {
         if (svc != services_.end()) {
             return svc->get();
         }
+        return nullptr;
+    }
+
+    Service* FindInterface(const std::string& interface_name) {
+        for (const auto& svc : services_) {
+            if (svc->interfaces().count(interface_name) > 0) {
+                return svc.get();
+            }
+        }
+
         return nullptr;
     }
 

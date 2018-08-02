@@ -26,6 +26,7 @@ cc_defaults {
 cc_library_headers {
     name: "libbase_headers",
     vendor_available: true,
+    recovery_available: true,
     host_supported: true,
     export_include_dirs: ["include"],
 
@@ -47,18 +48,17 @@ cc_defaults {
         "file.cpp",
         "logging.cpp",
         "parsenetaddress.cpp",
+        "properties.cpp",
         "quick_exit.cpp",
         "stringprintf.cpp",
         "strings.cpp",
+        "threads.cpp",
         "test_utils.cpp",
     ],
 
     shared_libs: ["liblog"],
     target: {
         android: {
-            srcs: [
-                "properties.cpp",
-            ],
             sanitize: {
                 misc_undefined: ["integer"],
             },
@@ -93,6 +93,7 @@ cc_library {
     name: "libbase",
     defaults: ["libbase_defaults"],
     vendor_available: true,
+    recovery_available: true,
     host_supported: true,
     vndk: {
         enabled: true,
@@ -123,9 +124,11 @@ cc_test {
         "errors_test.cpp",
         "file_test.cpp",
         "logging_test.cpp",
+        "macros_test.cpp",
         "parsedouble_test.cpp",
         "parseint_test.cpp",
         "parsenetaddress_test.cpp",
+        "properties_test.cpp",
         "quick_exit_test.cpp",
         "scopeguard_test.cpp",
         "stringprintf_test.cpp",
@@ -135,7 +138,6 @@ cc_test {
     ],
     target: {
         android: {
-            srcs: ["properties_test.cpp"],
             sanitize: {
                 misc_undefined: ["integer"],
             },
@@ -160,4 +162,5 @@ cc_test {
             suffix: "64",
         },
     },
+    test_suites: ["device-tests"],
 }

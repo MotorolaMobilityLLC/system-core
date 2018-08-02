@@ -24,9 +24,8 @@
 #include <string>
 
 #include "fdevent.h"
-#include "range.h"
+#include "types.h"
 
-struct apacket;
 class atransport;
 
 /* An asocket represents one half of a connection between a local and
@@ -59,11 +58,11 @@ struct asocket {
      * us to our fd event system.  For remote asockets
      * these fields are not used.
      */
-    fdevent fde = {};
-    int fd = 0;
+    fdevent* fde = nullptr;
+    int fd = -1;
 
     // queue of data waiting to be written
-    std::deque<Range> packet_queue;
+    IOVector packet_queue;
 
     std::string smart_socket_data;
 
@@ -73,7 +72,7 @@ struct asocket {
      * peer->ready() when we once again are ready to
      * receive data.
      */
-    int (*enqueue)(asocket* s, std::string data) = nullptr;
+    int (*enqueue)(asocket* s, apacket::payload_type data) = nullptr;
 
     /* ready is called by the peer when it is ready for
      * us to send data via enqueue again

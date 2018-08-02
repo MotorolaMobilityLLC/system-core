@@ -18,11 +18,9 @@ the system), so although this was the beginning of the end of toolbox it
 (a) didn't stand out given all the other systems-level changes and (b)
 in Marshmallow we changed direction and started the move to toybox.
 
-Not everything is provided by toybox, though. We currently still use
-the BSD dd and grep (because the toybox versions are still unfinished),
-and for the bzip2 command-line tools we use the ones that are part of
-the bzip2 distribution. The awk added in Android P is Brian Kernighan's
-"one true" awk.
+Not everything is provided by toybox, though. For the bzip2 command-line tools
+we use the ones that are part of the bzip2 distribution. The awk added in
+Android P is Brian Kernighan's "one true" awk.
 
 The lists below show what tools were provided and where they came from in
 each release starting with Gingerbread. This doesn't tell the full story,
@@ -179,15 +177,43 @@ toolbox: getevent getprop newfs\_msdos
 
 toybox: acpi base64 basename blockdev cal cat chcon chgrp chmod chown
 chroot chrt cksum clear cmp comm cp cpio cut date df diff dirname dmesg
-dos2unix du echo env expand expr fallocate false file find flock free
+dos2unix du echo env expand expr fallocate false file find flock fmt free
 getenforce groups gunzip gzip head hostname hwclock id ifconfig inotifyd
-insmod ionice iorenice kill killall ln load\_policy log logname losetup
-ls lsmod lsof lspci lsusb md5sum microcom mkdir mkfifo mknod mkswap
-mktemp modinfo modprobe more mount mountpoint mv netstat nice nl nohup
-od paste patch pgrep pidof pkill pmap printenv printf ps pwd readlink
-realpath renice restorecon rm rmdir rmmod runcon sed sendevent seq
-setenforce setprop setsid sha1sum sha224sum sha256sum sha384sum
-sha512sum sleep sort split start stat stop strings swapoff swapon sync
-sysctl tac tail tar taskset tee time timeout top touch tr true truncate
-tty ulimit umount uname uniq unix2dos uptime usleep uudecode uuencode
-vmstat wc which whoami xargs xxd yes zcat
+insmod ionice iorenice kill killall ln load\_policy log logname losetup ls
+lsmod lsof lspci lsusb md5sum microcom mkdir mkfifo mknod mkswap mktemp
+modinfo modprobe more mount mountpoint mv netstat nice nl nohup od paste
+patch pgrep pidof pkill pmap printenv printf ps pwd readlink realpath
+renice restorecon rm rmdir rmmod runcon sed sendevent seq setenforce
+setprop setsid sha1sum sha224sum sha256sum sha384sum sha512sum sleep
+sort split start stat stop strings stty swapoff swapon sync sysctl tac
+tail tar taskset tee time timeout top touch tr true truncate tty ulimit
+umount uname uniq unix2dos uptime usleep uudecode uuencode vmstat wc
+which whoami xargs xxd yes zcat
+
+Android Q
+---------
+
+BSD: fsck\_msdos newfs\_msdos
+
+bzip2: bzcat bzip2 bunzip2
+
+one-true-awk: awk
+
+PCRE: egrep fgrep grep
+
+toolbox: getevent getprop
+
+toybox: acpi base64 basename blockdev cal cat chcon chgrp chmod chown
+chroot chrt cksum clear cmp comm cp cpio cut date dd df diff dirname
+dmesg dos2unix du echo env expand expr fallocate false file find flock
+fmt free getenforce groups gunzip gzip head hostname hwclock id ifconfig
+inotifyd insmod ionice iorenice kill killall ln load\_policy log logname
+losetup ls lsmod lsof lspci lsusb md5sum microcom mkdir mkfifo mknod
+mkswap mktemp modinfo modprobe more mount mountpoint mv nc netcat netstat
+nice nl nohup nsenter od paste patch pgrep pidof pkill pmap printenv
+printf ps pwd readlink realpath renice restorecon rm rmdir rmmod runcon
+sed sendevent seq setenforce setprop setsid sha1sum sha224sum sha256sum
+sha384sum sha512sum sleep sort split start stat stop strings stty swapoff
+swapon sync sysctl tac tail tar taskset tee time timeout top touch tr
+true truncate tty ulimit umount uname uniq unix2dos unshare uptime usleep
+uudecode uuencode vmstat wc which whoami xargs xxd yes zcat

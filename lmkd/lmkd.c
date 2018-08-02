@@ -18,8 +18,10 @@
 
 #include <errno.h>
 #include <inttypes.h>
+#include <pwd.h>
 #include <sched.h>
 #include <signal.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/cdefs.h>
@@ -27,8 +29,8 @@
 #include <sys/eventfd.h>
 #include <sys/mman.h>
 #include <sys/socket.h>
-#include <sys/types.h>
 #include <sys/sysinfo.h>
+#include <sys/types.h>
 #include <unistd.h>
 
 #include <cutils/properties.h>
@@ -70,17 +72,21 @@
 #define MEMINFO_PATH "/proc/meminfo"
 #define LINE_MAX 128
 
+/* gid containing AID_SYSTEM required */
 #define INKERNEL_MINFREE_PATH "/sys/module/lowmemorykiller/parameters/minfree"
 #define INKERNEL_ADJ_PATH "/sys/module/lowmemorykiller/parameters/adj"
 
 #define ARRAY_SIZE(x)   (sizeof(x) / sizeof(*(x)))
 #define EIGHT_MEGA (1 << 23)
 
+/* Defined as ProcessList.SYSTEM_ADJ in ProcessList.java */
+#define SYSTEM_ADJ (-900)
+
 #define STRINGIFY(x) STRINGIFY_INTERNAL(x)
 #define STRINGIFY_INTERNAL(x) #x
 
 /* default to old in-kernel interface if no memory pressure events */
-static int use_inkernel_interface = 1;
+static bool use_inkernel_interface = true;
 static bool has_inkernel_module;
 
 /* memory pressure levels */
@@ -112,6 +118,7 @@ static bool low_ram_device;
 static bool kill_heaviest_task;
 static unsigned long kill_timeout_ms;
 static bool use_minfree_levels;
+static bool per_app_memcg;
 static bool enhance_batch_kill;
 static bool enable_adaptive_lmk;
 static bool enable_userspace_lmk;
@@ -420,24 +427,32 @@ static int pid_remove(int pid) {
     return 0;
 }
 
-static void writefilestring(const char *path, char *s) {
+/*
+ * Write a string to a file.
+ * Returns false if the file does not exist.
+ */
+static bool writefilestring(const char *path, const char *s,
+                            bool err_if_missing) {
     int fd = open(path, O_WRONLY | O_CLOEXEC);
-    int len = strlen(s);
-    int ret;
+    ssize_t len = strlen(s);
+    ssize_t ret;
 
     if (fd < 0) {
-        ALOGE("Error opening %s; errno=%d", path, errno);
-        return;
+        if (err_if_missing) {
+            ALOGE("Error opening %s; errno=%d", path, errno);
+        }
+        return false;
     }
 
-    ret = write(fd, s, len);
+    ret = TEMP_FAILURE_RETRY(write(fd, s, len));
     if (ret < 0) {
         ALOGE("Error writing %s; errno=%d", path, errno);
     } else if (ret < len) {
-        ALOGE("Short write on %s; length=%d", path, ret);
+        ALOGE("Short write on %s; length=%zd", path, ret);
     }
 
     close(fd);
+    return true;
 }
 
 static void cmd_procprio(LMKD_CTRL_PACKET packet) {
@@ -446,6 +461,8 @@ static void cmd_procprio(LMKD_CTRL_PACKET packet) {
     char val[20];
     int soft_limit_mult;
     struct lmk_procprio params;
+    bool is_system_server;
+    struct passwd *pwdrec;
 
     lmkd_pack_get_procprio(packet, &params);
 
@@ -455,14 +472,23 @@ static void cmd_procprio(LMKD_CTRL_PACKET packet) {
         return;
     }
 
+    /* gid containing AID_READPROC required */
+    /* CAP_SYS_RESOURCE required */
+    /* CAP_DAC_OVERRIDE required */
     snprintf(path, sizeof(path), "/proc/%d/oom_score_adj", params.pid);
     snprintf(val, sizeof(val), "%d", params.oomadj);
-    writefilestring(path, val);
-
-    if (use_inkernel_interface)
+    if (!writefilestring(path, val, false)) {
+        ALOGW("Failed to open %s; errno=%d: process %d might have been killed",
+              path, errno, params.pid);
+        /* If this file does not exist the process is dead. */
         return;
+    }
 
-    if (low_ram_device) {
+    if (use_inkernel_interface) {
+        return;
+    }
+
+    if (per_app_memcg) {
         if (params.oomadj >= 900) {
             soft_limit_mult = 0;
         } else if (params.oomadj >= 800) {
@@ -491,11 +517,19 @@ static void cmd_procprio(LMKD_CTRL_PACKET packet) {
             soft_limit_mult = 64;
         }
 
-        snprintf(path, sizeof(path),
-             "/dev/memcg/apps/uid_%d/pid_%d/memory.soft_limit_in_bytes",
-             params.uid, params.pid);
+        snprintf(path, sizeof(path), MEMCG_SYSFS_PATH
+                 "apps/uid_%d/pid_%d/memory.soft_limit_in_bytes",
+                 params.uid, params.pid);
         snprintf(val, sizeof(val), "%d", soft_limit_mult * EIGHT_MEGA);
-        writefilestring(path, val);
+
+        /*
+         * system_server process has no memcg under /dev/memcg/apps but should be
+         * registered with lmkd. This is the best way so far to identify it.
+         */
+        is_system_server = (params.oomadj == SYSTEM_ADJ &&
+                            (pwdrec = getpwnam("system")) != NULL &&
+                            params.uid == pwdrec->pw_uid);
+        writefilestring(path, val, !is_system_server);
     }
 
     procp = pid_lookup(params.pid);
@@ -520,8 +554,9 @@ static void cmd_procprio(LMKD_CTRL_PACKET packet) {
 static void cmd_procremove(LMKD_CTRL_PACKET packet) {
     struct lmk_procremove params;
 
-    if (use_inkernel_interface)
+    if (use_inkernel_interface) {
         return;
+    }
 
     lmkd_pack_get_procremove(packet, &params);
     pid_remove(params.pid);
@@ -563,8 +598,8 @@ static void cmd_target(int ntargets, LMKD_CTRL_PACKET packet) {
             strlcat(killpriostr, val, sizeof(killpriostr));
         }
 
-        writefilestring(INKERNEL_MINFREE_PATH, minfreestr);
-        writefilestring(INKERNEL_ADJ_PATH, killpriostr);
+        writefilestring(INKERNEL_MINFREE_PATH, minfreestr, true);
+        writefilestring(INKERNEL_ADJ_PATH, killpriostr, true);
     }
 }
 
@@ -723,24 +758,31 @@ static void memory_stat_parse_line(char *line, struct memory_stat *mem_st) {
 }
 
 static int memory_stat_parse(struct memory_stat *mem_st,  int pid, uid_t uid) {
-   FILE *fp;
-   char buf[PATH_MAX];
+    FILE *fp;
+    char buf[PATH_MAX];
 
-   snprintf(buf, sizeof(buf), MEMCG_PROCESS_MEMORY_STAT_PATH, uid, pid);
+    /*
+     * Per-application memory.stat files are available only when
+     * per-application memcgs are enabled.
+     */
+    if (!per_app_memcg)
+        return -1;
 
-   fp = fopen(buf, "r");
+    snprintf(buf, sizeof(buf), MEMCG_PROCESS_MEMORY_STAT_PATH, uid, pid);
 
-   if (fp == NULL) {
-       ALOGE("%s open failed: %s", buf, strerror(errno));
-       return -1;
-   }
+    fp = fopen(buf, "r");
 
-   while (fgets(buf, PAGE_SIZE, fp) != NULL ) {
-       memory_stat_parse_line(buf, mem_st);
-   }
-   fclose(fp);
+    if (fp == NULL) {
+        ALOGE("%s open failed: %s", buf, strerror(errno));
+        return -1;
+    }
 
-   return 0;
+    while (fgets(buf, PAGE_SIZE, fp) != NULL ) {
+        memory_stat_parse_line(buf, mem_st);
+    }
+    fclose(fp);
+
+    return 0;
 }
 #endif
 
@@ -891,6 +933,7 @@ static int proc_get_size(int pid) {
     int total;
     ssize_t ret;
 
+    /* gid containing AID_READPROC required */
     snprintf(path, PATH_MAX, "/proc/%d/statm", pid);
     fd = open(path, O_RDONLY | O_CLOEXEC);
     if (fd == -1)
@@ -914,6 +957,7 @@ static char *proc_get_name(int pid) {
     char *cp;
     ssize_t ret;
 
+    /* gid containing AID_READPROC required */
     snprintf(path, PATH_MAX, "/proc/%d/cmdline", pid);
     fd = open(path, O_RDONLY | O_CLOEXEC);
     if (fd == -1)
@@ -992,10 +1036,11 @@ static int kill_one_process(struct proc* procp, int min_score_adj,
 
     TRACE_KILL_START(pid);
 
+    /* CAP_KILL required */
     r = kill(pid, SIGKILL);
     ALOGI(
         "Killing '%s' (%d), uid %d, adj %d\n"
-        "   to free %ldkB because system is under %s memory pressure oom_adj %d\n",
+        "   to free %ldkB because system is under %s memory pressure (min_oom_adj=%d)\n",
         taskname, pid, uid, procp->oomadj, tasksize * page_k,
         level_name[level], min_score_adj);
     pid_remove(pid);
@@ -1361,6 +1406,7 @@ static bool init_mp_common(enum vmpressure_level level) {
     int level_idx = (int)level;
     const char *levelstr = level_name[level_idx];
 
+    /* gid containing AID_SYSTEM required */
     mpfd = open(MEMCG_SYSFS_PATH "memory.pressure_level", O_RDONLY | O_CLOEXEC);
     if (mpfd < 0) {
         ALOGI("No kernel memory.pressure_level support (errno=%d)", errno);
@@ -1558,6 +1604,8 @@ int main(int argc __unused, char **argv __unused) {
         (unsigned long)property_get_int32("ro.lmk.kill_timeout_ms", 0);
     use_minfree_levels =
         property_get_bool("ro.lmk.use_minfree_levels", false);
+    per_app_memcg =
+        property_get_bool("ro.config.per_app_memcg", low_ram_device);
     enhance_batch_kill =
         property_get_bool("ro.lmk.enhance_batch_kill", true);
     enable_adaptive_lmk =
@@ -1569,21 +1617,32 @@ int main(int argc __unused, char **argv __unused) {
     statslog_init(&log_ctx, &enable_stats_log);
 #endif
 
-    // MCL_ONFAULT pins pages as they fault instead of loading
-    // everything immediately all at once. (Which would be bad,
-    // because as of this writing, we have a lot of mapped pages we
-    // never use.) Old kernels will see MCL_ONFAULT and fail with
-    // EINVAL; we ignore this failure.
-    //
-    // N.B. read the man page for mlockall. MCL_CURRENT | MCL_ONFAULT
-    // pins ⊆ MCL_CURRENT, converging to just MCL_CURRENT as we fault
-    // in pages.
-    if (mlockall(MCL_CURRENT | MCL_FUTURE | MCL_ONFAULT) && errno != EINVAL)
-        ALOGW("mlockall failed: errno=%d", errno);
+    if (!init()) {
+        if (!use_inkernel_interface) {
+            /*
+             * MCL_ONFAULT pins pages as they fault instead of loading
+             * everything immediately all at once. (Which would be bad,
+             * because as of this writing, we have a lot of mapped pages we
+             * never use.) Old kernels will see MCL_ONFAULT and fail with
+             * EINVAL; we ignore this failure.
+             *
+             * N.B. read the man page for mlockall. MCL_CURRENT | MCL_ONFAULT
+             * pins ⊆ MCL_CURRENT, converging to just MCL_CURRENT as we fault
+             * in pages.
+             */
+            /* CAP_IPC_LOCK required */
+            if (mlockall(MCL_CURRENT | MCL_FUTURE | MCL_ONFAULT) && (errno != EINVAL)) {
+                ALOGW("mlockall failed %s", strerror(errno));
+            }
 
-    sched_setscheduler(0, SCHED_FIFO, &param);
-    if (!init())
+            /* CAP_NICE required */
+            if (sched_setscheduler(0, SCHED_FIFO, &param)) {
+                ALOGW("set SCHED_FIFO failed %s", strerror(errno));
+            }
+        }
+
         mainloop();
+    }
 
 #ifdef LMKD_LOG_STATS
     statslog_destroy(&log_ctx);

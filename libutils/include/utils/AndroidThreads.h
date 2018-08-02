@@ -106,7 +106,7 @@ inline bool createThreadEtc(thread_func_t entryFunction,
                             const char* threadName = "android:unnamed_thread",
                             int32_t threadPriority = PRIORITY_DEFAULT,
                             size_t threadStackSize = 0,
-                            thread_id_t *threadId = 0)
+                            thread_id_t *threadId = nullptr)
 {
     return androidCreateThreadEtc(entryFunction, userData, threadName,
         threadPriority, threadStackSize, threadId) ? true : false;
@@ -118,7 +118,7 @@ inline thread_id_t getThreadId() {
 }
 
 // ----------------------------------------------------------------------------
-}; // namespace android
+}  // namespace android
 #endif  // __cplusplus
 // ----------------------------------------------------------------------------
 

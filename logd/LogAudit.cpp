@@ -112,7 +112,7 @@ static inline bool hasMetadata(char* str, int str_len) {
 std::map<std::string, std::string> LogAudit::populateDenialMap() {
     std::ifstream bug_file("/system/etc/selinux/selinux_denial_metadata");
     std::string line;
-    // allocate a map for the static map pointer in logParse to keep track of,
+    // allocate a map for the static map pointer in auditParse to keep track of,
     // this function only runs once
     std::map<std::string, std::string> denial_to_bug;
     if (bug_file.good()) {
@@ -140,7 +140,8 @@ std::string LogAudit::denialParse(const std::string& denial, char terminator,
     return "";
 }
 
-void LogAudit::logParse(const std::string& string, std::string* bug_num) {
+void LogAudit::auditParse(const std::string& string, uid_t uid,
+                          std::string* bug_num) {
     if (!__android_log_is_debuggable()) {
         bug_num->assign("");
         return;
@@ -162,16 +163,21 @@ void LogAudit::logParse(const std::string& string, std::string* bug_num) {
     } else {
         bug_num->assign("");
     }
+
+    if (uid >= AID_APP_START && uid <= AID_APP_END) {
+        bug_num->append(" app=");
+        bug_num->append(android::uidToName(uid));
+    }
 }
 
 int LogAudit::logPrint(const char* fmt, ...) {
-    if (fmt == NULL) {
+    if (fmt == nullptr) {
         return -EINVAL;
     }
 
     va_list args;
 
-    char* str = NULL;
+    char* str = nullptr;
     va_start(args, fmt);
     int rc = vasprintf(&str, fmt, args);
     va_end(args);
@@ -190,8 +196,27 @@ int LogAudit::logPrint(const char* fmt, ...) {
     while ((cp = strstr(str, "  "))) {
         memmove(cp, cp + 1, strlen(cp + 1) + 1);
     }
+    pid_t pid = getpid();
+    pid_t tid = gettid();
+    uid_t uid = AID_LOGD;
+    static const char pid_str[] = " pid=";
+    char* pidptr = strstr(str, pid_str);
+    if (pidptr && isdigit(pidptr[sizeof(pid_str) - 1])) {
+        cp = pidptr + sizeof(pid_str) - 1;
+        pid = 0;
+        while (isdigit(*cp)) {
+            pid = (pid * 10) + (*cp - '0');
+            ++cp;
+        }
+        tid = pid;
+        logbuf->wrlock();
+        uid = logbuf->pidToUid(pid);
+        logbuf->unlock();
+        memmove(pidptr, cp, strlen(cp) + 1);
+    }
+
     bool info = strstr(str, " permissive=1") || strstr(str, " policy loaded ");
-    static std::string bug_metadata;
+    static std::string denial_metadata;
     if ((fdDmesg >= 0) && initialized) {
         struct iovec iov[4];
         static const char log_info[] = { KMSG_PRIORITY(LOG_INFO) };
@@ -203,7 +228,7 @@ int LogAudit::logPrint(const char* fmt, ...) {
         static char* last_str;
         static bool last_info;
 
-        if (last_str != NULL) {
+        if (last_str != nullptr) {
             static const char avc[] = "): avc: ";
             char* avcl = strstr(last_str, avc);
             bool skip = false;
@@ -228,8 +253,8 @@ int LogAudit::logPrint(const char* fmt, ...) {
                     last_info ? sizeof(log_info) : sizeof(log_warning);
                 iov[1].iov_base = last_str;
                 iov[1].iov_len = strlen(last_str);
-                iov[2].iov_base = const_cast<char*>(bug_metadata.c_str());
-                iov[2].iov_len = bug_metadata.length();
+                iov[2].iov_base = const_cast<char*>(denial_metadata.c_str());
+                iov[2].iov_len = denial_metadata.length();
                 if (count > 1) {
                     iov[3].iov_base = const_cast<char*>(resume);
                     iov[3].iov_len = strlen(resume);
@@ -240,23 +265,23 @@ int LogAudit::logPrint(const char* fmt, ...) {
 
                 writev(fdDmesg, iov, arraysize(iov));
                 free(last_str);
-                last_str = NULL;
+                last_str = nullptr;
             }
         }
-        if (last_str == NULL) {
+        if (last_str == nullptr) {
             count = 0;
             last_str = strdup(str);
             last_info = info;
         }
         if (count == 0) {
-            logParse(str, &bug_metadata);
+            auditParse(str, uid, &denial_metadata);
             iov[0].iov_base = info ? const_cast<char*>(log_info)
                                    : const_cast<char*>(log_warning);
             iov[0].iov_len = info ? sizeof(log_info) : sizeof(log_warning);
             iov[1].iov_base = str;
             iov[1].iov_len = strlen(str);
-            iov[2].iov_base = const_cast<char*>(bug_metadata.c_str());
-            iov[2].iov_len = bug_metadata.length();
+            iov[2].iov_base = const_cast<char*>(denial_metadata.c_str());
+            iov[2].iov_len = denial_metadata.length();
             iov[3].iov_base = const_cast<char*>(newline);
             iov[3].iov_len = strlen(newline);
 
@@ -269,9 +294,6 @@ int LogAudit::logPrint(const char* fmt, ...) {
         return 0;
     }
 
-    pid_t pid = getpid();
-    pid_t tid = gettid();
-    uid_t uid = AID_LOGD;
     log_time now;
 
     static const char audit_str[] = " audit(";
@@ -296,29 +318,13 @@ int LogAudit::logPrint(const char* fmt, ...) {
         now = log_time(CLOCK_REALTIME);
     }
 
-    static const char pid_str[] = " pid=";
-    char* pidptr = strstr(str, pid_str);
-    if (pidptr && isdigit(pidptr[sizeof(pid_str) - 1])) {
-        cp = pidptr + sizeof(pid_str) - 1;
-        pid = 0;
-        while (isdigit(*cp)) {
-            pid = (pid * 10) + (*cp - '0');
-            ++cp;
-        }
-        tid = pid;
-        logbuf->wrlock();
-        uid = logbuf->pidToUid(pid);
-        logbuf->unlock();
-        memmove(pidptr, cp, strlen(cp) + 1);
-    }
-
     // log to events
 
     size_t str_len = strnlen(str, LOGGER_ENTRY_MAX_PAYLOAD);
     if (((fdDmesg < 0) || !initialized) && !hasMetadata(str, str_len))
-        logParse(str, &bug_metadata);
-    str_len = (str_len + bug_metadata.length() <= LOGGER_ENTRY_MAX_PAYLOAD)
-                  ? str_len + bug_metadata.length()
+        auditParse(str, uid, &denial_metadata);
+    str_len = (str_len + denial_metadata.length() <= LOGGER_ENTRY_MAX_PAYLOAD)
+                  ? str_len + denial_metadata.length()
                   : LOGGER_ENTRY_MAX_PAYLOAD;
     size_t message_len = str_len + sizeof(android_log_event_string_t);
 
@@ -332,9 +338,9 @@ int LogAudit::logPrint(const char* fmt, ...) {
         event->header.tag = htole32(AUDITD_LOG_TAG);
         event->type = EVENT_TYPE_STRING;
         event->length = htole32(str_len);
-        memcpy(event->data, str, str_len - bug_metadata.length());
-        memcpy(event->data + str_len - bug_metadata.length(),
-               bug_metadata.c_str(), bug_metadata.length());
+        memcpy(event->data, str, str_len - denial_metadata.length());
+        memcpy(event->data + str_len - denial_metadata.length(),
+               denial_metadata.c_str(), denial_metadata.length());
 
         rc = logbuf->log(
             LOG_ID_EVENTS, now, uid, pid, tid, reinterpret_cast<char*>(event),
@@ -351,7 +357,7 @@ int LogAudit::logPrint(const char* fmt, ...) {
     static const char comm_str[] = " comm=\"";
     const char* comm = strstr(str, comm_str);
     const char* estr = str + strlen(str);
-    const char* commfree = NULL;
+    const char* commfree = nullptr;
     if (comm) {
         estr = comm;
         comm += sizeof(comm_str) - 1;
@@ -380,7 +386,8 @@ int LogAudit::logPrint(const char* fmt, ...) {
         prefix_len = LOGGER_ENTRY_MAX_PAYLOAD;
     }
     size_t suffix_len = strnlen(ecomm, LOGGER_ENTRY_MAX_PAYLOAD - prefix_len);
-    message_len = str_len + prefix_len + suffix_len + bug_metadata.length() + 2;
+    message_len =
+        str_len + prefix_len + suffix_len + denial_metadata.length() + 2;
 
     if (main) {  // begin scope for main buffer
         char newstr[message_len];
@@ -390,7 +397,7 @@ int LogAudit::logPrint(const char* fmt, ...) {
         strncpy(newstr + 1 + str_len, str, prefix_len);
         strncpy(newstr + 1 + str_len + prefix_len, ecomm, suffix_len);
         strncpy(newstr + 1 + str_len + prefix_len + suffix_len,
-                bug_metadata.c_str(), bug_metadata.length());
+                denial_metadata.c_str(), denial_metadata.length());
 
         rc = logbuf->log(LOG_ID_MAIN, now, uid, pid, tid, newstr,
                          (message_len <= USHRT_MAX) ? (unsigned short)message_len

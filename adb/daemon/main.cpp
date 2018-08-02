@@ -20,6 +20,7 @@
 
 #include <errno.h>
 #include <getopt.h>
+#include <malloc.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -37,7 +38,6 @@
 #include <scoped_minijail.h>
 
 #include <private/android_filesystem_config.h>
-#include "debuggerd/handler.h"
 #include "selinux/android.h"
 
 #include "adb.h"
@@ -183,9 +183,10 @@ int adbd_main(int server_port) {
     // descriptor will always be open.
     adbd_cloexec_auth_socket();
 
-    if (ALLOW_ADBD_NO_AUTH && !android::base::GetBoolProperty("ro.adb.secure", false)) {
-        auth_required = false;
-    }
+#if defined(ALLOW_ADBD_NO_AUTH)
+    // If ro.adb.secure is unset, default to no authentication required.
+    auth_required = android::base::GetBoolProperty("ro.adb.secure", false);
+#endif
 
     adbd_auth_init();
 
@@ -237,6 +238,9 @@ int adbd_main(int server_port) {
 }
 
 int main(int argc, char** argv) {
+    // Set M_DECAY_TIME so that our allocations aren't immediately purged on free.
+    mallopt(M_DECAY_TIME, 1);
+
     while (true) {
         static struct option opts[] = {
             {"root_seclabel", required_argument, nullptr, 's'},
@@ -269,7 +273,6 @@ int main(int argc, char** argv) {
 
     close_stdin();
 
-    debuggerd_init(nullptr);
     adb_trace_init(argv);
 
     D("Handling main()");

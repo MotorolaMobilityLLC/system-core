@@ -15,6 +15,7 @@
 cc_library_headers {
     name: "libutils_headers",
     vendor_available: true,
+    recovery_available: true,
     host_supported: true,
 
     header_libs: [
@@ -46,6 +47,7 @@ cc_library_headers {
 cc_defaults {
     name: "libutils_defaults",
     vendor_available: true,
+    recovery_available: true,
     vndk: {
         enabled: true,
         support_system_process: true,
@@ -89,6 +91,10 @@ cc_defaults {
             },
         },
 
+        recovery: {
+            exclude_shared_libs: ["libvndksupport"],
+        },
+
         host: {
             cflags: ["-DLIBUTILS_NATIVE=1"],
 
@@ -129,7 +135,6 @@ cc_library {
         "PropertyMap.cpp",
         "RefBase.cpp",
         "SharedBuffer.cpp",
-        "Static.cpp",
         "StopWatch.cpp",
         "String8.cpp",
         "String16.cpp",

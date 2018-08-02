@@ -18,6 +18,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/mman.h>
 #include <unistd.h>
 
 #include <gtest/gtest.h>
@@ -1085,6 +1086,46 @@ TEST_F(UnwindOfflineTest, art_quick_osr_stub_arm) {
   EXPECT_EQ(0xcd4ff960U, unwinder.frames()[24].sp);
 }
 
+TEST_F(UnwindOfflineTest, jit_map_arm) {
+  ASSERT_NO_FATAL_FAILURE(Init("jit_map_arm/", ARCH_ARM));
+
+  maps_->Add(0xd025c788, 0xd025c9f0, 0, PROT_READ | PROT_EXEC | MAPS_FLAGS_JIT_SYMFILE_MAP,
+             "jit_map0.so", 0);
+  maps_->Add(0xd025cd98, 0xd025cff4, 0, PROT_READ | PROT_EXEC | MAPS_FLAGS_JIT_SYMFILE_MAP,
+             "jit_map1.so", 0);
+  maps_->Sort();
+
+  Unwinder unwinder(128, maps_.get(), regs_.get(), process_memory_);
+  unwinder.Unwind();
+
+  std::string frame_info(DumpFrames(unwinder));
+  ASSERT_EQ(6U, unwinder.NumFrames()) << "Unwind:\n" << frame_info;
+  EXPECT_EQ(
+      "  #00 pc 00000000  jit_map0.so "
+      "(com.example.simpleperf.simpleperfexamplewithnative.MixActivity.access$000)\n"
+      "  #01 pc 0000003d  jit_map1.so "
+      "(com.example.simpleperf.simpleperfexamplewithnative.MixActivity$1.run+60)\n"
+      "  #02 pc 004135bb  libart.so (art_quick_osr_stub+42)\n"
+
+      "  #03 pc 003851dd  libart.so (_ZN3art6Thread14CreateCallbackEPv+868)\n"
+      "  #04 pc 00062925  libc.so (_ZL15__pthread_startPv+22)\n"
+      "  #05 pc 0001de39  libc.so (__start_thread+24)\n",
+      frame_info);
+
+  EXPECT_EQ(0xd025c788U, unwinder.frames()[0].pc);
+  EXPECT_EQ(0xcd4ff140U, unwinder.frames()[0].sp);
+  EXPECT_EQ(0xd025cdd5U, unwinder.frames()[1].pc);
+  EXPECT_EQ(0xcd4ff140U, unwinder.frames()[1].sp);
+  EXPECT_EQ(0xe4a755bbU, unwinder.frames()[2].pc);
+  EXPECT_EQ(0xcd4ff160U, unwinder.frames()[2].sp);
+  EXPECT_EQ(0xe49e71ddU, unwinder.frames()[3].pc);
+  EXPECT_EQ(0xcd4ff8e8U, unwinder.frames()[3].sp);
+  EXPECT_EQ(0xe7df3925U, unwinder.frames()[4].pc);
+  EXPECT_EQ(0xcd4ff958U, unwinder.frames()[4].sp);
+  EXPECT_EQ(0xe7daee39U, unwinder.frames()[5].pc);
+  EXPECT_EQ(0xcd4ff960U, unwinder.frames()[5].sp);
+}
+
 TEST_F(UnwindOfflineTest, offset_arm) {
   ASSERT_NO_FATAL_FAILURE(Init("offset_arm/", ARCH_ARM));
 
@@ -1157,6 +1198,45 @@ TEST_F(UnwindOfflineTest, offset_arm) {
   EXPECT_EQ(0xffcc1540U, unwinder.frames()[17].sp);
   EXPECT_EQ(0x2b6c02fU, unwinder.frames()[18].pc);
   EXPECT_EQ(0xffcc1558U, unwinder.frames()[18].sp);
+}
+
+// Test using a non-zero load bias library that has the fde entries
+// encoded as 0xb, which is not set as pc relative.
+TEST_F(UnwindOfflineTest, debug_frame_load_bias_arm) {
+  ASSERT_NO_FATAL_FAILURE(Init("debug_frame_load_bias_arm/", ARCH_ARM));
+
+  Unwinder unwinder(128, maps_.get(), regs_.get(), process_memory_);
+  unwinder.Unwind();
+
+  std::string frame_info(DumpFrames(unwinder));
+  ASSERT_EQ(8U, unwinder.NumFrames()) << "Unwind:\n" << frame_info;
+  EXPECT_EQ(
+      "  #00 pc 0005138c  libc.so (__ioctl+8)\n"
+      "  #01 pc 0002140f  libc.so (ioctl+30)\n"
+      "  #02 pc 00039535  libbinder.so (_ZN7android14IPCThreadState14talkWithDriverEb+204)\n"
+      "  #03 pc 00039633  libbinder.so (_ZN7android14IPCThreadState20getAndExecuteCommandEv+10)\n"
+      "  #04 pc 00039b57  libbinder.so (_ZN7android14IPCThreadState14joinThreadPoolEb+38)\n"
+      "  #05 pc 00000c21  mediaserver (main+104)\n"
+      "  #06 pc 00084b89  libc.so (__libc_init+48)\n"
+      "  #07 pc 00000b77  mediaserver (_start_main+38)\n",
+      frame_info);
+
+  EXPECT_EQ(0xf0be238cU, unwinder.frames()[0].pc);
+  EXPECT_EQ(0xffd4a638U, unwinder.frames()[0].sp);
+  EXPECT_EQ(0xf0bb240fU, unwinder.frames()[1].pc);
+  EXPECT_EQ(0xffd4a638U, unwinder.frames()[1].sp);
+  EXPECT_EQ(0xf1a75535U, unwinder.frames()[2].pc);
+  EXPECT_EQ(0xffd4a650U, unwinder.frames()[2].sp);
+  EXPECT_EQ(0xf1a75633U, unwinder.frames()[3].pc);
+  EXPECT_EQ(0xffd4a6b0U, unwinder.frames()[3].sp);
+  EXPECT_EQ(0xf1a75b57U, unwinder.frames()[4].pc);
+  EXPECT_EQ(0xffd4a6d0U, unwinder.frames()[4].sp);
+  EXPECT_EQ(0x8d1cc21U, unwinder.frames()[5].pc);
+  EXPECT_EQ(0xffd4a6e8U, unwinder.frames()[5].sp);
+  EXPECT_EQ(0xf0c15b89U, unwinder.frames()[6].pc);
+  EXPECT_EQ(0xffd4a700U, unwinder.frames()[6].sp);
+  EXPECT_EQ(0x8d1cb77U, unwinder.frames()[7].pc);
+  EXPECT_EQ(0xffd4a718U, unwinder.frames()[7].sp);
 }
 
 }  // namespace unwindstack

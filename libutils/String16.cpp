@@ -24,29 +24,16 @@
 
 namespace android {
 
-static SharedBuffer* gEmptyStringBuf = NULL;
-static char16_t* gEmptyString = NULL;
+static inline char16_t* getEmptyString() {
+    static SharedBuffer* gEmptyStringBuf = [] {
+        SharedBuffer* buf = SharedBuffer::alloc(sizeof(char16_t));
+        char16_t* str = static_cast<char16_t*>(buf->data());
+        *str = 0;
+        return buf;
+    }();
 
-static inline char16_t* getEmptyString()
-{
     gEmptyStringBuf->acquire();
-   return gEmptyString;
-}
-
-void initialize_string16()
-{
-    SharedBuffer* buf = SharedBuffer::alloc(sizeof(char16_t));
-    char16_t* str = (char16_t*)buf->data();
-    *str = 0;
-    gEmptyStringBuf = buf;
-    gEmptyString = str;
-}
-
-void terminate_string16()
-{
-    SharedBuffer::bufferFromData(gEmptyString)->release();
-    gEmptyStringBuf = NULL;
-    gEmptyString = NULL;
+    return static_cast<char16_t*>(gEmptyStringBuf->data());
 }
 
 // ---------------------------------------------------------------------------
@@ -104,7 +91,7 @@ String16::String16()
 }
 
 String16::String16(StaticLinkage)
-    : mString(0)
+    : mString(nullptr)
 {
     // this constructor is used when we can't rely on the static-initializers
     // having run. In this case we always allocate an empty string. It's less
@@ -355,7 +342,7 @@ status_t String16::makeLower()
 {
     const size_t N = size();
     const char16_t* str = string();
-    char16_t* edit = NULL;
+    char16_t* edit = nullptr;
     for (size_t i=0; i<N; i++) {
         const char16_t v = str[i];
         if (v >= 'A' && v <= 'Z') {
@@ -377,7 +364,7 @@ status_t String16::replaceAll(char16_t replaceThis, char16_t withThis)
 {
     const size_t N = size();
     const char16_t* str = string();
-    char16_t* edit = NULL;
+    char16_t* edit = nullptr;
     for (size_t i=0; i<N; i++) {
         if (str[i] == replaceThis) {
             if (!edit) {

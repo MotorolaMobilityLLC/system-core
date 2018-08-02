@@ -188,8 +188,6 @@ class ForwardReverseTest(DeviceTest):
         finally:
             self.device.reverse_remove_all()
 
-    # Note: If you run this test when adb connect'd to a physical device over
-    # TCP, it will fail in adb reverse due to https://code.google.com/p/android/issues/detail?id=189821
     def test_forward_reverse_echo(self):
         """Send data through adb forward and read it back via adb reverse"""
         forward_port = 12345
@@ -752,7 +750,6 @@ class FileOperationsTest(DeviceTest):
             if host_dir is not None:
                 shutil.rmtree(host_dir)
 
-    @unittest.expectedFailure # b/25566053
     def test_push_empty(self):
         """Push a directory containing an empty directory to the device."""
         self.device.shell(['rm', '-rf', self.DEVICE_TEMP_DIR])
@@ -867,6 +864,21 @@ class FileOperationsTest(DeviceTest):
 
             self.assertTrue('Permission denied' in output or
                             'Read-only file system' in output)
+
+    @requires_non_root
+    def test_push_directory_creation(self):
+        """Regression test for directory creation.
+
+        Bug: http://b/110953234
+        """
+        with tempfile.NamedTemporaryFile() as tmp_file:
+            tmp_file.write('\0' * 1024 * 1024)
+            tmp_file.flush()
+            remote_path = self.DEVICE_TEMP_DIR + '/test_push_directory_creation'
+            self.device.shell(['rm', '-rf', remote_path])
+
+            remote_path += '/filename'
+            self.device.push(local=tmp_file.name, remote=remote_path)
 
     def _test_pull(self, remote_file, checksum):
         tmp_write = tempfile.NamedTemporaryFile(mode='wb', delete=False)
@@ -1187,7 +1199,7 @@ class FileOperationsTest(DeviceTest):
         # Verify that the device ended up with the expected UTF-8 path
         output = self.device.shell(
                 ['ls', '/data/local/tmp/adb-test-*'])[0].strip()
-        self.assertEqual(remote_path.encode('utf-8'), output)
+        self.assertEqual(remote_path, output)
 
         # pull.
         self.device.pull(remote_path, tf.name)
