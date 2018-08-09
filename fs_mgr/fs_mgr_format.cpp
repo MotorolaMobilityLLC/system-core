@@ -114,7 +114,6 @@ static int format_ext4(char *fs_blkdev, char *fs_mnt_point, bool crypt_footer)
 }
 
 #define MKFS_F2FS_PATH "/system/bin/make_f2fs"
-#define MKFS_SECURITY_CONTEXT "u:r:mkfs:s0"
 static int format_f2fs(char *fs_blkdev, uint64_t dev_sz, bool crypt_footer)
 {
     int status;
@@ -146,11 +145,6 @@ static int format_f2fs(char *fs_blkdev, uint64_t dev_sz, bool crypt_footer)
         nullptr
     };
     // clang-format on
-
-    /* This doesn't return */
-    if (setexeccon(MKFS_SECURITY_CONTEXT)) {
-         LERROR << "Failed to set security context for mkfs";
-    }
 
     return android_fork_execvp_ext(arraysize(args), const_cast<char**>(args), NULL, true,
                                    LOG_KLOG, true, nullptr, nullptr, 0);
