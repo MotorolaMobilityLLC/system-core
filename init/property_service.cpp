@@ -701,16 +701,6 @@ bool update_persistent_usb_property(const std::string& name, const std::string& 
  * has mounted /data.
  */
 void load_persist_props(void) {
-    // Devices with FDE have load_persist_props called twice; the first time when the temporary
-    // /data partition is mounted and then again once /data is truly mounted.  We do not want to
-    // read persistent properties from the temporary /data partition or mark persistent properties
-    // as having been loaded during the first call, so we return in that case.
-    std::string crypto_state = android::base::GetProperty("ro.crypto.state", "");
-    std::string crypto_type = android::base::GetProperty("ro.crypto.type", "");
-    if (crypto_state == "encrypted" && crypto_type == "block") {
-        static size_t num_calls = 0;
-        if (++num_calls == 1) return;
-    }
 
     /* BEGIN Motorola Hong-Mei Li 2012-09-10, IKJBREL1-5477 */
     /* To load all default properties for encrypted system. This is mandatory
