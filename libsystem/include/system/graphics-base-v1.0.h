@@ -102,13 +102,6 @@ typedef enum {
     HAL_DATASPACE_BT2020_PQ = 163971072,  // ((STANDARD_BT2020 | TRANSFER_ST2084) | RANGE_FULL)
     HAL_DATASPACE_DEPTH = 4096,
     HAL_DATASPACE_SENSOR = 4097,
-    // BEGIN, Motorola, w36195, IKMMINTG-16293, 360mod camera2
-    /*
-     * The buffer contains image data that should use spherical mapping to
-     * be deconstructed before displaying or authoring.
-     */
-    HAL_DATASPACE_SPHERICAL = 8192, //0x2000
-    // END, Motorola, IKMMINTG-16293
 
 } android_dataspace_t;
 

@@ -48,7 +48,9 @@ public:
     int sendMsg(int code, const char *msg, bool addErrno);
     int sendMsg(int code, const char *msg, bool addErrno, bool useCmdNum);
     int sendMsg(const char *msg);
+#if defined(MSG_WITH_CMDNUM)
     int sendMsgWithCmdNum(int code, const char *msg, int cmdNum);
+#endif
 
     // Provides a mechanism to send a response code to the client.
     // Sends the code and a null character.

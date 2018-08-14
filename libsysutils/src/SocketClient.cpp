@@ -121,6 +121,7 @@ int SocketClient::sendBinaryMsg(int code, const void *data, int len) {
     return result;
 }
 
+#if defined(MSG_WITH_CMDNUM)
 int SocketClient::sendMsgWithCmdNum(int code, const char *msg, int cmdNum) {
     char *buf;
     int ret = 0;
@@ -132,6 +133,7 @@ int SocketClient::sendMsgWithCmdNum(int code, const char *msg, int cmdNum) {
     }
     return ret;
 }
+#endif
 
 // Sends the code (c-string null-terminated).
 int SocketClient::sendCode(int code) {

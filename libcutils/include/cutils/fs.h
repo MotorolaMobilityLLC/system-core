@@ -57,10 +57,11 @@ extern int fs_prepare_dir_strict(const char* path, mode_t mode, uid_t uid, gid_t
  */
 extern int fs_prepare_file_strict(const char* path, mode_t mode, uid_t uid, gid_t gid);
 
+#if defined(FS_PREPARE_XATTR)
 /* Set xattr for directory or file.
  */
 extern int fs_prepare_xattr(const char *path, const char *name, const char *value, const int flag);
-
+#endif
 /*
  * Read single plaintext integer from given file, correctly handling files
  * partially written with fs_write_atomic_int().

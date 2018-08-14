@@ -19,7 +19,6 @@ cc_library_shared {
 
     cflags: [
         "-Werror",
-        "-DIPT_TLV_SUPPORT",
         "-DFEATURE_SAFE_URL",
         "-DFEATURE_ONLY_SEND_MSG",
     ],
