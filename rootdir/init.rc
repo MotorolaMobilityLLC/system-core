@@ -375,6 +375,10 @@ on post-fs
     mkdir /metadata/vold
     chmod 0700 /metadata/vold
 
+    # Setting Swappiness
+    write /proc/sys/vm/swappiness 100
+    setprop sys.swappiness 100
+
 on late-fs
     # Ensure that tracefs has the correct permissions.
     # This does not work correctly if it is called in post-fs.
@@ -699,6 +703,9 @@ on nonencrypted
 
 on property:sys.init_log_level=*
     loglevel ${sys.init_log_level}
+
+on property:sys.swappiness=*
+    write /proc/sys/vm/swappiness ${sys.swappiness}
 
 on charger
     class_start charger
