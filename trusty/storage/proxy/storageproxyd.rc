@@ -1,0 +1,8 @@
+on post-fs-data
+    write /proc/bootprof "start trusty secure storage"
+    mkdir /data/vendor/trusty 0775 system system
+
+# Start storageproxyd Daemon
+service storageproxyd /vendor/bin/storageproxyd -d /dev/trusty-ipc-dev0 -p /data/vendor/trusty -r /dev/block/mmcblk0rpmb
+    group system
+    class late_start

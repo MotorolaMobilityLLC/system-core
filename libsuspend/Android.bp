@@ -1,0 +1,40 @@
+// Copyright 2012 The Android Open Source Project
+
+cc_library {
+    name: "libsuspend",
+    defaults: ["mtk_libsuspend_defaults"],
+    vendor_available: true,
+    vndk: {
+        enabled: true,
+    },
+
+    srcs: [
+        "autosuspend.c",
+        "autosuspend_wakeup_count.cpp",
+    ],
+    export_include_dirs: ["include"],
+    local_include_dirs: ["include"],
+    shared_libs: [
+        "libbase",
+        "liblog",
+        "libcutils",
+    ],
+    cflags: [
+        "-Werror",
+        // "-DLOG_NDEBUG=0",
+    ],
+}
+
+mtk_cc_defaults {
+    name: "mtk_libsuspend_defaults",
+    product_variables: {
+        debuggable: {
+            cflags: [
+                "-DCONFIG_DEBUG_BUILD",
+            ],
+        },
+    },
+    srcs: [
+        "autosuspend_debugger.cpp",
+    ],
+}

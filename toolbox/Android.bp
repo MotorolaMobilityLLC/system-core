@@ -1,0 +1,126 @@
+cc_defaults {
+    name: "toolbox_defaults",
+
+    cflags: [
+        "-Werror",
+        "-Wno-unused-parameter",
+        "-Wno-unused-const-variable",
+        "-include bsd-compatibility.h",
+        "-D_FILE_OFFSET_BITS=64",
+    ],
+    local_include_dirs: ["upstream-netbsd/include/"],
+}
+
+cc_library_static {
+    name: "libtoolbox_dd",
+    defaults: ["toolbox_defaults"],
+    vendor_available: true,
+    srcs: [
+        "upstream-netbsd/bin/dd/args.c",
+        "upstream-netbsd/bin/dd/conv.c",
+        "upstream-netbsd/bin/dd/dd.c",
+        "upstream-netbsd/bin/dd/dd_hostops.c",
+        "upstream-netbsd/bin/dd/misc.c",
+        "upstream-netbsd/bin/dd/position.c",
+        "upstream-netbsd/lib/libc/gen/getbsize.c",
+        "upstream-netbsd/lib/libc/gen/humanize_number.c",
+        "upstream-netbsd/lib/libc/stdlib/strsuftoll.c",
+        "upstream-netbsd/lib/libc/string/swab.c",
+        "upstream-netbsd/lib/libutil/raise_default_signal.c",
+    ],
+    cflags: [
+        "-Dmain=dd_main",
+        "-DNO_CONV",
+    ],
+}
+
+genrule {
+    name: "toolbox_input_labels",
+    tool_files: ["generate-input.h-labels.py"],
+    cmd: "$(location) $(in) >$(out)",
+    srcs: [":kernel_input_headers"],
+    out: ["input.h-labels.h"],
+}
+
+cc_defaults {
+    name: "toolbox_binary_defaults",
+    defaults: ["toolbox_defaults"],
+    cpp_std: "experimental",
+    srcs: [
+        "toolbox.c",
+        "getevent.c",
+        "getprop.cpp",
+        "newfs_msdos.c",
+    ],
+    generated_headers: [
+        "toolbox_input_labels",
+    ],
+    whole_static_libs: ["libtoolbox_dd"],
+    shared_libs: [
+        "libbase",
+        "libcutils",
+    ],
+    static_libs: ["libpropertyinfoparser"],
+
+    symlinks: [
+        "dd",
+        "getevent",
+        "getprop",
+        "newfs_msdos",
+    ],
+}
+
+cc_binary {
+    name: "toolbox",
+    defaults: ["toolbox_binary_defaults"],
+}
+
+cc_binary {
+    name: "toolbox_vendor",
+    stem: "toolbox",
+    vendor: true,
+    defaults: ["toolbox_binary_defaults"],
+}
+
+// We only want 'r' on userdebug and eng builds.
+cc_binary {
+    name: "r",
+    defaults: ["toolbox_defaults"],
+    srcs: ["r.c"],
+}
+
+// We build BSD grep separately, so it can provide egrep and fgrep too.
+cc_defaults {
+    name: "grep_common",
+    defaults: ["toolbox_defaults"],
+    srcs: [
+        "upstream-netbsd/usr.bin/grep/fastgrep.c",
+        "upstream-netbsd/usr.bin/grep/file.c",
+        "upstream-netbsd/usr.bin/grep/grep.c",
+        "upstream-netbsd/usr.bin/grep/queue.c",
+        "upstream-netbsd/usr.bin/grep/util.c",
+    ],
+    symlinks: [
+        "egrep",
+        "fgrep",
+    ],
+
+    sanitize: {
+        integer_overflow: false,
+    },
+}
+
+cc_binary {
+    name: "grep",
+    defaults: ["grep_common"],
+}
+
+// Build vendor grep.
+// TODO: Add vendor_available to "grep" module and remove "grep_vendor" module
+//       when vendor_available is fully supported.
+cc_binary {
+    name: "grep_vendor",
+    stem: "grep",
+    vendor: true,
+    defaults: ["grep_common"],
+}

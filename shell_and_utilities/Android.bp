@@ -1,0 +1,21 @@
+phony {
+    name: "shell_and_utilities",
+    required: [
+        "awk",
+        "awk_vendor",
+        "bzip2",
+        "grep",
+        "grep_vendor",
+        "logwrapper",
+        "logwrapper_vendor",
+        "mkshrc",
+        "mkshrc_vendor",
+        "reboot",
+        "sh",
+        "sh_vendor",
+        "toolbox",
+        "toolbox_vendor",
+        "toybox",
+        "toybox_vendor",
+    ],
+}
