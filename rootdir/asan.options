@@ -4,5 +4,6 @@ alloc_dealloc_mismatch=0
 allocator_may_return_null=1
 detect_container_overflow=0
 abort_on_error=1
+quarantine_size_mb=0
 include_if_exists=/system/asan.options.%b
 include_if_exists=/data/asan/system/asan.options.%b
