@@ -190,6 +190,7 @@ enum meminfo_field {
     MI_BUFFERS,
     MI_SHMEM,
     MI_UNEVICTABLE,
+    MI_TOTAL_SWAP,
     MI_FREE_SWAP,
     MI_DIRTY,
     MI_FIELD_COUNT
@@ -202,6 +203,7 @@ static const char* const meminfo_field_names[MI_FIELD_COUNT] = {
     "Buffers:",
     "Shmem:",
     "Unevictable:",
+    "SwapTotal:",
     "SwapFree:",
     "Dirty:",
 };
@@ -214,6 +216,7 @@ union meminfo {
         int64_t buffers;
         int64_t shmem;
         int64_t unevictable;
+        int64_t total_swap;
         int64_t free_swap;
         int64_t dirty;
         /* fields below are calculated rather than read from the file */
@@ -1312,20 +1315,24 @@ static void mp_event_common(int data, uint32_t events __unused) {
         trigger_duraSpeed(level, mem_pressure);
     }
 
-    // If the pressure is larger than downgrade_pressure lmk will not
-    // kill any process, since enough memory is available.
-    if (mem_pressure > downgrade_pressure) {
-        if (debug_process_killing) {
-            ALOGI("Ignore %s memory pressure", level_name[level]);
-        }
-        return;
-    } else if (level == VMPRESS_LEVEL_CRITICAL &&
-               mem_pressure > upgrade_pressure) {
-        if (debug_process_killing) {
-            ALOGI("Downgrade critical memory pressure");
-        }
-        // Downgrade event, since enough memory available.
-        level = downgrade_level(level);
+    // If we still have more than 10% of swap space available, check if we want
+    // to ignore/downgrade pressure events.
+    if (mi.field.free_swap >= mi.field.total_swap * 0.1) {
+      // If the pressure is larger than downgrade_pressure lmk will not
+      // kill any process, since enough memory is available.
+      if (mem_pressure > downgrade_pressure) {
+          if (debug_process_killing) {
+              ALOGI("Ignore %s memory pressure", level_name[level]);
+          }
+          return;
+      } else if (level == VMPRESS_LEVEL_CRITICAL &&
+                 mem_pressure > upgrade_pressure) {
+          if (debug_process_killing) {
+              ALOGI("Downgrade critical memory pressure");
+          }
+          // Downgrade event, since enough memory available.
+          level = downgrade_level(level);
+      }
     }
 
 do_kill:
