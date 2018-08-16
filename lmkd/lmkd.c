@@ -79,6 +79,9 @@
 #define STRINGIFY(x) STRINGIFY_INTERNAL(x)
 #define STRINGIFY_INTERNAL(x) #x
 
+/* A threshold of minfree adjustment toward VMPRESS_LEVEL_CRITICAL (36MB) */
+#define CACHED_THRESHOLD	(9216)
+
 /* default to old in-kernel interface if no memory pressure events */
 static int use_inkernel_interface = 1;
 static bool has_inkernel_module;
@@ -145,7 +148,7 @@ static int maxevents;
 #define OOM_SCORE_ADJ_MAX       1000
 
 static int lowmem_adj[MAX_TARGETS];
-static int lowmem_minfree[MAX_TARGETS];
+static int lowmem_minfree[MAX_TARGETS] = { CACHED_THRESHOLD };
 static int lowmem_targets_size;
 
 /* Fields to parse in /proc/zoneinfo */
@@ -1313,6 +1316,21 @@ static void mp_event_common(int data, uint32_t events __unused) {
     // Trigger duraSpeed
     if (mem_pressure <= downgrade_pressure + 10) {
         trigger_duraSpeed(level, mem_pressure);
+    }
+
+    // Try to detect the case of severe I/O thrashing
+    if (level >= VMPRESS_LEVEL_MEDIUM) {
+	minfree = (lowmem_minfree[0] + CACHED_THRESHOLD) >> 1;
+	other_file = (mi.field.nr_file_pages - mi.field.shmem -
+		      mi.field.unevictable - mi.field.swap_cached);
+	other_free = mi.field.nr_free_pages - zi.field.totalreserve_pages;
+
+	// critical case
+	if (other_file <= minfree && other_free <= minfree) {
+	    level = VMPRESS_LEVEL_CRITICAL;
+	    ALOGI("file backed pages dropped to %d", minfree);
+	    goto do_kill;
+	}
     }
 
     // If we still have more than 10% of swap space available, check if we want
