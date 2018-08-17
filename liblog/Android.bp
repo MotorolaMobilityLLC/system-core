@@ -60,6 +60,48 @@ cc_library_headers {
     },
 }
 
+//Begin Motorola, a22916, IKSWP-4397 - defined liblog vendor headers
+cc_library_headers {
+    name: "liblog_vendor_headers",
+    vendor: true,
+    export_include_dirs: ["include"],
+}
+
+cc_library {
+    name: "liblog_vendor",
+    vendor: true,
+    srcs: liblog_sources,
+    target: {
+        android: {
+            srcs: liblog_target_sources,
+            sanitize: {
+                address: false,
+            },
+        },
+        android_arm: {
+            ldflags: ["-Wl,--hash-style=both"],
+        },
+    },
+    shared_libs: [
+        "libutils",
+        "libcutils",
+    ],
+    header_libs: [
+        "liblog_vendor_headers",
+        "libcutils_vendor_headers",
+    ],
+    export_header_lib_headers: ["liblog_vendor_headers"],
+    cflags: [
+        "-Werror",
+        "-fvisibility=hidden",
+        "-DLIBLOG_LOG_TAG=1006",
+        "-DSNET_EVENT_LOG_TAG=1397638484",
+    ],
+    logtags: ["event.logtags"],
+    compile_multilib: "both",
+}
+//End Motorola, a22916, IKSWP-4397
+
 // Shared and static library for host and device
 // ========================================================
 cc_library {
