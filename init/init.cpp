@@ -515,18 +515,6 @@ static void set_usb_controller() {
     }
 }
 
-static void load_carrier_config(ActionManager& action_manager, ServiceList& service_list) {
-    Parser parser = CreateParser(action_manager, service_list);
-    std::string carrierprop = GetProperty("ro.carrier", "");
-    if (!carrierprop.empty()) {
-        std::string rcpath = StringPrintf("/vendor/etc/init/carrier/init.%s.rc", carrierprop.c_str());
-        if (access(rcpath.c_str(), R_OK) == 0) {
-            LOG(INFO) << "Reading specific config file [" << carrierprop << "]";
-            parser.ParseConfig(rcpath.c_str());
-        }
-    }
-}
-
 static void InstallRebootSignalHandlers() {
     // Instead of panic'ing the kernel as is the default behavior when init crashes,
     // we prefer to reboot to bootloader on development builds, as this will prevent
@@ -805,9 +793,6 @@ int main(int argc, char** argv) {
     ServiceList& sm = ServiceList::GetInstance();
 
     LoadBootScripts(am, sm);
-
-    // Load carrier specific config if present
-    load_carrier_config(am, sm);
 
     // Turning this on and letting the INFO logging be discarded adds 0.2s to
     // Nexus 9 boot time, so it's disabled by default.
