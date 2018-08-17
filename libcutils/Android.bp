@@ -47,6 +47,14 @@ cc_library_headers {
     },
 }
 
+//Begin Motorola, a22916, IKSWP-4397 export private include to liblog_vendor
+cc_library_headers {
+    name: "libcutils_vendor_headers",
+    vendor: true,
+    export_include_dirs: ["include"],
+}
+//End Motorola, a22916, IKSWP-4397
+
 cc_library {
     name: "libcutils",
     vendor_available: true,
