@@ -681,20 +681,6 @@ static void load_override_properties() {
     }
 }
 
-/* BEGIN IKJB42MAIN-6952, 03/13/2013, w60013, rename persist.sys.usb.config */
-bool update_persistent_usb_property(const std::string& name, const std::string& value)
-{
-        std::string persist_usb_config = "persist.sys.usb.config";
-        if (name == persist_usb_config) {
-            property_set("persist.vendor.mot.usb.config", value);
-            property_set("persist.sys.usb.config", "");
-            return true;
-        } else {
-            return false;
-        }
-}
-/* END IKJB42MAIN-6952 */
-
 /* When booting an encrypted system, /data is not mounted when the
  * property service is started, so any properties stored there are
  * not loaded.  Vold triggers init to load these properties once it
@@ -719,9 +705,7 @@ void load_persist_props(void) {
     /* Read persistent properties after all default values have been loaded. */
     auto persistent_properties = LoadPersistentProperties();
     for (const auto& persistent_property_record : persistent_properties.properties()) {
-        /* IKVPREL1L-4680 - update usb properties after decryption */
-        if(!update_persistent_usb_property(persistent_property_record.name(), persistent_property_record.value()))
-            property_set(persistent_property_record.name(), persistent_property_record.value());
+        property_set(persistent_property_record.name(), persistent_property_record.value());
     }
     persistent_properties_loaded = true;
     property_set("ro.persistent_properties.ready", "true");
