@@ -57,6 +57,10 @@
 #include "service.h"
 #include "sigchld_handler.h"
 
+#ifdef HAVE_AEE_FEATURE
+#include "aee.h"
+#endif
+
 using android::base::Split;
 using android::base::StringPrintf;
 using android::base::Timer;
@@ -329,6 +333,26 @@ static UmountStat TryUmountAndFsck(bool runFsck, std::chrono::milliseconds timeo
     return stat;
 }
 
+#ifdef HAVE_AEE_FEATURE
+void hang_detect_set_reboot() {
+    int fd = open(AE_WDT_DEVICE_PATH, O_RDONLY);
+
+    if (fd < 0) {
+        LOG(INFO) << "[HANG_DETECT] ERROR: open hang detect device failed.";
+        return;
+    } else {
+        if (ioctl(fd, AEEIOCTL_SET_HANG_REBOOT) != 0) {
+            LOG(INFO) << "[HANG_DETECT] set hang detect reboot flag failed.";
+            close(fd);
+            return;
+        }
+    }
+    close(fd);
+    LOG(INFO) << "[HANG_DETECT] set hang detect reboot flag.";
+    return;
+}
+#endif
+
 void DoReboot(unsigned int cmd, const std::string& reason, const std::string& rebootTarget,
               bool runFsck) {
     Timer t;
@@ -361,6 +385,10 @@ void DoReboot(unsigned int cmd, const std::string& reason, const std::string& re
         }
     }
     LOG(INFO) << "Shutdown timeout: " << shutdown_timeout.count() << " ms";
+
+#ifdef HAVE_AEE_FEATURE
+    hang_detect_set_reboot();
+#endif
 
     // keep debugging tools until non critical ones are all gone.
     const std::set<std::string> kill_after_apps{"tombstoned", "logd", "adbd"};
