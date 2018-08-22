@@ -24,13 +24,6 @@ init_options += -DALLOW_PERMISSIVE_SELINUX=1
 endif
 endif
 
-# SElinux
-ifneq (,$(filter userdebug eng,$(TARGET_BUILD_VARIANT)))
-init_options += -DALLOW_PERMISSIVE_SELINUX=1
-else
-init_options += -DALLOW_PERMISSIVE_SELINUX=0
-endif
-
 ifneq (,$(filter eng,$(TARGET_BUILD_VARIANT)))
 init_options += \
     -DSHUTDOWN_ZERO_TIMEOUT=1
