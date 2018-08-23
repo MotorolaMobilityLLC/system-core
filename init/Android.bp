@@ -52,8 +52,6 @@ cc_defaults {
             cppflags: [
                 "-USHUTDOWN_ZERO_TIMEOUT",
                 "-DSHUTDOWN_ZERO_TIMEOUT=1",
-                "-UALLOW_PERMISSIVE_SELINUX",
-                "-DALLOW_PERMISSIVE_SELINUX=1",
             ],
         },
         uml: {
