@@ -99,32 +99,49 @@ static int format_ext4(char *fs_blkdev, char *fs_mnt_point, bool crypt_footer)
 
     return rc;
 }
-
-#define MKFS_F2FS_PATH "/vendor/bin/make_f2fs"
-#define MKFS_SECURITY_CONTEXT "u:r:mkfs:s0"
 static int format_f2fs(char *fs_blkdev, bool crypt_footer)
 {
-    char footer_size[10];
-    int footer = crypt_footer ? CRYPT_FOOTER_OFFSET : 0;
-    int err = 0;
 
-    snprintf(footer_size, sizeof(footer_size), "%d", footer);
-    const char* const args[] = {MKFS_F2FS_PATH, "-r", footer_size, "-f", "-O encrypt", fs_blkdev, nullptr};
-
-    /* This doesn't return */
-    if (setexeccon(MKFS_SECURITY_CONTEXT)) {
-         LERROR << "Failed to set security context for mkfs";
-         return -1;
+    uint64_t dev_sz;
+    uint32_t sector_sz = 512;
+    int fd, rc = 0;
+    if ((fd = open(fs_blkdev, O_WRONLY)) < 0) {
+        PERROR << "Cannot open block device";
+        return -1;
     }
 
-    err = android_fork_execvp_ext(arraysize(args), const_cast<char**>(args), NULL, true,
+    if ((ioctl(fd, BLKGETSIZE64, &dev_sz)) == -1) {
+        PERROR << "Cannot get block device size";
+        close(fd);
+        return -1;
+    }
+    if ((ioctl(fd, BLKSSZGET, &sector_sz)) == -1) {
+        PERROR << "Cannot get sector size";
+        close(fd);
+        return -1;
+    }
+
+    close(fd);
+
+    /* Format the partition using the calculated length */
+    if (crypt_footer) {
+        dev_sz -= CRYPT_FOOTER_OFFSET;
+    }
+
+    std::string size_str = std::to_string(dev_sz /sector_sz);
+
+    const char* const args[] = {"/system/bin/make_f2fs",
+                                                 "-d1",
+                                                 "-f",
+                                                 "-O","encrypt",
+                                                 "-O","quota",
+                                                 fs_blkdev,
+                                                 size_str.c_str(),
+                                                 nullptr};
+
+    return android_fork_execvp_ext(arraysize(args), const_cast<char**>(args), NULL, true,
                                    LOG_KLOG, true, nullptr, nullptr, 0);
-    if (setexeccon(NULL)) {
-          LERROR << "Failed to restore security context";
-    }
-    return err;
 }
-
 int fs_mgr_do_format(struct fstab_rec *fstab, bool crypt_footer)
 {
     int rc = -EINVAL;
