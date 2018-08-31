@@ -26,6 +26,7 @@ on early-init
 
     # Mount cgroup mount point for cpu accounting
     mount cgroup none /acct nodev noexec nosuid cpuacct
+    chmod 0555 /acct
     mkdir /acct/uid
 
     # memory.pressure_level used by lmkd
@@ -39,6 +40,10 @@ on init
     # Mix device-specific information into the entropy pool
     copy /proc/cmdline /dev/urandom
     copy /default.prop /dev/urandom
+
+    symlink /proc/self/fd/0 /dev/stdin
+    symlink /proc/self/fd/1 /dev/stdout
+    symlink /proc/self/fd/2 /dev/stderr
 
     symlink /system/bin /bin
     symlink /system/etc /etc
@@ -755,7 +760,7 @@ on property:security.perf_harden=1
 
 ## Daemon processes to be run by init.
 ##
-service ueventd /sbin/ueventd
+service ueventd /system/bin/ueventd
     class core
     critical
     seclabel u:r:ueventd:s0

@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+#include "fs_mgr.h"
+
 #include <ctype.h>
 #include <dirent.h>
 #include <errno.h>
@@ -51,6 +53,7 @@
 #include <ext4_utils/ext4_sb.h>
 #include <ext4_utils/ext4_utils.h>
 #include <ext4_utils/wipe.h>
+#include <fs_mgr_overlayfs.h>
 #include <libdm/dm.h>
 #include <linux/fs.h>
 #include <linux/loop.h>
@@ -58,7 +61,6 @@
 #include <log/log_properties.h>
 #include <logwrap/logwrap.h>
 
-#include "fs_mgr.h"
 #include "fs_mgr_avb.h"
 #include "fs_mgr_priv.h"
 
@@ -1047,6 +1049,10 @@ int fs_mgr_mount_all(struct fstab *fstab, int mount_mode)
         }
     }
 
+#if ALLOW_ADBD_DISABLE_VERITY == 1  // "userdebug" build
+    fs_mgr_overlayfs_mount_all();
+#endif
+
     if (error_count) {
         return FS_MGR_MNTALL_FAIL;
     } else {
@@ -1063,6 +1069,9 @@ int fs_mgr_do_mount_one(struct fstab_rec *rec)
     if (!rec) {
         return FS_MGR_DOMNT_FAILED;
     }
+
+    // Run fsck if needed
+    prepare_fs_for_mount(rec->blk_device, rec);
 
     int ret = __mount(rec->blk_device, rec->mount_point, rec);
     if (ret) {
@@ -1189,8 +1198,8 @@ int fs_mgr_do_tmpfs_mount(const char *n_name)
 {
     int ret;
 
-    ret = mount("tmpfs", n_name, "tmpfs",
-                MS_NOATIME | MS_NOSUID | MS_NODEV, CRYPTO_TMPFS_OPTIONS);
+    ret = mount("tmpfs", n_name, "tmpfs", MS_NOATIME | MS_NOSUID | MS_NODEV | MS_NOEXEC,
+                CRYPTO_TMPFS_OPTIONS);
     if (ret < 0) {
         LERROR << "Cannot mount tmpfs filesystem at " << n_name;
         return -1;

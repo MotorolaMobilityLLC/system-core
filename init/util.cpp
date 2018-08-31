@@ -37,11 +37,8 @@
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
 #include <android-base/unique_fd.h>
-#include <cutils/android_reboot.h>
 #include <cutils/sockets.h>
 #include <selinux/android.h>
-
-#include "reboot.h"
 
 #if defined(__ANDROID__)
 #include "selinux.h"
@@ -50,7 +47,7 @@
 #endif
 
 #ifdef _INIT_INIT_H
-#error "Do not include init.h in files used by ueventd or watchdogd; it will expose init's globals"
+#error "Do not include init.h in files used by ueventd; it will expose init's globals"
 #endif
 
 using android::base::boot_clock;

@@ -37,6 +37,7 @@
 #include <cutils/sockets.h>
 #include <lmkd.h>
 #include <log/log.h>
+#include <log/log_event_list.h>
 
 #ifdef LMKD_LOG_STATS
 #include "statslog.h"
@@ -72,6 +73,9 @@
 #define MEMINFO_PATH "/proc/meminfo"
 #define LINE_MAX 128
 
+/* Android Logger event logtags (see event.logtags) */
+#define MEMINFO_LOG_TAG 10195355
+
 /* gid containing AID_SYSTEM required */
 #define INKERNEL_MINFREE_PATH "/sys/module/lowmemorykiller/parameters/minfree"
 #define INKERNEL_ADJ_PATH "/sys/module/lowmemorykiller/parameters/adj"
@@ -84,6 +88,8 @@
 
 #define STRINGIFY(x) STRINGIFY_INTERNAL(x)
 #define STRINGIFY_INTERNAL(x) #x
+
+#define min(a, b) (((a) < (b)) ? (a) : (b))
 
 /* default to old in-kernel interface if no memory pressure events */
 static bool use_inkernel_interface = true;
@@ -122,6 +128,9 @@ static bool per_app_memcg;
 static bool enhance_batch_kill;
 static bool enable_adaptive_lmk;
 static bool enable_userspace_lmk;
+static int swap_free_low_percentage;
+
+static android_log_context ctx;
 
 /* data required to handle events */
 struct event_handler_info {
@@ -200,8 +209,19 @@ enum meminfo_field {
     MI_BUFFERS,
     MI_SHMEM,
     MI_UNEVICTABLE,
+    MI_TOTAL_SWAP,
     MI_FREE_SWAP,
-    MI_DIRTY,
+    MI_ACTIVE_ANON,
+    MI_INACTIVE_ANON,
+    MI_ACTIVE_FILE,
+    MI_INACTIVE_FILE,
+    MI_SRECLAIMABLE,
+    MI_SUNRECLAIM,
+    MI_KERNEL_STACK,
+    MI_PAGE_TABLES,
+    MI_ION_HELP,
+    MI_ION_HELP_POOL,
+    MI_CMA_FREE,
     MI_FIELD_COUNT
 };
 
@@ -212,8 +232,19 @@ static const char* const meminfo_field_names[MI_FIELD_COUNT] = {
     "Buffers:",
     "Shmem:",
     "Unevictable:",
+    "SwapTotal:",
     "SwapFree:",
-    "Dirty:",
+    "Active(anon):",
+    "Inactive(anon):",
+    "Active(file):",
+    "Inactive(file):",
+    "SReclaimable:",
+    "SUnreclaim:",
+    "KernelStack:",
+    "PageTables:",
+    "ION_heap:",
+    "ION_heap_pool:",
+    "CmaFree:",
 };
 
 union meminfo {
@@ -224,8 +255,19 @@ union meminfo {
         int64_t buffers;
         int64_t shmem;
         int64_t unevictable;
+        int64_t total_swap;
         int64_t free_swap;
-        int64_t dirty;
+        int64_t active_anon;
+        int64_t inactive_anon;
+        int64_t active_file;
+        int64_t inactive_file;
+        int64_t sreclaimable;
+        int64_t sunreclaimable;
+        int64_t kernel_stack;
+        int64_t page_tables;
+        int64_t ion_heap;
+        int64_t ion_heap_pool;
+        int64_t cma_free;
         /* fields below are calculated rather than read from the file */
         int64_t nr_file_pages;
     } field;
@@ -348,7 +390,7 @@ static int reread_file(struct reread_data *data, char *buf, size_t buf_size) {
         data->fd = -1;
         return -1;
     }
-    ALOG_ASSERT((size_t)size < buf_size - 1, data->filename " too large");
+    ALOG_ASSERT((size_t)size < buf_size - 1, "%s too large", data->filename);
     buf[size] = 0;
 
     return 0;
@@ -925,6 +967,15 @@ static int meminfo_parse(union meminfo *mi) {
     return 0;
 }
 
+static void meminfo_log(union meminfo *mi) {
+    for (int field_idx = 0; field_idx < MI_FIELD_COUNT; field_idx++) {
+        android_log_write_int32(ctx, (int32_t)min(mi->arr[field_idx] * page_k, INT32_MAX));
+    }
+
+    android_log_write_list(ctx, LOG_ID_EVENTS);
+    android_log_reset(ctx);
+}
+
 static int proc_get_size(int pid) {
     char path[PATH_MAX];
     char line[LINE_MAX];
@@ -1320,20 +1371,24 @@ static void mp_event_common(int data, uint32_t events __unused) {
         }
     }
 
-    // If the pressure is larger than downgrade_pressure lmk will not
-    // kill any process, since enough memory is available.
-    if (mem_pressure > downgrade_pressure) {
-        if (debug_process_killing) {
-            ALOGI("Ignore %s memory pressure", level_name[level]);
+    // If we still have enough swap space available, check if we want to
+    // ignore/downgrade pressure events.
+    if (mi.field.free_swap >=
+        mi.field.total_swap * swap_free_low_percentage / 100) {
+        // If the pressure is larger than downgrade_pressure lmk will not
+        // kill any process, since enough memory is available.
+        if (mem_pressure > downgrade_pressure) {
+            if (debug_process_killing) {
+                ALOGI("Ignore %s memory pressure", level_name[level]);
+            }
+            return;
+        } else if (level == VMPRESS_LEVEL_CRITICAL && mem_pressure > upgrade_pressure) {
+            if (debug_process_killing) {
+                ALOGI("Downgrade critical memory pressure");
+            }
+            // Downgrade event, since enough memory available.
+            level = downgrade_level(level);
         }
-        return;
-    } else if (level == VMPRESS_LEVEL_CRITICAL &&
-               mem_pressure > upgrade_pressure) {
-        if (debug_process_killing) {
-            ALOGI("Downgrade critical memory pressure");
-        }
-        // Downgrade event, since enough memory available.
-        level = downgrade_level(level);
     }
 
 do_kill:
@@ -1343,6 +1398,8 @@ do_kill:
             if (debug_process_killing) {
                 ALOGI("Nothing to kill");
             }
+        } else {
+            meminfo_log(&mi);
         }
     } else {
         int pages_freed;
@@ -1392,6 +1449,9 @@ do_kill:
             ALOGI("Reclaimed enough memory (pages to free=%d, pages freed=%d)",
                   pages_to_free, pages_freed);
             gettimeofday(&last_report_tm, NULL);
+        }
+        if (pages_freed > 0) {
+            meminfo_log(&mi);
         }
     }
 }
@@ -1612,6 +1672,10 @@ int main(int argc __unused, char **argv __unused) {
         property_get_bool("ro.lmk.enable_adaptive_lmk", false);
     enable_userspace_lmk =
         property_get_bool("ro.lmk.enable_userspace_lmk", false);
+    swap_free_low_percentage =
+        property_get_int32("ro.lmk.swap_free_low_percentage", 10);
+
+    ctx = create_android_logger(MEMINFO_LOG_TAG);
 
 #ifdef LMKD_LOG_STATS
     statslog_init(&log_ctx, &enable_stats_log);
@@ -1647,6 +1711,8 @@ int main(int argc __unused, char **argv __unused) {
 #ifdef LMKD_LOG_STATS
     statslog_destroy(&log_ctx);
 #endif
+
+    android_log_destroy(&ctx);
 
     ALOGI("exiting");
     return 0;

@@ -21,13 +21,17 @@
 
 #include <android-base/unique_fd.h>
 
+#if defined(_WIN32)
 // Helper to automatically close an FD when it goes out of scope.
 struct AdbCloser {
     static void Close(int fd);
 };
 
 using unique_fd = android::base::unique_fd_impl<AdbCloser>;
-
-#if !defined(_WIN32)
-bool Pipe(unique_fd* read, unique_fd* write, int flags = 0);
+#else
+using unique_fd = android::base::unique_fd;
 #endif
+
+template <typename T>
+int adb_close(const android::base::unique_fd_impl<T>&)
+        __attribute__((__unavailable__("adb_close called on unique_fd")));

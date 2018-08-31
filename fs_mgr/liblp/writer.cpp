@@ -34,7 +34,10 @@ std::string SerializeGeometry(const LpMetadataGeometry& input) {
     LpMetadataGeometry geometry = input;
     memset(geometry.checksum, 0, sizeof(geometry.checksum));
     SHA256(&geometry, sizeof(geometry), geometry.checksum);
-    return std::string(reinterpret_cast<const char*>(&geometry), sizeof(geometry));
+
+    std::string blob(reinterpret_cast<const char*>(&geometry), sizeof(geometry));
+    blob.resize(LP_METADATA_GEOMETRY_SIZE);
+    return blob;
 }
 
 static bool CompareGeometry(const LpMetadataGeometry& g1, const LpMetadataGeometry& g2) {
@@ -193,7 +196,7 @@ static bool DefaultWriter(int fd, const std::string& blob) {
     return android::base::WriteFully(fd, blob.data(), blob.size());
 }
 
-bool FlashPartitionTable(int fd, const LpMetadata& metadata, uint32_t slot_number) {
+bool FlashPartitionTable(int fd, const LpMetadata& metadata) {
     // Before writing geometry and/or logical partition tables, perform some
     // basic checks that the geometry and tables are coherent, and will fit
     // on the given block device.
@@ -221,8 +224,11 @@ bool FlashPartitionTable(int fd, const LpMetadata& metadata, uint32_t slot_numbe
         return false;
     }
 
-    // Write metadata to the correct slot, now that geometry is in place.
-    return WriteMetadata(fd, metadata.geometry, slot_number, metadata_blob, DefaultWriter);
+    bool ok = true;
+    for (size_t i = 0; i < metadata.geometry.metadata_slot_count; i++) {
+        ok &= WriteMetadata(fd, metadata.geometry, i, metadata_blob, DefaultWriter);
+    }
+    return ok;
 }
 
 static bool CompareMetadata(const LpMetadata& a, const LpMetadata& b) {
@@ -294,14 +300,17 @@ bool UpdatePartitionTable(int fd, const LpMetadata& metadata, uint32_t slot_numb
     return WriteMetadata(fd, geometry, slot_number, blob, writer);
 }
 
-bool FlashPartitionTable(const std::string& block_device, const LpMetadata& metadata,
-                         uint32_t slot_number) {
+bool FlashPartitionTable(const std::string& block_device, const LpMetadata& metadata) {
     android::base::unique_fd fd(open(block_device.c_str(), O_RDWR | O_SYNC));
     if (fd < 0) {
         PERROR << __PRETTY_FUNCTION__ << "open failed: " << block_device;
         return false;
     }
-    return FlashPartitionTable(fd, metadata, slot_number);
+    if (!FlashPartitionTable(fd, metadata)) {
+        return false;
+    }
+    LWARN << "Flashed new logical partition geometry to " << block_device;
+    return true;
 }
 
 bool UpdatePartitionTable(const std::string& block_device, const LpMetadata& metadata,
@@ -311,7 +320,12 @@ bool UpdatePartitionTable(const std::string& block_device, const LpMetadata& met
         PERROR << __PRETTY_FUNCTION__ << "open failed: " << block_device;
         return false;
     }
-    return UpdatePartitionTable(fd, metadata, slot_number);
+    if (!UpdatePartitionTable(fd, metadata, slot_number)) {
+        return false;
+    }
+    LINFO << "Updated logical partition table at slot " << slot_number << " on device "
+          << block_device;
+    return true;
 }
 
 bool UpdatePartitionTable(int fd, const LpMetadata& metadata, uint32_t slot_number) {

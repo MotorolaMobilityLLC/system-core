@@ -117,21 +117,17 @@ static struct flag_list fs_mgr_flags[] = {
 #define EM_ICE          2
 #define EM_AES_256_CTS  3
 #define EM_AES_256_HEH  4
-#define EM_SPECK_128_256_XTS 5
-#define EM_SPECK_128_256_CTS 6
 
 static const struct flag_list file_contents_encryption_modes[] = {
     {"aes-256-xts", EM_AES_256_XTS},
-    {"speck128/256-xts", EM_SPECK_128_256_XTS},
     {"software", EM_AES_256_XTS}, /* alias for backwards compatibility */
-    {"ice", EM_ICE},              /* hardware-specific inline cryptographic engine */
+    {"ice", EM_ICE}, /* hardware-specific inline cryptographic engine */
     {0, 0},
 };
 
 static const struct flag_list file_names_encryption_modes[] = {
     {"aes-256-cts", EM_AES_256_CTS},
     {"aes-256-heh", EM_AES_256_HEH},
-    {"speck128/256-cts", EM_SPECK_128_256_CTS},
     {0, 0},
 };
 
@@ -811,7 +807,7 @@ struct fstab *fs_mgr_read_fstab_default()
     std::string default_fstab;
 
     // Use different fstab paths for normal boot and recovery boot, respectively
-    if (access("/sbin/recovery", F_OK) == 0) {
+    if (access("/system/bin/recovery", F_OK) == 0) {
         default_fstab = "/etc/recovery.fstab";
     } else {  // normal boot
         default_fstab = get_fstab_path();

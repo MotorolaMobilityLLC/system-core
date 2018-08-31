@@ -20,6 +20,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include <map>
 #include <memory>
 #include <string>
 
@@ -41,8 +42,7 @@ struct LpMetadata {
 // existing geometry, and should not be used for normal partition table
 // updates. False can be returned if the geometry is incompatible with the
 // block device or an I/O error occurs.
-bool FlashPartitionTable(const std::string& block_device, const LpMetadata& metadata,
-                         uint32_t slot_number);
+bool FlashPartitionTable(const std::string& block_device, const LpMetadata& metadata);
 
 // Update the partition table for a given metadata slot number. False is
 // returned if an error occurs, which can include:
@@ -59,9 +59,11 @@ std::unique_ptr<LpMetadata> ReadMetadata(const char* block_device, uint32_t slot
 
 // Read/Write logical partition metadata to an image file, for diagnostics or
 // flashing.
-bool WriteToSparseFile(const char* file, const LpMetadata& metadata);
+bool WriteToSparseFile(const char* file, const LpMetadata& metadata, uint32_t block_size,
+                       const std::map<std::string, std::string>& images);
 bool WriteToImageFile(const char* file, const LpMetadata& metadata);
 std::unique_ptr<LpMetadata> ReadFromImageFile(const char* file);
+std::unique_ptr<LpMetadata> ReadFromImageBlob(const void* data, size_t bytes);
 
 // Helper to extract safe C++ strings from partition info.
 std::string GetPartitionName(const LpMetadataPartition& partition);

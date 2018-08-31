@@ -27,9 +27,9 @@ namespace android {
 namespace base {
 
 // Parses the unsigned decimal or hexadecimal integer in the string 's' and sets
-// 'out' to that value. Optionally allows the caller to define a 'max' beyond
-// which otherwise valid values will be rejected. Returns boolean success; 'out'
-// is untouched if parsing fails.
+// 'out' to that value if it is specified. Optionally allows the caller to define
+// a 'max' beyond which otherwise valid values will be rejected. Returns boolean
+// success; 'out' is untouched if parsing fails.
 template <typename T>
 bool ParseUint(const char* s, T* out, T max = std::numeric_limits<T>::max(),
                bool allow_suffixes = false) {
@@ -47,7 +47,9 @@ bool ParseUint(const char* s, T* out, T max = std::numeric_limits<T>::max(),
   if (max < result) {
     return false;
   }
-  *out = static_cast<T>(result);
+  if (out != nullptr) {
+    *out = static_cast<T>(result);
+  }
   return true;
 }
 
@@ -70,9 +72,9 @@ bool ParseByteCount(const std::string& s, T* out, T max = std::numeric_limits<T>
 }
 
 // Parses the signed decimal or hexadecimal integer in the string 's' and sets
-// 'out' to that value. Optionally allows the caller to define a 'min' and 'max'
-// beyond which otherwise valid values will be rejected. Returns boolean
-// success; 'out' is untouched if parsing fails.
+// 'out' to that value if it is specified. Optionally allows the caller to define
+// a 'min' and 'max' beyond which otherwise valid values will be rejected. Returns
+// boolean success; 'out' is untouched if parsing fails.
 template <typename T>
 bool ParseInt(const char* s, T* out,
               T min = std::numeric_limits<T>::min(),
@@ -87,7 +89,9 @@ bool ParseInt(const char* s, T* out,
   if (result < min || max < result) {
     return false;
   }
-  *out = static_cast<T>(result);
+  if (out != nullptr) {
+    *out = static_cast<T>(result);
+  }
   return true;
 }
 

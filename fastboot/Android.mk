@@ -50,12 +50,12 @@ LOCAL_SRC_FILES := \
     bootimg_utils.cpp \
     engine.cpp \
     fastboot.cpp \
-    fs.cpp\
-    protocol.cpp \
+    fs.cpp \
     socket.cpp \
     tcp.cpp \
     udp.cpp \
     util.cpp \
+    fastboot_driver.cpp \
 
 LOCAL_SRC_FILES_darwin := usb_osx.cpp
 LOCAL_SRC_FILES_linux := usb_linux.cpp
@@ -82,6 +82,7 @@ LOCAL_MODULE_HOST_OS := darwin linux windows
 
 LOCAL_CFLAGS := $(fastboot_cflags)
 LOCAL_CFLAGS_darwin := $(fastboot_cflags_darwin)
+LOCAL_CPP_STD := c++17
 LOCAL_CXX_STL := $(fastboot_stl)
 LOCAL_HEADER_LIBRARIES := bootimg_headers
 LOCAL_LDLIBS_darwin := $(fastboot_ldlibs_darwin)

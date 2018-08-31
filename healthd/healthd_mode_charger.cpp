@@ -72,6 +72,7 @@ char* locale;
 #define BATTERY_UNKNOWN_TIME (2 * MSEC_PER_SEC)
 #define POWER_ON_KEY_TIME (2 * MSEC_PER_SEC)
 #define UNPLUGGED_SHUTDOWN_TIME (10 * MSEC_PER_SEC)
+#define UNPLUGGED_DISPLAY_TIME (3 * MSEC_PER_SEC)
 
 #define LAST_KMSG_MAX_SZ (32 * 1024)
 #define BACKLIGHT_TOGGLE_PATH "/sys/class/backlight/panel0-backlight/brightness"
@@ -92,6 +93,7 @@ struct key_state {
 struct charger {
     bool have_battery_state;
     bool charger_connected;
+    bool screen_blanked;
     int64_t next_screen_transition;
     int64_t next_key_check;
     int64_t next_pwr_check;
@@ -322,6 +324,7 @@ static void update_screen_state(charger* charger, int64_t now) {
 #ifndef CHARGER_DISABLE_INIT_BLANK
         set_backlight(false);
         healthd_draw->blank_screen(true);
+        charger->screen_blanked = true;
 #endif
     }
 
@@ -331,6 +334,7 @@ static void update_screen_state(charger* charger, int64_t now) {
         charger->next_screen_transition = -1;
         set_backlight(false);
         healthd_draw->blank_screen(true);
+        charger->screen_blanked = true;
         LOGV("[%" PRId64 "] animation done\n", now);
         if (charger->charger_connected) request_suspend(true);
         return;
@@ -343,6 +347,12 @@ static void update_screen_state(charger* charger, int64_t now) {
         healthd_draw->blank_screen(false);
         set_backlight(true);
     }
+
+    if (charger->screen_blanked) {
+        healthd_draw->blank_screen(false);
+        charger->screen_blanked = false;
+    }
+
     /* animation starting, set up the animation */
     if (batt_anim->cur_frame == 0) {
         LOGV("[%" PRId64 "] animation starting\n", now);
@@ -359,9 +369,15 @@ static void update_screen_state(charger* charger, int64_t now) {
                     }
                 }
 
-                // repeat the first frame first_frame_repeats times
-                disp_time = batt_anim->frames[batt_anim->cur_frame].disp_time *
-                            batt_anim->first_frame_repeats;
+                if (charger->charger_connected) {
+                    // repeat the first frame first_frame_repeats times
+                    disp_time = batt_anim->frames[batt_anim->cur_frame].disp_time *
+                                batt_anim->first_frame_repeats;
+                } else {
+                    disp_time = UNPLUGGED_DISPLAY_TIME / batt_anim->num_cycles;
+                }
+
+                LOGV("cur_frame=%d disp_time=%d\n", batt_anim->cur_frame, disp_time);
             }
         }
     }
@@ -380,7 +396,7 @@ static void update_screen_state(charger* charger, int64_t now) {
     }
 
     /* schedule next screen transition */
-    charger->next_screen_transition = now + disp_time;
+    charger->next_screen_transition = curr_time_ms() + disp_time;
 
     /* advance frame cntr to the next valid frame only if we are charging
      * if necessary, advance cycle cntr, and reset frame cntr
@@ -490,6 +506,7 @@ static void process_key(charger* charger, int code, int64_t now) {
             /* if the power key got released, force screen state cycle */
             if (key->pending) {
                 kick_animation(charger->batt_anim);
+                request_suspend(false);
             }
         }
     }
@@ -508,12 +525,18 @@ static void handle_power_supply_state(charger* charger, int64_t now) {
     if (!charger->have_battery_state) return;
 
     if (!charger->charger_connected) {
-        /* Last cycle would have stopped at the extreme top of battery-icon
-         * Need to show the correct level corresponding to capacity.
-         */
-        kick_animation(charger->batt_anim);
         request_suspend(false);
         if (charger->next_pwr_check == -1) {
+            /* Last cycle would have stopped at the extreme top of battery-icon
+             * Need to show the correct level corresponding to capacity.
+             *
+             * Reset next_screen_transition to update screen immediately.
+             * Reset & kick animation to show complete animation cycles
+             * when charger disconnected.
+             */
+            charger->next_screen_transition = now - 1;
+            reset_animation(charger->batt_anim);
+            kick_animation(charger->batt_anim);
             charger->next_pwr_check = now + UNPLUGGED_SHUTDOWN_TIME;
             LOGW("[%" PRId64 "] device unplugged: shutting down in %" PRId64 " (@ %" PRId64 ")\n",
                  now, (int64_t)UNPLUGGED_SHUTDOWN_TIME, charger->next_pwr_check);
@@ -526,8 +549,15 @@ static void handle_power_supply_state(charger* charger, int64_t now) {
     } else {
         /* online supply present, reset shutdown timer if set */
         if (charger->next_pwr_check != -1) {
-            LOGW("[%" PRId64 "] device plugged in: shutdown cancelled\n", now);
+            /* Reset next_screen_transition to update screen immediately.
+             * Reset & kick animation to show complete animation cycles
+             * when charger connected again.
+             */
+            request_suspend(false);
+            charger->next_screen_transition = now - 1;
+            reset_animation(charger->batt_anim);
             kick_animation(charger->batt_anim);
+            LOGW("[%" PRId64 "] device plugged in: shutdown cancelled\n", now);
         }
         charger->next_pwr_check = -1;
     }
@@ -555,6 +585,7 @@ void healthd_mode_charger_battery_update(android::BatteryProperties* props) {
     if (!charger->have_battery_state) {
         charger->have_battery_state = true;
         charger->next_screen_transition = curr_time_ms() - 1;
+        request_suspend(false);
         reset_animation(charger->batt_anim);
         kick_animation(charger->batt_anim);
     }

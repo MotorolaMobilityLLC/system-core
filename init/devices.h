@@ -29,12 +29,15 @@
 #include <selinux/label.h>
 
 #include "uevent.h"
+#include "uevent_handler.h"
 
 namespace android {
 namespace init {
 
 class Permissions {
   public:
+    friend void TestPermissions(const Permissions& expected, const Permissions& test);
+
     Permissions(const std::string& name, mode_t perm, uid_t uid, gid_t gid);
 
     bool Match(const std::string& path) const;
@@ -57,6 +60,8 @@ class Permissions {
 
 class SysfsPermissions : public Permissions {
   public:
+    friend void TestSysfsPermissions(const SysfsPermissions& expected, const SysfsPermissions& test);
+
     SysfsPermissions(const std::string& name, const std::string& attribute, mode_t perm, uid_t uid,
                      gid_t gid)
         : Permissions(name, perm, uid, gid), attribute_(attribute) {}
@@ -71,16 +76,24 @@ class SysfsPermissions : public Permissions {
 class Subsystem {
   public:
     friend class SubsystemParser;
+    friend void TestSubsystems(const Subsystem& expected, const Subsystem& test);
+
+    enum DevnameSource {
+        DEVNAME_UEVENT_DEVNAME,
+        DEVNAME_UEVENT_DEVPATH,
+    };
 
     Subsystem() {}
-    Subsystem(std::string name) : name_(std::move(name)) {}
+    Subsystem(const std::string& name) : name_(name) {}
+    Subsystem(const std::string& name, DevnameSource source, const std::string& dir_name)
+        : name_(name), devname_source_(source), dir_name_(dir_name) {}
 
     // Returns the full path for a uevent of a device that is a member of this subsystem,
     // according to the rules parsed from ueventd.rc
     std::string ParseDevPath(const Uevent& uevent) const {
-        std::string devname = devname_source_ == DevnameSource::DEVNAME_UEVENT_DEVNAME
-                                  ? uevent.device_name
-                                  : android::base::Basename(uevent.path);
+        std::string devname = devname_source_ == DEVNAME_UEVENT_DEVNAME
+                                      ? uevent.device_name
+                                      : android::base::Basename(uevent.path);
 
         return dir_name_ + "/" + devname;
     }
@@ -88,17 +101,12 @@ class Subsystem {
     bool operator==(const std::string& string_name) const { return name_ == string_name; }
 
   private:
-    enum class DevnameSource {
-        DEVNAME_UEVENT_DEVNAME,
-        DEVNAME_UEVENT_DEVPATH,
-    };
-
     std::string name_;
+    DevnameSource devname_source_ = DEVNAME_UEVENT_DEVNAME;
     std::string dir_name_ = "/dev";
-    DevnameSource devname_source_;
 };
 
-class DeviceHandler {
+class DeviceHandler : public UeventHandler {
   public:
     friend class DeviceHandlerTester;
 
@@ -106,11 +114,12 @@ class DeviceHandler {
     DeviceHandler(std::vector<Permissions> dev_permissions,
                   std::vector<SysfsPermissions> sysfs_permissions, std::vector<Subsystem> subsystems,
                   std::set<std::string> boot_devices, bool skip_restorecon);
+    virtual ~DeviceHandler() = default;
 
-    void HandleDeviceEvent(const Uevent& uevent);
+    void HandleUevent(const Uevent& uevent) override;
+    void ColdbootDone() override;
 
     std::vector<std::string> GetBlockDeviceSymlinks(const Uevent& uevent) const;
-    void set_skip_restorecon(bool value) { skip_restorecon_ = value; }
 
   private:
     bool FindPlatformDevice(std::string path, std::string* platform_device_path) const;

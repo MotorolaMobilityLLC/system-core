@@ -33,7 +33,7 @@
 #include <deque>
 #include <list>
 #include <mutex>
-#include <queue>
+#include <set>
 #include <thread>
 
 #include <android-base/logging.h>
@@ -50,6 +50,7 @@
 #include "adb_trace.h"
 #include "adb_utils.h"
 #include "fdevent.h"
+#include "sysdeps/chrono.h"
 
 static void register_transport(atransport* transport);
 static void remove_transport(atransport* transport);
@@ -80,6 +81,7 @@ class SCOPED_CAPABILITY ScopedAssumeLocked {
     ~ScopedAssumeLocked() RELEASE() {}
 };
 
+#if ADB_HOST
 // Tracks and handles atransport*s that are attempting reconnection.
 class ReconnectHandler {
   public:
@@ -95,6 +97,9 @@ class ReconnectHandler {
     // Adds the atransport* to the queue of reconnect attempts.
     void TrackTransport(atransport* transport);
 
+    // Wake up the ReconnectHandler thread to have it check for kicked transports.
+    void CheckForKicked();
+
   private:
     // The main thread loop.
     void Run();
@@ -102,12 +107,20 @@ class ReconnectHandler {
     // Tracks a reconnection attempt.
     struct ReconnectAttempt {
         atransport* transport;
-        std::chrono::system_clock::time_point deadline;
+        std::chrono::steady_clock::time_point reconnect_time;
         size_t attempts_left;
+
+        bool operator<(const ReconnectAttempt& rhs) const {
+            if (reconnect_time == rhs.reconnect_time) {
+                return reinterpret_cast<uintptr_t>(transport) <
+                       reinterpret_cast<uintptr_t>(rhs.transport);
+            }
+            return reconnect_time < rhs.reconnect_time;
+        }
     };
 
     // Only retry for up to one minute.
-    static constexpr const std::chrono::seconds kDefaultTimeout = std::chrono::seconds(10);
+    static constexpr const std::chrono::seconds kDefaultTimeout = 10s;
     static constexpr const size_t kMaxAttempts = 6;
 
     // Protects all members.
@@ -115,7 +128,7 @@ class ReconnectHandler {
     bool running_ GUARDED_BY(reconnect_mutex_) = true;
     std::thread handler_thread_;
     std::condition_variable reconnect_cv_;
-    std::queue<ReconnectAttempt> reconnect_queue_ GUARDED_BY(reconnect_mutex_);
+    std::set<ReconnectAttempt> reconnect_queue_ GUARDED_BY(reconnect_mutex_);
 
     DISALLOW_COPY_AND_ASSIGN(ReconnectHandler);
 };
@@ -137,8 +150,8 @@ void ReconnectHandler::Stop() {
     // Drain the queue to free all resources.
     std::lock_guard<std::mutex> lock(reconnect_mutex_);
     while (!reconnect_queue_.empty()) {
-        ReconnectAttempt attempt = reconnect_queue_.front();
-        reconnect_queue_.pop();
+        ReconnectAttempt attempt = *reconnect_queue_.begin();
+        reconnect_queue_.erase(reconnect_queue_.begin());
         remove_transport(attempt.transport);
     }
 }
@@ -148,10 +161,15 @@ void ReconnectHandler::TrackTransport(atransport* transport) {
     {
         std::lock_guard<std::mutex> lock(reconnect_mutex_);
         if (!running_) return;
-        reconnect_queue_.emplace(ReconnectAttempt{
-            transport, std::chrono::system_clock::now() + ReconnectHandler::kDefaultTimeout,
-            ReconnectHandler::kMaxAttempts});
+        // Arbitrary sleep to give adbd time to get ready, if we disconnected because it exited.
+        auto reconnect_time = std::chrono::steady_clock::now() + 250ms;
+        reconnect_queue_.emplace(
+                ReconnectAttempt{transport, reconnect_time, ReconnectHandler::kMaxAttempts});
     }
+    reconnect_cv_.notify_one();
+}
+
+void ReconnectHandler::CheckForKicked() {
     reconnect_cv_.notify_one();
 }
 
@@ -162,47 +180,71 @@ void ReconnectHandler::Run() {
             std::unique_lock<std::mutex> lock(reconnect_mutex_);
             ScopedAssumeLocked assume_lock(reconnect_mutex_);
 
-            auto deadline = std::chrono::time_point<std::chrono::system_clock>::max();
-            if (!reconnect_queue_.empty()) deadline = reconnect_queue_.front().deadline;
-            reconnect_cv_.wait_until(lock, deadline, [&]() REQUIRES(reconnect_mutex_) {
-                return !running_ ||
-                       (!reconnect_queue_.empty() && reconnect_queue_.front().deadline < deadline);
-            });
+            if (!reconnect_queue_.empty()) {
+                // FIXME: libstdc++ (used on Windows) implements condition_variable with
+                //        system_clock as its clock, so we're probably hosed if the clock changes,
+                //        even if we use steady_clock throughout. This problem goes away once we
+                //        switch to libc++.
+                reconnect_cv_.wait_until(lock, reconnect_queue_.begin()->reconnect_time);
+            } else {
+                reconnect_cv_.wait(lock);
+            }
 
             if (!running_) return;
-            attempt = reconnect_queue_.front();
-            reconnect_queue_.pop();
-            if (attempt.transport->kicked()) {
-                D("transport %s was kicked. giving up on it.", attempt.transport->serial);
-                remove_transport(attempt.transport);
+
+            // Scan the whole list for kicked transports, so that we immediately handle an explicit
+            // disconnect request.
+            bool kicked = false;
+            for (auto it = reconnect_queue_.begin(); it != reconnect_queue_.end();) {
+                if (it->transport->kicked()) {
+                    D("transport %s was kicked. giving up on it.", it->transport->serial.c_str());
+                    remove_transport(it->transport);
+                    it = reconnect_queue_.erase(it);
+                } else {
+                    ++it;
+                }
+                kicked = true;
+            }
+
+            if (reconnect_queue_.empty()) continue;
+
+            // Go back to sleep if we either woke up spuriously, or we were woken up to remove
+            // a kicked transport, and the first transport isn't ready for reconnection yet.
+            auto now = std::chrono::steady_clock::now();
+            if (reconnect_queue_.begin()->reconnect_time > now) {
                 continue;
             }
+
+            attempt = *reconnect_queue_.begin();
+            reconnect_queue_.erase(reconnect_queue_.begin());
         }
-        D("attempting to reconnect %s", attempt.transport->serial);
+        D("attempting to reconnect %s", attempt.transport->serial.c_str());
 
         if (!attempt.transport->Reconnect()) {
-            D("attempting to reconnect %s failed.", attempt.transport->serial);
+            D("attempting to reconnect %s failed.", attempt.transport->serial.c_str());
             if (attempt.attempts_left == 0) {
                 D("transport %s exceeded the number of retry attempts. giving up on it.",
-                  attempt.transport->serial);
+                  attempt.transport->serial.c_str());
                 remove_transport(attempt.transport);
                 continue;
             }
 
             std::lock_guard<std::mutex> lock(reconnect_mutex_);
             reconnect_queue_.emplace(ReconnectAttempt{
-                attempt.transport,
-                std::chrono::system_clock::now() + ReconnectHandler::kDefaultTimeout,
-                attempt.attempts_left - 1});
+                    attempt.transport,
+                    std::chrono::steady_clock::now() + ReconnectHandler::kDefaultTimeout,
+                    attempt.attempts_left - 1});
             continue;
         }
 
-        D("reconnection to %s succeeded.", attempt.transport->serial);
+        D("reconnection to %s succeeded.", attempt.transport->serial.c_str());
         register_transport(attempt.transport);
     }
 }
 
 static auto& reconnect_handler = *new ReconnectHandler();
+
+#endif
 
 }  // namespace
 
@@ -402,14 +444,14 @@ void send_packet(apacket* p, atransport* t) {
         p->msg.data_check = calculate_apacket_checksum(p);
     }
 
-    VLOG(TRANSPORT) << dump_packet(t->serial, "to remote", p);
+    VLOG(TRANSPORT) << dump_packet(t->serial.c_str(), "to remote", p);
 
     if (t == nullptr) {
         fatal("Transport is null");
     }
 
     if (t->Write(p) != 0) {
-        D("%s: failed to enqueue packet, closing transport", t->serial);
+        D("%s: failed to enqueue packet, closing transport", t->serial.c_str());
         t->Kick();
     }
 }
@@ -423,6 +465,10 @@ void kick_transport(atransport* t) {
     if (std::find(transport_list.begin(), transport_list.end(), t) != transport_list.end()) {
         t->Kick();
     }
+
+#if ADB_HOST
+    reconnect_handler.CheckForKicked();
+#endif
 }
 
 static int transport_registration_send = -1;
@@ -619,18 +665,12 @@ static void transport_registration_func(int _fd, unsigned ev, void*) {
     t = m.transport;
 
     if (m.action == 0) {
-        D("transport: %s deleting", t->serial);
+        D("transport: %s deleting", t->serial.c_str());
 
         {
             std::lock_guard<std::recursive_mutex> lock(transport_lock);
             transport_list.remove(t);
         }
-
-        if (t->product) free(t->product);
-        if (t->serial) free(t->serial);
-        if (t->model) free(t->model);
-        if (t->device) free(t->device);
-        if (t->devpath) free(t->devpath);
 
         delete t;
 
@@ -646,11 +686,11 @@ static void transport_registration_func(int _fd, unsigned ev, void*) {
         t->connection()->SetTransportName(t->serial_name());
         t->connection()->SetReadCallback([t](Connection*, std::unique_ptr<apacket> p) {
             if (!check_header(p.get(), t)) {
-                D("%s: remote read: bad header", t->serial);
+                D("%s: remote read: bad header", t->serial.c_str());
                 return false;
             }
 
-            VLOG(TRANSPORT) << dump_packet(t->serial, "from remote", p.get());
+            VLOG(TRANSPORT) << dump_packet(t->serial.c_str(), "from remote", p.get());
             apacket* packet = p.release();
 
             // TODO: Does this need to run on the main thread?
@@ -658,7 +698,7 @@ static void transport_registration_func(int _fd, unsigned ev, void*) {
             return true;
         });
         t->connection()->SetErrorCallback([t](Connection*, const std::string& error) {
-            D("%s: connection terminated: %s", t->serial, error.c_str());
+            D("%s: connection terminated: %s", t->serial.c_str(), error.c_str());
             fdevent_run_on_main_thread([t]() {
                 handle_offline(t);
                 transport_unref(t);
@@ -683,9 +723,11 @@ static void transport_registration_func(int _fd, unsigned ev, void*) {
     update_transports();
 }
 
+#if ADB_HOST
 void init_reconnect_handler(void) {
     reconnect_handler.Start();
 }
+#endif
 
 void init_transport_registration(void) {
     int s[2];
@@ -704,7 +746,9 @@ void init_transport_registration(void) {
 }
 
 void kick_all_transports() {
+#if ADB_HOST
     reconnect_handler.Stop();
+#endif
     // To avoid only writing part of a packet to a transport after exit, kick all transports.
     std::lock_guard<std::recursive_mutex> lock(transport_lock);
     for (auto t : transport_list) {
@@ -717,7 +761,7 @@ static void register_transport(atransport* transport) {
     tmsg m;
     m.transport = transport;
     m.action = 1;
-    D("transport: %s registered", transport->serial);
+    D("transport: %s registered", transport->serial.c_str());
     if (transport_write_action(transport_registration_send, &m)) {
         fatal_errno("cannot write transport registration socket\n");
     }
@@ -727,7 +771,7 @@ static void remove_transport(atransport* transport) {
     tmsg m;
     m.transport = transport;
     m.action = 0;
-    D("transport: %s removed", transport->serial);
+    D("transport: %s removed", transport->serial.c_str());
     if (transport_write_action(transport_registration_send, &m)) {
         fatal_errno("cannot write transport registration socket\n");
     }
@@ -742,39 +786,45 @@ static void transport_unref(atransport* t) {
     t->ref_count--;
     if (t->ref_count == 0) {
         t->connection()->Stop();
+#if ADB_HOST
         if (t->IsTcpDevice() && !t->kicked()) {
-            D("transport: %s unref (attempting reconnection) %d", t->serial, t->kicked());
+            D("transport: %s unref (attempting reconnection)", t->serial.c_str());
             reconnect_handler.TrackTransport(t);
         } else {
-            D("transport: %s unref (kicking and closing)", t->serial);
+            D("transport: %s unref (kicking and closing)", t->serial.c_str());
             remove_transport(t);
         }
+#else
+        D("transport: %s unref (kicking and closing)", t->serial.c_str());
+        remove_transport(t);
+#endif
+
     } else {
-        D("transport: %s unref (count=%zu)", t->serial, t->ref_count);
+        D("transport: %s unref (count=%zu)", t->serial.c_str(), t->ref_count);
     }
 }
 
-static int qual_match(const char* to_test, const char* prefix, const char* qual,
+static int qual_match(const std::string& to_test, const char* prefix, const std::string& qual,
                       bool sanitize_qual) {
-    if (!to_test || !*to_test) /* Return true if both the qual and to_test are null strings. */
-        return !qual || !*qual;
+    if (to_test.empty()) /* Return true if both the qual and to_test are empty strings. */
+        return qual.empty();
 
-    if (!qual) return 0;
+    if (qual.empty()) return 0;
 
+    const char* ptr = to_test.c_str();
     if (prefix) {
         while (*prefix) {
-            if (*prefix++ != *to_test++) return 0;
+            if (*prefix++ != *ptr++) return 0;
         }
     }
 
-    while (*qual) {
-        char ch = *qual++;
+    for (char ch : qual) {
         if (sanitize_qual && !isalnum(ch)) ch = '_';
-        if (ch != *to_test++) return 0;
+        if (ch != *ptr++) return 0;
     }
 
-    /* Everything matched so far.  Return true if *to_test is a NUL. */
-    return !*to_test;
+    /* Everything matched so far.  Return true if *ptr is a NUL. */
+    return !*ptr;
 }
 
 atransport* acquire_one_transport(TransportType type, const char* serial, TransportId transport_id,
@@ -921,7 +971,7 @@ int atransport::Write(apacket* p) {
 
 void atransport::Kick() {
     if (!kicked_.exchange(true)) {
-        D("kicking transport %p %s", this, this->serial);
+        D("kicking transport %p %s", this, this->serial.c_str());
         this->connection()->Stop();
     }
 }
@@ -1040,7 +1090,7 @@ void atransport::RunDisconnects() {
 }
 
 bool atransport::MatchesTarget(const std::string& target) const {
-    if (serial) {
+    if (!serial.empty()) {
         if (target == serial) {
             return true;
         } else if (type == kTransportLocal) {
@@ -1069,10 +1119,9 @@ bool atransport::MatchesTarget(const std::string& target) const {
         }
     }
 
-    return (devpath && target == devpath) ||
-           qual_match(target.c_str(), "product:", product, false) ||
-           qual_match(target.c_str(), "model:", model, true) ||
-           qual_match(target.c_str(), "device:", device, false);
+    return (target == devpath) || qual_match(target, "product:", product, false) ||
+           qual_match(target, "model:", model, true) ||
+           qual_match(target, "device:", device, false);
 }
 
 void atransport::SetConnectionEstablished(bool success) {
@@ -1093,9 +1142,9 @@ static std::string sanitize(std::string str, bool alphanumeric) {
     return str;
 }
 
-static void append_transport_info(std::string* result, const char* key, const char* value,
+static void append_transport_info(std::string* result, const char* key, const std::string& value,
                                   bool alphanumeric) {
-    if (value == nullptr || *value == '\0') {
+    if (value.empty()) {
         return;
     }
 
@@ -1105,8 +1154,8 @@ static void append_transport_info(std::string* result, const char* key, const ch
 }
 
 static void append_transport(const atransport* t, std::string* result, bool long_listing) {
-    const char* serial = t->serial;
-    if (!serial || !serial[0]) {
+    std::string serial = t->serial;
+    if (serial.empty()) {
         serial = "(no serial number)";
     }
 
@@ -1115,7 +1164,8 @@ static void append_transport(const atransport* t, std::string* result, bool long
         *result += '\t';
         *result += t->connection_state_name();
     } else {
-        android::base::StringAppendF(result, "%-22s %s", serial, t->connection_state_name().c_str());
+        android::base::StringAppendF(result, "%-22s %s", serial.c_str(),
+                                     t->connection_state_name().c_str());
 
         append_transport_info(result, "", t->devpath, false);
         append_transport_info(result, "product:", t->product, false);
@@ -1138,7 +1188,7 @@ std::string list_transports(bool long_listing) {
         if (x->type != y->type) {
             return x->type < y->type;
         }
-        return strcmp(x->serial, y->serial) < 0;
+        return x->serial < y->serial;
     });
 
     std::string result;
@@ -1163,43 +1213,40 @@ void close_usb_devices() {
 }
 #endif  // ADB_HOST
 
-int register_socket_transport(int s, const char* serial, int port, int local,
-                              atransport::ReconnectCallback reconnect) {
+bool register_socket_transport(unique_fd s, std::string serial, int port, int local,
+                               atransport::ReconnectCallback reconnect, int* error) {
     atransport* t = new atransport(std::move(reconnect), kCsOffline);
 
-    if (!serial) {
-        char buf[32];
-        snprintf(buf, sizeof(buf), "T-%p", t);
-        serial = buf;
-    }
-
-    D("transport: %s init'ing for socket %d, on port %d", serial, s, port);
-    if (init_socket_transport(t, s, port, local) < 0) {
+    D("transport: %s init'ing for socket %d, on port %d", serial.c_str(), s.get(), port);
+    if (init_socket_transport(t, std::move(s), port, local) < 0) {
         delete t;
-        return -1;
+        if (error) *error = errno;
+        return false;
     }
 
     std::unique_lock<std::recursive_mutex> lock(transport_lock);
     for (const auto& transport : pending_list) {
-        if (transport->serial && strcmp(serial, transport->serial) == 0) {
+        if (serial == transport->serial) {
             VLOG(TRANSPORT) << "socket transport " << transport->serial
                             << " is already in pending_list and fails to register";
             delete t;
-            return -EALREADY;
+            if (error) *error = EALREADY;
+            return false;
         }
     }
 
     for (const auto& transport : transport_list) {
-        if (transport->serial && strcmp(serial, transport->serial) == 0) {
+        if (serial == transport->serial) {
             VLOG(TRANSPORT) << "socket transport " << transport->serial
                             << " is already in transport_list and fails to register";
             delete t;
-            return -EALREADY;
+            if (error) *error = EALREADY;
+            return false;
         }
     }
 
+    t->serial = std::move(serial);
     pending_list.push_front(t);
-    t->serial = strdup(serial);
 
     lock.unlock();
 
@@ -1208,10 +1255,20 @@ int register_socket_transport(int s, const char* serial, int port, int local,
 
     if (local == 1) {
         // Do not wait for emulator transports.
-        return 0;
+        return true;
     }
 
-    return waitable->WaitForConnection(std::chrono::seconds(10)) ? 0 : -1;
+    if (!waitable->WaitForConnection(std::chrono::seconds(10))) {
+        if (error) *error = ETIMEDOUT;
+        return false;
+    }
+
+    if (t->GetConnectionState() == kCsUnauthorized) {
+        if (error) *error = EPERM;
+        return false;
+    }
+
+    return true;
 }
 
 #if ADB_HOST
@@ -1220,7 +1277,7 @@ atransport* find_transport(const char* serial) {
 
     std::lock_guard<std::recursive_mutex> lock(transport_lock);
     for (auto& t : transport_list) {
-        if (t->serial && strcmp(serial, t->serial) == 0) {
+        if (strcmp(serial, t->serial.c_str()) == 0) {
             result = t;
             break;
         }
@@ -1240,6 +1297,9 @@ void kick_all_tcp_devices() {
             t->Kick();
         }
     }
+#if ADB_HOST
+    reconnect_handler.CheckForKicked();
+#endif
 }
 
 #endif
@@ -1251,11 +1311,11 @@ void register_usb_transport(usb_handle* usb, const char* serial, const char* dev
     D("transport: %p init'ing for usb_handle %p (sn='%s')", t, usb, serial ? serial : "");
     init_usb_transport(t, usb);
     if (serial) {
-        t->serial = strdup(serial);
+        t->serial = serial;
     }
 
     if (devpath) {
-        t->devpath = strdup(devpath);
+        t->devpath = devpath;
     }
 
     {

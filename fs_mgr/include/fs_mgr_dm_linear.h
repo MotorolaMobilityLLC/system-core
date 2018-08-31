@@ -37,29 +37,18 @@
 namespace android {
 namespace fs_mgr {
 
-struct LogicalPartition {
-    std::string name;
-    std::vector<android::dm::DmTargetLinear> extents;
-};
-
-struct LogicalPartitionTable {
-    // List of partitions in the partition table.
-    std::vector<LogicalPartition> partitions;
-};
-
-// Load a dm-linear table from the device tree if one is available; otherwise,
-// return null.
-std::unique_ptr<LogicalPartitionTable> LoadPartitionsFromDeviceTree();
-
-// Create device-mapper devices for the given partition table.
-//
-// On success, two devices nodes will be created for each partition, both
-// pointing to the same device:
-//   /dev/block/dm-<N> where N is a sequential ID assigned by device-mapper.
-//   /dev/block/dm-<name> where |name| is the partition name.
-//
-bool CreateLogicalPartitions(const LogicalPartitionTable& table);
 bool CreateLogicalPartitions(const std::string& block_device);
+
+// Create a block device for a single logical partition, given metadata and
+// the partition name. On success, a path to the partition's block device is
+// returned. If |force_writable| is true, the "readonly" flag will be ignored
+// so the partition can be flashed.
+bool CreateLogicalPartition(const std::string& block_device, uint32_t metadata_slot,
+                            const std::string& partition_name, bool force_writable,
+                            std::string* path);
+
+// Destroy the block device for a logical partition, by name.
+bool DestroyLogicalPartition(const std::string& name);
 
 }  // namespace fs_mgr
 }  // namespace android

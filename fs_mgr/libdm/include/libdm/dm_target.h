@@ -23,8 +23,6 @@
 #include <string>
 #include <vector>
 
-#include <android-base/logging.h>
-
 namespace android {
 namespace dm {
 
@@ -126,6 +124,20 @@ class DmTargetVerity final : public DmTarget {
     std::vector<std::string> base_args_;
     std::vector<std::string> optional_args_;
     bool valid_;
+};
+
+class DmTargetAndroidVerity final : public DmTarget {
+  public:
+    DmTargetAndroidVerity(uint64_t start, uint64_t length, const std::string& block_device,
+                          const std::string& keyid)
+        : DmTarget(start, length), keyid_(keyid), block_device_(block_device) {}
+
+    std::string name() const override { return "android-verity"; }
+    std::string GetParameterString() const override;
+
+  private:
+    std::string keyid_;
+    std::string block_device_;
 };
 
 // This is the same as DmTargetVerity, but the table may be specified as a raw

@@ -92,6 +92,7 @@ cc_defaults {
 
 cc_library_static {
     name: "libinit",
+    recovery_available: true,
     defaults: ["init_defaults"],
     srcs: [
         "action.cpp",
@@ -104,17 +105,18 @@ cc_library_static {
         "devices.cpp",
         "epoll.cpp",
         "firmware_handler.cpp",
+        "first_stage_mount.cpp",
         "import_parser.cpp",
         "init.cpp",
-        "init_first_stage.cpp",
         "keychords.cpp",
-        "log.cpp",
+        "modalias_handler.cpp",
         "parser.cpp",
         "persistent_properties.cpp",
         "persistent_properties.proto",
         "property_service.cpp",
         "property_type.cpp",
         "reboot.cpp",
+        "reboot_utils.cpp",
         "security.cpp",
         "selinux.cpp",
         "service.cpp",
@@ -127,7 +129,6 @@ cc_library_static {
         "ueventd.cpp",
         "ueventd_parser.cpp",
         "util.cpp",
-        "watchdogd.cpp",
     ],
     whole_static_libs: ["libcap"],
     header_libs: ["bootimg_headers"],
@@ -137,30 +138,21 @@ cc_library_static {
     },
 }
 
-/*
-This is not yet ready, see the below TODOs for what is missing
-
 cc_binary {
-    // TODO: Missing,
-    //LOCAL_MODULE_PATH := $(TARGET_ROOT_OUT)
-    //LOCAL_UNSTRIPPED_PATH := $(TARGET_ROOT_OUT_UNSTRIPPED)
-
-    name: "init",
+    name: "init_second_stage",
+    recovery_available: true,
+    stem: "init",
     defaults: ["init_defaults"],
+    static_libs: ["libinit"],
     required: [
         "e2fsdroid",
         "mke2fs",
         "sload_f2fs",
         "make_f2fs",
     ],
-    static_executable: true,
     srcs: ["main.cpp"],
-    symlinks: [
-        "sbin/ueventd",
-        "sbin/watchdogd",
-    ],
+    symlinks: ["ueventd"],
 }
-*/
 
 // Tests
 // ------------------------------------------------------------------------------
@@ -180,6 +172,7 @@ cc_test {
         "service_test.cpp",
         "subcontext_test.cpp",
         "tokenizer_test.cpp",
+        "ueventd_parser_test.cpp",
         "ueventd_test.cpp",
         "util_test.cpp",
     ],

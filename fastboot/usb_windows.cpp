@@ -66,7 +66,7 @@ struct usb_handle {
     std::string interface_name;
 };
 
-class WindowsUsbTransport : public Transport {
+class WindowsUsbTransport : public UsbTransport {
   public:
     WindowsUsbTransport(std::unique_ptr<usb_handle> handle) : handle_(std::move(handle)) {}
     ~WindowsUsbTransport() override = default;
@@ -74,6 +74,7 @@ class WindowsUsbTransport : public Transport {
     ssize_t Read(void* data, size_t len) override;
     ssize_t Write(const void* data, size_t len) override;
     int Close() override;
+    int Reset() override;
 
   private:
     std::unique_ptr<usb_handle> handle_;
@@ -106,6 +107,7 @@ std::unique_ptr<usb_handle> do_usb_open(const wchar_t* interface_name) {
 
     if (nullptr == ret->adb_interface) {
         errno = GetLastError();
+        DBG("failed to open interface %S\n", interface_name);
         return nullptr;
     }
 
@@ -157,7 +159,7 @@ ssize_t WindowsUsbTransport::Write(const void* data, size_t len) {
     unsigned count = 0;
     int ret;
 
-    DBG("usb_write %d\n", len);
+    DBG("usb_write %zu\n", len);
     if (nullptr != handle_) {
         // Perform write
         while(len > 0) {
@@ -195,7 +197,7 @@ ssize_t WindowsUsbTransport::Read(void* data, size_t len) {
     unsigned long read = 0;
     int ret;
 
-    DBG("usb_read %d\n", len);
+    DBG("usb_read %zu\n", len);
     if (nullptr != handle_) {
         while (1) {
             int xfer = (len > MAX_USBFS_BULK_SIZE) ? MAX_USBFS_BULK_SIZE : len;
@@ -260,6 +262,12 @@ int WindowsUsbTransport::Close() {
     return 0;
 }
 
+int WindowsUsbTransport::Reset() {
+    DBG("usb_reset currently unsupported\n\n");
+    // TODO, this is a bit complicated since it is using ADB
+    return -1;
+}
+
 int recognized_device(usb_handle* handle, ifc_match_func callback) {
     struct usb_ifc_info info;
     USB_DEVICE_DESCRIPTOR device_desc;
@@ -269,19 +277,22 @@ int recognized_device(usb_handle* handle, ifc_match_func callback) {
         return 0;
 
     // Check vendor and product id first
-    if (!AdbGetUsbDeviceDescriptor(handle->adb_interface,
-                                 &device_desc)) {
+    if (!AdbGetUsbDeviceDescriptor(handle->adb_interface, &device_desc)) {
+        DBG("skipping device %x:%x\n", device_desc.idVendor, device_desc.idProduct);
         return 0;
     }
 
     // Then check interface properties
-    if (!AdbGetUsbInterfaceDescriptor(handle->adb_interface,
-                                    &interf_desc)) {
+    if (!AdbGetUsbInterfaceDescriptor(handle->adb_interface, &interf_desc)) {
+        DBG("skipping device %x:%x, failed to find interface\n", device_desc.idVendor,
+            device_desc.idProduct);
         return 0;
     }
 
     // Must have two endpoints
     if (2 != interf_desc.bNumEndpoints) {
+        DBG("skipping device %x:%x, incorrect number of endpoints\n", device_desc.idVendor,
+            device_desc.idProduct);
         return 0;
     }
 
@@ -305,9 +316,13 @@ int recognized_device(usb_handle* handle, ifc_match_func callback) {
     info.device_path[0] = 0;
 
     if (callback(&info) == 0) {
+        DBG("skipping device %x:%x, not selected by callback\n", device_desc.idVendor,
+            device_desc.idProduct);
         return 1;
     }
 
+    DBG("found device %x:%x (%s)\n", device_desc.idVendor, device_desc.idProduct,
+        info.serial_number);
     return 0;
 }
 
@@ -338,6 +353,7 @@ static std::unique_ptr<usb_handle> find_usb_device(ifc_match_func callback) {
         }
         *copy_name = '\0';
 
+        DBG("attempting to open interface %S\n", next_interface->device_name);
         handle = do_usb_open(next_interface->device_name);
         if (NULL != handle) {
             // Lets see if this interface (device) belongs to us
@@ -357,8 +373,7 @@ static std::unique_ptr<usb_handle> find_usb_device(ifc_match_func callback) {
     return handle;
 }
 
-Transport* usb_open(ifc_match_func callback)
-{
+UsbTransport* usb_open(ifc_match_func callback, uint32_t) {
     std::unique_ptr<usb_handle> handle = find_usb_device(callback);
     return handle ? new WindowsUsbTransport(std::move(handle)) : nullptr;
 }
