@@ -79,6 +79,9 @@
 #define STRINGIFY(x) STRINGIFY_INTERNAL(x)
 #define STRINGIFY_INTERNAL(x) #x
 
+/* A threshold of minfree adjustment toward VMPRESS_LEVEL_CRITICAL (36MB) */
+#define CACHED_THRESHOLD	(9216)
+
 /* default to old in-kernel interface if no memory pressure events */
 static int use_inkernel_interface = 1;
 static bool has_inkernel_module;
@@ -145,7 +148,7 @@ static int maxevents;
 #define OOM_SCORE_ADJ_MAX       1000
 
 static int lowmem_adj[MAX_TARGETS];
-static int lowmem_minfree[MAX_TARGETS];
+static int lowmem_minfree[MAX_TARGETS] = { CACHED_THRESHOLD };
 static int lowmem_targets_size;
 
 /* Fields to parse in /proc/zoneinfo */
@@ -190,6 +193,7 @@ enum meminfo_field {
     MI_BUFFERS,
     MI_SHMEM,
     MI_UNEVICTABLE,
+    MI_TOTAL_SWAP,
     MI_FREE_SWAP,
     MI_DIRTY,
     MI_FIELD_COUNT
@@ -202,6 +206,7 @@ static const char* const meminfo_field_names[MI_FIELD_COUNT] = {
     "Buffers:",
     "Shmem:",
     "Unevictable:",
+    "SwapTotal:",
     "SwapFree:",
     "Dirty:",
 };
@@ -214,6 +219,7 @@ union meminfo {
         int64_t buffers;
         int64_t shmem;
         int64_t unevictable;
+        int64_t total_swap;
         int64_t free_swap;
         int64_t dirty;
         /* fields below are calculated rather than read from the file */
@@ -1312,20 +1318,39 @@ static void mp_event_common(int data, uint32_t events __unused) {
         trigger_duraSpeed(level, mem_pressure);
     }
 
-    // If the pressure is larger than downgrade_pressure lmk will not
-    // kill any process, since enough memory is available.
-    if (mem_pressure > downgrade_pressure) {
-        if (debug_process_killing) {
-            ALOGI("Ignore %s memory pressure", level_name[level]);
-        }
-        return;
-    } else if (level == VMPRESS_LEVEL_CRITICAL &&
-               mem_pressure > upgrade_pressure) {
-        if (debug_process_killing) {
-            ALOGI("Downgrade critical memory pressure");
-        }
-        // Downgrade event, since enough memory available.
-        level = downgrade_level(level);
+    // Try to detect the case of severe I/O thrashing
+    if (level >= VMPRESS_LEVEL_MEDIUM) {
+	minfree = (lowmem_minfree[0] + CACHED_THRESHOLD) >> 1;
+	other_file = (mi.field.nr_file_pages - mi.field.shmem -
+		      mi.field.unevictable - mi.field.swap_cached);
+	other_free = mi.field.nr_free_pages - zi.field.totalreserve_pages;
+
+	// critical case
+	if (other_file <= minfree && other_free <= minfree) {
+	    level = VMPRESS_LEVEL_CRITICAL;
+	    ALOGI("file backed pages dropped to %d", minfree);
+	    goto do_kill;
+	}
+    }
+
+    // If we still have more than 10% of swap space available, check if we want
+    // to ignore/downgrade pressure events.
+    if (mi.field.free_swap >= mi.field.total_swap * 0.1) {
+      // If the pressure is larger than downgrade_pressure lmk will not
+      // kill any process, since enough memory is available.
+      if (mem_pressure > downgrade_pressure) {
+          if (debug_process_killing) {
+              ALOGI("Ignore %s memory pressure", level_name[level]);
+          }
+          return;
+      } else if (level == VMPRESS_LEVEL_CRITICAL &&
+                 mem_pressure > upgrade_pressure) {
+          if (debug_process_killing) {
+              ALOGI("Downgrade critical memory pressure");
+          }
+          // Downgrade event, since enough memory available.
+          level = downgrade_level(level);
+      }
     }
 
 do_kill:

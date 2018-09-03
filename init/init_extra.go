@@ -12,6 +12,7 @@ func init() {
 func mtkInitExtraDefaultsFactory() android.Module {
     module := cc.DefaultsFactory()
     android.AddLoadHook(module, preferBuildRoot)
+    android.AddLoadHook(module, preferBuildAee)
     return module
 }
 
@@ -24,6 +25,20 @@ func preferBuildRoot(ctx android.LoadHookContext) {
         p := &props{}
         p.Cflags = append(p.Cflags, "-DMTK_BUILD_ROOT")
         p.Include_dirs = append(p.Include_dirs, "vendor/mediatek/internal/system/core/init/")
+        ctx.AppendProperties(p)
+    }
+}
+
+func preferBuildAee(ctx android.LoadHookContext) {
+    type props struct {
+        Cflags       []string
+        Include_dirs []string
+    }
+    vars := ctx.Config().VendorConfig("mtkPlugin")
+    if vars.Bool("HAVE_AEE_FEATURE") {
+        p := &props{}
+        p.Cflags = append(p.Cflags, "-DHAVE_AEE_FEATURE")
+        p.Include_dirs = append(p.Include_dirs, "vendor/mediatek/proprietary/external/aee/binary/inc/")
         ctx.AppendProperties(p)
     }
 }
