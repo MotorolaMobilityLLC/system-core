@@ -485,6 +485,10 @@ static Result<Success> queue_fs_event(int code) {
         return Success();
     } else if (code == FS_MGR_MNTALL_DEV_NOT_ENCRYPTABLE) {
         property_set("ro.crypto.state", "unsupported");
+        if (android::base::GetProperty("ro.bootmode", "") == "factory") {
+            ActionManager::GetInstance().QueueEventTrigger("factoryencrypted");
+            return Success();
+        }
         ActionManager::GetInstance().QueueEventTrigger("nonencrypted");
         return Success();
     } else if (code == FS_MGR_MNTALL_DEV_NEEDS_RECOVERY) {
