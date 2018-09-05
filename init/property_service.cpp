@@ -725,13 +725,13 @@ void load_persist_props(void) {
     }
 
     load_override_properties();
+    LoadRscRwProps();
     /* Read persistent properties after all default values have been loaded. */
     auto persistent_properties = LoadPersistentProperties();
     for (const auto& persistent_property_record : persistent_properties.properties()) {
         property_set(persistent_property_record.name(), persistent_property_record.value());
     }
     persistent_properties_loaded = true;
-    LoadRscRwProps();
     property_set("ro.persistent_properties.ready", "true");
 }
 
