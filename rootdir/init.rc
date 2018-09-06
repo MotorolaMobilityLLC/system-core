@@ -1036,6 +1036,15 @@ on property:security.perf_harden=1
     write /proc/sys/kernel/perf_cpu_time_max_percent 25
     write /proc/sys/kernel/perf_event_mlock_kb 516
 
+on property:sys.dbg.ffu_start=1
+    start emmc_ffu_start
+
+service emmc_ffu_start /system/bin/emmc_ffu_start.sh
+    user root
+    class late_start
+    oneshot
+    disabled
+
 service ufs_ffu /system/bin/ufs_ffu.sh
     user root
     class core
