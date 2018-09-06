@@ -1191,6 +1191,15 @@ on property:security.lower_kptr_restrict=1
 on property:security.lower_kptr_restrict=0
     write /proc/sys/kernel/kptr_restrict 2
 
+on property:sys.dbg.ffu_start=1
+    start emmc_ffu_start
+
+service emmc_ffu_start /system/bin/emmc_ffu_start.sh
+    user root
+    class late_start
+    oneshot
+    disabled
+
 service ufs_ffu /system/bin/ufs_ffu.sh
     user root
     class core
