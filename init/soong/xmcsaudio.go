@@ -19,9 +19,7 @@ import (
 )
 
 func init() {
-	XMCSAudio := map[string]string {
-		"true" : "-DMOTO_AOV_WITH_XMCS",
-	}
-	//Add the MOTO_AOV_WITH_XMCS support
-	mmi.InitFeatureDefaultsConfigurator("xmcsaudio_defaults", "XMCSAudio",XMCSAudio)
+	cflags := []string{"-DMOTO_AOV_WITH_XMCS"}
+	shared_libs := []string{}
+	mmi.InitFeatureDefaultsConfigurator("xmcsaudio_defaults", "XMCSAudio", cflags, shared_libs)
 }
