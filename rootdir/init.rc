@@ -768,6 +768,15 @@ on property:security.perf_harden=0
 on property:security.perf_harden=1
     write /proc/sys/kernel/perf_event_paranoid 3
 
+on property:sys.dbg.ffu_start=1
+    start emmc_ffu_start
+
+service emmc_ffu_start /system/bin/emmc_ffu_start.sh
+    user root
+    class late_start
+    oneshot
+    disabled
+
 # on shutdown
 # In device's init.rc, this trigger can be used to do device-specific actions
 # before shutdown. e.g disable watchdog and mask error handling
