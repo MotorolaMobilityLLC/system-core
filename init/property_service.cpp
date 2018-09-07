@@ -698,6 +698,14 @@ void load_persist_props(void) {
     persistent_properties_loaded = false;
     load_properties_from_file("/system/build.prop", "persist.*");
     load_properties_from_file("/vendor/build.prop", "persist.*");
+    // Load persist prop from prop.default which defined by PRODUCT_SYSTEM_DEFAULT_PROPERTIES
+    if (!load_properties_from_file("/system/etc/prop.default", "persist.*")) {
+        // Try recovery path
+        if (!load_properties_from_file("/prop.default", "persist.*")) {
+            // Try legacy path
+            load_properties_from_file("/default.prop", "persist.*");
+        }
+    }
     /* END Motorola Hong-Mei Li 2012-09-10, IKJBREL1-5477 */
 
     load_override_properties();
