@@ -302,6 +302,55 @@ typedef struct camera_frame_metadata {
     camera_face_t *faces;
 } camera_frame_metadata_t;
 
+#ifdef MM_IMAGE_EFFECT_SUPPORT
+//add by harry
+// data type
+#define TN_MPP_DATA_TYPE_PREVIEW    0x0001
+#define TN_MPP_DATA_TYPE_RAW        0x0002
+#define TN_MPP_DATA_TYPE_RGB        0x0004
+#define TN_MPP_DATA_TYPE_JPEGCB     0x0008
+#define TN_MPP_DATA_TYPE_STATUS     0x0010
+
+// data fomat
+#define TN_MPP_DATA_FORMAT_NV21     0x0010         // Y.....vuvuvu
+#define TN_MPP_DATA_FORMAT_YUV420   0x0020        // Y......U......V
+#define TN_MPP_DATA_FORMAT_YUV420SP 0x0040	  // Y.......UVUVUV
+#define TN_MPP_DATA_FORMAT_YUYV	    0x0080	  // Y0, U0, Y1, V0
+#define TN_MPP_DATA_FORMAT_RGB888   0x0100   
+#define TN_MPP_DATA_FORMAT_RGB565   0x0200
+#define TN_MPP_DATA_FORMAT_YV12	    0x0400        // Y......U......V
+
+//weijiang
+#define TN_MPP_SELFFLASH_TORCHMODE  0x1000
+#define TN_MPP_SELFFLASH_FALSEMODE  0x2000
+#define TN_MPP_SELFFLASH_ON         0x4000
+#define TN_MPP_SELFFLASH_OFF        0x8000
+
+typedef struct TN_Media_Plugin_Packet {
+	int  nDataType;				// used by pluginservice to assig the plugin who will process the data according to its ability.
+	unsigned	char *  pY;
+	unsigned	char*  pU;
+	unsigned	char*  pV;
+	int  mWidth;
+	int  mHeight;
+	int  nStride[3];
+       uint32_t  nLen[3];
+	int nDataFormat;
+	int   mbEos;   // all the data packets have been sent.
+	const char*   pHalStatus; // use as status callback
+	int    nStatusLen;
+	int    mDataId;  // where doese the data from, such as rear /dual /front sensor;
+	int mEncodeJpegId; //whitch data should be encoded,frameworks write and use this
+	long nSrcBufSize;
+       int  mFD;
+} TN_Media_Plugin_Packet_t;
+
+typedef struct TN_CameraClient_Callback {
+	void (*handleJpegEncoder)(TN_Media_Plugin_Packet_t* packet,void* puser);
+	void (*playSound)(void *cookie);
+} TN_CameraClient_Callback_t;
+#endif
+
 __END_DECLS
 
 #endif /* SYSTEM_CORE_INCLUDE_ANDROID_CAMERA_H */
