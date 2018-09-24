@@ -79,7 +79,8 @@
 
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(*(a)))
 
-using DeviceMapper = android::dm::DeviceMapper;
+using android::dm::DeviceMapper;
+using android::dm::DmDeviceState;
 
 // record fs stat
 enum FsStatFlags {
@@ -101,12 +102,16 @@ enum FsStatFlags {
 
 // TODO: switch to inotify()
 bool fs_mgr_wait_for_file(const std::string& filename,
-                          const std::chrono::milliseconds relative_timeout) {
+                          const std::chrono::milliseconds relative_timeout,
+                          FileWaitMode file_wait_mode) {
     auto start_time = std::chrono::steady_clock::now();
 
     while (true) {
-        if (!access(filename.c_str(), F_OK) || errno != ENOENT) {
-            return true;
+        int rv = access(filename.c_str(), F_OK);
+        if (file_wait_mode == FileWaitMode::Exists) {
+            if (!rv || errno != ENOENT) return true;
+        } else if (file_wait_mode == FileWaitMode::DoesNotExist) {
+            if (rv && errno == ENOENT) return true;
         }
 
         std::this_thread::sleep_for(50ms);
@@ -790,7 +795,8 @@ static bool call_vdc(const std::vector<std::string>& args) {
         argv.emplace_back(arg.c_str());
     }
     LOG(INFO) << "Calling: " << android::base::Join(argv, ' ');
-    int ret = android_fork_execvp(4, const_cast<char**>(argv.data()), nullptr, false, true);
+    int ret =
+            android_fork_execvp(argv.size(), const_cast<char**>(argv.data()), nullptr, false, true);
     if (ret != 0) {
         LOG(ERROR) << "vdc returned error code: " << ret;
         return false;
@@ -864,7 +870,8 @@ int fs_mgr_mount_all(struct fstab *fstab, int mount_mode)
         }
 
         /* Skip mounting the root partition, as it will already have been mounted */
-        if (!strcmp(fstab->recs[i].mount_point, "/")) {
+        if (!strcmp(fstab->recs[i].mount_point, "/") ||
+            !strcmp(fstab->recs[i].mount_point, "/system")) {
             if ((fstab->recs[i].fs_mgr_flags & MS_RDONLY) != 0) {
                 fs_mgr_set_blk_ro(fstab->recs[i].blk_device);
             }
@@ -1412,8 +1419,12 @@ bool fs_mgr_update_verity_state(std::function<fs_mgr_verity_state_callback> call
             mount_point = basename(fstab->recs[i].mount_point);
         }
 
-        const char* status = nullptr;
+        if (dm.GetState(mount_point) == DmDeviceState::INVALID) {
+            PERROR << "Could not find verity device for mount point: " << mount_point;
+            continue;
+        }
 
+        const char* status = nullptr;
         std::vector<DeviceMapper::TargetInfo> table;
         if (!dm.GetTableStatus(mount_point, &table) || table.empty() || table[0].data.empty()) {
             if (fstab->recs[i].fs_mgr_flags & MF_VERIFYATBOOT) {

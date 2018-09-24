@@ -72,12 +72,7 @@ static __inline__ bool adb_is_separator(char c) {
     return c == '\\' || c == '/';
 }
 
-static __inline__ int adb_thread_setname(const std::string& name) {
-    // TODO: See https://msdn.microsoft.com/en-us/library/xcb2z8hs.aspx for how to set
-    // the thread name in Windows. Unfortunately, it only works during debugging, but
-    // our build process doesn't generate PDB files needed for debugging.
-    return 0;
-}
+extern int adb_thread_setname(const std::string& name);
 
 static __inline__ void  close_on_exec(int  fd)
 {
@@ -128,6 +123,13 @@ static __inline__  int  unix_write(int  fd, const void*  buf, size_t  len)
 }
 #undef   write
 #define  write  ___xxx_write
+
+// See the comments for the !defined(_WIN32) version of unix_lseek().
+static __inline__ int unix_lseek(int fd, int pos, int where) {
+    return lseek(fd, pos, where);
+}
+#undef lseek
+#define lseek ___xxx_lseek
 
 // See the comments for the !defined(_WIN32) version of adb_open_mode().
 static __inline__ int  adb_open_mode(const char* path, int options, int mode)
@@ -523,6 +525,7 @@ inline int adb_socket_get_local_port(int fd) {
 // via _setmode()).
 #define  unix_read   adb_read
 #define  unix_write  adb_write
+#define unix_lseek adb_lseek
 #define  unix_close  adb_close
 
 static __inline__ int adb_thread_setname(const std::string& name) {

@@ -56,6 +56,8 @@ enum RetCode : int {
 };
 
 class FastBootDriver {
+    friend class FastBootTest;
+
   public:
     static constexpr int RESP_TIMEOUT = 30;  // 30 seconds
     static constexpr uint32_t MAX_DOWNLOAD_SIZE = std::numeric_limits<uint32_t>::max();
@@ -64,6 +66,7 @@ class FastBootDriver {
     FastBootDriver(Transport* transport,
                    std::function<void(std::string&)> info = [](std::string&) {},
                    bool no_checks = false);
+    ~FastBootDriver();
 
     RetCode Boot(std::string* response = nullptr, std::vector<std::string>* info = nullptr);
     RetCode Continue(std::string* response = nullptr, std::vector<std::string>* info = nullptr);
@@ -83,13 +86,12 @@ class FastBootDriver {
     RetCode GetVar(const std::string& key, std::string* val,
                    std::vector<std::string>* info = nullptr);
     RetCode GetVarAll(std::vector<std::string>* response);
-    RetCode Powerdown(std::string* response = nullptr, std::vector<std::string>* info = nullptr);
     RetCode Reboot(std::string* response = nullptr, std::vector<std::string>* info = nullptr);
-    RetCode SetActive(const std::string& part, std::string* response = nullptr,
+    RetCode RebootTo(std::string target, std::string* response = nullptr,
+                     std::vector<std::string>* info = nullptr);
+    RetCode SetActive(const std::string& slot, std::string* response = nullptr,
                       std::vector<std::string>* info = nullptr);
     RetCode Upload(const std::string& outfile, std::string* response = nullptr,
-                   std::vector<std::string>* info = nullptr);
-    RetCode Verify(uint32_t num, std::string* response = nullptr,
                    std::vector<std::string>* info = nullptr);
 
     /* HIGHER LEVEL COMMANDS -- Composed of the commands above */
@@ -97,7 +99,7 @@ class FastBootDriver {
     RetCode FlashPartition(const std::string& part, int fd, uint32_t sz);
     RetCode FlashPartition(const std::string& part, sparse_file* s);
 
-    RetCode Partitions(std::vector<std::tuple<std::string, uint32_t>>* parts);
+    RetCode Partitions(std::vector<std::tuple<std::string, uint64_t>>* parts);
     RetCode Require(const std::string& var, const std::vector<std::string>& allowed, bool* reqmet,
                     bool invert = false);
 
@@ -106,6 +108,10 @@ class FastBootDriver {
     static const std::string RCString(RetCode rc);
     std::string Error();
     RetCode WaitForDisconnect();
+
+    // Note: set_transport will return the previous transport.
+    Transport* set_transport(Transport* transport);
+    Transport* transport() const { return transport_; }
 
     // This is temporarily public for engine.cpp
     RetCode RawCommand(const std::string& cmd, std::string* response = nullptr,
@@ -127,14 +133,12 @@ class FastBootDriver {
         static const std::string ERASE;
         static const std::string FLASH;
         static const std::string GET_VAR;
-        static const std::string POWERDOWN;
         static const std::string REBOOT;
         static const std::string SET_ACTIVE;
         static const std::string UPLOAD;
-        static const std::string VERIFY;
     };
 
-    Transport* const transport;
+    Transport* transport_;
 
   private:
     RetCode SendBuffer(int fd, size_t size);

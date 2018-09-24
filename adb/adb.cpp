@@ -45,6 +45,7 @@
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
 #include <build/version.h>
+#include <platform_tools_version.h>
 
 #include "adb_auth.h"
 #include "adb_io.h"
@@ -65,10 +66,11 @@ std::string adb_version() {
     // Don't change the format of this --- it's parsed by ddmlib.
     return android::base::StringPrintf(
         "Android Debug Bridge version %d.%d.%d\n"
-        "Version %s\n"
+        "Version %s-%s\n"
         "Installed as %s\n",
         ADB_VERSION_MAJOR, ADB_VERSION_MINOR, ADB_SERVER_VERSION,
-        android::build::GetBuildNumber().c_str(), android::base::GetExecutablePath().c_str());
+        PLATFORM_TOOLS_VERSION, android::build::GetBuildNumber().c_str(),
+        android::base::GetExecutablePath().c_str());
 }
 
 void fatal(const char *fmt, ...) {
@@ -631,11 +633,11 @@ static void ReportServerStartupFailure(pid_t pid) {
     fprintf(stderr, "Full server startup log: %s\n", GetLogFilePath().c_str());
     fprintf(stderr, "Server had pid: %d\n", pid);
 
-    unique_fd fd(adb_open(GetLogFilePath().c_str(), O_RDONLY));
+    android::base::unique_fd fd(unix_open(GetLogFilePath().c_str(), O_RDONLY));
     if (fd == -1) return;
 
     // Let's not show more than 128KiB of log...
-    adb_lseek(fd, -128 * 1024, SEEK_END);
+    unix_lseek(fd, -128 * 1024, SEEK_END);
     std::string content;
     if (!android::base::ReadFdToString(fd, &content)) return;
 
@@ -825,7 +827,7 @@ int launch_server(const std::string& socket_spec) {
                 memcmp(temp, expected, expected_length) == 0) {
                 got_ack = true;
             } else {
-                ReportServerStartupFailure(GetProcessId(process_handle.get()));
+                ReportServerStartupFailure(pinfo.dwProcessId);
                 return -1;
             }
         } else {

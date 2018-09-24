@@ -16,6 +16,11 @@
 
 #include "utility.h"
 
+#include <dirent.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
+
 #include <android-base/logging.h>
 #include <fs_mgr_dm_linear.h>
 #include <liblp/liblp.h>
@@ -23,6 +28,7 @@
 #include "fastboot_device.h"
 
 using namespace android::fs_mgr;
+using namespace std::chrono_literals;
 using android::base::unique_fd;
 using android::hardware::boot::V1_0::Slot;
 
@@ -43,11 +49,11 @@ static bool OpenLogicalPartition(const std::string& name, const std::string& slo
     }
     uint32_t slot_number = SlotNumberForSlotSuffix(slot);
     std::string dm_path;
-    if (!CreateLogicalPartition(path->c_str(), slot_number, name, true, &dm_path)) {
+    if (!CreateLogicalPartition(path->c_str(), slot_number, name, true, 5s, &dm_path)) {
         LOG(ERROR) << "Could not map partition: " << name;
         return false;
     }
-    auto closer = [name]() -> void { DestroyLogicalPartition(name); };
+    auto closer = [name]() -> void { DestroyLogicalPartition(name, 5s); };
     *handle = PartitionHandle(dm_path, std::move(closer));
     return true;
 }
@@ -75,7 +81,7 @@ bool OpenPartition(FastbootDevice* device, const std::string& name, PartitionHan
 
 std::optional<std::string> FindPhysicalPartition(const std::string& name) {
     std::string path = "/dev/block/by-name/" + name;
-    if (access(path.c_str(), R_OK | W_OK) < 0) {
+    if (access(path.c_str(), W_OK) < 0) {
         return {};
     }
     return path;
@@ -122,4 +128,34 @@ bool GetSlotNumber(const std::string& slot, Slot* number) {
     }
     *number = slot[0] - 'a';
     return true;
+}
+
+std::vector<std::string> ListPartitions(FastbootDevice* device) {
+    std::vector<std::string> partitions;
+
+    // First get physical partitions.
+    struct dirent* de;
+    std::unique_ptr<DIR, decltype(&closedir)> by_name(opendir("/dev/block/by-name"), closedir);
+    while ((de = readdir(by_name.get())) != nullptr) {
+        if (!strcmp(de->d_name, ".") || !strcmp(de->d_name, "..")) {
+            continue;
+        }
+        struct stat s;
+        std::string path = "/dev/block/by-name/" + std::string(de->d_name);
+        if (!stat(path.c_str(), &s) && S_ISBLK(s.st_mode)) {
+            partitions.emplace_back(de->d_name);
+        }
+    }
+
+    // Next get logical partitions.
+    if (auto path = FindPhysicalPartition(LP_METADATA_PARTITION_NAME)) {
+        uint32_t slot_number = SlotNumberForSlotSuffix(device->GetCurrentSlot());
+        if (auto metadata = ReadMetadata(path->c_str(), slot_number)) {
+            for (const auto& partition : metadata->partitions) {
+                std::string partition_name = GetPartitionName(partition);
+                partitions.emplace_back(partition_name);
+            }
+        }
+    }
+    return partitions;
 }

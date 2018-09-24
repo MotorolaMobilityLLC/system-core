@@ -98,9 +98,16 @@ const std::unique_ptr<DmTable> DeviceMapper::table(const std::string& /* name */
     return nullptr;
 }
 
-DmDeviceState DeviceMapper::state(const std::string& /* name */) const {
-    // TODO(b/110035986): Return the state, as read from the kernel instead
-    return DmDeviceState::INVALID;
+DmDeviceState DeviceMapper::GetState(const std::string& name) const {
+    struct dm_ioctl io;
+    InitIo(&io, name);
+    if (ioctl(fd_, DM_DEV_STATUS, &io) < 0) {
+        return DmDeviceState::INVALID;
+    }
+    if ((io.flags & DM_ACTIVE_PRESENT_FLAG) && !(io.flags & DM_SUSPEND_FLAG)) {
+        return DmDeviceState::ACTIVE;
+    }
+    return DmDeviceState::SUSPENDED;
 }
 
 bool DeviceMapper::CreateDevice(const std::string& name, const DmTable& table) {
@@ -271,7 +278,7 @@ bool DeviceMapper::GetDmDevicePathByName(const std::string& name, std::string* p
     struct dm_ioctl io;
     InitIo(&io, name);
     if (ioctl(fd_, DM_DEV_STATUS, &io) < 0) {
-        PLOG(ERROR) << "DM_DEV_STATUS failed for " << name;
+        PLOG(WARNING) << "DM_DEV_STATUS failed for " << name;
         return false;
     }
 

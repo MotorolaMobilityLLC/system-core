@@ -220,25 +220,34 @@ void ReconnectHandler::Run() {
         }
         D("attempting to reconnect %s", attempt.transport->serial.c_str());
 
-        if (!attempt.transport->Reconnect()) {
-            D("attempting to reconnect %s failed.", attempt.transport->serial.c_str());
-            if (attempt.attempts_left == 0) {
-                D("transport %s exceeded the number of retry attempts. giving up on it.",
-                  attempt.transport->serial.c_str());
-                remove_transport(attempt.transport);
+        switch (attempt.transport->Reconnect()) {
+            case ReconnectResult::Retry: {
+                D("attempting to reconnect %s failed.", attempt.transport->serial.c_str());
+                if (attempt.attempts_left == 0) {
+                    D("transport %s exceeded the number of retry attempts. giving up on it.",
+                      attempt.transport->serial.c_str());
+                    remove_transport(attempt.transport);
+                    continue;
+                }
+
+                std::lock_guard<std::mutex> lock(reconnect_mutex_);
+                reconnect_queue_.emplace(ReconnectAttempt{
+                        attempt.transport,
+                        std::chrono::steady_clock::now() + ReconnectHandler::kDefaultTimeout,
+                        attempt.attempts_left - 1});
                 continue;
             }
 
-            std::lock_guard<std::mutex> lock(reconnect_mutex_);
-            reconnect_queue_.emplace(ReconnectAttempt{
-                    attempt.transport,
-                    std::chrono::steady_clock::now() + ReconnectHandler::kDefaultTimeout,
-                    attempt.attempts_left - 1});
-            continue;
-        }
+            case ReconnectResult::Success:
+                D("reconnection to %s succeeded.", attempt.transport->serial.c_str());
+                register_transport(attempt.transport);
+                continue;
 
-        D("reconnection to %s succeeded.", attempt.transport->serial.c_str());
-        register_transport(attempt.transport);
+            case ReconnectResult::Abort:
+                D("cancelling reconnection attempt to %s.", attempt.transport->serial.c_str());
+                remove_transport(attempt.transport);
+                continue;
+        }
     }
 }
 
@@ -1031,12 +1040,6 @@ size_t atransport::get_max_payload() const {
     return max_payload;
 }
 
-namespace {
-
-constexpr char kFeatureStringDelimiter = ',';
-
-}  // namespace
-
 const FeatureSet& supported_features() {
     // Local static allocation to avoid global non-POD variables.
     static const FeatureSet* features = new FeatureSet{
@@ -1050,7 +1053,7 @@ const FeatureSet& supported_features() {
 }
 
 std::string FeatureSetToString(const FeatureSet& features) {
-    return android::base::Join(features, kFeatureStringDelimiter);
+    return android::base::Join(features, ',');
 }
 
 FeatureSet StringToFeatureSet(const std::string& features_string) {
@@ -1058,7 +1061,7 @@ FeatureSet StringToFeatureSet(const std::string& features_string) {
         return FeatureSet();
     }
 
-    auto names = android::base::Split(features_string, {kFeatureStringDelimiter});
+    auto names = android::base::Split(features_string, ",");
     return FeatureSet(names.begin(), names.end());
 }
 
@@ -1128,7 +1131,7 @@ void atransport::SetConnectionEstablished(bool success) {
     connection_waitable_->SetConnectionEstablished(success);
 }
 
-bool atransport::Reconnect() {
+ReconnectResult atransport::Reconnect() {
     return reconnect_(this);
 }
 

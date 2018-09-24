@@ -55,6 +55,8 @@
 #include <android-base/strings.h>
 #include <android-base/test_utils.h>
 #include <android-base/unique_fd.h>
+#include <build/version.h>
+#include <platform_tools_version.h>
 #include <sparse/sparse.h>
 #include <ziparchive/zip_archive.h>
 
@@ -104,45 +106,59 @@ struct fastboot_buffer {
     void* data;
     int64_t sz;
     int fd;
+    int64_t image_size;
 };
 
-static struct {
+enum class ImageType {
+    // Must be flashed for device to boot into the kernel.
+    BootCritical,
+    // Normal partition to be flashed during "flashall".
+    Normal,
+    // Partition that is never flashed during "flashall".
+    Extra
+};
+
+struct Image {
     const char* nickname;
     const char* img_name;
     const char* sig_name;
     const char* part_name;
     bool optional_if_no_image;
-    bool optional_if_no_partition;
+    ImageType type;
     bool IsSecondary() const { return nickname == nullptr; }
-} images[] = {
+};
+
+static Image images[] = {
         // clang-format off
-    { "boot",     "boot.img",         "boot.sig",     "boot",     false, false },
-    { nullptr,    "boot_other.img",   "boot.sig",     "boot",     true,  false },
-    { "dtbo",     "dtbo.img",         "dtbo.sig",     "dtbo",     true,  false },
-    { "dts",      "dt.img",           "dt.sig",       "dts",      true,  false },
-    { "odm",      "odm.img",          "odm.sig",      "odm",      true,  false },
-    { "product",  "product.img",      "product.sig",  "product",  true,  false },
+    { "boot",     "boot.img",         "boot.sig",     "boot",     false, ImageType::BootCritical },
+    { nullptr,    "boot_other.img",   "boot.sig",     "boot",     true,  ImageType::Normal },
+    { "cache",    "cache.img",        "cache.sig",    "cache",    true,  ImageType::Extra },
+    { "dtbo",     "dtbo.img",         "dtbo.sig",     "dtbo",     true,  ImageType::BootCritical },
+    { "dts",      "dt.img",           "dt.sig",       "dts",      true,  ImageType::BootCritical },
+    { "odm",      "odm.img",          "odm.sig",      "odm",      true,  ImageType::Normal },
+    { "product",  "product.img",      "product.sig",  "product",  true,  ImageType::Normal },
     { "product_services",
                   "product_services.img",
                                       "product_services.sig",
                                                       "product_services",
-                                                                  true,  true  },
-    { "recovery", "recovery.img",     "recovery.sig", "recovery", true,  false },
-    { "super",    "super.img",        "super.sig",    "super",    true,  true  },
-    { "system",   "system.img",       "system.sig",   "system",   false, true  },
-    { nullptr,    "system_other.img", "system.sig",   "system",   true,  false },
-    { "vbmeta",   "vbmeta.img",       "vbmeta.sig",   "vbmeta",   true,  false },
-    { "vendor",   "vendor.img",       "vendor.sig",   "vendor",   true,  true  },
-    { nullptr,    "vendor_other.img", "vendor.sig",   "vendor",   true,  false },
+                                                                  true,  ImageType::Normal },
+    { "recovery", "recovery.img",     "recovery.sig", "recovery", true,  ImageType::BootCritical },
+    { "super",    "super.img",        "super.sig",    "super",    true,  ImageType::Extra },
+    { "system",   "system.img",       "system.sig",   "system",   false, ImageType::Normal },
+    { nullptr,    "system_other.img", "system.sig",   "system",   true,  ImageType::Normal },
+    { "userdata", "userdata.img",     "userdata.sig", "userdata", true,  ImageType::Extra },
+    { "vbmeta",   "vbmeta.img",       "vbmeta.sig",   "vbmeta",   true,  ImageType::BootCritical },
+    { "vendor",   "vendor.img",       "vendor.sig",   "vendor",   true,  ImageType::Normal },
+    { nullptr,    "vendor_other.img", "vendor.sig",   "vendor",   true,  ImageType::Normal },
         // clang-format on
 };
 
-static std::string find_item_given_name(const char* img_name) {
+static std::string find_item_given_name(const std::string& img_name) {
     char* dir = getenv("ANDROID_PRODUCT_OUT");
     if (dir == nullptr || dir[0] == '\0') {
         die("ANDROID_PRODUCT_OUT not set");
     }
-    return android::base::StringPrintf("%s/%s", dir, img_name);
+    return std::string(dir) + "/" + img_name;
 }
 
 static std::string find_item(const std::string& item) {
@@ -151,9 +167,6 @@ static std::string find_item(const std::string& item) {
             return find_item_given_name(images[i].img_name);
         }
     }
-
-    if (item == "userdata") return find_item_given_name("userdata.img");
-    if (item == "cache") return find_item_given_name("cache.img");
 
     fprintf(stderr, "unknown partition '%s'\n", item.c_str());
     return "";
@@ -242,12 +255,7 @@ static int list_devices_callback(usb_ifc_info* info) {
 // The returned Transport is a singleton, so multiple calls to this function will return the same
 // object, and the caller should not attempt to delete the returned Transport.
 static Transport* open_device() {
-    static Transport* transport = nullptr;
     bool announce = true;
-
-    if (transport != nullptr) {
-        return transport;
-    }
 
     Socket::Protocol protocol = Socket::Protocol::kTcp;
     std::string host;
@@ -273,6 +281,7 @@ static Transport* open_device() {
         }
     }
 
+    Transport* transport = nullptr;
     while (true) {
         if (!host.empty()) {
             std::string error;
@@ -567,6 +576,7 @@ static int unzip_to_file(ZipArchiveHandle zip, const char* entry_name) {
     ZipEntry zip_entry;
     if (FindEntry(zip, zip_entry_name, &zip_entry) != 0) {
         fprintf(stderr, "archive does not contain '%s'\n", entry_name);
+        errno = ENOENT;
         return -1;
     }
 
@@ -638,8 +648,7 @@ static void check_requirement(char* line) {
     // "require partition-exists=x" is a special case, added because of the trouble we had when
     // Pixel 2 shipped with new partitions and users used old versions of fastboot to flash them,
     // missing out new partitions. A device with new partitions can use "partition-exists" to
-    // override the fields `optional_if_no_image` and 'optional_if_no_partition' in the `images`
-    // array.
+    // override the fields `optional_if_no_image` in the `images` array.
     if (!strcmp(name, "partition-exists")) {
         const char* partition_name = val[0];
         std::string has_slot;
@@ -651,7 +660,6 @@ static void check_requirement(char* line) {
         for (size_t i = 0; i < arraysize(images); ++i) {
             if (images[i].nickname && !strcmp(images[i].nickname, partition_name)) {
                 images[i].optional_if_no_image = false;
-                images[i].optional_if_no_partition = false;
                 known_partition = true;
             }
         }
@@ -680,7 +688,7 @@ static void check_requirement(char* line) {
         out[i] = xstrdup(strip(val[i]));
     }
 
-    fb_queue_require(product, var, invert, count, out);
+    fb_require(product, var, invert, count, out);
 }
 
 static void check_requirements(char* data, int64_t sz) {
@@ -694,15 +702,14 @@ static void check_requirements(char* data, int64_t sz) {
             s++;
         }
     }
-    if (fb_execute_queue()) die("requirements not met!");
 }
 
-static void queue_info_dump() {
-    fb_queue_notice("--------------------------------------------");
-    fb_queue_display("Bootloader Version...", "version-bootloader");
-    fb_queue_display("Baseband Version.....", "version-baseband");
-    fb_queue_display("Serial Number........", "serialno");
-    fb_queue_notice("--------------------------------------------");
+static void dump_info() {
+    fb_notice("--------------------------------------------");
+    fb_display("Bootloader Version...", "version-bootloader");
+    fb_display("Baseband Version.....", "version-baseband");
+    fb_display("Serial Number........", "serialno");
+    fb_notice("--------------------------------------------");
 }
 
 static struct sparse_file** load_sparse_files(int fd, int64_t max_size) {
@@ -771,6 +778,13 @@ static bool load_buf_fd(int fd, struct fastboot_buffer* buf) {
     int64_t sz = get_file_size(fd);
     if (sz == -1) {
         return false;
+    }
+
+    if (sparse_file* s = sparse_file_import_auto(fd, false, false)) {
+        buf->image_size = sparse_file_len(s, false, false);
+        sparse_file_destroy(s);
+    } else {
+        buf->image_size = sz;
     }
 
     lseek64(fd, 0, SEEK_SET);
@@ -868,12 +882,12 @@ static void flash_buf(const std::string& partition, struct fastboot_buffer *buf)
 
             for (size_t i = 0; i < sparse_files.size(); ++i) {
                 const auto& pair = sparse_files[i];
-                fb_queue_flash_sparse(partition, pair.first, pair.second, i + 1, sparse_files.size());
+                fb_flash_sparse(partition, pair.first, pair.second, i + 1, sparse_files.size());
             }
             break;
         }
         case FB_BUFFER_FD:
-            fb_queue_flash_fd(partition, buf->fd, buf->sz);
+            fb_flash_fd(partition, buf->fd, buf->sz);
             break;
         default:
             die("unknown buffer type: %d", buf->type);
@@ -1021,14 +1035,6 @@ static void do_flash(const char* pname, const char* fname) {
     flash_buf(pname, &buf);
 }
 
-static void do_update_signature(ZipArchiveHandle zip, const char* filename) {
-    int64_t sz;
-    void* data = unzip_to_memory(zip, filename, &sz);
-    if (data == nullptr) return;
-    fb_queue_download("signature", data, sz);
-    fb_queue_command("signature", "installing signature");
-}
-
 // Sets slot_override as the active slot. If slot_override is blank,
 // set current slot as active instead. This clears slot-unbootable.
 static void set_active(const std::string& slot_override) {
@@ -1042,6 +1048,11 @@ static void set_active(const std::string& slot_override) {
             fb_set_active(current_slot);
         }
     }
+}
+
+static bool is_userspace_fastboot() {
+    std::string value;
+    return fb_getvar("is-userspace", &value) && value == "yes";
 }
 
 static bool if_partition_exists(const std::string& partition, const std::string& slot) {
@@ -1063,10 +1074,209 @@ static bool if_partition_exists(const std::string& partition, const std::string&
     return fb_getvar("partition-size:" + partition_name, &partition_size);
 }
 
-static void do_update(const char* filename, const std::string& slot_override, bool skip_secondary) {
-    queue_info_dump();
+static bool is_logical(const std::string& partition) {
+    std::string value;
+    return fb_getvar("is-logical:" + partition, &value) && value == "yes";
+}
 
-    fb_queue_query_save("product", cur_product, sizeof(cur_product));
+static void reboot_to_userspace_fastboot() {
+    if (!fb_reboot_to_userspace()) {
+        die("Must reboot to userspace fastboot to flash logical partitions");
+    }
+
+    // Give the current connection time to close.
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+
+    fb_reinit(open_device());
+}
+
+class ImageSource {
+  public:
+    virtual void* ReadFile(const std::string& name, int64_t* size) const = 0;
+    virtual int OpenFile(const std::string& name) const = 0;
+};
+
+class FlashAllTool {
+  public:
+    FlashAllTool(const ImageSource& source, const std::string& slot_override, bool skip_secondary, bool wipe);
+
+    void Flash();
+
+  private:
+    void CheckRequirements();
+    void DetermineSecondarySlot();
+    void CollectImages();
+    void FlashImages(const std::vector<std::pair<const Image*, std::string>>& images);
+    void FlashImage(const Image& image, const std::string& slot, fastboot_buffer* buf);
+    void UpdateSuperPartition();
+
+    const ImageSource& source_;
+    std::string slot_override_;
+    bool skip_secondary_;
+    bool wipe_;
+    std::string secondary_slot_;
+    std::vector<std::pair<const Image*, std::string>> boot_images_;
+    std::vector<std::pair<const Image*, std::string>> os_images_;
+};
+
+FlashAllTool::FlashAllTool(const ImageSource& source, const std::string& slot_override, bool skip_secondary, bool wipe)
+   : source_(source),
+     slot_override_(slot_override),
+     skip_secondary_(skip_secondary),
+     wipe_(wipe)
+{
+}
+
+void FlashAllTool::Flash() {
+    CheckRequirements();
+    DetermineSecondarySlot();
+    CollectImages();
+
+    // First flash boot partitions. We allow this to happen either in userspace
+    // or in bootloader fastboot.
+    FlashImages(boot_images_);
+
+    // Sync the super partition. This will reboot to userspace fastboot if needed.
+    UpdateSuperPartition();
+
+    // Resize any logical partition to 0, so each partition is reset to 0
+    // extents, and will achieve more optimal allocation.
+    for (const auto& [image, slot] : os_images_) {
+        auto resize_partition = [](const std::string& partition) -> void {
+            if (is_logical(partition)) {
+                fb_resize_partition(partition, "0");
+            }
+        };
+        do_for_partitions(image->part_name, slot, resize_partition, false);
+    }
+
+    // Flash OS images, resizing logical partitions as needed.
+    FlashImages(os_images_);
+
+    if (slot_override_ == "all") {
+        set_active("a");
+    } else {
+        set_active(slot_override_);
+    }
+}
+
+void FlashAllTool::CheckRequirements() {
+    int64_t sz;
+    void* data = source_.ReadFile("android-info.txt", &sz);
+    if (data == nullptr) {
+        die("could not read android-info.txt");
+    }
+    check_requirements(reinterpret_cast<char*>(data), sz);
+}
+
+void FlashAllTool::DetermineSecondarySlot() {
+    if (skip_secondary_) {
+        return;
+    }
+    if (slot_override_ != "") {
+        secondary_slot_ = get_other_slot(slot_override_);
+    } else {
+        secondary_slot_ = get_other_slot();
+    }
+    if (secondary_slot_ == "") {
+        if (supports_AB()) {
+            fprintf(stderr, "Warning: Could not determine slot for secondary images. Ignoring.\n");
+        }
+        skip_secondary_ = true;
+    }
+}
+
+void FlashAllTool::CollectImages() {
+    for (size_t i = 0; i < arraysize(images); ++i) {
+        std::string slot = slot_override_;
+        if (images[i].IsSecondary()) {
+            if (skip_secondary_) {
+                continue;
+            }
+            slot = secondary_slot_;
+        }
+        if (images[i].type == ImageType::BootCritical) {
+            boot_images_.emplace_back(&images[i], slot);
+        } else if (images[i].type == ImageType::Normal) {
+            os_images_.emplace_back(&images[i], slot);
+        }
+    }
+}
+
+void FlashAllTool::FlashImages(const std::vector<std::pair<const Image*, std::string>>& images) {
+    for (const auto& [image, slot] : images) {
+        fastboot_buffer buf;
+        int fd = source_.OpenFile(image->img_name);
+        if (fd < 0 || !load_buf_fd(fd, &buf)) {
+            if (image->optional_if_no_image) {
+                continue;
+            }
+            die("could not load '%s': %s", image->img_name, strerror(errno));
+        }
+        FlashImage(*image, slot, &buf);
+    }
+}
+
+void FlashAllTool::FlashImage(const Image& image, const std::string& slot, fastboot_buffer* buf) {
+    auto flash = [&, this](const std::string& partition_name) {
+        int64_t sz;
+        void* data = source_.ReadFile(image.sig_name, &sz);
+        if (data) {
+            fb_download("signature", data, sz);
+            fb_command("signature", "installing signature");
+        }
+
+        if (is_logical(partition_name)) {
+            fb_resize_partition(partition_name, std::to_string(buf->image_size));
+        }
+        flash_buf(partition_name.c_str(), buf);
+    };
+    do_for_partitions(image.part_name, slot, flash, false);
+}
+
+void FlashAllTool::UpdateSuperPartition() {
+    if (!if_partition_exists("super", "")) {
+        return;
+    }
+
+    int fd = source_.OpenFile("super_empty.img");
+    if (fd < 0) {
+        return;
+    }
+    if (!is_userspace_fastboot()) {
+        reboot_to_userspace_fastboot();
+    }
+    fb_download_fd("super", fd, get_file_size(fd));
+
+    std::string command = "update-super:super";
+    if (wipe_) {
+        command += ":wipe";
+    }
+    fb_command(command, "Updating super partition");
+}
+
+class ZipImageSource final : public ImageSource {
+  public:
+    explicit ZipImageSource(ZipArchiveHandle zip) : zip_(zip) {}
+    void* ReadFile(const std::string& name, int64_t* size) const override;
+    int OpenFile(const std::string& name) const override;
+
+  private:
+    ZipArchiveHandle zip_;
+};
+
+void* ZipImageSource::ReadFile(const std::string& name, int64_t* size) const {
+    return unzip_to_memory(zip_, name.c_str(), size);
+}
+
+int ZipImageSource::OpenFile(const std::string& name) const {
+    return unzip_to_file(zip_, name.c_str());
+}
+
+static void do_update(const char* filename, const std::string& slot_override, bool skip_secondary) {
+    dump_info();
+
+    fb_query_save("product", cur_product, sizeof(cur_product));
 
     ZipArchiveHandle zip;
     int error = OpenArchive(filename, &zip);
@@ -1074,150 +1284,39 @@ static void do_update(const char* filename, const std::string& slot_override, bo
         die("failed to open zip file '%s': %s", filename, ErrorCodeString(error));
     }
 
-    int64_t sz;
-    void* data = unzip_to_memory(zip, "android-info.txt", &sz);
-    if (data == nullptr) {
-        die("update package '%s' has no android-info.txt", filename);
-    }
-
-    check_requirements(reinterpret_cast<char*>(data), sz);
-
-    std::string secondary;
-    if (!skip_secondary) {
-        if (slot_override != "") {
-            secondary = get_other_slot(slot_override);
-        } else {
-            secondary = get_other_slot();
-        }
-        if (secondary == "") {
-            if (supports_AB()) {
-                fprintf(stderr, "Warning: Could not determine slot for secondary images. Ignoring.\n");
-            }
-            skip_secondary = true;
-        }
-    }
-    for (size_t i = 0; i < arraysize(images); ++i) {
-        const char* slot = slot_override.c_str();
-        if (images[i].IsSecondary()) {
-            if (!skip_secondary) {
-                slot = secondary.c_str();
-            } else {
-                continue;
-            }
-        }
-
-        int fd = unzip_to_file(zip, images[i].img_name);
-        if (fd == -1) {
-            if (images[i].optional_if_no_image) {
-                continue; // An optional file is missing, so ignore it.
-            }
-            die("non-optional file %s missing", images[i].img_name);
-        }
-
-        if (images[i].optional_if_no_partition &&
-            !if_partition_exists(images[i].part_name, slot)) {
-            continue;
-        }
-
-        fastboot_buffer buf;
-        if (!load_buf_fd(fd, &buf)) {
-            die("cannot load %s from flash: %s", images[i].img_name, strerror(errno));
-        }
-
-        auto update = [&](const std::string& partition) {
-            do_update_signature(zip, images[i].sig_name);
-            flash_buf(partition.c_str(), &buf);
-            /* not closing the fd here since the sparse code keeps the fd around
-             * but hasn't mmaped data yet. The temporary file will get cleaned up when the
-             * program exits.
-             */
-        };
-        do_for_partitions(images[i].part_name, slot, update, false);
-    }
-
-    if (slot_override == "all") {
-        set_active("a");
-    } else {
-        set_active(slot_override);
-    }
+    FlashAllTool tool(ZipImageSource(zip), slot_override, skip_secondary, false);
+    tool.Flash();
 
     CloseArchive(zip);
 }
 
-static void do_send_signature(const std::string& fn) {
-    std::size_t extension_loc = fn.find(".img");
-    if (extension_loc == std::string::npos) return;
+class LocalImageSource final : public ImageSource {
+  public:
+    void* ReadFile(const std::string& name, int64_t* size) const override;
+    int OpenFile(const std::string& name) const override;
+};
 
-    std::string fs_sig = fn.substr(0, extension_loc) + ".sig";
-
-    int64_t sz;
-    void* data = load_file(fs_sig.c_str(), &sz);
-    if (data == nullptr) return;
-
-    fb_queue_download("signature", data, sz);
-    fb_queue_command("signature", "installing signature");
+void* LocalImageSource::ReadFile(const std::string& name, int64_t* size) const {
+    auto path = find_item_given_name(name);
+    if (path.empty()) {
+        return nullptr;
+    }
+    return load_file(path.c_str(), size);
 }
 
-static void do_flashall(const std::string& slot_override, bool skip_secondary) {
+int LocalImageSource::OpenFile(const std::string& name) const {
+    auto path = find_item_given_name(name);
+    return open(path.c_str(), O_RDONLY);
+}
+
+static void do_flashall(const std::string& slot_override, bool skip_secondary, bool wipe) {
     std::string fname;
-    queue_info_dump();
+    dump_info();
 
-    fb_queue_query_save("product", cur_product, sizeof(cur_product));
+    fb_query_save("product", cur_product, sizeof(cur_product));
 
-    fname = find_item_given_name("android-info.txt");
-    if (fname.empty()) die("cannot find android-info.txt");
-
-    int64_t sz;
-    void* data = load_file(fname.c_str(), &sz);
-    if (data == nullptr) die("could not load android-info.txt: %s", strerror(errno));
-
-    check_requirements(reinterpret_cast<char*>(data), sz);
-
-    std::string secondary;
-    if (!skip_secondary) {
-        if (slot_override != "") {
-            secondary = get_other_slot(slot_override);
-        } else {
-            secondary = get_other_slot();
-        }
-        if (secondary == "") {
-            if (supports_AB()) {
-                fprintf(stderr, "Warning: Could not determine slot for secondary images. Ignoring.\n");
-            }
-            skip_secondary = true;
-        }
-    }
-
-    for (size_t i = 0; i < arraysize(images); i++) {
-        const char* slot = NULL;
-        if (images[i].IsSecondary()) {
-            if (!skip_secondary) slot = secondary.c_str();
-        } else {
-            slot = slot_override.c_str();
-        }
-        if (!slot) continue;
-        fname = find_item_given_name(images[i].img_name);
-        fastboot_buffer buf;
-        if (!load_buf(fname.c_str(), &buf)) {
-            if (images[i].optional_if_no_image) continue;
-            die("could not load '%s': %s", images[i].img_name, strerror(errno));
-        }
-        if (images[i].optional_if_no_partition &&
-            !if_partition_exists(images[i].part_name, slot)) {
-            continue;
-        }
-        auto flashall = [&](const std::string &partition) {
-            do_send_signature(fname.c_str());
-            flash_buf(partition.c_str(), &buf);
-        };
-        do_for_partitions(images[i].part_name, slot, flashall, false);
-    }
-
-    if (slot_override == "all") {
-        set_active("a");
-    } else {
-        set_active(slot_override);
-    }
+    FlashAllTool tool(LocalImageSource(), slot_override, skip_secondary, wipe);
+    tool.Flash();
 }
 
 static std::string next_arg(std::vector<std::string>* args) {
@@ -1234,7 +1333,7 @@ static void do_oem_command(const std::string& cmd, std::vector<std::string>* arg
     while (!args->empty()) {
         command += " " + next_arg(args);
     }
-    fb_queue_command(command, "");
+    fb_command(command, "");
 }
 
 static std::string fb_fix_numeric_var(std::string var) {
@@ -1446,7 +1545,7 @@ int FastBootTool::Main(int argc, char* argv[]) {
                 setvbuf(stdout, nullptr, _IONBF, 0);
                 setvbuf(stderr, nullptr, _IONBF, 0);
             } else if (name == "version") {
-                fprintf(stdout, "fastboot version %s\n", FASTBOOT_VERSION);
+                fprintf(stdout, "fastboot version %s-%s\n", PLATFORM_TOOLS_VERSION, android::build::GetBuildNumber().c_str());
                 fprintf(stdout, "Installed as %s\n", android::base::GetExecutablePath().c_str());
                 return 0;
 #if !defined(_WIN32)
@@ -1537,7 +1636,7 @@ int FastBootTool::Main(int argc, char* argv[]) {
 
         if (command == "getvar") {
             std::string variable = next_arg(&args);
-            fb_queue_display(variable, variable);
+            fb_display(variable, variable);
         } else if (command == "erase") {
             std::string partition = next_arg(&args);
             auto erase = [&](const std::string& partition) {
@@ -1549,7 +1648,7 @@ int FastBootTool::Main(int argc, char* argv[]) {
                             partition_type.c_str());
                 }
 
-                fb_queue_erase(partition);
+                fb_erase(partition);
             };
             do_for_partitions(partition, slot_override, erase, true);
         } else if (android::base::StartsWith(command, "format")) {
@@ -1577,8 +1676,8 @@ int FastBootTool::Main(int argc, char* argv[]) {
             data = load_file(filename.c_str(), &sz);
             if (data == nullptr) die("could not load '%s': %s", filename.c_str(), strerror(errno));
             if (sz != 256) die("signature must be 256 bytes (got %" PRId64 ")", sz);
-            fb_queue_download("signature", data, sz);
-            fb_queue_command("signature", "installing signature");
+            fb_download("signature", data, sz);
+            fb_command("signature", "installing signature");
         } else if (command == "reboot") {
             wants_reboot = true;
 
@@ -1606,7 +1705,7 @@ int FastBootTool::Main(int argc, char* argv[]) {
         } else if (command == "reboot-fastboot") {
             wants_reboot_fastboot = true;
         } else if (command == "continue") {
-            fb_queue_command("continue", "resuming boot");
+            fb_command("continue", "resuming boot");
         } else if (command == "boot") {
             std::string kernel = next_arg(&args);
             std::string ramdisk;
@@ -1615,8 +1714,8 @@ int FastBootTool::Main(int argc, char* argv[]) {
             if (!args.empty()) second_stage = next_arg(&args);
 
             data = load_bootable_image(kernel, ramdisk, second_stage, &sz);
-            fb_queue_download("boot.img", data, sz);
-            fb_queue_command("boot", "booting");
+            fb_download("boot.img", data, sz);
+            fb_command("boot", "booting");
         } else if (command == "flash") {
             std::string pname = next_arg(&args);
 
@@ -1642,15 +1741,15 @@ int FastBootTool::Main(int argc, char* argv[]) {
 
             data = load_bootable_image(kernel, ramdisk, second_stage, &sz);
             auto flashraw = [&](const std::string& partition) {
-                fb_queue_flash(partition, data, sz);
+                fb_flash(partition, data, sz);
             };
             do_for_partitions(partition, slot_override, flashraw, true);
         } else if (command == "flashall") {
             if (slot_override == "all") {
                 fprintf(stderr, "Warning: slot set to 'all'. Secondary slots will not be flashed.\n");
-                do_flashall(slot_override, true);
+                do_flashall(slot_override, true, wants_wipe);
             } else {
-                do_flashall(slot_override, skip_secondary);
+                do_flashall(slot_override, skip_secondary, wants_wipe);
             }
             wants_reboot = true;
         } else if (command == "update") {
@@ -1674,10 +1773,10 @@ int FastBootTool::Main(int argc, char* argv[]) {
             if (!load_buf(filename.c_str(), &buf) || buf.type != FB_BUFFER_FD) {
                 die("cannot load '%s'", filename.c_str());
             }
-            fb_queue_download_fd(filename, buf.fd, buf.sz);
+            fb_download_fd(filename, buf.fd, buf.sz);
         } else if (command == "get_staged") {
             std::string filename = next_arg(&args);
-            fb_queue_upload(filename);
+            fb_upload(filename);
         } else if (command == "oem") {
             do_oem_command("oem", &args);
         } else if (command == "flashing") {
@@ -1694,14 +1793,14 @@ int FastBootTool::Main(int argc, char* argv[]) {
         } else if (command == "create-logical-partition") {
             std::string partition = next_arg(&args);
             std::string size = next_arg(&args);
-            fb_queue_create_partition(partition, size);
+            fb_create_partition(partition, size);
         } else if (command == "delete-logical-partition") {
             std::string partition = next_arg(&args);
-            fb_queue_delete_partition(partition);
+            fb_delete_partition(partition);
         } else if (command == "resize-logical-partition") {
             std::string partition = next_arg(&args);
             std::string size = next_arg(&args);
-            fb_queue_resize_partition(partition, size);
+            fb_resize_partition(partition, size);
         } else {
             syntax_error("unknown command %s", command.c_str());
         }
@@ -1713,7 +1812,7 @@ int FastBootTool::Main(int argc, char* argv[]) {
             std::string partition_type;
             if (!fb_getvar(std::string{"partition-type:"} + partition, &partition_type)) continue;
             if (partition_type.empty()) continue;
-            fb_queue_erase(partition);
+            fb_erase(partition);
             if (partition == "userdata" && set_fbe_marker) {
                 fprintf(stderr, "setting FBE marker on initial userdata...\n");
                 std::string initial_userdata_dir = create_fbemarker_tmpdir();
@@ -1728,22 +1827,25 @@ int FastBootTool::Main(int argc, char* argv[]) {
         fb_set_active(next_active);
     }
     if (wants_reboot && !skip_reboot) {
-        fb_queue_reboot();
-        fb_queue_wait_for_disconnect();
+        fb_reboot();
+        fb_wait_for_disconnect();
     } else if (wants_reboot_bootloader) {
-        fb_queue_command("reboot-bootloader", "rebooting into bootloader");
-        fb_queue_wait_for_disconnect();
+        fb_command("reboot-bootloader", "rebooting into bootloader");
+        fb_wait_for_disconnect();
     } else if (wants_reboot_recovery) {
-        fb_queue_command("reboot-recovery", "rebooting into recovery");
-        fb_queue_wait_for_disconnect();
+        fb_command("reboot-recovery", "rebooting into recovery");
+        fb_wait_for_disconnect();
     } else if (wants_reboot_fastboot) {
-        fb_queue_command("reboot-fastboot", "rebooting into fastboot");
-        fb_queue_wait_for_disconnect();
+        fb_command("reboot-fastboot", "rebooting into fastboot");
+        fb_wait_for_disconnect();
     }
 
-    int status = fb_execute_queue() ? EXIT_FAILURE : EXIT_SUCCESS;
     fprintf(stderr, "Finished. Total time: %.3fs\n", (now() - start));
-    return status;
+
+    if (Transport* old_transport = fb.set_transport(nullptr)) {
+        delete old_transport;
+    }
+    return 0;
 }
 
 void FastBootTool::ParseOsPatchLevel(boot_img_hdr_v1* hdr, const char* arg) {
