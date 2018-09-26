@@ -1315,7 +1315,19 @@ static void mp_event_common(int data, uint32_t events __unused) {
 
     // Trigger duraSpeed
     if (mem_pressure <= downgrade_pressure + 10) {
+        struct timespec t1, t2;
+        unsigned long elapsed_ms;
+
+        clock_gettime(CLOCK_MONOTONIC, &t1);
         trigger_duraSpeed(level, mem_pressure);
+        clock_gettime(CLOCK_MONOTONIC, &t2);
+
+        /* Show log if the elapsed time exceeds 1000 ms */
+        elapsed_ms = (t2.tv_sec - t1.tv_sec) * 1000 +
+                     (t2.tv_nsec - t1.tv_nsec) / 1000000;
+        if (elapsed_ms > 1000) {
+            ALOGW("trigger_duraSpeed took %lu ms", elapsed_ms);
+        }
     }
 
     // Try to detect the case of severe I/O thrashing
@@ -1549,6 +1561,8 @@ static void mainloop(void) {
         struct epoll_event events[maxevents];
         int nevents;
         int i;
+        struct timespec t1, t2;
+        unsigned long elapsed_ms;
 
         nevents = epoll_wait(epollfd, events, maxevents, -1);
 
@@ -1584,7 +1598,22 @@ static void mainloop(void) {
             }
             if (evt->data.ptr) {
                 handler_info = (struct event_handler_info*)evt->data.ptr;
+                clock_gettime(CLOCK_MONOTONIC, &t1);
                 handler_info->handler(handler_info->data, evt->events);
+                clock_gettime(CLOCK_MONOTONIC, &t2);
+
+                /* Show log if the elapsed time exceeds 1000 ms */
+                elapsed_ms = (t2.tv_sec - t1.tv_sec) * 1000 +
+                             (t2.tv_nsec - t1.tv_nsec) / 1000000;
+                if (elapsed_ms > 1000) {
+                    if (handler_info->handler == mp_event_common) {
+                        ALOGW("mp_event_common took %lu ms", elapsed_ms);
+                    } else if (handler_info->handler == ctrl_data_handler) {
+                        ALOGW("ctrl_data_handler took %lu ms", elapsed_ms);
+                    } else {
+                        ALOGW("ctrl_connect_handler took %lu ms", elapsed_ms);
+                    }
+                }
             }
         }
     }
