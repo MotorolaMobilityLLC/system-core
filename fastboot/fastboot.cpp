@@ -249,7 +249,8 @@ static void Epilog(int status) {
     }
 }
 
-static void InfoMessage(const std::string& info) {
+static void InfoMessage(const std::string& info, bool first) {
+    if (first) fprintf(stderr, "\n");
     fprintf(stderr, "(bootloader) %s\n", info.c_str());
 }
 
