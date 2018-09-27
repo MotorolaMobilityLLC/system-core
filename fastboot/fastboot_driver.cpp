@@ -420,7 +420,7 @@ RetCode FastBootDriver::UploadInner(const std::string& outfile, std::string* res
 }
 
 // Helpers
-void FastBootDriver::SetInfoCallback(std::function<void(const std::string&)> info) {
+void FastBootDriver::SetInfoCallback(std::function<void(const std::string&, bool)> info) {
     info_ = info;
 }
 
@@ -496,6 +496,7 @@ RetCode FastBootDriver::DownloadCommand(uint32_t size, std::string* response,
 
 RetCode FastBootDriver::HandleResponse(std::string* response, std::vector<std::string>* info,
                                        int* dsize) {
+    bool first_info = true;
     char status[FB_RESPONSE_SZ + 1];
     auto start = std::chrono::steady_clock::now();
 
@@ -519,7 +520,8 @@ RetCode FastBootDriver::HandleResponse(std::string* response, std::vector<std::s
         std::string input(status);
         if (android::base::StartsWith(input, "INFO")) {
             std::string tmp = input.substr(strlen("INFO"));
-            info_(tmp);
+            info_(tmp, first_info);
+            first_info = false;
             add_info(std::move(tmp));
             // We may receive one or more INFO packets during long operations,
             // e.g. flash/erase if they are back by slow media like NAND/NOR

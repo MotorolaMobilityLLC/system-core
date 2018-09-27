@@ -66,7 +66,7 @@ enum RetCode : int {
 struct DriverCallbacks {
     std::function<void(const std::string&)> prolog = [](const std::string&) {};
     std::function<void(int)> epilog = [](int) {};
-    std::function<void(const std::string&)> info = [](const std::string&) {};
+    std::function<void(const std::string&, bool)> info = [](const std::string&, bool) {};
 };
 
 class FastBootDriver {
@@ -131,7 +131,7 @@ class FastBootDriver {
                     bool invert = false);
 
     /* HELPERS */
-    void SetInfoCallback(std::function<void(const std::string&)> info);
+    void SetInfoCallback(std::function<void(const std::string&, bool)> info);
     static const std::string RCString(RetCode rc);
     std::string Error();
     RetCode WaitForDisconnect();
@@ -177,7 +177,7 @@ class FastBootDriver {
     std::string error_;
     std::function<void(const std::string&)> prolog_;
     std::function<void(int)> epilog_;
-    std::function<void(const std::string&)> info_;
+    std::function<void(const std::string&, bool)> info_;
     bool disable_checks_;
 };
 
