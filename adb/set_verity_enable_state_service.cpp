@@ -159,11 +159,15 @@ void set_verity_enabled_state_service(int fd, void* cookie) {
 
     // Should never be possible to disable dm-verity on a USER build
     // regardless of using AVB or VB1.0.
+//TINNO BEGIN
+//WJ add for user version debug
+#ifndef TINNO_DEBUG_SUPPORT
     if (!__android_log_is_debuggable()) {
         WriteFdFmt(fd, "verity cannot be disabled/enabled - USER build\n");
         return;
     }
-
+#endif
+//TINNO END
     if (using_avb) {
         // Yep, the system is using AVB.
         AvbOps* ops = avb_ops_user_new();

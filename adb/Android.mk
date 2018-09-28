@@ -351,6 +351,15 @@ LOCAL_CFLAGS += -DALLOW_ADBD_DISABLE_VERITY=1
 LOCAL_CFLAGS += -DALLOW_ADBD_ROOT=1
 endif
 
+# TINNO BEGIN
+# WJ add for user version debug
+ifneq (,$(filter user,$(TARGET_BUILD_VARIANT)))
+ifeq (true, $(strip $(TINNO_DEBUG_SUPPORT)))
+LOCAL_CFLAGS += -DTINNO_DEBUG_SUPPORT
+endif
+endif
+# TINNO END
+
 LOCAL_MODULE := adbd
 
 LOCAL_FORCE_STATIC_EXECUTABLE := true

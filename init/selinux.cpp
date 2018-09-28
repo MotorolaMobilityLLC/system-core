@@ -89,6 +89,13 @@ EnforcingStatus StatusFromCmdline() {
 }
 
 bool IsEnforcing() {
+//TINNO BEGIN
+//WJ add for user version debug
+#ifdef TINNO_DEBUG_SUPPORT
+    LOG(INFO) << "TINNO_DEBUG_SUPPORT selinux_status_from_cmdline():" << StatusFromCmdline() << "SELINUX_ENFORCING:" << SELINUX_ENFORCING;
+	return StatusFromCmdline() == SELINUX_ENFORCING;
+#endif
+//TINNO END
     if (ALLOW_PERMISSIVE_SELINUX) {
         return StatusFromCmdline() == SELINUX_ENFORCING;
     }
