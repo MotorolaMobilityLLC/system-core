@@ -19,7 +19,7 @@ init_options += \
 endif
 
 # SElinux
-ifneq (,$(filter eng,$(TARGET_BUILD_VARIANT)))
+ifneq (,$(filter userdebug eng,$(TARGET_BUILD_VARIANT)))
 init_options += -DALLOW_PERMISSIVE_SELINUX=1
 else
 init_options += -DALLOW_PERMISSIVE_SELINUX=0
