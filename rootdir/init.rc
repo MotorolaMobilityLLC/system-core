@@ -735,6 +735,11 @@ on property:vold.decrypt=trigger_restart_min_framework
 on property:vold.decrypt=trigger_restart_framework
     stop surfaceflinger
     start surfaceflinger
+    // BEGIN Motorola, reshma, IKSWP-20874 explicitly restart audioserver
+    // during framework restart due to encryption
+    stop audioserver
+    start audioserver
+    // END IKSWP-20874
     # A/B update verifier that marks a successful boot.
     exec_start update_verifier
     class_start main
