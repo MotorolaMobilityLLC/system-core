@@ -37,8 +37,6 @@ using unique_fd = android::base::unique_fd;
 static const size_t kDiskSize = 131072;
 static const size_t kMetadataSize = 512;
 static const size_t kMetadataSlots = 2;
-static const char* TEST_GUID_BASE = "A799D1D6-669F-41D8-A3F0-EBB7572D830";
-static const char* TEST_GUID = "A799D1D6-669F-41D8-A3F0-EBB7572D8302";
 
 // Helper function for creating an in-memory file descriptor. This lets us
 // simulate read/writing logical partition metadata as if we had a block device
@@ -81,7 +79,7 @@ static unique_ptr<MetadataBuilder> CreateDefaultBuilder() {
 }
 
 static bool AddDefaultPartitions(MetadataBuilder* builder) {
-    Partition* system = builder->AddPartition("system", TEST_GUID, LP_PARTITION_ATTR_NONE);
+    Partition* system = builder->AddPartition("system", LP_PARTITION_ATTR_NONE);
     if (!system) {
         return false;
     }
@@ -117,6 +115,9 @@ TEST(liblp, CreateFakeDisk) {
     uint64_t size;
     ASSERT_TRUE(GetDescriptorSize(fd, &size));
     ASSERT_EQ(size, kDiskSize);
+
+    // Verify that we can't read unwritten metadata.
+    ASSERT_EQ(ReadMetadata(fd, 1), nullptr);
 }
 
 // Flashing metadata should not work if the metadata was created for a larger
@@ -168,7 +169,6 @@ TEST(liblp, FlashAndReadback) {
     // Check partition tables.
     ASSERT_EQ(exported->partitions.size(), imported->partitions.size());
     EXPECT_EQ(GetPartitionName(exported->partitions[0]), GetPartitionName(imported->partitions[0]));
-    EXPECT_EQ(GetPartitionGuid(exported->partitions[0]), GetPartitionGuid(imported->partitions[0]));
     EXPECT_EQ(exported->partitions[0].attributes, imported->partitions[0].attributes);
     EXPECT_EQ(exported->partitions[0].first_extent_index,
               imported->partitions[0].first_extent_index);
@@ -190,9 +190,6 @@ TEST(liblp, UpdateAnyMetadataSlot) {
     ASSERT_NE(imported, nullptr);
     ASSERT_EQ(imported->partitions.size(), 1);
     EXPECT_EQ(GetPartitionName(imported->partitions[0]), "system");
-
-    // Verify that we can't read unwritten metadata.
-    ASSERT_EQ(ReadMetadata(fd, 1), nullptr);
 
     // Change the name before writing to the next slot.
     strncpy(imported->partitions[0].name, "vendor", sizeof(imported->partitions[0].name));
@@ -331,21 +328,18 @@ TEST(liblp, TooManyPartitions) {
     unique_ptr<MetadataBuilder> builder = CreateDefaultBuilder();
     ASSERT_NE(builder, nullptr);
 
-    // Compute the maximum number of partitions we can fit in 1024 bytes of metadata.
-    size_t max_partitions = (kMetadataSize - sizeof(LpMetadataHeader)) / sizeof(LpMetadataPartition);
-    EXPECT_LT(max_partitions, 10);
+    // Compute the maximum number of partitions we can fit in 512 bytes of
+    // metadata. By default there is the header, and one partition group.
+    static const size_t kMaxPartitionTableSize =
+            kMetadataSize - sizeof(LpMetadataHeader) - sizeof(LpMetadataPartitionGroup);
+    size_t max_partitions = kMaxPartitionTableSize / sizeof(LpMetadataPartition);
 
     // Add this number of partitions.
     Partition* partition = nullptr;
     for (size_t i = 0; i < max_partitions; i++) {
-        std::string guid = std::string(TEST_GUID) + to_string(i);
-        partition = builder->AddPartition(to_string(i), TEST_GUID, LP_PARTITION_ATTR_NONE);
+        partition = builder->AddPartition(to_string(i), LP_PARTITION_ATTR_NONE);
         ASSERT_NE(partition, nullptr);
     }
-    ASSERT_NE(partition, nullptr);
-    // Add one extent to any partition to fill up more space - we're at 508
-    // bytes after this, out of 512.
-    ASSERT_TRUE(builder->ResizePartition(partition, 1024));
 
     unique_ptr<LpMetadata> exported = builder->Export();
     ASSERT_NE(exported, nullptr);
@@ -357,7 +351,7 @@ TEST(liblp, TooManyPartitions) {
     ASSERT_TRUE(FlashPartitionTable(fd, *exported.get()));
 
     // Check that adding one more partition overflows the metadata allotment.
-    partition = builder->AddPartition("final", TEST_GUID, LP_PARTITION_ATTR_NONE);
+    partition = builder->AddPartition("final", LP_PARTITION_ATTR_NONE);
     EXPECT_NE(partition, nullptr);
 
     exported = builder->Export();

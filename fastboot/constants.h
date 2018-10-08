@@ -32,6 +32,7 @@
 #define FB_CMD_DELETE_PARTITION "delete-logical-partition"
 #define FB_CMD_RESIZE_PARTITION "resize-logical-partition"
 #define FB_CMD_UPDATE_SUPER "update-super"
+#define FB_CMD_OEM "oem"
 
 #define RESPONSE_OKAY "OKAY"
 #define RESPONSE_FAIL "FAIL"
@@ -59,3 +60,7 @@
 #define FB_VAR_IS_LOGICAL "is-logical"
 #define FB_VAR_IS_USERSPACE "is-userspace"
 #define FB_VAR_HW_REVISION "hw-revision"
+#define FB_VAR_VARIANT "variant"
+#define FB_VAR_OFF_MODE_CHARGE_STATE "off-mode-charge"
+#define FB_VAR_BATTERY_VOLTAGE "battery-voltage"
+#define FB_VAR_BATTERY_SOC_OK "battery-soc-ok"

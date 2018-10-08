@@ -164,7 +164,7 @@ static void LogShutdownTime(UmountStat stat, Timer* t) {
  */
 static bool FindPartitionsToUmount(std::vector<MountEntry>* blockDevPartitions,
                                    std::vector<MountEntry>* emulatedPartitions, bool dump) {
-    std::unique_ptr<std::FILE, int (*)(std::FILE*)> fp(setmntent("/proc/mounts", "r"), endmntent);
+    std::unique_ptr<std::FILE, int (*)(std::FILE*)> fp(setmntent("/proc/mounts", "re"), endmntent);
     if (fp == nullptr) {
         PLOG(ERROR) << "Failed to open /proc/mounts";
         return false;
@@ -472,6 +472,12 @@ bool HandlePowerctlMessage(const std::string& command) {
         cmd = ANDROID_RB_RESTART2;
         if (cmd_params.size() >= 2) {
             reboot_target = cmd_params[1];
+            // adb reboot fastboot should boot into bootloader for devices not
+            // supporting logical partitions.
+            if (reboot_target == "fastboot" &&
+                !android::base::GetBoolProperty("ro.boot.logical_partitions", false)) {
+                reboot_target = "bootloader";
+            }
             // When rebooting to the bootloader notify the bootloader writing
             // also the BCB.
             if (reboot_target == "bootloader") {

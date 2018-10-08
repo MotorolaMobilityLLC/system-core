@@ -80,37 +80,39 @@ static struct flag_list mount_flags[] = {
 };
 
 static struct flag_list fs_mgr_flags[] = {
-    {"wait", MF_WAIT},
-    {"check", MF_CHECK},
-    {"encryptable=", MF_CRYPT},
-    {"forceencrypt=", MF_FORCECRYPT},
-    {"fileencryption=", MF_FILEENCRYPTION},
-    {"forcefdeorfbe=", MF_FORCEFDEORFBE},
-    {"keydirectory=", MF_KEYDIRECTORY},
-    {"nonremovable", MF_NONREMOVABLE},
-    {"voldmanaged=", MF_VOLDMANAGED},
-    {"length=", MF_LENGTH},
-    {"recoveryonly", MF_RECOVERYONLY},
-    {"swapprio=", MF_SWAPPRIO},
-    {"zramsize=", MF_ZRAMSIZE},
-    {"max_comp_streams=", MF_MAX_COMP_STREAMS},
-    {"verifyatboot", MF_VERIFYATBOOT},
-    {"verify", MF_VERIFY},
-    {"avb", MF_AVB},
-    {"noemulatedsd", MF_NOEMULATEDSD},
-    {"notrim", MF_NOTRIM},
-    {"formattable", MF_FORMATTABLE},
-    {"slotselect", MF_SLOTSELECT},
-    {"nofail", MF_NOFAIL},
-    {"latemount", MF_LATEMOUNT},
-    {"reservedsize=", MF_RESERVEDSIZE},
-    {"quota", MF_QUOTA},
-    {"eraseblk=", MF_ERASEBLKSIZE},
-    {"logicalblk=", MF_LOGICALBLKSIZE},
-    {"sysfs_path=", MF_SYSFS},
-    {"defaults", 0},
-    {"logical", MF_LOGICAL},
-    {0, 0},
+        {"wait", MF_WAIT},
+        {"check", MF_CHECK},
+        {"encryptable=", MF_CRYPT},
+        {"forceencrypt=", MF_FORCECRYPT},
+        {"fileencryption=", MF_FILEENCRYPTION},
+        {"forcefdeorfbe=", MF_FORCEFDEORFBE},
+        {"keydirectory=", MF_KEYDIRECTORY},
+        {"nonremovable", MF_NONREMOVABLE},
+        {"voldmanaged=", MF_VOLDMANAGED},
+        {"length=", MF_LENGTH},
+        {"recoveryonly", MF_RECOVERYONLY},
+        {"swapprio=", MF_SWAPPRIO},
+        {"zramsize=", MF_ZRAMSIZE},
+        {"max_comp_streams=", MF_MAX_COMP_STREAMS},
+        {"verifyatboot", MF_VERIFYATBOOT},
+        {"verify", MF_VERIFY},
+        {"avb", MF_AVB},
+        {"noemulatedsd", MF_NOEMULATEDSD},
+        {"notrim", MF_NOTRIM},
+        {"formattable", MF_FORMATTABLE},
+        {"slotselect", MF_SLOTSELECT},
+        {"nofail", MF_NOFAIL},
+        {"latemount", MF_LATEMOUNT},
+        {"reservedsize=", MF_RESERVEDSIZE},
+        {"quota", MF_QUOTA},
+        {"eraseblk=", MF_ERASEBLKSIZE},
+        {"logicalblk=", MF_LOGICALBLKSIZE},
+        {"sysfs_path=", MF_SYSFS},
+        {"defaults", 0},
+        {"logical", MF_LOGICAL},
+        {"checkpoint=block", MF_CHECKPOINT_BLK},
+        {"checkpoint=fs", MF_CHECKPOINT_FS},
+        {0, 0},
 };
 
 #define EM_AES_256_XTS  1
@@ -730,21 +732,19 @@ static std::set<std::string> extract_boot_devices(const fstab& fstab) {
 
 struct fstab *fs_mgr_read_fstab(const char *fstab_path)
 {
-    FILE *fstab_file;
     struct fstab *fstab;
 
-    fstab_file = fopen(fstab_path, "r");
+    auto fstab_file = std::unique_ptr<FILE, decltype(&fclose)>{fopen(fstab_path, "re"), fclose};
     if (!fstab_file) {
         PERROR << __FUNCTION__<< "(): cannot open file: '" << fstab_path << "'";
         return nullptr;
     }
 
-    fstab = fs_mgr_read_fstab_file(fstab_file, !strcmp("/proc/mounts", fstab_path));
+    fstab = fs_mgr_read_fstab_file(fstab_file.get(), !strcmp("/proc/mounts", fstab_path));
     if (!fstab) {
         LERROR << __FUNCTION__ << "(): failed to load fstab from : '" << fstab_path << "'";
     }
 
-    fclose(fstab_file);
     return fstab;
 }
 
@@ -1003,4 +1003,16 @@ int fs_mgr_has_sysfs_path(const struct fstab_rec *fstab)
 
 int fs_mgr_is_logical(const struct fstab_rec* fstab) {
     return fstab->fs_mgr_flags & MF_LOGICAL;
+}
+
+int fs_mgr_is_checkpoint(const struct fstab_rec* fstab) {
+    return fstab->fs_mgr_flags & (MF_CHECKPOINT_FS | MF_CHECKPOINT_BLK);
+}
+
+int fs_mgr_is_checkpoint_fs(const struct fstab_rec* fstab) {
+    return fstab->fs_mgr_flags & MF_CHECKPOINT_FS;
+}
+
+int fs_mgr_is_checkpoint_blk(const struct fstab_rec* fstab) {
+    return fstab->fs_mgr_flags & MF_CHECKPOINT_BLK;
 }

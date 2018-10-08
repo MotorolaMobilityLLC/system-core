@@ -38,7 +38,7 @@ extern "C" {
 #define LP_METADATA_HEADER_MAGIC 0x414C5030
 
 /* Current metadata version. */
-#define LP_METADATA_MAJOR_VERSION 1
+#define LP_METADATA_MAJOR_VERSION 3
 #define LP_METADATA_MINOR_VERSION 0
 
 /* Attributes for the LpMetadataPartition::attributes field.
@@ -67,7 +67,7 @@ extern "C" {
  *     | Geometry Backup    |
  *     +--------------------+
  */
-#define LP_METADATA_PARTITION_NAME "super"
+#define LP_METADATA_DEFAULT_PARTITION_NAME "super"
 
 /* Size of a sector is always 512 bytes for compatibility with the Linux kernel. */
 #define LP_SECTOR_SIZE 512
@@ -216,6 +216,8 @@ typedef struct LpMetadataHeader {
     LpMetadataTableDescriptor partitions;
     /* 92: Extent table descriptor. */
     LpMetadataTableDescriptor extents;
+    /* 104: Updateable group descriptor. */
+    LpMetadataTableDescriptor groups;
 } __attribute__((packed)) LpMetadataHeader;
 
 /* This struct defines a logical partition entry, similar to what would be
@@ -230,21 +232,21 @@ typedef struct LpMetadataPartition {
      */
     char name[36];
 
-    /* 36: Globally unique identifier (GUID) of this partition. */
-    uint8_t guid[16];
-
-    /* 52: Attributes for the partition (see LP_PARTITION_ATTR_* flags above). */
+    /* 36: Attributes for the partition (see LP_PARTITION_ATTR_* flags above). */
     uint32_t attributes;
 
-    /* 56: Index of the first extent owned by this partition. The extent will
+    /* 40: Index of the first extent owned by this partition. The extent will
      * start at logical sector 0. Gaps between extents are not allowed.
      */
     uint32_t first_extent_index;
 
-    /* 60: Number of extents in the partition. Every partition must have at
+    /* 44: Number of extents in the partition. Every partition must have at
      * least one extent.
      */
     uint32_t num_extents;
+
+    /* 48: Group this partition belongs to. */
+    uint32_t group_index;
 } __attribute__((packed)) LpMetadataPartition;
 
 /* This extent is a dm-linear target, and the index is an index into the
@@ -270,6 +272,19 @@ typedef struct LpMetadataExtent {
      */
     uint64_t target_data;
 } __attribute__((packed)) LpMetadataExtent;
+
+/* This struct defines an entry in the groups table. Each group has a maximum
+ * size, and partitions in a group must not exceed that size. There is always
+ * a "default" group of unlimited size, which is used when not using update
+ * groups or when using overlayfs or fastbootd.
+ */
+typedef struct LpMetadataPartitionGroup {
+    /*  0: Name of this group. Any unused characters must be 0. */
+    char name[36];
+
+    /* 36: Maximum size in bytes. If 0, the group has no maximum size. */
+    uint64_t maximum_size;
+} LpMetadataPartitionGroup;
 
 #ifdef __cplusplus
 } /* extern "C" */

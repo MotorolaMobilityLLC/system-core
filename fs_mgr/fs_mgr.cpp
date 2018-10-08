@@ -55,6 +55,7 @@
 #include <ext4_utils/wipe.h>
 #include <fs_mgr_overlayfs.h>
 #include <libdm/dm.h>
+#include <liblp/metadata_format.h>
 #include <linux/fs.h>
 #include <linux/loop.h>
 #include <linux/magic.h>
@@ -529,8 +530,18 @@ static int __mount(const char *source, const char *target, const struct fstab_re
     errno = 0;
     ret = mount(source, target, rec->fs_type, mountflags, rec->fs_options);
     save_errno = errno;
-    PINFO << __FUNCTION__ << "(source=" << source << ",target=" << target
-          << ",type=" << rec->fs_type << ")=" << ret;
+    const char* target_missing = "";
+    const char* source_missing = "";
+    if (save_errno == ENOENT) {
+        if (access(target, F_OK)) {
+            target_missing = "(missing)";
+        } else if (access(source, F_OK)) {
+            source_missing = "(missing)";
+        }
+        errno = save_errno;
+    }
+    PINFO << __FUNCTION__ << "(source=" << source << source_missing << ",target=" << target
+          << target_missing << ",type=" << rec->fs_type << ")=" << ret;
     if ((ret == 0) && (mountflags & MS_RDONLY) != 0) {
         fs_mgr_set_blk_ro(source);
     }
@@ -569,8 +580,7 @@ static int fs_match(const char *in1, const char *in2)
  *   -1 on failure with errno set to match the 1st mount failure.
  *   0 on success.
  */
-static int mount_with_alternatives(struct fstab *fstab, int start_idx, int *end_idx, int *attempted_idx)
-{
+static int mount_with_alternatives(fstab* fstab, int start_idx, int* end_idx, int* attempted_idx) {
     int i;
     int mount_errno = 0;
     int mounted = 0;
@@ -805,6 +815,23 @@ static bool call_vdc(const std::vector<std::string>& args) {
     return true;
 }
 
+static bool call_vdc_ret(const std::vector<std::string>& args, int* ret) {
+    std::vector<char const*> argv;
+    argv.emplace_back("/system/bin/vdc");
+    for (auto& arg : args) {
+        argv.emplace_back(arg.c_str());
+    }
+    LOG(INFO) << "Calling: " << android::base::Join(argv, ' ');
+    int err = android_fork_execvp(argv.size(), const_cast<char**>(argv.data()), ret, false, true);
+    if (err != 0) {
+        LOG(ERROR) << "vdc call failed with error code: " << err;
+        return false;
+    }
+    LOG(DEBUG) << "vdc finished successfully";
+    *ret = WEXITSTATUS(*ret);
+    return true;
+}
+
 bool fs_mgr_update_logical_partition(struct fstab_rec* rec) {
     // Logical partitions are specified with a named partition rather than a
     // block device, so if the block device is a path, then it has already
@@ -823,19 +850,70 @@ bool fs_mgr_update_logical_partition(struct fstab_rec* rec) {
     return true;
 }
 
+bool fs_mgr_update_checkpoint_partition(struct fstab_rec* rec) {
+    if (fs_mgr_is_checkpoint_fs(rec)) {
+        if (!strcmp(rec->fs_type, "f2fs")) {
+            std::string opts(rec->fs_options);
+
+            opts += ",checkpoint=disable";
+            free(rec->fs_options);
+            rec->fs_options = strdup(opts.c_str());
+        } else {
+            LERROR << rec->fs_type << " does not implement checkpoints.";
+        }
+    } else if (fs_mgr_is_checkpoint_blk(rec)) {
+        call_vdc({"checkpoint", "restoreCheckpoint", rec->blk_device});
+
+        android::base::unique_fd fd(
+                TEMP_FAILURE_RETRY(open(rec->blk_device, O_RDONLY | O_CLOEXEC)));
+        if (!fd) {
+            PERROR << "Cannot open device " << rec->blk_device;
+            return false;
+        }
+
+        uint64_t size = get_block_device_size(fd) / 512;
+        if (!size) {
+            PERROR << "Cannot get device size";
+            return false;
+        }
+
+        android::dm::DmTable table;
+        if (!table.AddTarget(
+                    std::make_unique<android::dm::DmTargetBow>(0, size, rec->blk_device))) {
+            LERROR << "Failed to add Bow target";
+            return false;
+        }
+
+        DeviceMapper& dm = DeviceMapper::Instance();
+        if (!dm.CreateDevice("bow", table)) {
+            PERROR << "Failed to create bow device";
+            return false;
+        }
+
+        std::string name;
+        if (!dm.GetDmDevicePathByName("bow", &name)) {
+            PERROR << "Failed to get bow device name";
+            return false;
+        }
+
+        rec->blk_device = strdup(name.c_str());
+    }
+    return true;
+}
+
 /* When multiple fstab records share the same mount_point, it will
  * try to mount each one in turn, and ignore any duplicates after a
  * first successful mount.
  * Returns -1 on error, and  FS_MGR_MNTALL_* otherwise.
  */
-int fs_mgr_mount_all(struct fstab *fstab, int mount_mode)
-{
+int fs_mgr_mount_all(fstab* fstab, int mount_mode) {
     int i = 0;
     int encryptable = FS_MGR_MNTALL_DEV_NOT_ENCRYPTABLE;
     int error_count = 0;
     int mret = -1;
     int mount_errno = 0;
     int attempted_idx = -1;
+    int need_checkpoint = -1;
     FsManagerAvbUniquePtr avb_handle(nullptr);
     char propbuf[PROPERTY_VALUE_MAX];
     bool is_ffbm = false;
@@ -890,6 +968,18 @@ int fs_mgr_mount_all(struct fstab *fstab, int mount_mode)
         if ((fstab->recs[i].fs_mgr_flags & MF_LOGICAL)) {
             if (!fs_mgr_update_logical_partition(&fstab->recs[i])) {
                 LERROR << "Could not set up logical partition, skipping!";
+                continue;
+            }
+        }
+
+        if (fs_mgr_is_checkpoint(&fstab->recs[i])) {
+            if (need_checkpoint == -1 &&
+                !call_vdc_ret({"checkpoint", "needsCheckpoint"}, &need_checkpoint)) {
+                LERROR << "Failed to find if checkpointing is needed. Assuming no.";
+                need_checkpoint = 0;
+            }
+            if (need_checkpoint == 1 && !fs_mgr_update_checkpoint_partition(&fstab->recs[i])) {
+                LERROR << "Could not set up checkpoint partition, skipping!";
                 continue;
             }
         }
@@ -1057,7 +1147,7 @@ int fs_mgr_mount_all(struct fstab *fstab, int mount_mode)
     }
 
 #if ALLOW_ADBD_DISABLE_VERITY == 1  // "userdebug" build
-    fs_mgr_overlayfs_mount_all();
+    fs_mgr_overlayfs_mount_all(fstab);
 #endif
 
     if (error_count) {
@@ -1093,9 +1183,8 @@ int fs_mgr_do_mount_one(struct fstab_rec *rec)
  * If multiple fstab entries are to be mounted on "n_name", it will try to mount each one
  * in turn, and stop on 1st success, or no more match.
  */
-int fs_mgr_do_mount(struct fstab *fstab, const char *n_name, char *n_blk_device,
-                    char *tmp_mount_point)
-{
+static int fs_mgr_do_mount_helper(fstab* fstab, const char* n_name, char* n_blk_device,
+                                  char* tmp_mount_point, int need_checkpoint) {
     int i = 0;
     int mount_errors = 0;
     int first_mount_errno = 0;
@@ -1124,6 +1213,18 @@ int fs_mgr_do_mount(struct fstab *fstab, const char *n_name, char *n_blk_device,
         if ((fstab->recs[i].fs_mgr_flags & MF_LOGICAL)) {
             if (!fs_mgr_update_logical_partition(&fstab->recs[i])) {
                 LERROR << "Could not set up logical partition, skipping!";
+                continue;
+            }
+        }
+
+        if (fs_mgr_is_checkpoint(&fstab->recs[i])) {
+            if (need_checkpoint == -1 &&
+                !call_vdc_ret({"checkpoint", "needsCheckpoint"}, &need_checkpoint)) {
+                LERROR << "Failed to find if checkpointing is needed. Assuming no.";
+                need_checkpoint = 0;
+            }
+            if (need_checkpoint == 1 && !fs_mgr_update_checkpoint_partition(&fstab->recs[i])) {
+                LERROR << "Could not set up checkpoint partition, skipping!";
                 continue;
             }
         }
@@ -1197,6 +1298,15 @@ int fs_mgr_do_mount(struct fstab *fstab, const char *n_name, char *n_blk_device,
     return FS_MGR_DOMNT_FAILED;
 }
 
+int fs_mgr_do_mount(fstab* fstab, const char* n_name, char* n_blk_device, char* tmp_mount_point) {
+    return fs_mgr_do_mount_helper(fstab, n_name, n_blk_device, tmp_mount_point, -1);
+}
+
+int fs_mgr_do_mount(fstab* fstab, const char* n_name, char* n_blk_device, char* tmp_mount_point,
+                    bool needs_cp) {
+    return fs_mgr_do_mount_helper(fstab, n_name, n_blk_device, tmp_mount_point, needs_cp);
+}
+
 /*
  * mount a tmpfs filesystem at the given point.
  * return 0 on success, non-zero on failure.
@@ -1219,8 +1329,7 @@ int fs_mgr_do_tmpfs_mount(const char *n_name)
 /* This must be called after mount_all, because the mkswap command needs to be
  * available.
  */
-int fs_mgr_swapon_all(struct fstab *fstab)
-{
+int fs_mgr_swapon_all(fstab* fstab) {
     int i = 0;
     int flags = 0;
     int err = 0;
@@ -1247,29 +1356,25 @@ int fs_mgr_swapon_all(struct fstab *fstab)
              * on a system (all the memory comes from the same pool) so
              * we can assume the device number is 0.
              */
-            FILE *zram_fp;
-            FILE *zram_mcs_fp;
-
             if (fstab->recs[i].max_comp_streams >= 0) {
-               zram_mcs_fp = fopen(ZRAM_CONF_MCS, "r+");
-              if (zram_mcs_fp == NULL) {
-                LERROR << "Unable to open zram conf comp device "
-                       << ZRAM_CONF_MCS;
-                ret = -1;
-                continue;
-              }
-              fprintf(zram_mcs_fp, "%d\n", fstab->recs[i].max_comp_streams);
-              fclose(zram_mcs_fp);
+                auto zram_mcs_fp = std::unique_ptr<FILE, decltype(&fclose)>{
+                        fopen(ZRAM_CONF_MCS, "re"), fclose};
+                if (zram_mcs_fp == NULL) {
+                    LERROR << "Unable to open zram conf comp device " << ZRAM_CONF_MCS;
+                    ret = -1;
+                    continue;
+                }
+                fprintf(zram_mcs_fp.get(), "%d\n", fstab->recs[i].max_comp_streams);
             }
 
-            zram_fp = fopen(ZRAM_CONF_DEV, "r+");
+            auto zram_fp =
+                    std::unique_ptr<FILE, decltype(&fclose)>{fopen(ZRAM_CONF_DEV, "re+"), fclose};
             if (zram_fp == NULL) {
                 LERROR << "Unable to open zram conf device " << ZRAM_CONF_DEV;
                 ret = -1;
                 continue;
             }
-            fprintf(zram_fp, "%u\n", fstab->recs[i].zram_size);
-            fclose(zram_fp);
+            fprintf(zram_fp.get(), "%u\n", fstab->recs[i].zram_size);
         }
 
         if (fstab->recs[i].fs_mgr_flags & MF_WAIT &&
@@ -1310,7 +1415,7 @@ int fs_mgr_swapon_all(struct fstab *fstab)
     return ret;
 }
 
-struct fstab_rec const* fs_mgr_get_crypt_entry(struct fstab const* fstab) {
+struct fstab_rec const* fs_mgr_get_crypt_entry(fstab const* fstab) {
     int i;
 
     if (!fstab) {
@@ -1334,7 +1439,7 @@ struct fstab_rec const* fs_mgr_get_crypt_entry(struct fstab const* fstab) {
  *
  * real_blk_device must be at least PROPERTY_VALUE_MAX bytes long
  */
-void fs_mgr_get_crypt_info(struct fstab* fstab, char* key_loc, char* real_blk_device, size_t size) {
+void fs_mgr_get_crypt_info(fstab* fstab, char* key_loc, char* real_blk_device, size_t size) {
     struct fstab_rec const* rec = fs_mgr_get_crypt_entry(fstab);
     if (key_loc) {
         if (rec) {
@@ -1447,4 +1552,8 @@ bool fs_mgr_update_verity_state(std::function<fs_mgr_verity_state_callback> call
     }
 
     return true;
+}
+
+std::string fs_mgr_get_super_partition_name(int /* slot */) {
+    return LP_METADATA_DEFAULT_PARTITION_NAME;
 }

@@ -19,6 +19,7 @@
 #include <dirent.h>
 #include <fcntl.h>
 #include <pthread.h>
+#include <seccomp_policy.h>
 #include <signal.h>
 #include <stdlib.h>
 #include <string.h>
@@ -41,6 +42,7 @@
 #include <keyutils.h>
 #include <libavb/libavb.h>
 #include <private/android_filesystem_config.h>
+#include <selinux/android.h>
 
 #ifndef RECOVERY
 #include <binder/ProcessState.h>
@@ -186,23 +188,34 @@ void property_changed(const std::string& name, const std::string& value) {
     }
 }
 
-static std::optional<boot_clock::time_point> RestartProcesses() {
-    std::optional<boot_clock::time_point> next_process_restart_time;
+static std::optional<boot_clock::time_point> HandleProcessActions() {
+    std::optional<boot_clock::time_point> next_process_action_time;
     for (const auto& s : ServiceList::GetInstance()) {
+        if ((s->flags() & SVC_RUNNING) && s->timeout_period()) {
+            auto timeout_time = s->time_started() + *s->timeout_period();
+            if (boot_clock::now() > timeout_time) {
+                s->Timeout();
+            } else {
+                if (!next_process_action_time || timeout_time < *next_process_action_time) {
+                    next_process_action_time = timeout_time;
+                }
+            }
+        }
+
         if (!(s->flags() & SVC_RESTARTING)) continue;
 
-        auto restart_time = s->time_started() + 5s;
+        auto restart_time = s->time_started() + s->restart_period();
         if (boot_clock::now() > restart_time) {
             if (auto result = s->Start(); !result) {
                 LOG(ERROR) << "Could not restart process '" << s->name() << "': " << result.error();
             }
         } else {
-            if (!next_process_restart_time || restart_time < *next_process_restart_time) {
-                next_process_restart_time = restart_time;
+            if (!next_process_action_time || restart_time < *next_process_action_time) {
+                next_process_action_time = restart_time;
             }
         }
     }
-    return next_process_restart_time;
+    return next_process_action_time;
 }
 
 static Result<Success> DoControlStart(Service* service) {
@@ -349,12 +362,12 @@ static void export_oem_lock_status() {
     if (!android::base::GetBoolProperty("ro.oem_unlock_supported", false)) {
         return;
     }
-
-    std::string value = GetProperty("ro.boot.verifiedbootstate", "");
-
-    if (!value.empty()) {
-        property_set("ro.boot.flash.locked", value == "orange" ? "0" : "1");
-    }
+    import_kernel_cmdline(
+            false, [](const std::string& key, const std::string& value, bool in_qemu) {
+                if (key == "androidboot.verifiedbootstate") {
+                    property_set("ro.boot.flash.locked", value == "orange" ? "0" : "1");
+                }
+            });
 }
 
 static void export_kernel_boot_props() {
@@ -573,21 +586,41 @@ static void InitAborter(const char* abort_message) {
     RebootSystem(ANDROID_RB_RESTART2, "bootloader");
 }
 
-static void InitKernelLogging(char* argv[]) {
-    // Make stdin/stdout/stderr all point to /dev/null.
-    int fd = open("/sys/fs/selinux/null", O_RDWR);
-    if (fd == -1) {
-        int saved_errno = errno;
-        android::base::InitLogging(argv, &android::base::KernelLogger, InitAborter);
-        errno = saved_errno;
-        PLOG(FATAL) << "Couldn't open /sys/fs/selinux/null";
-    }
-    dup2(fd, 0);
-    dup2(fd, 1);
-    dup2(fd, 2);
-    if (fd > 2) close(fd);
+static void GlobalSeccomp() {
+    import_kernel_cmdline(false, [](const std::string& key, const std::string& value,
+                                    bool in_qemu) {
+        if (key == "androidboot.seccomp" && value == "global" && !set_global_seccomp_filter()) {
+            LOG(FATAL) << "Failed to globally enable seccomp!";
+        }
+    });
+}
 
-    android::base::InitLogging(argv, &android::base::KernelLogger, InitAborter);
+static void SetupSelinux(char** argv) {
+    android::base::InitLogging(argv, &android::base::KernelLogger, [](const char*) {
+        RebootSystem(ANDROID_RB_RESTART2, "bootloader");
+    });
+
+    // Set up SELinux, loading the SELinux policy.
+    SelinuxSetupKernelLogging();
+    SelinuxInitialize();
+
+    // We're in the kernel domain and want to transition to the init domain.  File systems that
+    // store SELabels in their xattrs, such as ext4 do not need an explicit restorecon here,
+    // but other file systems do.  In particular, this is needed for ramdisks such as the
+    // recovery image for A/B devices.
+    if (selinux_android_restorecon("/system/bin/init", 0) == -1) {
+        PLOG(FATAL) << "restorecon failed of /system/bin/init failed";
+    }
+
+    setenv("SELINUX_INITIALIZED", "true", 1);
+
+    const char* path = "/system/bin/init";
+    const char* args[] = {path, nullptr};
+    execv(path, const_cast<char**>(args));
+
+    // execv() only returns if an error happened, in which case we
+    // panic and never return from this function.
+    PLOG(FATAL) << "execv(\"" << path << "\") failed";
 }
 
 int main(int argc, char** argv) {
@@ -605,8 +638,16 @@ int main(int argc, char** argv) {
         InstallRebootSignalHandlers();
     }
 
-    InitKernelLogging(argv);
+    if (getenv("SELINUX_INITIALIZED") == nullptr) {
+        SetupSelinux(argv);
+    }
+
+    // We need to set up stdin/stdout/stderr again now that we're running in init's context.
+    InitKernelLogging(argv, InitAborter);
     LOG(INFO) << "init second stage started!";
+
+    // Enable seccomp if global boot option was passed (otherwise it is enabled in zygote).
+    GlobalSeccomp();
 
     // Set up a session keyring that all processes will have access to. It
     // will hold things like FBE encryption keys. No process should override
@@ -650,6 +691,7 @@ int main(int argc, char** argv) {
     }
 
     // Clean up our environment.
+    unsetenv("SELINUX_INITIALIZED");
     unsetenv("INIT_STARTED_AT");
     unsetenv("INIT_SELINUX_TOOK");
     unsetenv("INIT_AVB_VERSION");
@@ -742,12 +784,12 @@ int main(int argc, char** argv) {
         }
         if (!(waiting_for_prop || Service::is_exec_service_running())) {
             if (!shutting_down) {
-                auto next_process_restart_time = RestartProcesses();
+                auto next_process_action_time = HandleProcessActions();
 
                 // If there's a process that needs restarting, wake up in time for that.
-                if (next_process_restart_time) {
+                if (next_process_action_time) {
                     epoll_timeout = std::chrono::ceil<std::chrono::milliseconds>(
-                        *next_process_restart_time - boot_clock::now());
+                            *next_process_action_time - boot_clock::now());
                     if (*epoll_timeout < 0ms) epoll_timeout = 0ms;
                 }
             }

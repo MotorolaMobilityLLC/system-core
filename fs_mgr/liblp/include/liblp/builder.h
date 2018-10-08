@@ -95,11 +95,24 @@ class ZeroExtent final : public Extent {
     void AddTo(LpMetadata* out) const override;
 };
 
+class PartitionGroup final {
+  public:
+    explicit PartitionGroup(const std::string& name, uint64_t maximum_size)
+        : name_(name), maximum_size_(maximum_size) {}
+
+    const std::string& name() const { return name_; }
+    uint64_t maximum_size() const { return maximum_size_; }
+
+  private:
+    std::string name_;
+    uint64_t maximum_size_;
+};
+
 class Partition final {
     friend class MetadataBuilder;
 
   public:
-    Partition(const std::string& name, const std::string& guid, uint32_t attributes);
+    Partition(const std::string& name, const std::string& group_name, uint32_t attributes);
 
     // Add a raw extent.
     void AddExtent(std::unique_ptr<Extent>&& extent);
@@ -107,9 +120,13 @@ class Partition final {
     // Remove all extents from this partition.
     void RemoveExtents();
 
+    // Compute the size used by linear extents. This is the same as size(),
+    // but does not factor in extents which do not take up space.
+    uint64_t BytesOnDisk() const;
+
     const std::string& name() const { return name_; }
+    const std::string& group_name() const { return group_name_; }
     uint32_t attributes() const { return attributes_; }
-    const std::string& guid() const { return guid_; }
     const std::vector<std::unique_ptr<Extent>>& extents() const { return extents_; }
     uint64_t size() const { return size_; }
 
@@ -117,7 +134,7 @@ class Partition final {
     void ShrinkTo(uint64_t aligned_size);
 
     std::string name_;
-    std::string guid_;
+    std::string group_name_;
     std::vector<std::unique_ptr<Extent>> extents_;
     uint32_t attributes_;
     uint64_t size_;
@@ -156,13 +173,25 @@ class MetadataBuilder {
         return New(device_info, metadata_max_size, metadata_slot_count);
     }
 
+    // Define a new partition group. By default there is one group called
+    // "default", with an unrestricted size. A non-zero size will restrict the
+    // total space used by all partitions in the group.
+    //
+    // This can fail and return false if the group already exists.
+    bool AddGroup(const std::string& group_name, uint64_t maximum_size);
+
     // Export metadata so it can be serialized to an image, to disk, or mounted
     // via device-mapper.
     std::unique_ptr<LpMetadata> Export();
 
     // Add a partition, returning a handle so it can be sized as needed. If a
     // partition with the given name already exists, nullptr is returned.
-    Partition* AddPartition(const std::string& name, const std::string& guid, uint32_t attributes);
+    Partition* AddPartition(const std::string& name, const std::string& group_name,
+                            uint32_t attributes);
+
+    // Same as AddPartition above, but uses the default partition group which
+    // has no size restrictions.
+    Partition* AddPartition(const std::string& name, uint32_t attributes);
 
     // Delete a partition by name if it exists.
     void RemovePartition(const std::string& name);
@@ -184,6 +213,7 @@ class MetadataBuilder {
 
     // Amount of space that can be allocated to logical partitions.
     uint64_t AllocatableSpace() const;
+    uint64_t UsedSpace() const;
 
     // Merge new block device information into previous values. Alignment values
     // are only overwritten if the new values are non-zero.
@@ -201,10 +231,13 @@ class MetadataBuilder {
     bool GrowPartition(Partition* partition, uint64_t aligned_size);
     void ShrinkPartition(Partition* partition, uint64_t aligned_size);
     uint64_t AlignSector(uint64_t sector);
+    PartitionGroup* FindGroup(const std::string& group_name) const;
+    uint64_t TotalSizeOfGroup(PartitionGroup* group) const;
 
     LpMetadataGeometry geometry_;
     LpMetadataHeader header_;
     std::vector<std::unique_ptr<Partition>> partitions_;
+    std::vector<std::unique_ptr<PartitionGroup>> groups_;
     BlockDeviceInfo device_info_;
 };
 

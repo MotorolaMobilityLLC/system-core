@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008 The Android Open Source Project
+ * Copyright (C) 2018 The Android Open Source Project
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -26,9 +26,12 @@
  * SUCH DAMAGE.
  */
 
-#include "fastboot.h"
+#include <bootimg.h>
 
-int main(int argc, char* argv[]) {
-    FastBootTool fb;
-    return fb.Main(argc, argv);
-}
+class FastBootTool {
+  public:
+    int Main(int argc, char* argv[]);
+
+    void ParseOsPatchLevel(boot_img_hdr_v1*, const char*);
+    void ParseOsVersion(boot_img_hdr_v1*, const char*);
+};

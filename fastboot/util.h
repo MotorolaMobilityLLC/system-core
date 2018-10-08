@@ -9,10 +9,7 @@
 
 /* util stuff */
 double now();
-char* xstrdup(const char*);
 void set_verbose();
-
-void Status(const std::string& message);
 
 // These printf-like functions are implemented in terms of vsnprintf, so they
 // use the same attribute for compile-time format string checking.
