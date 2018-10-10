@@ -181,7 +181,6 @@
 #define AID_MOT_ATVC      9012  /* mot_atvc - This is for use of the ATVC service ONLY */
 #define AID_MOT_DBVC      9014  /* mot_dbvc - This group is used to access DataBlock feature */
 #define AID_FINGERP       9015  /* IKFPS-98 Add permission group for fingerprint */
-#define AID_MOT_ESDFS     9016  /* mot_esdfs for ESDFS package list parsing */
 #define AID_ITSON         9018  /* itson permission  */
 #define AID_MOT_DTV       9019  /* dtv */
 #define AID_MOT_MOD       9020  /* can interact with motorola mod HW */
