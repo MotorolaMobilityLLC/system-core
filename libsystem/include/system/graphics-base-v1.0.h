@@ -113,6 +113,7 @@ typedef enum {
 } android_dataspace_t;
 
 typedef enum {
+    HAL_COLOR_MODE_INVALID = -1,
     HAL_COLOR_MODE_NATIVE = 0,
     HAL_COLOR_MODE_STANDARD_BT601_625 = 1,
     HAL_COLOR_MODE_STANDARD_BT601_625_UNADJUSTED = 2,
