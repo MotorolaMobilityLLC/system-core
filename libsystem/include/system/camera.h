@@ -23,6 +23,10 @@
 #include <cutils/native_handle.h>
 #include <hardware/hardware.h>
 #include <hardware/gralloc.h>
+#include <utils/KeyedVector.h>
+#include <utils/String16.h>
+
+using namespace android;
 
 __BEGIN_DECLS
 
@@ -309,7 +313,6 @@ typedef struct camera_frame_metadata {
 #define TN_MPP_DATA_TYPE_RAW        0x0002
 #define TN_MPP_DATA_TYPE_RGB        0x0004
 #define TN_MPP_DATA_TYPE_JPEGCB     0x0008
-#define TN_MPP_DATA_TYPE_STATUS     0x0010
 
 // data fomat
 #define TN_MPP_DATA_FORMAT_NV21     0x0010         // Y.....vuvuvu
@@ -326,6 +329,11 @@ typedef struct camera_frame_metadata {
 #define TN_MPP_SELFFLASH_ON         0x4000
 #define TN_MPP_SELFFLASH_OFF        0x8000
 
+typedef enum TN_3A_MetaData_TAG {
+    TN_AE_BV = 0x1,
+    TN_AE_ISO,
+} TN_3A_MetaData_t;
+
 typedef struct TN_Media_Plugin_Packet {
 	int  nDataType;				// used by pluginservice to assig the plugin who will process the data according to its ability.
 	unsigned	char *  pY;
@@ -334,15 +342,14 @@ typedef struct TN_Media_Plugin_Packet {
 	int  mWidth;
 	int  mHeight;
 	int  nStride[3];
-       uint32_t  nLen[3];
+        uint32_t  nLen[3];
 	int nDataFormat;
 	int   mbEos;   // all the data packets have been sent.
-	const char*   pHalStatus; // use as status callback
-	int    nStatusLen;
 	int    mDataId;  // where doese the data from, such as rear /dual /front sensor;
 	int mEncodeJpegId; //whitch data should be encoded,frameworks write and use this
 	long nSrcBufSize;
-       int  mFD;
+        int  mFD;
+        KeyedVector< int32_t,float >* meta;//save 3A info, key from enum TN_3A_MetaData_TAG
 } TN_Media_Plugin_Packet_t;
 
 typedef struct TN_CameraClient_Callback {
