@@ -173,8 +173,6 @@
 #define AID_MOT_TCMD      9004  /* mot_tcmd */
 #define AID_MOT_SEC_RTC   9005  /* mot cpcap rtc */
 #define AID_MOT_TOMBSTONE 9006
-#define AID_MOT_TPAPI     9007  /* mot_tpapi */
-#define AID_MOT_SECCLKD   9008  /* mot_secclkd */
 #define AID_MOT_WHISPER   9009  /* Whisper Protocol access */
 #define AID_MOT_CAIF      9010  /* can create CAIF sockets */
 #define AID_MOT_DLNA      9011  /*DLNA native */
