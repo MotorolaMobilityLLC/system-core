@@ -167,15 +167,9 @@
 #define AID_MOT_USB       9002  /* mot usb */
 #define AID_MOT_DRM       9003  /* can access DRM resource. */
 #define AID_MOT_TCMD      9004  /* mot_tcmd */
-#define AID_MOT_SEC_RTC   9005  /* mot cpcap rtc */
 #define AID_MOT_TOMBSTONE 9006
-#define AID_MOT_WHISPER   9009  /* Whisper Protocol access */
-#define AID_MOT_CAIF      9010  /* can create CAIF sockets */
-#define AID_MOT_DLNA      9011  /*DLNA native */
-#define AID_MOT_ATVC      9012  /* mot_atvc - This is for use of the ATVC service ONLY */
 #define AID_MOT_DBVC      9014  /* mot_dbvc - This group is used to access DataBlock feature */
 #define AID_FINGERP       9015  /* IKFPS-98 Add permission group for fingerprint */
-#define AID_ITSON         9018  /* itson permission  */
 #define AID_MOT_DTV       9019  /* dtv */
 #define AID_MOT_MOD       9020  /* can interact with motorola mod HW */
 #define AID_MOT_PROD_PERSIST 9021  /* moto product persist */
