@@ -43,6 +43,7 @@
 #include <thread>
 #include <vector>
 
+#include <android-base/parseint.h>
 #include <android-base/stringprintf.h>
 #include <gtest/gtest.h>
 #include <sparse/sparse.h>
@@ -289,6 +290,12 @@ TEST_F(Conformance, GetVarAll) {
 TEST_F(Conformance, UnlockAbility) {
     std::string resp;
     std::vector<std::string> info;
+    // Userspace fastboot implementations do not have a way to get this
+    // information.
+    if (UserSpaceFastboot()) {
+        GTEST_LOG_(INFO) << "This test is skipped for userspace fastboot.";
+        return;
+    }
     EXPECT_EQ(fb->RawCommand("flashing get_unlock_ability", &resp, &info), SUCCESS)
             << "'flashing get_unlock_ability' failed";
     // There are two ways this can be reported, through info or the actual response
@@ -325,8 +332,9 @@ TEST_F(Conformance, PartitionInfo) {
                 << cmd + " responded with a string with leading whitespace";
         EXPECT_FALSE(resp.compare(0, 2, "0x"))
                 << cmd + "responded with a string that does not start with 0x...";
-        int64_t size = strtoll(resp.c_str(), nullptr, 16);
-        EXPECT_GT(size, 0) << "'" + resp + "' is not a valid response from " + cmd;
+        uint64_t size;
+        ASSERT_TRUE(android::base::ParseUint(resp, &size))
+                << "'" + resp + "' is not a valid response from " + cmd;
     }
 }
 
@@ -412,6 +420,10 @@ TEST_F(Conformance, LockAndUnlockPrompt) {
     ASSERT_TRUE(resp == "yes" || resp == "no")
             << "Device did not respond with 'yes' or 'no' for getvar:unlocked";
     bool curr = resp == "yes";
+    if (UserSpaceFastboot()) {
+        GTEST_LOG_(INFO) << "This test is skipped for userspace fastboot.";
+        return;
+    }
 
     for (int i = 0; i < 2; i++) {
         std::string action = !curr ? "unlock" : "lock";
