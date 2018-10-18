@@ -705,6 +705,20 @@ static void load_override_properties() {
     }
 }
 
+static int check_rlim_action() {
+    struct rlimit rl;
+    std::string value  = android::base::GetProperty("persist.debug.trace", "");
+
+    if(value == "1") {
+        rl.rlim_cur = RLIM_INFINITY;
+        rl.rlim_max = RLIM_INFINITY;
+        if (setrlimit(RLIMIT_CORE, &rl) < 0) {
+            PLOG(ERROR) << "could not enable core file generation";
+        }
+    }
+    return 0;
+}
+
 /* When booting an encrypted system, /data is not mounted when the
  * property service is started, so any properties stored there are
  * not loaded.  Vold triggers init to load these properties once it
@@ -730,6 +744,8 @@ void load_persist_props(void) {
     }
     persistent_properties_loaded = true;
     property_set("ro.persistent_properties.ready", "true");
+    /*check for coredump*/
+    check_rlim_action();
 }
 
 void load_recovery_id_prop() {

@@ -85,6 +85,7 @@ static struct flag_list fs_mgr_flags[] = {
         {"encryptable=", MF_CRYPT},
         {"forceencrypt=", MF_FORCECRYPT},
         {"fileencryption=", MF_FILEENCRYPTION},
+        {"wrappedkey", MF_WRAPPEDKEY},
         {"forcefdeorfbe=", MF_FORCEFDEORFBE},
         {"keydirectory=", MF_KEYDIRECTORY},
         {"nonremovable", MF_NONREMOVABLE},
@@ -1015,4 +1016,9 @@ int fs_mgr_is_checkpoint_fs(const struct fstab_rec* fstab) {
 
 int fs_mgr_is_checkpoint_blk(const struct fstab_rec* fstab) {
     return fstab->fs_mgr_flags & MF_CHECKPOINT_BLK;
+}
+
+int fs_mgr_is_wrapped_key_supported(const struct fstab_rec *fstab)
+{
+    return fstab->fs_mgr_flags & MF_WRAPPEDKEY;
 }

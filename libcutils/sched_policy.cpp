@@ -66,7 +66,6 @@ static int bg_schedboost_fd = -1;
 static int fg_schedboost_fd = -1;
 static int ta_schedboost_fd = -1;
 static int rt_schedboost_fd = -1;
-static int aa_schedboost_fd = -1;
 
 // File descriptors open to /dev/blkio/../tasks, setup by initialize, or -1 on error
 static int bg_blkio_fd = -1;
@@ -195,8 +194,6 @@ static void __initialize() {
             rs_cpuset_fd = open(filename, O_WRONLY | O_CLOEXEC);
 
             if (schedboost_enabled()) {
-                filename = "/dev/stune/audio-app/tasks";
-                aa_schedboost_fd = open(filename, O_WRONLY | O_CLOEXEC);
                 filename = "/dev/stune/top-app/tasks";
                 ta_schedboost_fd = open(filename, O_WRONLY | O_CLOEXEC);
                 filename = "/dev/stune/foreground/tasks";
@@ -362,7 +359,7 @@ int set_cpuset_policy(int tid, SchedPolicy policy)
     case SP_AUDIO_APP:
     case SP_AUDIO_SYS:
         fd = aa_cpuset_fd;
-        boost_fd = aa_schedboost_fd;
+        boost_fd = fg_schedboost_fd;
         blkio_fd = fg_blkio_fd;
         break;
     case SP_RESTRICTED:
@@ -488,7 +485,7 @@ int set_sched_policy(int tid, SchedPolicy policy)
 	    break;
         case SP_AUDIO_APP:
         case SP_AUDIO_SYS:
-            boost_fd = aa_schedboost_fd;
+            boost_fd = fg_schedboost_fd;
             break;
         default:
             boost_fd = -1;

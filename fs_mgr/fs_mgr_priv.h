@@ -115,7 +115,7 @@
 #define MF_LOGICAL        0x10000000
 #define MF_CHECKPOINT_BLK 0x20000000
 #define MF_CHECKPOINT_FS  0x40000000
-// clang-format on
+#define MF_WRAPPEDKEY     0X80000000
 
 #define DM_BUF_SIZE 4096
 

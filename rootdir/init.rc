@@ -723,6 +723,11 @@ on property:vold.decrypt=trigger_load_persist_props
     start logd
     start logd-reinit
 
+# corefile limit
+on property:persist.debug.trace=1
+   mkdir /data/core 0777 root root
+   write /proc/sys/kernel/core_pattern "/data/core/%E.%p.%e"
+
 on property:vold.decrypt=trigger_post_fs_data
     trigger post-fs-data
     trigger zygote-start
