@@ -151,15 +151,11 @@
 #define AID_NET_BW_STATS 3006 /* read bandwidth statistics */
 #define AID_NET_BW_ACCT 3007  /* change bandwidth statistics accounting */
 
-/* Begin IKSWN-10: keep AID_IMS and AID_RFS same with M */
-#define AID_SENSORS       3011 /* access to /dev/socket/sensor_ctl_socket & QCCI/QCSI */
-/* End IKSWN-10 */
-
 /* AID_READPROC & AID_WAKELOCK needed by system_server
  * Please keep sync with ZygoteInit.java --setgroups */
 #define AID_READPROC 3009     /* Allow /proc read access */
 #define AID_WAKELOCK 3010     /* Allow system wakelock read/write access */
-#define AID_UHID 3016         /* Allow read/write to /dev/uhid node */
+#define AID_UHID 3011         /* Allow read/write to /dev/uhid node */
 
 /* The range 5000-5999 is also reserved for OEM, and must never be used here. */
 #define AID_OEM_RESERVED_2_START 5000
