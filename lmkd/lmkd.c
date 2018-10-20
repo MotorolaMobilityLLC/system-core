@@ -1313,8 +1313,8 @@ static void mp_event_common(int data, uint32_t events __unused) {
         }
     }
 
-    // Trigger duraSpeed
-    if (mem_pressure <= downgrade_pressure + 10) {
+    // Trigger duraSpeed if existed
+    if (property_get_int32("persist.vendor.duraspeed.support", 0) && mem_pressure <= downgrade_pressure + 10) {
         struct timespec t1, t2;
         unsigned long elapsed_ms;
 
