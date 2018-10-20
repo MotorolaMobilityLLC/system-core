@@ -1664,7 +1664,11 @@ int main(int argc __unused, char **argv __unused) {
     if (mlockall(MCL_CURRENT | MCL_FUTURE | MCL_ONFAULT) && errno != EINVAL)
         ALOGW("mlockall failed: errno=%d", errno);
 
-    sched_setscheduler(0, SCHED_FIFO, &param);
+    // tinno begin
+    // avoid lmkd high cpu usage, by jian.zhang 20180207
+    // sched_setscheduler(0, SCHED_FIFO, &param);
+    // tinno end
+
     if (!init())
         mainloop();
 
