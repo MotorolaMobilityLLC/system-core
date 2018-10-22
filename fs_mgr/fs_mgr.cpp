@@ -111,6 +111,10 @@ using namespace std::literals;
 #define PU_REASON_AP_KERNEL_PANIC   0x00020000 /* Bit 17 */
 #define PU_REASON_HARDWARE_RESET    0x00100000 /* bit 20  */
 
+#ifdef MOTO_BLD_C
+#define __android_log_is_debuggable() true
+#endif
+
 // record fs stat
 enum FsStatFlags {
     FS_STAT_IS_EXT4 = 0x0001,
