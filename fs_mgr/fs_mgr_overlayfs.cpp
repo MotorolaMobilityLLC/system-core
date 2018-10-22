@@ -163,29 +163,13 @@ std::string fs_mgr_get_overlayfs_options(const std::string& mount_point) {
     auto candidate = fs_mgr_get_overlayfs_candidate(mount_point);
     if (candidate.empty()) return "";
 
-    return "override_creds=off,"s + kLowerdirOption + mount_point + "," + kUpperdirOption +
+    return "override_creds=off," + kLowerdirOption + mount_point + "," + kUpperdirOption +
            candidate + kUpperName + ",workdir=" + candidate + kWorkName;
 }
 
-bool fs_mgr_system_root_image(const fstab* fstab) {
-    if (!fstab) {  // can not happen?
-        // This will return empty on init first_stage_mount,
-        // hence why we prefer checking the fstab instead.
-        return android::base::GetBoolProperty("ro.build.system_root_image", false);
-    }
-    for (auto i = 0; i < fstab->num_entries; i++) {
-        const auto fsrec = &fstab->recs[i];
-        auto fsrec_mount_point = fsrec->mount_point;
-        if (!fsrec_mount_point) continue;
-        if ("/system"s == fsrec_mount_point) return false;
-    }
-    return true;
-}
-
-const char* fs_mgr_mount_point(const fstab* fstab, const char* mount_point) {
+const char* fs_mgr_mount_point(const char* mount_point) {
     if (!mount_point) return mount_point;
     if ("/"s != mount_point) return mount_point;
-    if (!fs_mgr_system_root_image(fstab)) return mount_point;
     return "/system";
 }
 
@@ -277,7 +261,7 @@ bool fs_mgr_wants_overlayfs(const fstab_rec* fsrec) {
     return true;
 }
 
-bool fs_mgr_rm_all(const std::string& path, bool* change = nullptr) {
+bool fs_mgr_rm_all(const std::string& path, bool* change = nullptr, int level = 0) {
     auto save_errno = errno;
     std::unique_ptr<DIR, decltype(&closedir)> dir(opendir(path.c_str()), closedir);
     if (!dir) {
@@ -285,7 +269,11 @@ bool fs_mgr_rm_all(const std::string& path, bool* change = nullptr) {
             errno = save_errno;
             return true;
         }
-        PERROR << "opendir " << path;
+        PERROR << "opendir " << path << " depth=" << level;
+        if ((errno == EPERM) && (level != 0)) {
+            errno = save_errno;
+            return true;
+        }
         return false;
     }
     dirent* entry;
@@ -295,23 +283,25 @@ bool fs_mgr_rm_all(const std::string& path, bool* change = nullptr) {
         auto file = path + "/" + entry->d_name;
         if (entry->d_type == DT_UNKNOWN) {
             struct stat st;
+            save_errno = errno;
             if (!lstat(file.c_str(), &st) && (st.st_mode & S_IFDIR)) entry->d_type = DT_DIR;
+            errno = save_errno;
         }
         if (entry->d_type == DT_DIR) {
-            ret &= fs_mgr_rm_all(file, change);
+            ret &= fs_mgr_rm_all(file, change, level + 1);
             if (!rmdir(file.c_str())) {
                 if (change) *change = true;
             } else {
-                ret = false;
-                PERROR << "rmdir " << file;
+                if (errno != ENOENT) ret = false;
+                PERROR << "rmdir " << file << " depth=" << level;
             }
             continue;
         }
         if (!unlink(file.c_str())) {
             if (change) *change = true;
         } else {
-            ret = false;
-            PERROR << "rm " << file;
+            if (errno != ENOENT) ret = false;
+            PERROR << "rm " << file << " depth=" << level;
         }
     }
     return ret;
@@ -456,11 +446,13 @@ bool fs_mgr_overlayfs_teardown_one(const std::string& overlay, const std::string
                                    bool* change) {
     const auto top = overlay + kOverlayTopDir;
 
-    if (!fs_mgr_access(top)) return false;
+    if (!fs_mgr_access(top)) return fs_mgr_overlayfs_teardown_scratch(overlay, change);
 
     auto cleanup_all = mount_point.empty();
-    const auto oldpath = top + (cleanup_all ? "" : ("/"s + mount_point));
-    const auto newpath = oldpath + ".teardown";
+    const auto partition_name = android::base::Basename(mount_point);
+    const auto oldpath = top + (cleanup_all ? "" : ("/" + partition_name));
+    const auto newpath = cleanup_all ? overlay + "/." + kOverlayTopDir.substr(1) + ".teardown"
+                                     : top + "/." + partition_name + ".teardown";
     auto ret = fs_mgr_rm_all(newpath);
     auto save_errno = errno;
     if (!rename(oldpath.c_str(), newpath.c_str())) {
@@ -486,12 +478,28 @@ bool fs_mgr_overlayfs_teardown_one(const std::string& overlay, const std::string
         if (!rmdir(top.c_str())) {
             if (change) *change = true;
             cleanup_all = true;
-        } else if ((errno != ENOENT) && (errno != ENOTEMPTY)) {
+        } else if (errno == ENOTEMPTY) {
+            cleanup_all = true;
+            // cleanup all if the content is all hidden (leading .)
+            std::unique_ptr<DIR, decltype(&closedir)> dir(opendir(top.c_str()), closedir);
+            if (!dir) {
+                PERROR << "opendir " << top;
+            } else {
+                dirent* entry;
+                while ((entry = readdir(dir.get()))) {
+                    if (entry->d_name[0] != '.') {
+                        cleanup_all = false;
+                        break;
+                    }
+                }
+            }
+            errno = save_errno;
+        } else if (errno == ENOENT) {
+            cleanup_all = true;
+            errno = save_errno;
+        } else {
             ret = false;
             PERROR << "rmdir " << top;
-        } else {
-            errno = save_errno;
-            cleanup_all = true;
         }
     }
     if (cleanup_all) ret &= fs_mgr_overlayfs_teardown_scratch(overlay, change);
@@ -533,7 +541,7 @@ std::vector<std::string> fs_mgr_candidate_list(const fstab* fstab,
     for (auto i = 0; i < fstab->num_entries; i++) {
         const auto fsrec = &fstab->recs[i];
         if (!fs_mgr_wants_overlayfs(fsrec)) continue;
-        std::string new_mount_point(fs_mgr_mount_point(fstab, fsrec->mount_point));
+        std::string new_mount_point(fs_mgr_mount_point(fsrec->mount_point));
         if (mount_point && (new_mount_point != mount_point)) continue;
         if (std::find(verity.begin(), verity.end(), android::base::Basename(new_mount_point)) !=
             verity.end()) {
@@ -572,17 +580,11 @@ std::vector<std::string> fs_mgr_candidate_list(const fstab* fstab,
         return mounts;
     }
 
-    // Manually check dm state because stunted fstab (w/o system as root) borken
-    auto& dm = DeviceMapper::Instance();
-    auto found = false;
-    for (auto& system : {"system", "vroot"}) {
-        if (dm.GetState(system) == DmDeviceState::INVALID) continue;
-        std::vector<DeviceMapper::TargetInfo> table;
-        found = !dm.GetTableStatus(system, &table) || table.empty() || table[0].data.empty() ||
-                (table[0].data[0] == 'C') || (table[0].data[0] == 'V');
-        if (found) break;
-    }
-    if (!found) mounts.emplace_back("/system");
+    // We have a stunted fstab (w/o system or / ) passed in by the caller,
+    // verity claims are assumed accurate because they are collected internally
+    // from fs_mgr_fstab_default() from within fs_mgr_update_verity_state(),
+    // Can (re)evaluate /system with impunity since we know it is ever-present.
+    mounts.emplace_back("/system");
     return mounts;
 }
 
@@ -605,8 +607,18 @@ bool fs_mgr_overlayfs_mount_scratch(const std::string& device_path, const std::s
     fsrec->fs_type = strdup(mnt_type.c_str());
     fsrec->flags = MS_RELATIME;
     fsrec->fs_options = strdup("");
-    auto mounted = fs_mgr_do_mount_one(fsrec) == 0;
     auto save_errno = errno;
+    auto mounted = fs_mgr_do_mount_one(fsrec) == 0;
+    if (!mounted) {
+        free(fsrec->fs_type);
+        if (mnt_type == "f2fs") {
+            fsrec->fs_type = strdup("ext4");
+        } else {
+            fsrec->fs_type = strdup("f2fs");
+        }
+        mounted = fs_mgr_do_mount_one(fsrec) == 0;
+        if (!mounted) save_errno = errno;
+    }
     setfscreatecon(nullptr);
     if (!mounted) rmdir(kScratchMountPoint.c_str());
     errno = save_errno;
@@ -616,6 +628,7 @@ bool fs_mgr_overlayfs_mount_scratch(const std::string& device_path, const std::s
 const std::string kMkF2fs("/system/bin/make_f2fs");
 const std::string kMkExt4("/system/bin/mke2fs");
 
+// Only a suggestion for _first_ try during mounting
 std::string fs_mgr_overlayfs_scratch_mount_type() {
     if (!access(kMkF2fs.c_str(), X_OK)) return "f2fs";
     if (!access(kMkExt4.c_str(), X_OK)) return "ext4";
@@ -693,7 +706,7 @@ bool fs_mgr_overlayfs_setup_scratch(const fstab* fstab, bool* change) {
 
     auto ret = system((mnt_type == "f2fs")
                               ? ((kMkF2fs + " -d1 " + scratch_device).c_str())
-                              : ((kMkExt4 + " -b 4096 -t ext4 -m 0 -M "s + kScratchMountPoint +
+                              : ((kMkExt4 + " -b 4096 -t ext4 -m 0 -M " + kScratchMountPoint +
                                   " -O has_journal " + scratch_device)
                                          .c_str()));
     if (ret) {
@@ -776,7 +789,7 @@ bool fs_mgr_overlayfs_setup(const char* backing, const char* mount_point, bool* 
     std::unique_ptr<fstab, decltype(&fs_mgr_free_fstab)> fstab(fs_mgr_read_fstab_default(),
                                                                fs_mgr_free_fstab);
     if (!fstab) return ret;
-    auto mounts = fs_mgr_candidate_list(fstab.get(), fs_mgr_mount_point(fstab.get(), mount_point));
+    auto mounts = fs_mgr_candidate_list(fstab.get(), fs_mgr_mount_point(mount_point));
     if (mounts.empty()) return ret;
 
     std::string dir;
@@ -811,10 +824,7 @@ bool fs_mgr_overlayfs_setup(const char* backing, const char* mount_point, bool* 
 // If something is altered, set *change.
 bool fs_mgr_overlayfs_teardown(const char* mount_point, bool* change) {
     if (change) *change = false;
-    mount_point = fs_mgr_mount_point(std::unique_ptr<fstab, decltype(&fs_mgr_free_fstab)>(
-                                             fs_mgr_read_fstab_default(), fs_mgr_free_fstab)
-                                             .get(),
-                                     mount_point);
+    mount_point = fs_mgr_mount_point(mount_point);
     auto ret = true;
     for (const auto& overlay_mount_point : kOverlayMountPoints) {
         ret &= fs_mgr_overlayfs_teardown_one(overlay_mount_point, mount_point ?: "", change);

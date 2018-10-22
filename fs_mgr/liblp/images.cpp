@@ -19,8 +19,6 @@
 #include <limits.h>
 
 #include <android-base/file.h>
-#include <android-base/unique_fd.h>
-#include <sparse/sparse.h>
 
 #include "reader.h"
 #include "utility.h"
@@ -30,12 +28,17 @@ namespace android {
 namespace fs_mgr {
 
 std::unique_ptr<LpMetadata> ReadFromImageFile(int fd) {
-    LpMetadataGeometry geometry;
-    if (!ReadLogicalPartitionGeometry(fd, &geometry)) {
+    std::unique_ptr<uint8_t[]> buffer = std::make_unique<uint8_t[]>(LP_METADATA_GEOMETRY_SIZE);
+    if (SeekFile64(fd, 0, SEEK_SET) < 0) {
+        PERROR << __PRETTY_FUNCTION__ << " lseek failed";
         return nullptr;
     }
-    if (SeekFile64(fd, LP_METADATA_GEOMETRY_SIZE, SEEK_SET) < 0) {
-        PERROR << __PRETTY_FUNCTION__ << "lseek failed: offset " << LP_METADATA_GEOMETRY_SIZE;
+    if (!android::base::ReadFully(fd, buffer.get(), LP_METADATA_GEOMETRY_SIZE)) {
+        PERROR << __PRETTY_FUNCTION__ << " read failed";
+        return nullptr;
+    }
+    LpMetadataGeometry geometry;
+    if (!ParseGeometry(buffer.get(), &geometry)) {
         return nullptr;
     }
     return ParseMetadata(geometry, fd);
@@ -61,7 +64,7 @@ std::unique_ptr<LpMetadata> ReadFromImageBlob(const void* data, size_t bytes) {
 std::unique_ptr<LpMetadata> ReadFromImageFile(const char* file) {
     android::base::unique_fd fd(open(file, O_RDONLY));
     if (fd < 0) {
-        PERROR << __PRETTY_FUNCTION__ << "open failed: " << file;
+        PERROR << __PRETTY_FUNCTION__ << " open failed: " << file;
         return nullptr;
     }
     return ReadFromImageFile(fd);
@@ -74,7 +77,7 @@ bool WriteToImageFile(int fd, const LpMetadata& input) {
     std::string everything = geometry + metadata;
 
     if (!android::base::WriteFully(fd, everything.data(), everything.size())) {
-        PERROR << __PRETTY_FUNCTION__ << "write " << everything.size() << " bytes failed";
+        PERROR << __PRETTY_FUNCTION__ << " write " << everything.size() << " bytes failed";
         return false;
     }
     return true;
@@ -83,47 +86,50 @@ bool WriteToImageFile(int fd, const LpMetadata& input) {
 bool WriteToImageFile(const char* file, const LpMetadata& input) {
     android::base::unique_fd fd(open(file, O_CREAT | O_RDWR | O_TRUNC, 0644));
     if (fd < 0) {
-        PERROR << __PRETTY_FUNCTION__ << "open failed: " << file;
+        PERROR << __PRETTY_FUNCTION__ << " open failed: " << file;
         return false;
     }
     return WriteToImageFile(fd, input);
 }
-
-// We use an object to build the sparse file since it requires that data
-// pointers be held alive until the sparse file is destroyed. It's easier
-// to do this when the data pointers are all in one place.
-class SparseBuilder {
-  public:
-    SparseBuilder(const LpMetadata& metadata, uint32_t block_size,
-                  const std::map<std::string, std::string>& images);
-
-    bool Build();
-    bool Export(const char* file);
-    bool IsValid() const { return file_ != nullptr; }
-
-  private:
-    bool AddData(const std::string& blob, uint64_t sector);
-    bool AddPartitionImage(const LpMetadataPartition& partition, const std::string& file);
-    int OpenImageFile(const std::string& file);
-    bool SectorToBlock(uint64_t sector, uint32_t* block);
-
-    const LpMetadata& metadata_;
-    const LpMetadataGeometry& geometry_;
-    uint32_t block_size_;
-    std::unique_ptr<sparse_file, decltype(&sparse_file_destroy)> file_;
-    std::string primary_blob_;
-    std::string backup_blob_;
-    std::map<std::string, std::string> images_;
-    std::vector<android::base::unique_fd> temp_fds_;
-};
 
 SparseBuilder::SparseBuilder(const LpMetadata& metadata, uint32_t block_size,
                              const std::map<std::string, std::string>& images)
     : metadata_(metadata),
       geometry_(metadata.geometry),
       block_size_(block_size),
-      file_(sparse_file_new(block_size_, geometry_.block_device_size), sparse_file_destroy),
-      images_(images) {}
+      file_(nullptr, sparse_file_destroy),
+      images_(images) {
+    if (block_size % LP_SECTOR_SIZE != 0) {
+        LERROR << "Block size must be a multiple of the sector size, " << LP_SECTOR_SIZE;
+        return;
+    }
+    if (metadata.geometry.block_device_size % block_size != 0) {
+        LERROR << "Device size must be a multiple of the block size, " << block_size;
+        return;
+    }
+    if (metadata.geometry.metadata_max_size % block_size != 0) {
+        LERROR << "Metadata max size must be a multiple of the block size, " << block_size;
+        return;
+    }
+    if (LP_METADATA_GEOMETRY_SIZE % block_size != 0) {
+        LERROR << "Geometry size is not a multiple of the block size, " << block_size;
+        return;
+    }
+    if (LP_PARTITION_RESERVED_BYTES % block_size != 0) {
+        LERROR << "Reserved size is not a multiple of the block size, " << block_size;
+        return;
+    }
+
+    uint64_t num_blocks = metadata.geometry.block_device_size % block_size;
+    if (num_blocks >= UINT_MAX) {
+        // libsparse counts blocks in unsigned 32-bit integers, so we check to
+        // make sure we're not going to overflow.
+        LERROR << "Block device is too large to encode with libsparse.";
+        return;
+    }
+
+    file_.reset(sparse_file_new(block_size_, geometry_.block_device_size));
+}
 
 bool SparseBuilder::Export(const char* file) {
     android::base::unique_fd fd(open(file, O_CREAT | O_RDWR | O_TRUNC, 0644));
@@ -170,20 +176,21 @@ bool SparseBuilder::SectorToBlock(uint64_t sector, uint32_t* block) {
 }
 
 bool SparseBuilder::Build() {
+    if (sparse_file_add_fill(file_.get(), 0, LP_PARTITION_RESERVED_BYTES, 0) < 0) {
+        LERROR << "Could not add initial sparse block for reserved zeroes";
+        return false;
+    }
+
     std::string geometry_blob = SerializeGeometry(geometry_);
     std::string metadata_blob = SerializeMetadata(metadata_);
     metadata_blob.resize(geometry_.metadata_max_size);
 
-    std::string all_metadata;
-    for (size_t i = 0; i < geometry_.metadata_slot_count; i++) {
-        all_metadata += metadata_blob;
+    // Two copies of geometry, then two copies of each metadata slot.
+    all_metadata_ += geometry_blob + geometry_blob;
+    for (size_t i = 0; i < geometry_.metadata_slot_count * 2; i++) {
+        all_metadata_ += metadata_blob;
     }
-
-    // Metadata immediately follows geometry, and we write the same metadata
-    // to all slots. Note that we don't bother trying to write skip chunks
-    // here since it's a small amount of data.
-    primary_blob_ = geometry_blob + all_metadata;
-    if (!AddData(primary_blob_, 0)) {
+    if (!AddData(all_metadata_, 0)) {
         return false;
     }
 
@@ -200,17 +207,6 @@ bool SparseBuilder::Build() {
 
     if (!images_.empty()) {
         LERROR << "Partition image was specified but no partition was found.";
-        return false;
-    }
-
-    // The backup area contains all metadata slots, and then geometry. Similar
-    // to before we write the metadata to every slot.
-    int64_t backup_offset = GetBackupMetadataOffset(geometry_, 0);
-    uint64_t backups_start = geometry_.block_device_size + backup_offset;
-    uint64_t backup_sector = backups_start / LP_SECTOR_SIZE;
-
-    backup_blob_ = all_metadata + geometry_blob;
-    if (!AddData(backup_blob_, backup_sector)) {
         return false;
     }
     return true;
@@ -336,22 +332,6 @@ int SparseBuilder::OpenImageFile(const std::string& file) {
 
 bool WriteToSparseFile(const char* file, const LpMetadata& metadata, uint32_t block_size,
                        const std::map<std::string, std::string>& images) {
-    if (block_size % LP_SECTOR_SIZE != 0) {
-        LERROR << "Block size must be a multiple of the sector size, " << LP_SECTOR_SIZE;
-        return false;
-    }
-    if (metadata.geometry.block_device_size % block_size != 0) {
-        LERROR << "Device size must be a multiple of the block size, " << block_size;
-        return false;
-    }
-    uint64_t num_blocks = metadata.geometry.block_device_size % block_size;
-    if (num_blocks >= UINT_MAX) {
-        // libsparse counts blocks in unsigned 32-bit integers, so we check to
-        // make sure we're not going to overflow.
-        LERROR << "Block device is too large to encode with libsparse.";
-        return false;
-    }
-
     SparseBuilder builder(metadata, block_size, images);
     if (!builder.IsValid()) {
         LERROR << "Could not allocate sparse file of size " << metadata.geometry.block_device_size;

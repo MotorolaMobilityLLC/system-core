@@ -189,7 +189,7 @@ runs the service.
 
 `critical`
 > This is a device-critical service. If it exits more than four times in
-  four minutes, the device will reboot into recovery mode.
+  four minutes, the device will reboot into bootloader.
 
 `disabled`
 > This service will not automatically start with its class.
@@ -213,7 +213,8 @@ runs the service.
 `interface <interface name> <instance name>`
 > Associates this service with a list of the HIDL services that it provides. The interface name
   must be a fully-qualified name and not a value name. This is used to allow hwservicemanager to
-  lazily start services.
+  lazily start services. When multiple interfaces are served, this tag should be used multiple
+  times.
   For example: interface vendor.foo.bar@1.0::IBaz default
 
 `ioprio <class> <priority>`
@@ -224,6 +225,15 @@ runs the service.
 > Sets the keycodes that will trigger this service. If all of the keys corresponding to the passed
   keycodes are pressed at once, the service will start. This is typically used to start the
   bugreport service.
+
+> This option may take a property instead of a list of keycodes. In this case, only one option is
+  provided: the property name in the typical property expansion format. The property must contain
+  a comma separated list of keycode values or the text 'none' to indicate that
+  this service does not respond to keycodes.
+
+> For example, `keycodes ${some.property.name:-none}` where some.property.name expands
+  to "123,124,125". Since keycodes are handled very early in init,
+  only PRODUCT_DEFAULT_PROPERTY_OVERRIDES properties can be used.
 
 `memcg.limit_in_bytes <value>`
 > Sets the child's memory.limit_in_bytes to the specified value (only if memcg is mounted),
