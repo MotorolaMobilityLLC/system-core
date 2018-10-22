@@ -30,9 +30,16 @@ cc_defaults {
     ],
 }
 
+mmi_fsmgr_defaults {
+   name: "mmi_fsmgr_defaults",
+}
+
 cc_library_static {
     name: "libfs_mgr",
-    defaults: ["fs_mgr_defaults"],
+    defaults: [
+        "fs_mgr_defaults",
+        "mmi_fsmgr_defaults",
+    ],
     export_include_dirs: ["include"],
     include_dirs: [
         "system/vold",
