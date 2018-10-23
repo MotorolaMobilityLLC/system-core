@@ -220,7 +220,12 @@ void send_packet(apacket* p, atransport* t) {
     }
 
     if (write_packet(t->transport_socket, t->serial, &p)) {
-        fatal_errno("cannot enqueue packet on transport socket");
+        if (errno == ENODEV || errno == EBADF) {
+            LOG(INFO) << "send packet failed for " << strerror(errno);
+            fdevent_terminate_loop();
+        } else {
+            fatal_errno("cannot enqueue packet on transport socket");
+        }
     }
 }
 
