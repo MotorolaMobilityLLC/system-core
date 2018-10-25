@@ -492,6 +492,13 @@ static Result<Success> queue_fs_event(int code) {
         PLOG(ERROR) << "fs_mgr_mount_all suggested recovery, so wiping data via recovery.";
         const std::vector<std::string> options = {"--wipe_data", "--reason=fs_mgr_mount_all" };
         return reboot_into_recovery(options);
+    } else if (code == FS_MGR_MNTALL_DEV_NEEDS_RECOVERY_WIPE_PROMPT) {
+        /* Setup a wipe via recovery with prompt, and reboot into recovery if chosen */
+        PLOG(ERROR) << "fs_mgr_mount_all suggested recovery, so wiping data via recovery "
+                       "with prompt.";
+        const std::vector<std::string> options = {"--prompt_and_wipe_data",
+             "--reason=fs_mgr_mount_all" };
+        return reboot_into_recovery(options);
         /* If reboot worked, there is no return. */
     } else if (code == FS_MGR_MNTALL_DEV_FILE_ENCRYPTED) {
         if (e4crypt_install_keyring()) {
