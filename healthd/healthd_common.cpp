@@ -89,6 +89,9 @@ static int epollfd;
 #define MAX_EPOLL_EVENTS 40
 #endif
 
+// Local definition to avoid healthd_registered_event() check for wakeup events
+#define NO_EVENTPOLL 0
+
 static int uevent_fd;
 static int wakealarm_fd;
 
@@ -214,7 +217,7 @@ static void uevent_init(void) {
     }
 
     fcntl(uevent_fd, F_SETFL, O_NONBLOCK);
-    if (healthd_register_event(uevent_fd, uevent_event))
+    if (healthd_register_event(uevent_fd, uevent_event, NO_EVENTPOLL))
         KLOG_ERROR(LOG_TAG,
                    "register for uevent events failed\n");
 }
