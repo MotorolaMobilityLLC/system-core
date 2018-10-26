@@ -409,8 +409,9 @@ static void process_kernel_dt() {
 
         android::base::ReadFileToString(file_name, &dt_file);
         std::replace(dt_file.begin(), dt_file.end(), ',', '.');
-
-        property_set("ro.boot."s + dp->d_name, dt_file);
+	 std::string property_name = android::base::StringPrintf("ro.boot.%s", dp->d_name);
+	 property_set(property_name.c_str(), dt_file.c_str());
+        //property_set("ro.boot."s + dp->d_name, dt_file);
     }
 }
 
