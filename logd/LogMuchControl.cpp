@@ -133,6 +133,7 @@ void logd_reader_del(void) {
         prdebug_ratelimit("logd no log reader, set log level to %s!\n", property);
     }
     log_reader_count--;
+    prdebug_ratelimit("Del, log_reader_count: %d \n", log_reader_count);
 }
 
 void logd_reader_add(void) {
@@ -144,6 +145,7 @@ void logd_reader_add(void) {
         prdebug_ratelimit("logd first log reader, set log level to %s!\n", property);
     }
     log_reader_count++;
+    prdebug_ratelimit("Add, log_reader_count: %d \n", log_reader_count);
 }
 
 static sem_t loglevel_sem;
