@@ -98,7 +98,7 @@ static void drop_privs(uid_t uid, gid_t gid) {
 }
 //TINNO BEGIN
 //wj add to reserved 100MB size from data when mount sdcard
-static int reserved_mb = 50;
+static int reserved_mb = 100;
 //TINNO END
 static bool sdcardfs_setup(const std::string& source_path, const std::string& dest_path,
                            uid_t fsuid, gid_t fsgid, bool multi_user, userid_t userid, gid_t gid,
