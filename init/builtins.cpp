@@ -88,6 +88,10 @@ static Result<Success> reboot_into_recovery(const std::vector<std::string>& opti
     if (!write_bootloader_message(options, &err)) {
         return Error() << "Failed to set bootloader message: " << err;
     }
+    if (android::base::GetProperty("ro.boot.init_recovery_mode", "") == "ignore") {
+        LOG(ERROR) << "Rebooting into recovery,but ignored for debug!";
+        return Error() << "reboot_into_recovery() ignored";
+    }
     property_set("sys.powerctl", "reboot,recovery");
     return Success();
 }
