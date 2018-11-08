@@ -249,16 +249,12 @@ static void trace_handler(siginfo_t* info, ucontext_t* ucontext) {
         }
 
         uint64_t expected = pack_thread_fd(-1, -1);
-        if (!trace_output.compare_exchange_strong(expected,
-                                                  pack_thread_fd(tid, pipe_write.release()))) {
+        int sent_fd = pipe_write.release();
+        if (!trace_output.compare_exchange_strong(expected, pack_thread_fd(tid, sent_fd))) {
           auto [tid, fd] = unpack_thread_fd(expected);
           async_safe_format_log(ANDROID_LOG_ERROR, "libc",
                                 "thread %d is already outputting to fd %d?", tid, fd);
-          if (fd != -1) {
-            async_safe_format_log(ANDROID_LOG_ERROR, "libc", "closing fd %d for thread %d", fd,
-                                  tid);
-            close(fd);
-          }
+          close(sent_fd);
           return false;
         }
 
@@ -271,12 +267,6 @@ static void trace_handler(siginfo_t* info, ucontext_t* ucontext) {
         if (syscall(__NR_rt_tgsigqueueinfo, getpid(), tid, DEBUGGER_SIGNAL, &siginfo) != 0) {
           async_safe_format_log(ANDROID_LOG_ERROR, "libc", "failed to send trace signal to %d: %s",
                                 tid, strerror(errno));
-          auto [tid, fd] = unpack_thread_fd(expected);
-          if (fd != -1) {
-            async_safe_format_log(ANDROID_LOG_ERROR, "libc", "closing fd %d for thread %d", fd,
-                                  tid);
-            close(fd);
-          }
           return false;
         }
 
