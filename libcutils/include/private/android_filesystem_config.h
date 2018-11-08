@@ -170,7 +170,6 @@
 #define AID_MOT_TCMD      9004  /* mot_tcmd */
 #define AID_MOT_TOMBSTONE 9006
 #define AID_FINGERP       9015  /* IKFPS-98 Add permission group for fingerprint */
-#define AID_MOT_DTV       9019  /* dtv */
 #define AID_MOT_MOD       9020  /* can interact with motorola mod HW */
 #define AID_OEM_RESERVED_9_END 9030
 
