@@ -165,7 +165,6 @@
 #define AID_OEM_RESERVED_9_START 9000
 #define AID_MOT_ACCY      9000  /* access to accessory */
 #define AID_MOT_TOMBSTONE 9006
-#define AID_FINGERP       9015  /* IKFPS-98 Add permission group for fingerprint */
 #define AID_OEM_RESERVED_9_END 9030
 
 #define AID_EVERYBODY 9997 /* shared between all apps in the same profile */
