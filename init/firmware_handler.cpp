@@ -80,7 +80,7 @@ const struct extended_fw_path extended_paths[] = {
         .fw_path = "/data/adspd",
     },
 #endif
-#ifdef MOTO_GREYBUS_FIRMWARE
+#ifdef MOTO_GREYBUS
     {
         .fw_substring = "upd-",
         .fw_path = "/data/gbfirmware",

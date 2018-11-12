@@ -99,6 +99,7 @@ cc_library_static {
     defaults: ["init_defaults",
                //IKSWP-4737: djc637,Add XMCS Audio support
                "xmcsaudio_defaults",
+               "greybus_defaults",
     ],
     srcs: [
         "action.cpp",
