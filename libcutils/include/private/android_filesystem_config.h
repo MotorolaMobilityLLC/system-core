@@ -165,7 +165,6 @@
 /* The range 9000-9030 is reserved for moto legacy aid */
 #define AID_OEM_RESERVED_9_START 9000
 #define AID_MOT_ACCY      9000  /* access to accessory */
-#define AID_MOT_USB       9002  /* mot usb */
 #define AID_MOT_TOMBSTONE 9006
 #define AID_FINGERP       9015  /* IKFPS-98 Add permission group for fingerprint */
 #define AID_MOT_MOD       9020  /* can interact with motorola mod HW */
