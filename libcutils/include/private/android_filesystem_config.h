@@ -167,7 +167,6 @@
 #define AID_MOT_ACCY      9000  /* access to accessory */
 #define AID_MOT_PWRIC     9001  /* power IC */
 #define AID_MOT_USB       9002  /* mot usb */
-#define AID_MOT_TCMD      9004  /* mot_tcmd */
 #define AID_MOT_TOMBSTONE 9006
 #define AID_FINGERP       9015  /* IKFPS-98 Add permission group for fingerprint */
 #define AID_MOT_MOD       9020  /* can interact with motorola mod HW */
