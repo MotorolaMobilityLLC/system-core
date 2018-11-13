@@ -163,7 +163,6 @@
 
 /* The range 9000-9030 is reserved for moto legacy aid */
 #define AID_OEM_RESERVED_9_START 9000
-#define AID_MOT_TOMBSTONE 9006
 #define AID_OEM_RESERVED_9_END 9030
 
 #define AID_EVERYBODY 9997 /* shared between all apps in the same profile */
