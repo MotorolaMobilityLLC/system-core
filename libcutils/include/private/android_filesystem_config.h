@@ -164,7 +164,6 @@
 
 /* The range 5000-5999 is also reserved for vendor partition. */
 #define AID_OEM_RESERVED_2_START 5000
-#define AID_BRIDGE_RW 5001    /* ATT_IQI_CHANGE: GID for iqi-bridge read/write */
 #define AID_OEM_RESERVED_2_END 5999
 
 /* The range 6000-6499 is reserved for the system partition. */
