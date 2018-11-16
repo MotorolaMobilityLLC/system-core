@@ -644,6 +644,12 @@ on boot
     chown system system /sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq
     chmod 0660 /sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq
 
+	# for mt6370 led by pony.ma
+    chown system system /sys/class/leds/red/pwm_duty   
+    chown system system /sys/class/leds/red/pwm_dim_freq
+    chown system system /sys/class/leds/green/pwm_duty   
+    chown system system /sys/class/leds/green/pwm_dim_freq
+
     chown system system /sys/class/leds/vibrator/trigger
     chown system system /sys/class/leds/vibrator/activate
     chown system system /sys/class/leds/vibrator/brightness
