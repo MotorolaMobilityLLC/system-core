@@ -529,6 +529,10 @@ static Result<Success> queue_fs_event(int code) {
         }
         property_set("ro.crypto.state", "encrypted");
         property_set("ro.crypto.type", "file");
+        if (android::base::GetProperty("ro.bootmode", "") == "factory") {
+            ActionManager::GetInstance().QueueEventTrigger("factoryencrypted");
+            return Success();
+        }
 
         // Although encrypted, vold has already set the device up, so we do not need to
         // do anything different from the nonencrypted case.
