@@ -141,8 +141,8 @@ uint64_t JitDebug::ReadEntry64(uint64_t* start, uint64_t* size) {
   return code.next;
 }
 
-void JitDebug::SetArch(ArchEnum arch) {
-  switch (arch) {
+void JitDebug::ProcessArch() {
+  switch (arch()) {
     case ARCH_X86:
       read_descriptor_func_ = &JitDebug::ReadDescriptor32;
       read_entry_func_ = &JitDebug::ReadEntry32Pack;
@@ -201,7 +201,7 @@ Elf* JitDebug::GetElf(Maps* maps, uint64_t pc) {
     entry_addr_ = (this->*read_entry_func_)(&start, &size);
 
     Elf* elf = new Elf(new MemoryRange(memory_, start, size, 0));
-    elf->Init(true);
+    elf->Init();
     if (!elf->valid()) {
       // The data is not formatted in a way we understand, do not attempt
       // to process any other entries.

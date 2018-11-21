@@ -53,9 +53,11 @@ class Elf {
   Elf(Memory* memory) : memory_(memory) {}
   virtual ~Elf() = default;
 
-  bool Init(bool init_gnu_debugdata);
+  bool Init();
 
   void InitGnuDebugdata();
+
+  void Invalidate();
 
   bool GetSoname(std::string* name);
 

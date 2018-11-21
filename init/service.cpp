@@ -235,9 +235,6 @@ Service::Service(const std::string& name, unsigned flags, uid_t uid, gid_t gid,
       ioprio_pri_(0),
       priority_(0),
       oom_score_adjust_(-1000),
-      swappiness_(-1),
-      soft_limit_in_bytes_(-1),
-      limit_in_bytes_(-1),
       start_order_(0),
       args_(args) {}
 
@@ -630,6 +627,18 @@ Result<Success> Service::ParseMemcgLimitInBytes(std::vector<std::string>&& args)
     return Success();
 }
 
+Result<Success> Service::ParseMemcgLimitPercent(std::vector<std::string>&& args) {
+    if (!ParseInt(args[1], &limit_percent_, 0)) {
+        return Error() << "limit_percent value must be equal or greater than 0";
+    }
+    return Success();
+}
+
+Result<Success> Service::ParseMemcgLimitProperty(std::vector<std::string>&& args) {
+    limit_property_ = std::move(args[1]);
+    return Success();
+}
+
 Result<Success> Service::ParseMemcgSoftLimitInBytes(std::vector<std::string>&& args) {
     if (!ParseInt(args[1], &soft_limit_in_bytes_, 0)) {
         return Error() << "soft_limit_in_bytes value must be equal or greater than 0";
@@ -756,6 +765,11 @@ Result<Success> Service::ParseWritepid(std::vector<std::string>&& args) {
     return Success();
 }
 
+Result<Success> Service::ParseUpdatable(std::vector<std::string>&& args) {
+    updatable_ = true;
+    return Success();
+}
+
 class Service::OptionParserMap : public KeywordMap<OptionParser> {
   public:
     OptionParserMap() {}
@@ -783,6 +797,10 @@ const Service::OptionParserMap::Map& Service::OptionParserMap::map() const {
         {"keycodes",    {1,     kMax, &Service::ParseKeycodes}},
         {"memcg.limit_in_bytes",
                         {1,     1,    &Service::ParseMemcgLimitInBytes}},
+        {"memcg.limit_percent",
+                        {1,     1,    &Service::ParseMemcgLimitPercent}},
+        {"memcg.limit_property",
+                        {1,     1,    &Service::ParseMemcgLimitProperty}},
         {"memcg.soft_limit_in_bytes",
                         {1,     1,    &Service::ParseMemcgSoftLimitInBytes}},
         {"memcg.swappiness",
@@ -804,6 +822,7 @@ const Service::OptionParserMap::Map& Service::OptionParserMap::map() const {
         {"socket",      {3,     6,    &Service::ParseSocket}},
         {"timeout_period",
                         {1,     1,    &Service::ParseTimeoutPeriod}},
+        {"updatable",   {0,     0,    &Service::ParseUpdatable}},
         {"user",        {1,     1,    &Service::ParseUser}},
         {"writepid",    {1,     kMax, &Service::ParseWritepid}},
     };
@@ -821,6 +840,13 @@ Result<Success> Service::ParseLine(std::vector<std::string>&& args) {
 }
 
 Result<Success> Service::ExecStart() {
+    if (is_updatable() && !ServiceList::GetInstance().IsServicesUpdated()) {
+        // Don't delay the service for ExecStart() as the semantic is that
+        // the caller might depend on the side effect of the execution.
+        return Error() << "Cannot start an updatable service '" << name_
+                       << "' before configs from APEXes are all loaded";
+    }
+
     flags_ |= SVC_ONESHOT;
 
     if (auto result = Start(); !result) {
@@ -838,6 +864,13 @@ Result<Success> Service::ExecStart() {
 }
 
 Result<Success> Service::Start() {
+    if (is_updatable() && !ServiceList::GetInstance().IsServicesUpdated()) {
+        ServiceList::GetInstance().DelayService(*this);
+        return Error() << "Cannot start an updatable service '" << name_
+                       << "' before configs from APEXes are all loaded. "
+                       << "Queued for execution.";
+    }
+
     bool disabled = (flags_ & (SVC_DISABLED | SVC_RESET));
     // Starting a service removes it from the disabled or reset state and
     // immediately takes it out of the restarting state if it was in there.
@@ -1001,11 +1034,13 @@ Result<Success> Service::Start() {
     start_order_ = next_start_order_++;
     process_cgroup_empty_ = false;
 
-    errno = -createProcessGroup(uid_, pid_);
+    bool use_memcg = swappiness_ != -1 || soft_limit_in_bytes_ != -1 || limit_in_bytes_ != -1 ||
+                      limit_percent_ != -1 || !limit_property_.empty();
+    errno = -createProcessGroup(uid_, pid_, use_memcg);
     if (errno != 0) {
         PLOG(ERROR) << "createProcessGroup(" << uid_ << ", " << pid_ << ") failed for service '"
                     << name_ << "'";
-    } else {
+    } else if (use_memcg) {
         if (swappiness_ != -1) {
             if (!setProcessGroupSwappiness(uid_, pid_, swappiness_)) {
                 PLOG(ERROR) << "setProcessGroupSwappiness failed";
@@ -1018,8 +1053,29 @@ Result<Success> Service::Start() {
             }
         }
 
-        if (limit_in_bytes_ != -1) {
-            if (!setProcessGroupLimit(uid_, pid_, limit_in_bytes_)) {
+        size_t computed_limit_in_bytes = limit_in_bytes_;
+        if (limit_percent_ != -1) {
+            long page_size = sysconf(_SC_PAGESIZE);
+            long num_pages = sysconf(_SC_PHYS_PAGES);
+            if (page_size > 0 && num_pages > 0) {
+                size_t max_mem = SIZE_MAX;
+                if (size_t(num_pages) < SIZE_MAX / size_t(page_size)) {
+                    max_mem = size_t(num_pages) * size_t(page_size);
+                }
+                computed_limit_in_bytes =
+                        std::min(computed_limit_in_bytes, max_mem / 100 * limit_percent_);
+            }
+        }
+
+        if (!limit_property_.empty()) {
+            // This ends up overwriting computed_limit_in_bytes but only if the
+            // property is defined.
+            computed_limit_in_bytes = android::base::GetUintProperty(
+                    limit_property_, computed_limit_in_bytes, SIZE_MAX);
+        }
+
+        if (computed_limit_in_bytes != size_t(-1)) {
+            if (!setProcessGroupLimit(uid_, pid_, computed_limit_in_bytes)) {
                 PLOG(ERROR) << "setProcessGroupLimit failed";
             }
         }
@@ -1244,6 +1300,32 @@ void ServiceList::DumpState() const {
     }
 }
 
+void ServiceList::MarkServicesUpdate() {
+    services_update_finished_ = true;
+
+    // start the delayed services
+    for (const auto& name : delayed_service_names_) {
+        Service* service = FindService(name);
+        if (service == nullptr) {
+            LOG(ERROR) << "delayed service '" << name << "' could not be found.";
+            continue;
+        }
+        if (auto result = service->Start(); !result) {
+            LOG(ERROR) << result.error_string();
+        }
+    }
+    delayed_service_names_.clear();
+}
+
+void ServiceList::DelayService(const Service& service) {
+    if (services_update_finished_) {
+        LOG(ERROR) << "Cannot delay the start of service '" << service.name()
+                   << "' because all services are already updated. Ignoring.";
+        return;
+    }
+    delayed_service_names_.emplace_back(service.name());
+}
+
 Result<Success> ServiceParser::ParseSection(std::vector<std::string>&& args,
                                             const std::string& filename, int line) {
     if (args.size() < 3) {
@@ -1254,6 +1336,8 @@ Result<Success> ServiceParser::ParseSection(std::vector<std::string>&& args,
     if (!IsValidName(name)) {
         return Error() << "invalid service name '" << name << "'";
     }
+
+    filename_ = filename;
 
     Subcontext* restart_action_subcontext = nullptr;
     if (subcontexts_) {
@@ -1288,6 +1372,11 @@ Result<Success> ServiceParser::EndSection() {
             if (!service_->is_override()) {
                 return Error() << "ignored duplicate definition of service '" << service_->name()
                                << "'";
+            }
+
+            if (StartsWith(filename_, "/apex/") && !old_service->is_updatable()) {
+                return Error() << "cannot update a non-updatable service '" << service_->name()
+                               << "' with a config in APEX";
             }
 
             service_list_->RemoveService(*old_service);

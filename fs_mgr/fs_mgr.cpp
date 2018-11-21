@@ -50,7 +50,6 @@
 #include <cutils/partition_utils.h>
 #include <cutils/properties.h>
 #include <ext4_utils/ext4.h>
-#include <ext4_utils/ext4_crypt_init_extensions.h>
 #include <ext4_utils/ext4_sb.h>
 #include <ext4_utils/ext4_utils.h>
 #include <ext4_utils/wipe.h>
@@ -1601,6 +1600,25 @@ bool fs_mgr_update_verity_state(std::function<fs_mgr_verity_state_callback> call
     return true;
 }
 
-std::string fs_mgr_get_super_partition_name(int /* slot */) {
+std::string fs_mgr_get_super_partition_name(int slot) {
+    // Devices upgrading to dynamic partitions are allowed to specify a super
+    // partition name, assumed to be A/B (non-A/B retrofit is not supported).
+    // For devices launching with dynamic partition support, the partition
+    // name must be "super".
+    std::string super_partition;
+    if (fs_mgr_get_boot_config_from_kernel_cmdline("super_partition", &super_partition)) {
+        std::string suffix;
+        if (slot == 0) {
+            suffix = "_a";
+        } else if (slot == 1) {
+            suffix = "_b";
+        } else if (slot == -1) {
+            suffix = fs_mgr_get_slot_suffix();
+        }
+        if (suffix.empty()) {
+            LFATAL << "Super partition name can only be overridden on A/B devices.";
+        }
+        return super_partition + suffix;
+    }
     return LP_METADATA_DEFAULT_PARTITION_NAME;
 }

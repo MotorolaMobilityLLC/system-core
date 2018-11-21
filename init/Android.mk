@@ -77,6 +77,7 @@ LOCAL_STATIC_LIBRARIES := \
     libsquashfs_utils \
     liblogwrap \
     libext4_utils \
+    libfscrypt \
     libseccomp_policy \
     libcrypto_utils \
     libsparse \
@@ -93,6 +94,8 @@ LOCAL_STATIC_LIBRARIES := \
     libcap \
 
 LOCAL_SANITIZE := signed-integer-overflow
+# First stage init is weird: it may start without stdout/stderr, and no /proc.
+LOCAL_NOSANITIZE := hwaddress
 include $(BUILD_EXECUTABLE)
 
 include $(CLEAR_VARS)

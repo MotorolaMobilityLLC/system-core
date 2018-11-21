@@ -17,6 +17,7 @@
 #include "first_stage_mount.h"
 
 #include <stdlib.h>
+#include <sys/mount.h>
 #include <unistd.h>
 
 #include <chrono>
@@ -33,7 +34,7 @@
 #include <fs_mgr_avb.h>
 #include <fs_mgr_dm_linear.h>
 #include <fs_mgr_overlayfs.h>
-#include <liblp/metadata_format.h>
+#include <liblp/liblp.h>
 
 #include "devices.h"
 #include "switch_root.h"
@@ -69,7 +70,8 @@ class FirstStageMount {
     bool MountPartition(fstab_rec* fstab_rec);
     bool MountPartitions();
     bool IsDmLinearEnabled();
-    bool GetBackingDmLinearDevices();
+    bool GetDmLinearMetadataDevice();
+    bool InitDmLinearBackingDevices(const android::fs_mgr::LpMetadata& metadata);
 
     virtual ListenerAction UeventCallback(const Uevent& uevent);
 
@@ -122,18 +124,8 @@ static inline bool IsDtVbmetaCompatible() {
     return is_android_dt_value_expected("vbmeta/compatible", "android,vbmeta");
 }
 
-static bool ForceNormalBoot() {
-    static bool force_normal_boot = []() {
-        std::string cmdline;
-        android::base::ReadFileToString("/proc/cmdline", &cmdline);
-        return cmdline.find("androidboot.force_normal_boot=1") != std::string::npos;
-    }();
-
-    return force_normal_boot;
-}
-
 static bool IsRecoveryMode() {
-    return !ForceNormalBoot() && access("/system/bin/recovery", F_OK) == 0;
+    return access("/system/bin/recovery", F_OK) == 0;
 }
 
 // Class Definitions
@@ -183,7 +175,7 @@ bool FirstStageMount::DoFirstStageMount() {
 }
 
 bool FirstStageMount::InitDevices() {
-    return GetBackingDmLinearDevices() && GetDmVerityDevices() && InitRequiredDevices();
+    return GetDmLinearMetadataDevice() && GetDmVerityDevices() && InitRequiredDevices();
 }
 
 bool FirstStageMount::IsDmLinearEnabled() {
@@ -193,7 +185,7 @@ bool FirstStageMount::IsDmLinearEnabled() {
     return false;
 }
 
-bool FirstStageMount::GetBackingDmLinearDevices() {
+bool FirstStageMount::GetDmLinearMetadataDevice() {
     // Add any additional devices required for dm-linear mappings.
     if (!IsDmLinearEnabled()) {
         return true;
@@ -258,17 +250,48 @@ bool FirstStageMount::InitRequiredDevices() {
     return true;
 }
 
+bool FirstStageMount::InitDmLinearBackingDevices(const android::fs_mgr::LpMetadata& metadata) {
+    auto partition_names = GetBlockDevicePartitionNames(metadata);
+    for (const auto& partition_name : partition_names) {
+        if (partition_name == lp_metadata_partition_) {
+            continue;
+        }
+        required_devices_partition_names_.emplace(partition_name);
+    }
+    if (required_devices_partition_names_.empty()) {
+        return true;
+    }
+
+    auto uevent_callback = [this](const Uevent& uevent) { return UeventCallback(uevent); };
+    uevent_listener_.RegenerateUevents(uevent_callback);
+
+    if (!required_devices_partition_names_.empty()) {
+        LOG(ERROR) << __PRETTY_FUNCTION__ << ": partition(s) not found after polling timeout: "
+                   << android::base::Join(required_devices_partition_names_, ", ");
+        return false;
+    }
+    return true;
+}
+
 bool FirstStageMount::CreateLogicalPartitions() {
     if (!IsDmLinearEnabled()) {
         return true;
     }
-
     if (lp_metadata_partition_.empty()) {
         LOG(ERROR) << "Could not locate logical partition tables in partition "
                    << super_partition_name_;
         return false;
     }
-    return android::fs_mgr::CreateLogicalPartitions(lp_metadata_partition_);
+
+    auto metadata = android::fs_mgr::ReadCurrentMetadata(lp_metadata_partition_);
+    if (!metadata) {
+        LOG(ERROR) << "Could not read logical partition metadata from " << lp_metadata_partition_;
+        return false;
+    }
+    if (!InitDmLinearBackingDevices(*metadata.get())) {
+        return false;
+    }
+    return android::fs_mgr::CreateLogicalPartitions(*metadata.get());
 }
 
 ListenerAction FirstStageMount::HandleBlockDevice(const std::string& name, const Uevent& uevent) {
@@ -371,11 +394,6 @@ bool FirstStageMount::MountPartitions() {
                          [](const auto& rec) { return rec->mount_point == "/system"s; });
 
     if (system_partition != mount_fstab_recs_.end()) {
-        if (ForceNormalBoot()) {
-            free((*system_partition)->mount_point);
-            (*system_partition)->mount_point = strdup("/system_recovery_mount");
-        }
-
         if (!MountPartition(*system_partition)) {
             return false;
         }
@@ -542,7 +560,7 @@ ListenerAction FirstStageMountVBootV2::UeventCallback(const Uevent& uevent) {
         std::vector<std::string> links = device_handler_->GetBlockDeviceSymlinks(uevent);
         if (!links.empty()) {
             auto [it, inserted] = by_name_symlink_map_.emplace(uevent.partition_name, links[0]);
-            if (!inserted) {
+            if (!inserted && (links[0] != it->second)) {
                 LOG(ERROR) << "Partition '" << uevent.partition_name
                            << "' already existed in the by-name symlink map with a value of '"
                            << it->second << "', new value '" << links[0] << "' will be ignored.";

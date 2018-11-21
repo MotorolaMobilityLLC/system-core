@@ -24,10 +24,17 @@ using namespace android::fs_mgr;
 
 TEST(liblp, SlotNumberForSlotSuffix) {
     EXPECT_EQ(SlotNumberForSlotSuffix(""), 0);
+    EXPECT_EQ(SlotNumberForSlotSuffix("a"), 0);
     EXPECT_EQ(SlotNumberForSlotSuffix("_a"), 0);
+    EXPECT_EQ(SlotNumberForSlotSuffix("b"), 1);
     EXPECT_EQ(SlotNumberForSlotSuffix("_b"), 1);
-    EXPECT_EQ(SlotNumberForSlotSuffix("_c"), 2);
-    EXPECT_EQ(SlotNumberForSlotSuffix("_d"), 3);
+    EXPECT_EQ(SlotNumberForSlotSuffix("_c"), 0);
+    EXPECT_EQ(SlotNumberForSlotSuffix("_d"), 0);
+}
+
+TEST(liblp, SlotSuffixForSlotNumber) {
+    EXPECT_EQ(SlotSuffixForSlotNumber(0), "_a");
+    EXPECT_EQ(SlotSuffixForSlotNumber(1), "_b");
 }
 
 TEST(liblp, GetMetadataOffset) {
@@ -36,10 +43,6 @@ TEST(liblp, GetMetadataOffset) {
                                    {0},
                                    16384,
                                    4,
-                                   10000,
-                                   0,
-                                   0,
-                                   1024 * 1024,
                                    4096};
     static const uint64_t start = LP_PARTITION_RESERVED_BYTES;
     EXPECT_EQ(GetPrimaryMetadataOffset(geometry, 0), start + 8192);
@@ -63,4 +66,12 @@ TEST(liblp, AlignTo) {
     EXPECT_EQ(AlignTo(54, 32, 30), 62);
     EXPECT_EQ(AlignTo(32, 32, 30), 62);
     EXPECT_EQ(AlignTo(17, 32, 30), 30);
+}
+
+TEST(liblp, GetPartitionSlotSuffix) {
+    EXPECT_EQ(GetPartitionSlotSuffix("system"), "");
+    EXPECT_EQ(GetPartitionSlotSuffix("_"), "");
+    EXPECT_EQ(GetPartitionSlotSuffix("_a"), "");
+    EXPECT_EQ(GetPartitionSlotSuffix("system_a"), "_a");
+    EXPECT_EQ(GetPartitionSlotSuffix("system_b"), "_b");
 }

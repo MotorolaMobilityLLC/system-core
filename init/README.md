@@ -235,9 +235,16 @@ runs the service.
   to "123,124,125". Since keycodes are handled very early in init,
   only PRODUCT_DEFAULT_PROPERTY_OVERRIDES properties can be used.
 
-`memcg.limit_in_bytes <value>`
-> Sets the child's memory.limit_in_bytes to the specified value (only if memcg is mounted),
-  which must be equal or greater than 0.
+`memcg.limit_in_bytes <value>` and `memcg.limit_percent <value>`
+> Sets the child's memory.limit_in_bytes to the minimum of `limit_in_bytes`
+  bytes and `limit_percent` which is interpreted as a percentage of the size
+  of the device's physical memory (only if memcg is mounted).
+  Values must be equal or greater than 0.
+
+`memcg.limit_property <value>`
+> Sets the child's memory.limit_in_bytes to the value of the specified property
+  (only if memcg is mounted). This property will override the values specified
+  via `memcg.limit_in_bytes` and `memcg.limit_percent`.
 
 `memcg.soft_limit_in_bytes <value>`
 > Sets the child's memory.soft_limit_in_bytes to the specified value (only if memcg is mounted),
@@ -267,6 +274,10 @@ runs the service.
   will use for this service. Pay close attention to the order in which init.rc files are parsed,
   since it has some peculiarities for backwards compatibility reasons. The 'imports' section of
   this file has more details on the order.
+
+`parse_apex_configs`
+  Parses config file(s) from the mounted APEXes. Intented to be used only once
+  when apexd notifies the mount event by setting apexd.status to ready.
 
 `priority <priority>`
 > Scheduling priority of the service process. This value has to be in range
@@ -320,6 +331,13 @@ runs the service.
   here, so oneshot services do not automatically restart, however all other services will.
   This is particularly useful for creating a periodic service combined with the restart_period
   option described above.
+
+`updatable`
+> Mark that the service can be overridden (via the 'override' option) later in
+  the boot sequence by APEXes. When a service with updatable option is started
+  before APEXes are all activated, the execution is delayed until the activation
+  is finished. A service that is not marked as updatable cannot be overridden by
+  APEXes.
 
 `user <username>`
 > Change to 'username' before exec'ing this service.

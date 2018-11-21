@@ -108,15 +108,6 @@ bool ParseGeometry(const void* buffer, LpMetadataGeometry* geometry) {
         LERROR << "Metadata max size is not sector-aligned.";
         return false;
     }
-
-    // Check that the metadata area and logical partition areas don't overlap.
-    int64_t end_of_metadata =
-            GetPrimaryMetadataOffset(*geometry, geometry->metadata_slot_count - 1) +
-            geometry->metadata_max_size;
-    if (uint64_t(end_of_metadata) > geometry->first_logical_sector * LP_SECTOR_SIZE) {
-        LERROR << "Logical partition metadata overlaps with logical partition contents.";
-        return false;
-    }
     return true;
 }
 
@@ -195,7 +186,8 @@ static bool ValidateMetadataHeader(const LpMetadataHeader& header) {
     }
     if (!ValidateTableBounds(header, header.partitions) ||
         !ValidateTableBounds(header, header.extents) ||
-        !ValidateTableBounds(header, header.groups)) {
+        !ValidateTableBounds(header, header.groups) ||
+        !ValidateTableBounds(header, header.block_devices)) {
         LERROR << "Logical partition metadata has invalid table bounds.";
         return false;
     }
@@ -282,6 +274,12 @@ static std::unique_ptr<LpMetadata> ParseMetadata(const LpMetadataGeometry& geome
         memcpy(&extent, cursor, sizeof(extent));
         cursor += header.extents.entry_size;
 
+        if (extent.target_type == LP_TARGET_TYPE_LINEAR &&
+            extent.target_source >= header.block_devices.num_entries) {
+            LERROR << "Logical partition extent has invalid block device.";
+            return nullptr;
+        }
+
         metadata->extents.push_back(extent);
     }
 
@@ -294,6 +292,28 @@ static std::unique_ptr<LpMetadata> ParseMetadata(const LpMetadataGeometry& geome
         metadata->groups.push_back(group);
     }
 
+    cursor = buffer.get() + header.block_devices.offset;
+    for (size_t i = 0; i < header.block_devices.num_entries; i++) {
+        LpMetadataBlockDevice device = {};
+        memcpy(&device, cursor, sizeof(device));
+        cursor += header.block_devices.entry_size;
+
+        metadata->block_devices.push_back(device);
+    }
+
+    const LpMetadataBlockDevice* super_device = GetMetadataSuperBlockDevice(*metadata.get());
+    if (!super_device) {
+        LERROR << "Metadata does not specify a super device.";
+        return nullptr;
+    }
+
+    // Check that the metadata area and logical partition areas don't overlap.
+    uint64_t metadata_region =
+            GetTotalMetadataSize(geometry.metadata_max_size, geometry.metadata_slot_count);
+    if (metadata_region > super_device->first_logical_sector * LP_SECTOR_SIZE) {
+        LERROR << "Logical partition metadata overlaps with logical partition contents.";
+        return nullptr;
+    }
     return metadata;
 }
 
@@ -328,32 +348,78 @@ std::unique_ptr<LpMetadata> ReadBackupMetadata(int fd, const LpMetadataGeometry&
     return ParseMetadata(geometry, fd);
 }
 
-std::unique_ptr<LpMetadata> ReadMetadata(int fd, uint32_t slot_number) {
+namespace {
+
+bool AdjustMetadataForSlot(LpMetadata* metadata, uint32_t slot_number) {
+    std::string slot_suffix = SlotSuffixForSlotNumber(slot_number);
+    for (auto& partition : metadata->partitions) {
+        if (!(partition.attributes & LP_PARTITION_ATTR_SLOT_SUFFIXED)) {
+            continue;
+        }
+        std::string partition_name = GetPartitionName(partition) + slot_suffix;
+        if (partition_name.size() > sizeof(partition.name)) {
+            LERROR << __PRETTY_FUNCTION__ << " partition name too long: " << partition_name;
+            return false;
+        }
+        strncpy(partition.name, partition_name.c_str(), sizeof(partition.name));
+        partition.attributes &= ~LP_PARTITION_ATTR_SLOT_SUFFIXED;
+    }
+    for (auto& block_device : metadata->block_devices) {
+        if (!(block_device.flags & LP_BLOCK_DEVICE_SLOT_SUFFIXED)) {
+            continue;
+        }
+        std::string partition_name = GetBlockDevicePartitionName(block_device) + slot_suffix;
+        if (!UpdateBlockDevicePartitionName(&block_device, partition_name)) {
+            LERROR << __PRETTY_FUNCTION__ << " partition name too long: " << partition_name;
+            return false;
+        }
+        block_device.flags &= ~LP_BLOCK_DEVICE_SLOT_SUFFIXED;
+    }
+    return true;
+}
+
+}  // namespace
+
+std::unique_ptr<LpMetadata> ReadMetadata(const IPartitionOpener& opener,
+                                         const std::string& super_partition, uint32_t slot_number) {
+    android::base::unique_fd fd = opener.Open(super_partition, O_RDONLY);
+    if (fd < 0) {
+        PERROR << __PRETTY_FUNCTION__ << " open failed: " << super_partition;
+        return nullptr;
+    }
+
     LpMetadataGeometry geometry;
     if (!ReadLogicalPartitionGeometry(fd, &geometry)) {
         return nullptr;
     }
-
     if (slot_number >= geometry.metadata_slot_count) {
         LERROR << __PRETTY_FUNCTION__ << " invalid metadata slot number";
         return nullptr;
     }
 
-    // Read the primary copy, and if that fails, try the backup.
-    std::unique_ptr<LpMetadata> metadata = ReadPrimaryMetadata(fd, geometry, slot_number);
-    if (metadata) {
-        return metadata;
-    }
-    return ReadBackupMetadata(fd, geometry, slot_number);
-}
+    std::vector<int64_t> offsets = {
+            GetPrimaryMetadataOffset(geometry, slot_number),
+            GetBackupMetadataOffset(geometry, slot_number),
+    };
+    std::unique_ptr<LpMetadata> metadata;
 
-std::unique_ptr<LpMetadata> ReadMetadata(const char* block_device, uint32_t slot_number) {
-    android::base::unique_fd fd(open(block_device, O_RDONLY));
-    if (fd < 0) {
-        PERROR << __PRETTY_FUNCTION__ << " open failed: " << block_device;
+    for (const auto& offset : offsets) {
+        if (SeekFile64(fd, offset, SEEK_SET) < 0) {
+            PERROR << __PRETTY_FUNCTION__ << " lseek failed, offset " << offset;
+            continue;
+        }
+        if ((metadata = ParseMetadata(geometry, fd)) != nullptr) {
+            break;
+        }
+    }
+    if (!metadata || !AdjustMetadataForSlot(metadata.get(), slot_number)) {
         return nullptr;
     }
-    return ReadMetadata(fd, slot_number);
+    return metadata;
+}
+
+std::unique_ptr<LpMetadata> ReadMetadata(const std::string& super_partition, uint32_t slot_number) {
+    return ReadMetadata(PartitionOpener(), super_partition, slot_number);
 }
 
 static std::string NameFromFixedArray(const char* name, size_t buffer_size) {
@@ -372,6 +438,10 @@ std::string GetPartitionName(const LpMetadataPartition& partition) {
 
 std::string GetPartitionGroupName(const LpMetadataPartitionGroup& group) {
     return NameFromFixedArray(group.name, sizeof(group.name));
+}
+
+std::string GetBlockDevicePartitionName(const LpMetadataBlockDevice& block_device) {
+    return NameFromFixedArray(block_device.partition_name, sizeof(block_device.partition_name));
 }
 
 }  // namespace fs_mgr

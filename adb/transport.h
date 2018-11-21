@@ -57,8 +57,12 @@ extern const char* const kFeatureCmd;
 extern const char* const kFeatureStat2;
 // The server is running with libusb enabled.
 extern const char* const kFeatureLibusb;
-// The server supports `push --sync`.
+// adbd supports `push --sync`.
 extern const char* const kFeaturePushSync;
+// adbd supports installing .apex packages.
+extern const char* const kFeatureApex;
+// adbd has b/110953234 fixed.
+extern const char* const kFeatureFixedPushMkdir;
 
 TransportId NextTransportId();
 
@@ -362,6 +366,7 @@ atransport* find_transport(const char* serial);
 void kick_all_tcp_devices();
 void kick_all_transports();
 
+void register_transport(atransport* transport);
 void register_usb_transport(usb_handle* h, const char* serial,
                             const char* devpath, unsigned writeable);
 

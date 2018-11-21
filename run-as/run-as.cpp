@@ -25,6 +25,8 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include <string>
+
 #include <libminijail.h>
 #include <scoped_minijail.h>
 
@@ -144,7 +146,7 @@ int main(int argc, char* argv[]) {
   // Some devices can disable running run-as, such as Chrome OS when running in
   // non-developer mode.
   if (android::base::GetBoolProperty("ro.boot.disable_runas", false)) {
-      error(1, 0, "run-as is disabled from the kernel commandline");
+    error(1, 0, "run-as is disabled from the kernel commandline");
   }
 
   char* pkgname = argv[1];
@@ -167,6 +169,15 @@ int main(int argc, char* argv[]) {
   if (!packagelist_parse(packagelist_parse_callback, &info)) {
     error(1, errno, "packagelist_parse failed");
   }
+
+  // Handle a multi-user data path
+  if (userId > 0) {
+    free(info.data_dir);
+    if (asprintf(&info.data_dir, "/data/user/%d/%s", userId, pkgname) == -1) {
+      error(1, errno, "asprintf failed");
+    }
+  }
+
   if (info.uid == 0) {
     error(1, 0, "unknown package: %s", pkgname);
   }
@@ -205,7 +216,8 @@ int main(int argc, char* argv[]) {
   minijail_keep_supplementary_gids(j.get());
   minijail_enter(j.get());
 
-  if (selinux_android_setcontext(uid, 0, info.seinfo, pkgname) < 0) {
+  std::string seinfo = std::string(info.seinfo) + ":fromRunAs";
+  if (selinux_android_setcontext(uid, 0, seinfo.c_str(), pkgname) < 0) {
     error(1, errno, "couldn't set SELinux security context");
   }
 

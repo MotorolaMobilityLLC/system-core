@@ -72,7 +72,7 @@ struct MapInfo {
   std::atomic_uint64_t load_bias;
 
   // This function guarantees it will never return nullptr.
-  Elf* GetElf(const std::shared_ptr<Memory>& process_memory, bool init_gnu_debugdata = false);
+  Elf* GetElf(const std::shared_ptr<Memory>& process_memory, ArchEnum expected_arch);
 
   uint64_t GetLoadBias(const std::shared_ptr<Memory>& process_memory);
 

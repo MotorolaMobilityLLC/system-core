@@ -99,7 +99,8 @@ bool GetVarHandler(FastbootDevice* device, const std::vector<std::string>& args)
             {FB_VAR_OFF_MODE_CHARGE_STATE, {GetOffModeChargeState, nullptr}},
             {FB_VAR_BATTERY_VOLTAGE, {GetBatteryVoltage, nullptr}},
             {FB_VAR_BATTERY_SOC_OK, {GetBatterySoCOk, nullptr}},
-            {FB_VAR_HW_REVISION, {GetHardwareRevision, nullptr}}};
+            {FB_VAR_HW_REVISION, {GetHardwareRevision, nullptr}},
+            {FB_VAR_SUPER_PARTITION_NAME, {GetSuperPartitionName, nullptr}}};
 
     if (args.size() < 2) {
         return device->WriteFail("Missing argument");
@@ -329,7 +330,6 @@ class PartitionBuilder {
 
   private:
     std::string super_device_;
-    uint32_t slot_number_;
     std::unique_ptr<MetadataBuilder> builder_;
 };
 
@@ -341,8 +341,8 @@ PartitionBuilder::PartitionBuilder(FastbootDevice* device) {
     super_device_ = *super_device;
 
     std::string slot = device->GetCurrentSlot();
-    slot_number_ = SlotNumberForSlotSuffix(slot);
-    builder_ = MetadataBuilder::New(super_device_, slot_number_);
+    uint32_t slot_number = SlotNumberForSlotSuffix(slot);
+    builder_ = MetadataBuilder::New(super_device_, slot_number);
 }
 
 bool PartitionBuilder::Write() {
@@ -350,7 +350,11 @@ bool PartitionBuilder::Write() {
     if (!metadata) {
         return false;
     }
-    return UpdatePartitionTable(super_device_, *metadata.get(), slot_number_);
+    bool ok = true;
+    for (uint32_t i = 0; i < metadata->geometry.metadata_slot_count; i++) {
+        ok &= UpdatePartitionTable(super_device_, *metadata.get(), i);
+    }
+    return ok;
 }
 
 bool CreatePartitionHandler(FastbootDevice* device, const std::vector<std::string>& args) {

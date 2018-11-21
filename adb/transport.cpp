@@ -52,7 +52,6 @@
 #include "fdevent.h"
 #include "sysdeps/chrono.h"
 
-static void register_transport(atransport* transport);
 static void remove_transport(atransport* transport);
 static void transport_unref(atransport* transport);
 
@@ -67,6 +66,8 @@ const char* const kFeatureCmd = "cmd";
 const char* const kFeatureStat2 = "stat_v2";
 const char* const kFeatureLibusb = "libusb";
 const char* const kFeaturePushSync = "push_sync";
+const char* const kFeatureApex = "apex";
+const char* const kFeatureFixedPushMkdir = "fixed_push_mkdir";
 
 namespace {
 
@@ -420,7 +421,7 @@ void send_packet(apacket* p, atransport* t) {
     VLOG(TRANSPORT) << dump_packet(t->serial.c_str(), "to remote", p);
 
     if (t == nullptr) {
-        fatal("Transport is null");
+        LOG(FATAL) << "Transport is null";
     }
 
     if (t->Write(p) != 0) {
@@ -526,7 +527,7 @@ static void device_tracker_ready(asocket* socket) {
 
 asocket* create_device_tracker(bool long_output) {
     device_tracker* tracker = new device_tracker();
-    if (tracker == nullptr) fatal("cannot allocate device tracker");
+    if (tracker == nullptr) LOG(FATAL) << "cannot allocate device tracker";
 
     D("device tracker %p created", tracker);
 
@@ -632,7 +633,7 @@ static void transport_registration_func(int _fd, unsigned ev, void*) {
     }
 
     if (transport_read_action(_fd, &m)) {
-        fatal_errno("cannot read transport registration socket");
+        PLOG(FATAL) << "cannot read transport registration socket";
     }
 
     t = m.transport;
@@ -671,7 +672,7 @@ static void transport_registration_func(int _fd, unsigned ev, void*) {
             return true;
         });
         t->connection()->SetErrorCallback([t](Connection*, const std::string& error) {
-            D("%s: connection terminated: %s", t->serial.c_str(), error.c_str());
+            LOG(INFO) << t->serial_name() << ": connection terminated: " << error;
             fdevent_run_on_main_thread([t]() {
                 handle_offline(t);
                 transport_unref(t);
@@ -706,7 +707,7 @@ void init_transport_registration(void) {
     int s[2];
 
     if (adb_socketpair(s)) {
-        fatal_errno("cannot open transport registration socketpair");
+        PLOG(FATAL) << "cannot open transport registration socketpair";
     }
     D("socketpair: (%d,%d)", s[0], s[1]);
 
@@ -730,13 +731,13 @@ void kick_all_transports() {
 }
 
 /* the fdevent select pump is single threaded */
-static void register_transport(atransport* transport) {
+void register_transport(atransport* transport) {
     tmsg m;
     m.transport = transport;
     m.action = 1;
     D("transport: %s registered", transport->serial.c_str());
     if (transport_write_action(transport_registration_send, &m)) {
-        fatal_errno("cannot write transport registration socket\n");
+        PLOG(FATAL) << "cannot write transport registration socket";
     }
 }
 
@@ -746,7 +747,7 @@ static void remove_transport(atransport* transport) {
     m.action = 0;
     D("transport: %s removed", transport->serial.c_str());
     if (transport_write_action(transport_registration_send, &m)) {
-        fatal_errno("cannot write transport registration socket\n");
+        PLOG(FATAL) << "cannot write transport registration socket";
     }
 }
 
@@ -758,6 +759,7 @@ static void transport_unref(atransport* t) {
     CHECK_GT(t->ref_count, 0u);
     t->ref_count--;
     if (t->ref_count == 0) {
+        LOG(INFO) << "destroying transport " << t->serial_name();
         t->connection()->Stop();
 #if ADB_HOST
         if (t->IsTcpDevice() && !t->kicked()) {
@@ -1007,10 +1009,11 @@ size_t atransport::get_max_payload() const {
 const FeatureSet& supported_features() {
     // Local static allocation to avoid global non-POD variables.
     static const FeatureSet* features = new FeatureSet{
-        kFeatureShell2, kFeatureCmd, kFeatureStat2,
-        // Increment ADB_SERVER_VERSION whenever the feature list changes to
-        // make sure that the adb client and server features stay in sync
-        // (http://b/24370690).
+            kFeatureShell2, kFeatureCmd, kFeatureStat2, kFeatureFixedPushMkdir, kFeatureApex
+            // Increment ADB_SERVER_VERSION when adding a feature that adbd needs
+            // to know about. Otherwise, the client can be stuck running an old
+            // version of the server even after upgrading their copy of adb.
+            // (http://b/24370690)
     };
 
     return *features;
@@ -1293,6 +1296,7 @@ void register_usb_transport(usb_handle* usb, const char* serial, const char* dev
     register_transport(t);
 }
 
+#if ADB_HOST
 // This should only be used for transports with connection_state == kCsNoPerm.
 void unregister_usb_transport(usb_handle* usb) {
     std::lock_guard<std::recursive_mutex> lock(transport_lock);
@@ -1304,6 +1308,7 @@ void unregister_usb_transport(usb_handle* usb) {
         return false;
     });
 }
+#endif
 
 bool check_header(apacket* p, atransport* t) {
     if (p->msg.magic != (p->msg.command ^ 0xffffffff)) {

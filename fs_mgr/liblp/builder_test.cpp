@@ -14,16 +14,20 @@
  * limitations under the License.
  */
 
+#include <fs_mgr.h>
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include <liblp/builder.h>
-#include "fs_mgr.h"
+
 #include "utility.h"
 
 using namespace std;
 using namespace android::fs_mgr;
+using ::testing::ElementsAre;
 
 TEST(liblp, BuildBasic) {
     unique_ptr<MetadataBuilder> builder = MetadataBuilder::New(1024 * 1024, 1024, 2);
+    ASSERT_NE(builder, nullptr);
 
     Partition* partition = builder->AddPartition("system", LP_PARTITION_ATTR_READONLY);
     ASSERT_NE(partition, nullptr);
@@ -38,6 +42,7 @@ TEST(liblp, BuildBasic) {
 
 TEST(liblp, ResizePartition) {
     unique_ptr<MetadataBuilder> builder = MetadataBuilder::New(1024 * 1024, 1024, 2);
+    ASSERT_NE(builder, nullptr);
 
     Partition* system = builder->AddPartition("system", LP_PARTITION_ATTR_READONLY);
     ASSERT_NE(system, nullptr);
@@ -91,6 +96,7 @@ TEST(liblp, ResizePartition) {
 
 TEST(liblp, PartitionAlignment) {
     unique_ptr<MetadataBuilder> builder = MetadataBuilder::New(1024 * 1024, 1024, 2);
+    ASSERT_NE(builder, nullptr);
 
     // Test that we align up to one sector.
     Partition* system = builder->AddPartition("system", LP_PARTITION_ATTR_READONLY);
@@ -117,6 +123,7 @@ TEST(liblp, DiskAlignment) {
 TEST(liblp, MetadataAlignment) {
     // Make sure metadata sizes get aligned up.
     unique_ptr<MetadataBuilder> builder = MetadataBuilder::New(1024 * 1024, 1000, 2);
+    ASSERT_NE(builder, nullptr);
     unique_ptr<LpMetadata> exported = builder->Export();
     ASSERT_NE(exported, nullptr);
     EXPECT_EQ(exported->geometry.metadata_max_size, 1024);
@@ -124,12 +131,14 @@ TEST(liblp, MetadataAlignment) {
 
 TEST(liblp, InternalAlignment) {
     // Test the metadata fitting within alignment.
-    BlockDeviceInfo device_info(1024 * 1024, 768 * 1024, 0, 4096);
+    BlockDeviceInfo device_info("super", 1024 * 1024, 768 * 1024, 0, 4096);
     unique_ptr<MetadataBuilder> builder = MetadataBuilder::New(device_info, 1024, 2);
     ASSERT_NE(builder, nullptr);
     unique_ptr<LpMetadata> exported = builder->Export();
     ASSERT_NE(exported, nullptr);
-    EXPECT_EQ(exported->geometry.first_logical_sector, 1536);
+    auto super_device = GetMetadataSuperBlockDevice(*exported.get());
+    ASSERT_NE(super_device, nullptr);
+    EXPECT_EQ(super_device->first_logical_sector, 1536);
 
     // Test a large alignment offset thrown in.
     device_info.alignment_offset = 753664;
@@ -137,7 +146,9 @@ TEST(liblp, InternalAlignment) {
     ASSERT_NE(builder, nullptr);
     exported = builder->Export();
     ASSERT_NE(exported, nullptr);
-    EXPECT_EQ(exported->geometry.first_logical_sector, 1472);
+    super_device = GetMetadataSuperBlockDevice(*exported.get());
+    ASSERT_NE(super_device, nullptr);
+    EXPECT_EQ(super_device->first_logical_sector, 1472);
 
     // Alignment offset without alignment doesn't mean anything.
     device_info.alignment = 0;
@@ -151,7 +162,9 @@ TEST(liblp, InternalAlignment) {
     ASSERT_NE(builder, nullptr);
     exported = builder->Export();
     ASSERT_NE(exported, nullptr);
-    EXPECT_EQ(exported->geometry.first_logical_sector, 174);
+    super_device = GetMetadataSuperBlockDevice(*exported.get());
+    ASSERT_NE(super_device, nullptr);
+    EXPECT_EQ(super_device->first_logical_sector, 174);
 
     // Test a small alignment with no alignment offset.
     device_info.alignment = 11 * 1024;
@@ -159,11 +172,13 @@ TEST(liblp, InternalAlignment) {
     ASSERT_NE(builder, nullptr);
     exported = builder->Export();
     ASSERT_NE(exported, nullptr);
-    EXPECT_EQ(exported->geometry.first_logical_sector, 160);
+    super_device = GetMetadataSuperBlockDevice(*exported.get());
+    ASSERT_NE(super_device, nullptr);
+    EXPECT_EQ(super_device->first_logical_sector, 160);
 }
 
 TEST(liblp, InternalPartitionAlignment) {
-    BlockDeviceInfo device_info(512 * 1024 * 1024, 768 * 1024, 753664, 4096);
+    BlockDeviceInfo device_info("super", 512 * 1024 * 1024, 768 * 1024, 753664, 4096);
     unique_ptr<MetadataBuilder> builder = MetadataBuilder::New(device_info, 32 * 1024, 2);
 
     Partition* a = builder->AddPartition("a", 0);
@@ -289,6 +304,9 @@ TEST(liblp, BuilderExport) {
     unique_ptr<LpMetadata> exported = builder->Export();
     EXPECT_NE(exported, nullptr);
 
+    auto super_device = GetMetadataSuperBlockDevice(*exported.get());
+    ASSERT_NE(super_device, nullptr);
+
     // Verify geometry. Some details of this may change if we change the
     // metadata structures. So in addition to checking the exact values, we
     // also check that they are internally consistent after.
@@ -297,11 +315,11 @@ TEST(liblp, BuilderExport) {
     EXPECT_EQ(geometry.struct_size, sizeof(geometry));
     EXPECT_EQ(geometry.metadata_max_size, 1024);
     EXPECT_EQ(geometry.metadata_slot_count, 2);
-    EXPECT_EQ(geometry.first_logical_sector, 32);
+    EXPECT_EQ(super_device->first_logical_sector, 32);
 
     static const size_t kMetadataSpace =
             ((kMetadataSize * kMetadataSlots) + LP_METADATA_GEOMETRY_SIZE) * 2;
-    EXPECT_GE(geometry.first_logical_sector * LP_SECTOR_SIZE, kMetadataSpace);
+    EXPECT_GE(super_device->first_logical_sector * LP_SECTOR_SIZE, kMetadataSpace);
 
     // Verify header.
     const LpMetadataHeader& header = exported->header;
@@ -380,7 +398,7 @@ TEST(liblp, MetadataTooLarge) {
     static const size_t kMetadataSize = 64 * 1024;
 
     // No space to store metadata + geometry.
-    BlockDeviceInfo device_info(kDiskSize, 0, 0, 4096);
+    BlockDeviceInfo device_info("super", kDiskSize, 0, 0, 4096);
     unique_ptr<MetadataBuilder> builder = MetadataBuilder::New(device_info, kMetadataSize, 1);
     EXPECT_EQ(builder, nullptr);
 
@@ -410,13 +428,10 @@ TEST(liblp, block_device_info) {
                                                                fs_mgr_free_fstab);
     ASSERT_NE(fstab, nullptr);
 
-    // This should read from the "super" partition once we have a well-defined
-    // way to access it.
-    struct fstab_rec* rec = fs_mgr_get_entry_for_mount_point(fstab.get(), "/data");
-    ASSERT_NE(rec, nullptr);
+    PartitionOpener opener;
 
     BlockDeviceInfo device_info;
-    ASSERT_TRUE(GetBlockDeviceInfo(rec->blk_device, &device_info));
+    ASSERT_TRUE(opener.GetInfo(fs_mgr_get_super_partition_name(), &device_info));
 
     // Sanity check that the device doesn't give us some weird inefficient
     // alignment.
@@ -430,12 +445,12 @@ TEST(liblp, block_device_info) {
 }
 
 TEST(liblp, UpdateBlockDeviceInfo) {
-    BlockDeviceInfo device_info(1024 * 1024, 4096, 1024, 4096);
+    BlockDeviceInfo device_info("super", 1024 * 1024, 4096, 1024, 4096);
     unique_ptr<MetadataBuilder> builder = MetadataBuilder::New(device_info, 1024, 1);
     ASSERT_NE(builder, nullptr);
 
     BlockDeviceInfo new_info;
-    ASSERT_TRUE(builder->GetBlockDeviceInfo(&new_info));
+    ASSERT_TRUE(builder->GetBlockDeviceInfo("super", &new_info));
 
     EXPECT_EQ(new_info.size, device_info.size);
     EXPECT_EQ(new_info.alignment, device_info.alignment);
@@ -444,37 +459,37 @@ TEST(liblp, UpdateBlockDeviceInfo) {
 
     device_info.alignment = 0;
     device_info.alignment_offset = 2048;
-    ASSERT_TRUE(builder->UpdateBlockDeviceInfo(device_info));
-    ASSERT_TRUE(builder->GetBlockDeviceInfo(&new_info));
+    ASSERT_TRUE(builder->UpdateBlockDeviceInfo("super", device_info));
+    ASSERT_TRUE(builder->GetBlockDeviceInfo("super", &new_info));
     EXPECT_EQ(new_info.alignment, 4096);
     EXPECT_EQ(new_info.alignment_offset, device_info.alignment_offset);
 
     device_info.alignment = 8192;
     device_info.alignment_offset = 0;
-    ASSERT_TRUE(builder->UpdateBlockDeviceInfo(device_info));
-    ASSERT_TRUE(builder->GetBlockDeviceInfo(&new_info));
+    ASSERT_TRUE(builder->UpdateBlockDeviceInfo("super", device_info));
+    ASSERT_TRUE(builder->GetBlockDeviceInfo("super", &new_info));
     EXPECT_EQ(new_info.alignment, 8192);
     EXPECT_EQ(new_info.alignment_offset, 2048);
 
     new_info.size += 4096;
-    ASSERT_FALSE(builder->UpdateBlockDeviceInfo(new_info));
-    ASSERT_TRUE(builder->GetBlockDeviceInfo(&new_info));
+    ASSERT_FALSE(builder->UpdateBlockDeviceInfo("super", new_info));
+    ASSERT_TRUE(builder->GetBlockDeviceInfo("super", &new_info));
     EXPECT_EQ(new_info.size, 1024 * 1024);
 
     new_info.logical_block_size = 512;
-    ASSERT_FALSE(builder->UpdateBlockDeviceInfo(new_info));
-    ASSERT_TRUE(builder->GetBlockDeviceInfo(&new_info));
+    ASSERT_FALSE(builder->UpdateBlockDeviceInfo("super", new_info));
+    ASSERT_TRUE(builder->GetBlockDeviceInfo("super", &new_info));
     EXPECT_EQ(new_info.logical_block_size, 4096);
 }
 
 TEST(liblp, InvalidBlockSize) {
-    BlockDeviceInfo device_info(1024 * 1024, 0, 0, 513);
+    BlockDeviceInfo device_info("super", 1024 * 1024, 0, 0, 513);
     unique_ptr<MetadataBuilder> builder = MetadataBuilder::New(device_info, 1024, 1);
     EXPECT_EQ(builder, nullptr);
 }
 
 TEST(liblp, AlignedExtentSize) {
-    BlockDeviceInfo device_info(1024 * 1024, 0, 0, 4096);
+    BlockDeviceInfo device_info("super", 1024 * 1024, 0, 0, 4096);
     unique_ptr<MetadataBuilder> builder = MetadataBuilder::New(device_info, 1024, 1);
     ASSERT_NE(builder, nullptr);
 
@@ -486,13 +501,13 @@ TEST(liblp, AlignedExtentSize) {
 
 TEST(liblp, AlignedFreeSpace) {
     // Only one sector free - at least one block is required.
-    BlockDeviceInfo device_info(10240, 0, 0, 4096);
+    BlockDeviceInfo device_info("super", 10240, 0, 0, 4096);
     unique_ptr<MetadataBuilder> builder = MetadataBuilder::New(device_info, 512, 1);
     ASSERT_EQ(builder, nullptr);
 }
 
 TEST(liblp, HasDefaultGroup) {
-    BlockDeviceInfo device_info(1024 * 1024, 0, 0, 4096);
+    BlockDeviceInfo device_info("super", 1024 * 1024, 0, 0, 4096);
     unique_ptr<MetadataBuilder> builder = MetadataBuilder::New(device_info, 1024, 1);
     ASSERT_NE(builder, nullptr);
 
@@ -500,7 +515,7 @@ TEST(liblp, HasDefaultGroup) {
 }
 
 TEST(liblp, GroupSizeLimits) {
-    BlockDeviceInfo device_info(1024 * 1024, 0, 0, 4096);
+    BlockDeviceInfo device_info("super", 1024 * 1024, 0, 0, 4096);
     unique_ptr<MetadataBuilder> builder = MetadataBuilder::New(device_info, 1024, 1);
     ASSERT_NE(builder, nullptr);
 
@@ -514,4 +529,167 @@ TEST(liblp, GroupSizeLimits) {
     EXPECT_EQ(partition->size(), 16384);
     EXPECT_FALSE(builder->ResizePartition(partition, 32768));
     EXPECT_EQ(partition->size(), 16384);
+}
+
+constexpr unsigned long long operator"" _GiB(unsigned long long x) {  // NOLINT
+    return x << 30;
+}
+constexpr unsigned long long operator"" _MiB(unsigned long long x) {  // NOLINT
+    return x << 20;
+}
+
+TEST(liblp, RemoveAndAddFirstPartition) {
+    auto builder = MetadataBuilder::New(10_GiB, 65536, 2);
+    ASSERT_NE(nullptr, builder);
+    ASSERT_TRUE(builder->AddGroup("foo_a", 5_GiB));
+    ASSERT_TRUE(builder->AddGroup("foo_b", 5_GiB));
+    android::fs_mgr::Partition* p;
+    p = builder->AddPartition("system_a", "foo_a", 0);
+    ASSERT_TRUE(p && builder->ResizePartition(p, 2_GiB));
+    p = builder->AddPartition("vendor_a", "foo_a", 0);
+    ASSERT_TRUE(p && builder->ResizePartition(p, 1_GiB));
+    p = builder->AddPartition("system_b", "foo_b", 0);
+    ASSERT_TRUE(p && builder->ResizePartition(p, 2_GiB));
+    p = builder->AddPartition("vendor_b", "foo_b", 0);
+    ASSERT_TRUE(p && builder->ResizePartition(p, 1_GiB));
+
+    builder->RemovePartition("system_a");
+    builder->RemovePartition("vendor_a");
+    p = builder->AddPartition("system_a", "foo_a", 0);
+    ASSERT_TRUE(p && builder->ResizePartition(p, 3_GiB));
+    p = builder->AddPartition("vendor_a", "foo_a", 0);
+    ASSERT_TRUE(p && builder->ResizePartition(p, 1_GiB));
+}
+
+TEST(liblp, ListGroups) {
+    BlockDeviceInfo device_info("super", 1024 * 1024, 0, 0, 4096);
+    unique_ptr<MetadataBuilder> builder = MetadataBuilder::New(device_info, 1024, 1);
+    ASSERT_NE(builder, nullptr);
+    ASSERT_TRUE(builder->AddGroup("example", 0));
+
+    std::vector<std::string> groups = builder->ListGroups();
+    ASSERT_THAT(groups, ElementsAre("default", "example"));
+}
+
+TEST(liblp, RemoveGroupAndPartitions) {
+    BlockDeviceInfo device_info("super", 1024 * 1024, 0, 0, 4096);
+    unique_ptr<MetadataBuilder> builder = MetadataBuilder::New(device_info, 1024, 1);
+    ASSERT_NE(builder, nullptr);
+    ASSERT_TRUE(builder->AddGroup("example", 0));
+    ASSERT_NE(builder->AddPartition("system", "default", 0), nullptr);
+    ASSERT_NE(builder->AddPartition("vendor", "example", 0), nullptr);
+
+    builder->RemoveGroupAndPartitions("example");
+    ASSERT_NE(builder->FindPartition("system"), nullptr);
+    ASSERT_EQ(builder->FindPartition("vendor"), nullptr);
+    ASSERT_THAT(builder->ListGroups(), ElementsAre("default"));
+
+    builder->RemoveGroupAndPartitions("default");
+    ASSERT_NE(builder->FindPartition("system"), nullptr);
+}
+
+TEST(liblp, MultipleBlockDevices) {
+    std::vector<BlockDeviceInfo> partitions = {
+            BlockDeviceInfo("system_a", 256_MiB, 786432, 229376, 4096),
+            BlockDeviceInfo("vendor_a", 128_MiB, 786432, 753664, 4096),
+            BlockDeviceInfo("product_a", 64_MiB, 786432, 753664, 4096),
+    };
+    unique_ptr<MetadataBuilder> builder = MetadataBuilder::New(partitions, "system_a", 65536, 2);
+    ASSERT_NE(builder, nullptr);
+    EXPECT_EQ(builder->AllocatableSpace(), 467238912);
+
+    // Create a partition that spans 3 devices.
+    Partition* p = builder->AddPartition("system_a", 0);
+    ASSERT_NE(p, nullptr);
+    ASSERT_TRUE(builder->ResizePartition(p, 466976768));
+
+    unique_ptr<LpMetadata> metadata = builder->Export();
+    ASSERT_NE(metadata, nullptr);
+    ASSERT_EQ(metadata->block_devices.size(), 3);
+    EXPECT_EQ(GetBlockDevicePartitionName(metadata->block_devices[0]), "system_a");
+    EXPECT_EQ(metadata->block_devices[0].size, 256_MiB);
+    EXPECT_EQ(metadata->block_devices[0].alignment, 786432);
+    EXPECT_EQ(metadata->block_devices[0].alignment_offset, 229376);
+    EXPECT_EQ(GetBlockDevicePartitionName(metadata->block_devices[1]), "vendor_a");
+    EXPECT_EQ(metadata->block_devices[1].size, 128_MiB);
+    EXPECT_EQ(metadata->block_devices[1].alignment, 786432);
+    EXPECT_EQ(metadata->block_devices[1].alignment_offset, 753664);
+    EXPECT_EQ(GetBlockDevicePartitionName(metadata->block_devices[2]), "product_a");
+    EXPECT_EQ(metadata->block_devices[2].size, 64_MiB);
+    EXPECT_EQ(metadata->block_devices[2].alignment, 786432);
+    EXPECT_EQ(metadata->block_devices[2].alignment_offset, 753664);
+    ASSERT_EQ(metadata->extents.size(), 3);
+    EXPECT_EQ(metadata->extents[0].num_sectors, 522304);
+    EXPECT_EQ(metadata->extents[0].target_type, LP_TARGET_TYPE_LINEAR);
+    EXPECT_EQ(metadata->extents[0].target_data, 1984);
+    EXPECT_EQ(metadata->extents[0].target_source, 0);
+    EXPECT_EQ(metadata->extents[1].num_sectors, 260672);
+    EXPECT_EQ(metadata->extents[1].target_type, LP_TARGET_TYPE_LINEAR);
+    EXPECT_EQ(metadata->extents[1].target_data, 1472);
+    EXPECT_EQ(metadata->extents[1].target_source, 1);
+    EXPECT_EQ(metadata->extents[2].num_sectors, 129088);
+    EXPECT_EQ(metadata->extents[2].target_type, LP_TARGET_TYPE_LINEAR);
+    EXPECT_EQ(metadata->extents[2].target_data, 1472);
+    EXPECT_EQ(metadata->extents[2].target_source, 2);
+}
+
+TEST(liblp, ImportPartitionsOk) {
+    unique_ptr<MetadataBuilder> builder = MetadataBuilder::New(1024 * 1024, 1024, 2);
+    ASSERT_NE(builder, nullptr);
+
+    Partition* system = builder->AddPartition("system", LP_PARTITION_ATTR_READONLY);
+    Partition* vendor = builder->AddPartition("vendor", LP_PARTITION_ATTR_READONLY);
+    ASSERT_NE(system, nullptr);
+    ASSERT_NE(vendor, nullptr);
+    EXPECT_EQ(builder->ResizePartition(system, 65536), true);
+    EXPECT_EQ(builder->ResizePartition(vendor, 32768), true);
+    EXPECT_EQ(builder->ResizePartition(system, 98304), true);
+
+    unique_ptr<LpMetadata> exported = builder->Export();
+    ASSERT_NE(exported, nullptr);
+
+    builder = MetadataBuilder::New(1024 * 1024, 1024, 2);
+    ASSERT_NE(builder, nullptr);
+
+    ASSERT_TRUE(builder->ImportPartitions(*exported.get(), {"vendor"}));
+    EXPECT_NE(builder->FindPartition("vendor"), nullptr);
+    EXPECT_EQ(builder->FindPartition("system"), nullptr);
+
+    unique_ptr<LpMetadata> new_metadata = builder->Export();
+    ASSERT_NE(new_metadata, nullptr);
+
+    ASSERT_EQ(exported->partitions.size(), static_cast<size_t>(2));
+    ASSERT_EQ(GetPartitionName(exported->partitions[1]), "vendor");
+    ASSERT_EQ(new_metadata->partitions.size(), static_cast<size_t>(1));
+    ASSERT_EQ(GetPartitionName(new_metadata->partitions[0]), "vendor");
+
+    const LpMetadataExtent& extent_a =
+            exported->extents[exported->partitions[1].first_extent_index];
+    const LpMetadataExtent& extent_b =
+            new_metadata->extents[new_metadata->partitions[0].first_extent_index];
+    EXPECT_EQ(extent_a.num_sectors, extent_b.num_sectors);
+    EXPECT_EQ(extent_a.target_type, extent_b.target_type);
+    EXPECT_EQ(extent_a.target_data, extent_b.target_data);
+    EXPECT_EQ(extent_a.target_source, extent_b.target_source);
+}
+
+TEST(liblp, ImportPartitionsFail) {
+    unique_ptr<MetadataBuilder> builder = MetadataBuilder::New(1024 * 1024, 1024, 2);
+    ASSERT_NE(builder, nullptr);
+
+    Partition* system = builder->AddPartition("system", LP_PARTITION_ATTR_READONLY);
+    Partition* vendor = builder->AddPartition("vendor", LP_PARTITION_ATTR_READONLY);
+    ASSERT_NE(system, nullptr);
+    ASSERT_NE(vendor, nullptr);
+    EXPECT_EQ(builder->ResizePartition(system, 65536), true);
+    EXPECT_EQ(builder->ResizePartition(vendor, 32768), true);
+    EXPECT_EQ(builder->ResizePartition(system, 98304), true);
+
+    unique_ptr<LpMetadata> exported = builder->Export();
+    ASSERT_NE(exported, nullptr);
+
+    // Different device size.
+    builder = MetadataBuilder::New(1024 * 2048, 1024, 2);
+    ASSERT_NE(builder, nullptr);
+    EXPECT_FALSE(builder->ImportPartitions(*exported.get(), {"system"}));
 }

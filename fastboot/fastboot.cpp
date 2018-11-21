@@ -56,7 +56,6 @@
 #include <android-base/parsenetaddress.h>
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
-#include <android-base/test_utils.h>
 #include <android-base/unique_fd.h>
 #include <build/version.h>
 #include <platform_tools_version.h>
@@ -78,10 +77,6 @@ using android::base::ReadFully;
 using android::base::Split;
 using android::base::Trim;
 using android::base::unique_fd;
-
-#ifndef O_BINARY
-#define O_BINARY 0
-#endif
 
 static const char* serial = nullptr;
 
@@ -856,7 +851,7 @@ static bool load_buf_fd(int fd, struct fastboot_buffer* buf) {
         buf->image_size = sz;
     }
 
-    lseek64(fd, 0, SEEK_SET);
+    lseek(fd, 0, SEEK_SET);
     int64_t limit = get_sparse_limit(sz);
     if (limit) {
         sparse_file** s = load_sparse_files(fd, limit);
@@ -1096,11 +1091,19 @@ static void do_for_partitions(const std::string& part, const std::string& slot,
     }
 }
 
+static bool is_logical(const std::string& partition) {
+    std::string value;
+    return fb->GetVar("is-logical:" + partition, &value) == fastboot::SUCCESS && value == "yes";
+}
+
 static void do_flash(const char* pname, const char* fname) {
     struct fastboot_buffer buf;
 
     if (!load_buf(fname, &buf)) {
         die("cannot load '%s': %s", fname, strerror(errno));
+    }
+    if (is_logical(pname)) {
+        fb->ResizePartition(pname, std::to_string(buf.image_size));
     }
     flash_buf(pname, &buf);
 }
@@ -1123,30 +1126,6 @@ static void set_active(const std::string& slot_override) {
 static bool is_userspace_fastboot() {
     std::string value;
     return fb->GetVar("is-userspace", &value) == fastboot::SUCCESS && value == "yes";
-}
-
-static bool if_partition_exists(const std::string& partition, const std::string& slot) {
-    std::string has_slot;
-    std::string partition_name = partition;
-
-    if (fb->GetVar("has-slot:" + partition, &has_slot) == fastboot::SUCCESS && has_slot == "yes") {
-        if (slot == "") {
-            std::string current_slot = get_current_slot();
-            if (current_slot == "") {
-                die("Failed to identify current slot");
-            }
-            partition_name += "_" + current_slot;
-        } else {
-            partition_name += "_" + slot;
-        }
-    }
-    std::string partition_size;
-    return fb->GetVar("partition-size:" + partition_name, &partition_size) == fastboot::SUCCESS;
-}
-
-static bool is_logical(const std::string& partition) {
-    std::string value;
-    return fb->GetVar("is-logical:" + partition, &value) == fastboot::SUCCESS && value == "yes";
 }
 
 static void reboot_to_userspace_fastboot() {
@@ -1201,6 +1180,15 @@ FlashAllTool::FlashAllTool(const ImageSource& source, const std::string& slot_ov
 void FlashAllTool::Flash() {
     DumpInfo();
     CheckRequirements();
+
+    // Change the slot first, so we boot into the correct recovery image when
+    // using fastbootd.
+    if (slot_override_ == "all") {
+        set_active("a");
+    } else {
+        set_active(slot_override_);
+    }
+
     DetermineSecondarySlot();
     CollectImages();
 
@@ -1224,12 +1212,6 @@ void FlashAllTool::Flash() {
 
     // Flash OS images, resizing logical partitions as needed.
     FlashImages(os_images_);
-
-    if (slot_override_ == "all") {
-        set_active("a");
-    } else {
-        set_active(slot_override_);
-    }
 }
 
 void FlashAllTool::CheckRequirements() {
@@ -1244,7 +1226,7 @@ void FlashAllTool::DetermineSecondarySlot() {
     if (skip_secondary_) {
         return;
     }
-    if (slot_override_ != "") {
+    if (slot_override_ != "" && slot_override_ != "all") {
         secondary_slot_ = get_other_slot(slot_override_);
     } else {
         secondary_slot_ = get_other_slot();
@@ -1305,10 +1287,6 @@ void FlashAllTool::FlashImage(const Image& image, const std::string& slot, fastb
 }
 
 void FlashAllTool::UpdateSuperPartition() {
-    if (!if_partition_exists("super", "")) {
-        return;
-    }
-
     int fd = source_.OpenFile("super_empty.img");
     if (fd < 0) {
         return;
@@ -1316,9 +1294,17 @@ void FlashAllTool::UpdateSuperPartition() {
     if (!is_userspace_fastboot()) {
         reboot_to_userspace_fastboot();
     }
-    fb->Download("super", fd, get_file_size(fd));
+    if (!is_userspace_fastboot()) {
+        die("Failed to boot into userspace; one or more components might be unbootable.");
+    }
 
-    std::string command = "update-super:super";
+    std::string super_name;
+    if (fb->GetVar("super-partition-name", &super_name) != fastboot::RetCode::SUCCESS) {
+        super_name = "super";
+    }
+    fb->Download(super_name, fd, get_file_size(fd));
+
+    std::string command = "update-super:" + super_name;
     if (wipe_) {
         command += ":wipe";
     }
