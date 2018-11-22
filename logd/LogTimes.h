@@ -33,6 +33,9 @@ class LogBufferElement;
 
 class LogTimeEntry {
     static pthread_mutex_t timesLock;
+#if defined(MTK_LOGD_ENHANCE) && defined(MTK_LOGD_FILTER)
+    static pthread_mutex_t readerCntLock;
+#endif
     unsigned int mRefCount;
     bool mRelease;
     bool mError;
