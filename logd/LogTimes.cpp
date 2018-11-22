@@ -26,6 +26,9 @@
 #include "LogTimes.h"
 
 pthread_mutex_t LogTimeEntry::timesLock = PTHREAD_MUTEX_INITIALIZER;
+#if defined(MTK_LOGD_ENHANCE) && defined(MTK_LOGD_FILTER)
+pthread_mutex_t LogTimeEntry::readerCntLock = PTHREAD_MUTEX_INITIALIZER;
+#endif
 
 LogTimeEntry::LogTimeEntry(LogReader& reader, SocketClient* client,
                            bool nonBlock, unsigned long tail, log_mask_t logMask,
@@ -77,15 +80,17 @@ void LogTimeEntry::startReader_Locked(void) {
 void LogTimeEntry::threadStop(void* obj) {
     LogTimeEntry* me = reinterpret_cast<LogTimeEntry*>(obj);
 
-    wrlock();
-
 #ifdef MTK_LOGD_ENHANCE
 #if defined(MTK_LOGD_FILTER)
+    pthread_mutex_lock(&readerCntLock);
     logd_reader_del();
+    pthread_mutex_unlock(&readerCntLock);
 #else
     prdebug_ratelimit("logd.reader.per thread stop.\n");
 #endif
 #endif
+
+    wrlock();
 
     if (me->mNonBlock) {
         me->error_Locked();
@@ -141,15 +146,17 @@ void* LogTimeEntry::threadStart(void* obj) {
 
     me->leadingDropped = true;
 
-    wrlock();
-
 #ifdef MTK_LOGD_ENHANCE
 #if defined(MTK_LOGD_FILTER)
+    pthread_mutex_lock(&readerCntLock);
     logd_reader_add();
+    pthread_mutex_unlock(&readerCntLock);
 #else
     prdebug_ratelimit("logd.reader.per thread start.\n");
 #endif
 #endif
+
+    wrlock();
 
     log_time start = me->mStart;
 
