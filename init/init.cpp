@@ -125,6 +125,15 @@ static void LoadBootScripts(ActionManager& action_manager, ServiceList& service_
         if (!parser.ParseConfig("/vendor/etc/init")) {
             late_import_paths.emplace_back("/vendor/etc/init");
         }
+#ifdef JOURNEY_FEATURE_SYSTEM_ENHANCED
+        if (!parser.ParseConfig("/system/etc/init/journey")) {
+            late_import_paths.emplace_back("/system/etc/init/journey");
+        }
+        if (!parser.ParseConfig("/vendor/etc/init/journey")) {
+            late_import_paths.emplace_back("/vendor/etc/init/journey");
+        }
+#endif
+
     } else {
         parser.ParseConfig(bootscript);
     }

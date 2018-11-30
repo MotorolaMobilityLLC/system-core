@@ -666,7 +666,11 @@ bool load_properties_from_file(const char* filename, const char* filter) {
     file_contents->push_back('\n');
 
     LoadProperties(file_contents->data(), filter, filename);
+#ifdef JOURNEY_DEBUG_ENHANCED
+    LOG(INFO) << "(Loading properties from " << filename << " took " << t << ".)";
+#else
     LOG(VERBOSE) << "(Loading properties from " << filename << " took " << t << ".)";
+#endif
     return true;
 }
 
@@ -687,6 +691,12 @@ static void update_sys_usb_config() {
 }
 
 void property_load_boot_defaults() {
+#ifdef JOURNEY_FEATURE_SYSTEM_ENHANCED
+    //setup the ro prop in advance
+    load_properties_from_file("/system/etc/init/journey/journey.default.prop", NULL);
+    load_properties_from_file("/vendor/etc/init/journey/journey.default.vendor.prop", NULL);
+#endif
+
     if (!load_properties_from_file("/system/etc/prop.default", NULL)) {
         // Try recovery path
         if (!load_properties_from_file("/prop.default", NULL)) {
@@ -767,6 +777,10 @@ void load_recovery_id_prop() {
 }
 
 void load_system_props() {
+#ifdef JOURNEY_FEATURE_SYSTEM_ENHANCED
+    load_properties_from_file("/system/etc/init/journey/journey.build.prop", NULL);
+    load_properties_from_file("/vendor/etc/init/journey/journey.build.vendor.prop", NULL);
+#endif
     load_properties_from_file("/system/build.prop", NULL);
     load_properties_from_file("/odm/build.prop", NULL);
     load_properties_from_file("/vendor/build.prop", NULL);
