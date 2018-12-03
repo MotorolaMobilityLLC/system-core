@@ -278,6 +278,7 @@ namespace.default.asan.permitted.paths +=           /vendor
 
 namespace.default.links = system,vndk
 namespace.default.link.system.shared_libs = %LLNDK_LIBRARIES%
+namespace.default.link.system.shared_libs += libstdc++.so
 namespace.default.link.vndk.shared_libs  = %VNDK_SAMEPROCESS_LIBRARIES%
 namespace.default.link.vndk.shared_libs += %VNDK_CORE_LIBRARIES%
 
