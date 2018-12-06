@@ -120,6 +120,7 @@ subsystem sound
 /dev/mtp_usb              0660   root       mtp
 /dev/usb_accessory        0660   root       usb
 /dev/tun                  0660   system     vpn
+/dev/focaltech_fp         0660   system     system
 
 # CDMA radio interface MUX
 /dev/ts0710mux*           0640   radio      radio
