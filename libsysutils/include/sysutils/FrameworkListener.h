@@ -38,13 +38,13 @@ public:
     FrameworkListener(const char *socketName);
     FrameworkListener(const char *socketName, bool withSeq);
     FrameworkListener(int sock);
-    ~FrameworkListener() override {}
+    virtual ~FrameworkListener() {}
 
-  protected:
+protected:
     void registerCmd(FrameworkCommand *cmd);
-    bool onDataAvailable(SocketClient* c) override;
+    virtual bool onDataAvailable(SocketClient *c);
 
-  private:
+private:
     void dispatchCommand(SocketClient *c, char *data);
     void init(const char *socketName, bool withSeq);
 };
