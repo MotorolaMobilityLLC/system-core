@@ -29,6 +29,7 @@ namespace android {
 namespace fs_mgr {
 
 bool GetDescriptorSize(int fd, uint64_t* size) {
+#if !defined(_WIN32)
     struct stat s;
     if (fstat(fd, &s) < 0) {
         PERROR << __PRETTY_FUNCTION__ << "fstat failed";
@@ -39,6 +40,7 @@ bool GetDescriptorSize(int fd, uint64_t* size) {
         *size = get_block_device_size(fd);
         return *size != 0;
     }
+#endif
 
     int64_t result = SeekFile64(fd, 0, SEEK_END);
     if (result == -1) {
@@ -142,6 +144,14 @@ bool UpdateBlockDevicePartitionName(LpMetadataBlockDevice* device, const std::st
         return false;
     }
     strncpy(device->partition_name, name.c_str(), sizeof(device->partition_name));
+    return true;
+}
+
+bool UpdatePartitionGroupName(LpMetadataPartitionGroup* group, const std::string& name) {
+    if (name.size() > sizeof(group->name)) {
+        return false;
+    }
+    strncpy(group->name, name.c_str(), sizeof(group->name));
     return true;
 }
 

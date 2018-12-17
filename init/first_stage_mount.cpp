@@ -30,8 +30,8 @@
 #include <android-base/file.h>
 #include <android-base/logging.h>
 #include <android-base/strings.h>
+#include <fs_avb/fs_avb.h>
 #include <fs_mgr.h>
-#include <fs_mgr_avb.h>
 #include <fs_mgr_dm_linear.h>
 #include <fs_mgr_overlayfs.h>
 #include <liblp/liblp.h>
@@ -43,6 +43,9 @@
 #include "util.h"
 
 using android::base::Timer;
+using android::fs_mgr::AvbHandle;
+using android::fs_mgr::AvbHashtreeResult;
+using android::fs_mgr::AvbUniquePtr;
 
 using namespace std::literals;
 
@@ -73,7 +76,7 @@ class FirstStageMount {
     bool GetDmLinearMetadataDevice();
     bool InitDmLinearBackingDevices(const android::fs_mgr::LpMetadata& metadata);
 
-    virtual ListenerAction UeventCallback(const Uevent& uevent);
+    ListenerAction UeventCallback(const Uevent& uevent);
 
     // Pure virtual functions.
     virtual bool GetDmVerityDevices() = 0;
@@ -108,14 +111,12 @@ class FirstStageMountVBootV2 : public FirstStageMount {
     ~FirstStageMountVBootV2() override = default;
 
   protected:
-    ListenerAction UeventCallback(const Uevent& uevent) override;
     bool GetDmVerityDevices() override;
     bool SetUpDmVerity(fstab_rec* fstab_rec) override;
     bool InitAvbHandle();
 
     std::string device_tree_vbmeta_parts_;
-    FsManagerAvbUniquePtr avb_handle_;
-    ByNameSymlinkMap by_name_symlink_map_;
+    AvbUniquePtr avb_handle_;
 };
 
 // Static Functions
@@ -451,7 +452,9 @@ bool FirstStageMountVBootV1::GetDmVerityDevices() {
     // Includes the partition names of fstab records and verity_loc_device (if any).
     // Notes that fstab_rec->blk_device has A/B suffix updated by fs_mgr when A/B is used.
     for (auto fstab_rec : mount_fstab_recs_) {
-        required_devices_partition_names_.emplace(basename(fstab_rec->blk_device));
+        if (!fs_mgr_is_logical(fstab_rec)) {
+            required_devices_partition_names_.emplace(basename(fstab_rec->blk_device));
+        }
     }
 
     if (!verity_loc_device.empty()) {
@@ -544,42 +547,15 @@ bool FirstStageMountVBootV2::GetDmVerityDevices() {
     return true;
 }
 
-ListenerAction FirstStageMountVBootV2::UeventCallback(const Uevent& uevent) {
-    // Check if this uevent corresponds to one of the required partitions and store its symlinks if
-    // so, in order to create FsManagerAvbHandle later.
-    // Note that the parent callback removes partitions from the list of required partitions
-    // as it finds them, so this must happen first.
-    if (!uevent.partition_name.empty() &&
-        required_devices_partition_names_.find(uevent.partition_name) !=
-                required_devices_partition_names_.end()) {
-        // GetBlockDeviceSymlinks() will return three symlinks at most, depending on
-        // the content of uevent. by-name symlink will be at [0] if uevent->partition_name
-        // is not empty. e.g.,
-        //   - /dev/block/platform/soc.0/f9824900.sdhci/by-name/modem
-        //   - /dev/block/platform/soc.0/f9824900.sdhci/mmcblk0p1
-        std::vector<std::string> links = device_handler_->GetBlockDeviceSymlinks(uevent);
-        if (!links.empty()) {
-            auto [it, inserted] = by_name_symlink_map_.emplace(uevent.partition_name, links[0]);
-            if (!inserted && (links[0] != it->second)) {
-                LOG(ERROR) << "Partition '" << uevent.partition_name
-                           << "' already existed in the by-name symlink map with a value of '"
-                           << it->second << "', new value '" << links[0] << "' will be ignored.";
-            }
-        }
-    }
-
-    return FirstStageMount::UeventCallback(uevent);
-}
-
 bool FirstStageMountVBootV2::SetUpDmVerity(fstab_rec* fstab_rec) {
     if (fs_mgr_is_avb(fstab_rec)) {
         if (!InitAvbHandle()) return false;
-        SetUpAvbHashtreeResult hashtree_result =
+        AvbHashtreeResult hashtree_result =
                 avb_handle_->SetUpAvbHashtree(fstab_rec, false /* wait_for_verity_dev */);
         switch (hashtree_result) {
-            case SetUpAvbHashtreeResult::kDisabled:
+            case AvbHashtreeResult::kDisabled:
                 return true;  // Returns true to mount the partition.
-            case SetUpAvbHashtreeResult::kSuccess:
+            case AvbHashtreeResult::kSuccess:
                 // The exact block device name (fstab_rec->blk_device) is changed to
                 // "/dev/block/dm-XX". Needs to create it because ueventd isn't started in init
                 // first stage.
@@ -594,16 +570,10 @@ bool FirstStageMountVBootV2::SetUpDmVerity(fstab_rec* fstab_rec) {
 bool FirstStageMountVBootV2::InitAvbHandle() {
     if (avb_handle_) return true;  // Returns true if the handle is already initialized.
 
-    if (by_name_symlink_map_.empty()) {
-        LOG(ERROR) << "by_name_symlink_map_ is empty";
-        return false;
-    }
-
-    avb_handle_ = FsManagerAvbHandle::Open(std::move(by_name_symlink_map_));
-    by_name_symlink_map_.clear();  // Removes all elements after the above std::move().
+    avb_handle_ = AvbHandle::Open();
 
     if (!avb_handle_) {
-        PLOG(ERROR) << "Failed to open FsManagerAvbHandle";
+        PLOG(ERROR) << "Failed to open AvbHandle";
         return false;
     }
     // Sets INIT_AVB_VERSION here for init to set ro.boot.avb_version in the second stage.
@@ -640,7 +610,7 @@ void SetInitAvbVersionInRecovery() {
         return;
     }
 
-    // Initializes required devices for the subsequent FsManagerAvbHandle::Open()
+    // Initializes required devices for the subsequent AvbHandle::Open()
     // to verify AVB metadata on all partitions in the verified chain.
     // We only set INIT_AVB_VERSION when the AVB verification succeeds, i.e., the
     // Open() function returns a valid handle.
@@ -651,10 +621,9 @@ void SetInitAvbVersionInRecovery() {
         return;
     }
 
-    FsManagerAvbUniquePtr avb_handle =
-            FsManagerAvbHandle::Open(std::move(avb_first_mount.by_name_symlink_map_));
+    AvbUniquePtr avb_handle = AvbHandle::Open();
     if (!avb_handle) {
-        PLOG(ERROR) << "Failed to open FsManagerAvbHandle for INIT_AVB_VERSION";
+        PLOG(ERROR) << "Failed to open AvbHandle for INIT_AVB_VERSION";
         return;
     }
     setenv("INIT_AVB_VERSION", avb_handle->avb_version().c_str(), 1);
