@@ -978,13 +978,9 @@ int fs_mgr_mount_all(fstab* fstab, int mount_mode) {
     int mount_errno = 0;
     int attempted_idx = -1;
     CheckpointManager checkpoint_manager;
-<<<<<<< HEAD
-    FsManagerAvbUniquePtr avb_handle(nullptr);
     char propbuf[PROPERTY_VALUE_MAX];
     bool is_ffbm = false;
-=======
     AvbUniquePtr avb_handle(nullptr);
->>>>>>> d796ef75878b6522c8054c2dd51392eecefdde63
 
     if (!fstab) {
         return FS_MGR_MNTALL_FAIL;
