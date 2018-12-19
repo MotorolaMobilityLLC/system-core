@@ -51,6 +51,7 @@ enum mount_mode {
 typedef void (*fs_mgr_verity_state_callback)(struct fstab_rec *fstab,
         const char *mount_point, int mode, int status);
 
+#define FS_MGR_MNTALL_DEV_NEEDS_RECOVERY_WIPE_PROMPT 8
 #define FS_MGR_MNTALL_DEV_IS_METADATA_ENCRYPTED 7
 #define FS_MGR_MNTALL_DEV_NEEDS_METADATA_ENCRYPTION 6
 #define FS_MGR_MNTALL_DEV_FILE_ENCRYPTED 5
