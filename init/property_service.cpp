@@ -434,6 +434,14 @@ bool CheckControlPropertyPerms(const std::string& name, const std::string& value
 // This returns one of the enum of PROP_SUCCESS or PROP_ERROR*.
 uint32_t HandlePropertySet(const std::string& name, const std::string& value,
                            const std::string& source_context, const ucred& cr, std::string* error) {
+#ifdef JOURNEY_DEBUG_ENHANCED
+    if(cr.pid != 1) { // dont care init process
+        LOG(INFO) << "set property " << name << "='" << value << "' from pid: " << cr.pid << " uid: " << cr.uid;
+    } else {
+        //LOG(INFO) << "set property from init " << prop_name << "='" << prop_value << "' from pid: " << cr.pid << " uid: " << cr.uid;
+    }
+#endif
+
     if (!IsLegalPropertyName(name)) {
         *error = "Illegal property name";
         return PROP_ERROR_INVALID_NAME;
