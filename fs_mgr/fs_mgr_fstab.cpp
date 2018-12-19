@@ -57,7 +57,7 @@ struct fs_mgr_flag_values {
 
 struct flag_list {
     const char *name;
-    int flag;
+    unsigned int flag;
 };
 
 static struct flag_list mount_flags[] = {
