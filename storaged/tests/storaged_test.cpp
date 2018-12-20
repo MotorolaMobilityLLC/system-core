@@ -630,8 +630,10 @@ TEST(storaged_test, uid_monitor) {
 
 TEST(storaged_test, load_uid_io_proto) {
     uid_monitor uidm;
+    auto& io_history = uidm.io_history();
 
-    uidm.io_history_[200] = {
+    static const uint64_t kProtoTime = 200;
+    io_history[kProtoTime] = {
         .start_ts = 100,
         .entries = {
             { "app1", {

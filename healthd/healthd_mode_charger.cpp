@@ -75,7 +75,6 @@ char* locale;
 #define UNPLUGGED_DISPLAY_TIME (3 * MSEC_PER_SEC)
 
 #define LAST_KMSG_MAX_SZ (32 * 1024)
-#define BACKLIGHT_TOGGLE_PATH "/sys/class/backlight/panel0-backlight/brightness"
 
 #define LOGE(x...) KLOG_ERROR("charger", x);
 #define LOGW(x...) KLOG_WARNING("charger", x);
@@ -189,33 +188,6 @@ static healthd_config* healthd_config;
 static android::BatteryProperties* batt_prop;
 static std::unique_ptr<HealthdDraw> healthd_draw;
 
-/* On certain targets the FBIOBLANK ioctl does not turn off the
- * backlight. In those cases we need to manually toggle it on/off
- */
-static int set_backlight(int toggle)
-{
-    int fd;
-    char buffer[10];
-
-    fd = open(BACKLIGHT_TOGGLE_PATH, O_RDWR);
-    if (fd < 0) {
-        LOGE("Could not open backlight node : %s", strerror(errno));
-        return 0;
-    }
-    if (toggle) {
-        LOGV("Enabling backlight");
-        snprintf(buffer, sizeof(int), "%d\n", 100);
-    } else {
-        LOGV("Disabling backlight");
-        snprintf(buffer, sizeof(int), "%d\n", 0);
-    }
-    if (write(fd, buffer, strlen(buffer)) < 0) {
-        LOGE("Could not write to backlight node : %s", strerror(errno));
-    }
-    close(fd);
-    return 0;
-}
-
 /* current time in milliseconds */
 static int64_t curr_time_ms() {
     timespec tm;
@@ -322,7 +294,6 @@ static void update_screen_state(charger* charger, int64_t now) {
         healthd_draw.reset(new HealthdDraw(batt_anim));
 
 #ifndef CHARGER_DISABLE_INIT_BLANK
-        set_backlight(false);
         healthd_draw->blank_screen(true);
         charger->screen_blanked = true;
 #endif
@@ -332,7 +303,6 @@ static void update_screen_state(charger* charger, int64_t now) {
     if (batt_anim->num_cycles > 0 && batt_anim->cur_cycle == batt_anim->num_cycles) {
         reset_animation(batt_anim);
         charger->next_screen_transition = -1;
-        set_backlight(false);
         healthd_draw->blank_screen(true);
         charger->screen_blanked = true;
         LOGV("[%" PRId64 "] animation done\n", now);
@@ -343,10 +313,7 @@ static void update_screen_state(charger* charger, int64_t now) {
     disp_time = batt_anim->frames[batt_anim->cur_frame].disp_time;
 
     /* unblank the screen on first cycle and first frame */
-    if (batt_anim->cur_cycle == 0 && batt_anim->cur_frame == 0) {
-        healthd_draw->blank_screen(false);
-        set_backlight(true);
-    }
+    if (batt_anim->cur_cycle == 0 && batt_anim->cur_frame == 0) healthd_draw->blank_screen(false);
 
     if (charger->screen_blanked) {
         healthd_draw->blank_screen(false);
