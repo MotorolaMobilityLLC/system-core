@@ -64,6 +64,10 @@ bool is_android_dt_value_expected(const std::string& sub_path, const std::string
 
 bool IsLegalPropertyName(const std::string& name);
 
+#ifdef JOURNEY_FEATURE_DEBUG_MODE
+extern bool journey_debug_mode;
+#endif
+
 }  // namespace init
 }  // namespace android
 

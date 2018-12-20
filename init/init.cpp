@@ -566,6 +566,18 @@ void LoadRscRwProps() {
     load_properties_from_file (std::string("/system/" + rscpath + "rw.prop").c_str(), NULL);
     load_properties_from_file (std::string("/vendor/" + rscpath + "rw.prop").c_str(), NULL);
 }
+#ifdef JOURNEY_FEATURE_DEBUG_MODE
+bool journey_debug_mode = false;
+void initJourneyDebugeMode() {
+    std::string cmdline;
+    android::base::ReadFileToString("/proc/cmdline", &cmdline);
+
+    if(cmdline.find("androidboot.journey.debug=1") != std::string::npos) {
+        LOG(INFO) << "we are in journey_debug_mode now.";
+        journey_debug_mode = true;
+    }
+}
+#endif
 
 int main(int argc, char** argv) {
     if (!strcmp(basename(argv[0]), "ueventd")) {
@@ -631,6 +643,10 @@ int main(int argc, char** argv) {
         // Now that tmpfs is mounted on /dev and we have /dev/kmsg, we can actually
         // talk to the outside world...
         InitKernelLogging(argv);
+
+#ifdef JOURNEY_FEATURE_DEBUG_MODE
+        initJourneyDebugeMode();
+#endif
 
         LOG(INFO) << "init first stage started!";
 

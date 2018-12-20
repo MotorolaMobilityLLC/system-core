@@ -149,6 +149,12 @@ cc_library_static {
         type: "lite",
         export_proto_headers: true,
     },
+
+    product_variables: {
+        journey_feature_debug_mode: {
+            cflags: ["-DJOURNEY_FEATURE_DEBUG_MODE"],
+        },
+    },
 }
 
 /*

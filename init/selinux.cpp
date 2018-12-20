@@ -253,8 +253,11 @@ bool GetVendorMappingVersion(std::string* plat_vers) {
     }
     return true;
 }
-
+#ifdef JOURNEY_FEATURE_DEBUG_MODE
+constexpr const char plat_policy_journey_debug_mode_cil_file[] = "/system/etc/selinux/plat_sepolicy_journey_debug_mode.cil";
+#endif
 constexpr const char plat_policy_cil_file[] = "/system/etc/selinux/plat_sepolicy.cil";
+
 
 bool IsSplitPolicyDevice() {
     return access(plat_policy_cil_file, R_OK) != -1;
@@ -273,7 +276,11 @@ bool LoadSplitPolicy() {
     // Load precompiled policy from vendor image, if a matching policy is found there. The policy
     // must match the platform policy on the system image.
     std::string precompiled_sepolicy_file;
+#ifdef JOURNEY_FEATURE_DEBUG_MODE
+    if (!journey_debug_mode && FindPrecompiledSplitPolicy(&precompiled_sepolicy_file)) {
+#else
     if (FindPrecompiledSplitPolicy(&precompiled_sepolicy_file)) {
+#endif
         unique_fd fd(open(precompiled_sepolicy_file.c_str(), O_RDONLY | O_CLOEXEC | O_BINARY));
         if (fd != -1) {
             if (selinux_android_load_policy_from_fd(fd, precompiled_sepolicy_file.c_str()) < 0) {
@@ -332,11 +339,23 @@ bool LoadSplitPolicy() {
         odm_policy_cil_file.clear();
     }
     const std::string version_as_string = std::to_string(max_policy_version);
-
+#ifdef JOURNEY_FEATURE_DEBUG_MODE
+    std::string journey_plat_policy_cil_file;
+    if(journey_debug_mode) {
+        journey_plat_policy_cil_file = plat_policy_journey_debug_mode_cil_file;
+        LOG(INFO) << "plat_policy_cil_file change to " << journey_plat_policy_cil_file;
+    } else {
+        journey_plat_policy_cil_file = plat_policy_cil_file;
+    }
+#endif
     // clang-format off
     std::vector<const char*> compile_args {
         "/system/bin/secilc",
+#ifdef JOURNEY_FEATURE_DEBUG_MODE
+        journey_plat_policy_cil_file.c_str(),
+#else
         plat_policy_cil_file,
+#endif
         "-m", "-M", "true", "-G", "-N",
         // Target the highest policy language version supported by the kernel
         "-c", version_as_string.c_str(),
