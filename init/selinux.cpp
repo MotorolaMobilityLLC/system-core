@@ -89,13 +89,6 @@ EnforcingStatus StatusFromCmdline() {
 }
 
 bool IsEnforcing() {
-//TINNO BEGIN
-//WJ add for user version debug
-#ifdef TINNO_DEBUG_SUPPORT
-    LOG(INFO) << "TINNO_DEBUG_SUPPORT selinux_status_from_cmdline():" << StatusFromCmdline() << "SELINUX_ENFORCING:" << SELINUX_ENFORCING;
-	return StatusFromCmdline() == SELINUX_ENFORCING;
-#endif
-//TINNO END
     if (ALLOW_PERMISSIVE_SELINUX) {
         return StatusFromCmdline() == SELINUX_ENFORCING;
     }
@@ -253,6 +246,7 @@ bool GetVendorMappingVersion(std::string* plat_vers) {
     }
     return true;
 }
+
 #ifdef JOURNEY_FEATURE_DEBUG_MODE
 constexpr const char plat_policy_journey_debug_mode_cil_file[] = "/system/etc/selinux/plat_sepolicy_journey_debug_mode.cil";
 #endif

@@ -60,13 +60,13 @@ static bool should_drop_capabilities_bounding_set() {
 }
 
 static bool should_drop_privileges() {
-//TINNO BEGIN
-//WJ add for user version debug
-#ifdef TINNO_DEBUG_SUPPORT
-	std::string selinux_status = android::base::GetProperty("ro.boot.selinux", "");
-    return "permissive" != selinux_status;
+#ifdef JOURNEY_FEATURE_DEBUG_MODE
+    if(journey_debug_mode) {
+        LOG(INFO) << "reject drop privileges in journey debug mode.\n";
+        return false; // dont drop anything if we are in debug mode
+    }
 #endif
-//TINNO END
+
 #if defined(ALLOW_ADBD_ROOT)
     // The properties that affect `adb root` and `adb unroot` are ro.secure and
     // ro.debuggable. In this context the names don't make the expected behavior
@@ -178,6 +178,9 @@ static void setup_port(int port) {
     local_init(port);
     setup_mdns(port);
 }
+#ifdef JOURNEY_FEATURE_DEBUG_MODE
+bool journey_debug_mode = false;
+#endif
 
 int adbd_main(int server_port) {
     umask(0);
@@ -193,19 +196,16 @@ int adbd_main(int server_port) {
     if (ALLOW_ADBD_NO_AUTH && !android::base::GetBoolProperty("ro.adb.secure", false)) {
         auth_required = false;
     }
-//TINNO BEGIN
-//WJ add for user version debug
-#ifdef TINNO_DEBUG_SUPPORT
-    else{
-        std::string selinux_status = android::base::GetProperty("ro.boot.selinux", "");
-        if("permissive" == selinux_status){
-            android::base::SetProperty("persist.sys.tinno.adb.enable", "1");
-            android::base::SetProperty("persist.sys.usb.config", "mtp,adb");
-            auth_required = false;
-        }
+
+#ifdef JOURNEY_FEATURE_DEBUG_MODE
+    journey_debug_mode = android::base::GetBoolProperty("ro.boot.journey.debug", false);
+    if(journey_debug_mode){
+        LOG(INFO) << "adbd running in journey debug mode.\n";
+        android::base::SetProperty("persist.sys.usb.config", "adb"); // we only use this because mtp device is ready slowly in booting stage.
+        auth_required = false; // also we disable the auth feature , be casue maybe there is boot up failed issue.
     }
 #endif
-//TINNO END
+
     adbd_auth_init();
 
     // Our external storage path may be different than apps, since
