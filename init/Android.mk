@@ -36,15 +36,6 @@ init_cflags += \
     -Wno-unused-parameter \
     -Werror \
     -std=gnu++1z \
-# TINNO BEGIN
-# WJ add for user version debug
-ifeq ($(TINNO_DEBUG_SUPPORT),true)
-$(warning wangjian TINNO_DEBUG_SUPPORT=$(TINNO_DEBUG_SUPPORT))
-init_cflags += \
-    -DTINNO_DEBUG_SUPPORT
-endif
-# TINNO END
-# --
 
 include $(CLEAR_VARS)
 LOCAL_CPPFLAGS := $(init_cflags)
