@@ -492,6 +492,13 @@ on post-fs-data
     mkdir /data/gbfirmware 0770 mot_mod mot_mod
     mkdir /data/adspd 0770 audio diag
 
+    # For PAI
+    mkdir /data/preloads 0775 system system
+    mkdir /data/preloads/file_cache 0775 system system
+    mkdir /data/preloads/file_cache/com.android.vending 0775 system system
+    mkdir /data/preloads/media 0775 system system
+    mkdir /data/preloads/demo 0775 system system
+
     # create dalvik-cache, so as to enforce our permissions
     mkdir /data/dalvik-cache 0771 root root
     # create the A/B OTA directory, so as to enforce our permissions
