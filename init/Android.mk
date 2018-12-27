@@ -14,15 +14,15 @@ init_options += \
 else
 init_options += \
     -DALLOW_LOCAL_PROP_OVERRIDE=0 \
-    -DALLOW_PERMISSIVE_SELINUX=1 \
+    -DALLOW_PERMISSIVE_SELINUX=0 \
     -DREBOOT_BOOTLOADER_ON_PANIC=0 \
     -DDUMP_ON_UMOUNT_FAILURE=0
 
-ifeq ($(RADIO_SECURE),1)
-init_options += -DALLOW_PERMISSIVE_SELINUX=0
-else
-init_options += -DALLOW_PERMISSIVE_SELINUX=1
-endif
+#ifeq ($(RADIO_SECURE),1)
+#init_options += -DALLOW_PERMISSIVE_SELINUX=0
+#else
+#init_options += -DALLOW_PERMISSIVE_SELINUX=1
+#endif
 endif
 
 ifneq (,$(filter eng,$(TARGET_BUILD_VARIANT)))
