@@ -60,6 +60,40 @@
 using namespace std::chrono_literals;
 #endif
 
+#ifdef JOURNEY_FEATURE_DEBUG_MODE
+//adbd only allow static lib , so we copy some time function from libutil to local
+#include <time.h>
+
+typedef int64_t nsecs_t;       // nano-seconds
+
+static inline nsecs_t nanoseconds_to_milliseconds(nsecs_t secs)
+{
+    return secs/1000000;
+}
+static  inline nsecs_t seconds_to_nanoseconds(nsecs_t secs)
+{
+    return secs*1000000000;
+}
+
+int64_t elapsedRealtimeNano()
+{
+    struct timespec ts;
+    int err = clock_gettime(CLOCK_BOOTTIME, &ts);
+    if (CC_UNLIKELY(err)) {
+        // This should never happen, but just in case ...
+        ALOGE("clock_gettime(CLOCK_BOOTTIME) failed: %s", strerror(errno));
+        return 0;
+    }
+
+    return seconds_to_nanoseconds(ts.tv_sec) + ts.tv_nsec;
+}
+int64_t getElapsedRealtime()
+{
+	return nanoseconds_to_milliseconds(elapsedRealtimeNano());
+}
+
+#endif
+
 std::string adb_version() {
     // Don't change the format of this --- it's parsed by ddmlib.
     return android::base::StringPrintf(
@@ -328,6 +362,19 @@ static void handle_new_connection(atransport* t, apacket* p) {
 #if ADB_HOST
     handle_online(t);
 #else
+#ifdef JOURNEY_FEATURE_DEBUG_MODE
+    std::string journey_debug_mode_support = android::base::GetProperty("ro.boot.journey.debug", "");
+    bool boot_completed = android::base::GetBoolProperty("sys.boot_completed", false);
+    LOG(INFO) << "adbd handle_new_connection journey_debug_mode_support " << journey_debug_mode_support << " boot_completed " << boot_completed;
+    if(!boot_completed && !journey_debug_mode_support.empty()) {
+        int64_t elapsedRealtime = getElapsedRealtime();
+        if(elapsedRealtime > 180 * 1000 && elapsedRealtime > 0) {
+            LOG(INFO) << "adbd running in journey support debug mode. but still not boot complete after " << elapsedRealtime << "ms. so we disable the auth_required and open adb";
+            android::base::SetProperty("sys.usb.config", "adb");
+            auth_required = false;
+        }
+    }
+#endif
     if (!auth_required) {
         handle_online(t);
         send_connect(t);

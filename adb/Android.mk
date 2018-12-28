@@ -142,6 +142,10 @@ LOCAL_STATIC_LIBRARIES := libcrypto_utils libcrypto libqemu_pipe libbase
 
 LOCAL_WHOLE_STATIC_LIBRARIES := libadbd_usb
 
+ifeq ($(JOURNEY_FEATURE_DEBUG_MODE), yes)
+LOCAL_CFLAGS += -DJOURNEY_FEATURE_DEBUG_MODE
+endif
+
 include $(BUILD_STATIC_LIBRARY)
 
 include $(CLEAR_VARS)
@@ -351,20 +355,6 @@ LOCAL_CFLAGS += -DALLOW_ADBD_DISABLE_VERITY=1
 LOCAL_CFLAGS += -DALLOW_ADBD_ROOT=1
 endif
 
-
-ifeq ($(JOURNEY_FEATURE_DEBUG_MODE), yes)
-LOCAL_CFLAGS += -DJOURNEY_FEATURE_DEBUG_MODE
-endif
-
-# TINNO BEGIN
-# WJ add for user version debug
-ifneq (,$(filter user,$(TARGET_BUILD_VARIANT)))
-ifeq (true, $(strip $(TINNO_DEBUG_SUPPORT)))
-LOCAL_CFLAGS += -DTINNO_DEBUG_SUPPORT
-endif
-endif
-# TINNO END
-
 LOCAL_MODULE := adbd
 
 LOCAL_FORCE_STATIC_EXECUTABLE := true
@@ -393,6 +383,9 @@ LOCAL_STATIC_LIBRARIES := \
     libmdnssd \
     libdebuggerd_handler \
 
+ifeq ($(JOURNEY_FEATURE_DEBUG_MODE), yes)
+LOCAL_CFLAGS += -DJOURNEY_FEATURE_DEBUG_MODE
+endif
 include $(BUILD_EXECUTABLE)
 
 # adb integration test
