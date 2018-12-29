@@ -364,6 +364,7 @@ static bool is_debuggerd_register_signal(int signo) {
 
 int main(int argc, char** argv) {
   DefuseSignalHandlers();
+  signal(SIGPIPE, SIG_IGN);
 
   atrace_begin(ATRACE_TAG, "before reparent");
   pid_t target_process = getppid();
