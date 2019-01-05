@@ -622,6 +622,7 @@ TEST(liblp, AutoSlotSuffixing) {
     unique_ptr<MetadataBuilder> builder = CreateDefaultBuilder();
     ASSERT_NE(builder, nullptr);
     ASSERT_TRUE(AddDefaultPartitions(builder.get()));
+    ASSERT_TRUE(builder->AddGroup("example", 0));
     builder->SetAutoSlotSuffixing();
 
     auto fd = CreateFakeDisk();
@@ -641,6 +642,11 @@ TEST(liblp, AutoSlotSuffixing) {
     EXPECT_EQ(GetPartitionName(metadata->partitions[0]), "system_b");
     ASSERT_EQ(metadata->block_devices.size(), static_cast<size_t>(1));
     EXPECT_EQ(GetBlockDevicePartitionName(metadata->block_devices[0]), "super_b");
+    ASSERT_EQ(metadata->groups.size(), static_cast<size_t>(2));
+    EXPECT_EQ(GetPartitionGroupName(metadata->groups[0]), "default");
+    EXPECT_EQ(GetPartitionGroupName(metadata->groups[1]), "example_b");
+    EXPECT_EQ(metadata->groups[0].flags, 0);
+    EXPECT_EQ(metadata->groups[1].flags, 0);
 
     metadata = ReadMetadata(opener, "super_a", 0);
     ASSERT_NE(metadata, nullptr);
@@ -648,12 +654,18 @@ TEST(liblp, AutoSlotSuffixing) {
     EXPECT_EQ(GetPartitionName(metadata->partitions[0]), "system_a");
     ASSERT_EQ(metadata->block_devices.size(), static_cast<size_t>(1));
     EXPECT_EQ(GetBlockDevicePartitionName(metadata->block_devices[0]), "super_a");
+    ASSERT_EQ(metadata->groups.size(), static_cast<size_t>(2));
+    EXPECT_EQ(GetPartitionGroupName(metadata->groups[0]), "default");
+    EXPECT_EQ(GetPartitionGroupName(metadata->groups[1]), "example_a");
+    EXPECT_EQ(metadata->groups[0].flags, 0);
+    EXPECT_EQ(metadata->groups[1].flags, 0);
 }
 
 TEST(liblp, UpdateRetrofit) {
     unique_ptr<MetadataBuilder> builder = CreateDefaultBuilder();
     ASSERT_NE(builder, nullptr);
     ASSERT_TRUE(AddDefaultPartitions(builder.get()));
+    ASSERT_TRUE(builder->AddGroup("example", 0));
     builder->SetAutoSlotSuffixing();
 
     auto fd = CreateFakeDisk();
@@ -671,9 +683,11 @@ TEST(liblp, UpdateRetrofit) {
     ASSERT_NE(builder, nullptr);
     auto updated = builder->Export();
     ASSERT_NE(updated, nullptr);
-    ASSERT_EQ(updated->block_devices.size(), static_cast<size_t>(2));
-    EXPECT_EQ(GetBlockDevicePartitionName(updated->block_devices[0]), "super_a");
-    EXPECT_EQ(GetBlockDevicePartitionName(updated->block_devices[1]), "super_b");
+    ASSERT_EQ(updated->block_devices.size(), static_cast<size_t>(1));
+    EXPECT_EQ(GetBlockDevicePartitionName(updated->block_devices[0]), "super_b");
+    ASSERT_TRUE(updated->groups.empty());
+    ASSERT_TRUE(updated->partitions.empty());
+    ASSERT_TRUE(updated->extents.empty());
 }
 
 TEST(liblp, UpdateNonRetrofit) {

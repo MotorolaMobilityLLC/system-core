@@ -42,17 +42,17 @@ struct fs_mgr_flag_values {
     char* key_dir;
     char *verity_loc;
     char *sysfs_path;
-    long long part_length;
+    off64_t part_length;
     char *label;
     int partnum;
     int swap_prio;
     int max_comp_streams;
-    unsigned int zram_size;
-    uint64_t reserved_size;
-    unsigned int file_contents_mode;
-    unsigned int file_names_mode;
-    unsigned int erase_blk_size;
-    unsigned int logical_blk_size;
+    off64_t zram_size;
+    off64_t reserved_size;
+    int file_contents_mode;
+    int file_names_mode;
+    off64_t erase_blk_size;
+    off64_t logical_blk_size;
 };
 
 struct flag_list {
@@ -134,9 +134,8 @@ static const struct flag_list file_names_encryption_modes[] = {
     {0, 0},
 };
 
-static unsigned int encryption_mode_to_flag(const struct flag_list *list,
-                                            const char *mode, const char *type)
-{
+static int encryption_mode_to_flag(const struct flag_list* list, const char* mode,
+                                   const char* type) {
     const struct flag_list *j;
 
     for (j = list; j->name; ++j) {
@@ -148,9 +147,7 @@ static unsigned int encryption_mode_to_flag(const struct flag_list *list,
     return 0;
 }
 
-static const char *flag_to_encryption_mode(const struct flag_list *list,
-                                           unsigned int flag)
-{
+static const char* flag_to_encryption_mode(const struct flag_list* list, int flag) {
     const struct flag_list *j;
 
     for (j = list; j->name; ++j) {
@@ -161,9 +158,8 @@ static const char *flag_to_encryption_mode(const struct flag_list *list,
     return nullptr;
 }
 
-static uint64_t calculate_zram_size(unsigned int percentage)
-{
-    uint64_t total;
+static off64_t calculate_zram_size(unsigned int percentage) {
+    off64_t total;
 
     total  = sysconf(_SC_PHYS_PAGES);
     total *= percentage;
@@ -174,10 +170,9 @@ static uint64_t calculate_zram_size(unsigned int percentage)
     return total;
 }
 
-static uint64_t parse_size(const char *arg)
-{
+static off64_t parse_size(const char* arg) {
     char *endptr;
-    uint64_t size = strtoull(arg, &endptr, 10);
+    off64_t size = strtoll(arg, &endptr, 10);
     if (*endptr == 'k' || *endptr == 'K')
         size *= 1024LL;
     else if (*endptr == 'm' || *endptr == 'M')
@@ -340,7 +335,7 @@ static int parse_flags(char *flags, struct flag_list *fl,
                      * erase block size. Get it, check that it is a power of 2 and
                      * at least 4096, and return it.
                      */
-                    auto val = strtoul(arg, NULL, 0);
+                    auto val = strtoll(arg, nullptr, 0);
                     if (val >= 4096 && (val & (val - 1)) == 0)
                         flag_vals->erase_blk_size = val;
                 } else if (flag == MF_LOGICALBLKSIZE) {
@@ -348,7 +343,7 @@ static int parse_flags(char *flags, struct flag_list *fl,
                      * logical block size. Get it, check that it is a power of 2 and
                      * at least 4096, and return it.
                      */
-                    auto val = strtoul(arg, NULL, 0);
+                    auto val = strtoll(arg, nullptr, 0);
                     if (val >= 4096 && (val & (val - 1)) == 0)
                         flag_vals->logical_blk_size = val;
                 } else if (flag == MF_SYSFS) {

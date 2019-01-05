@@ -22,7 +22,7 @@
  * SOFTWARE.
  */
 
-#include "fs_mgr_priv_avb_ops.h"
+#include "avb_ops.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -37,13 +37,17 @@
 #include <libavb/libavb.h>
 #include <utils/Compat.h>
 
-#include "fs_mgr.h"
 #include "fs_mgr_priv.h"
+
+using namespace std::literals;
+
+namespace android {
+namespace fs_mgr {
 
 static AvbIOResult read_from_partition(AvbOps* ops, const char* partition, int64_t offset,
                                        size_t num_bytes, void* buffer, size_t* out_num_read) {
     return FsManagerAvbOps::GetInstanceFromAvbOps(ops)->ReadFromPartition(
-        partition, offset, num_bytes, buffer, out_num_read);
+            partition, offset, num_bytes, buffer, out_num_read);
 }
 
 static AvbIOResult dummy_read_rollback_index(AvbOps* ops ATTRIBUTE_UNUSED,
@@ -56,9 +60,10 @@ static AvbIOResult dummy_read_rollback_index(AvbOps* ops ATTRIBUTE_UNUSED,
 }
 
 static AvbIOResult dummy_validate_vbmeta_public_key(
-    AvbOps* ops ATTRIBUTE_UNUSED, const uint8_t* public_key_data ATTRIBUTE_UNUSED,
-    size_t public_key_length ATTRIBUTE_UNUSED, const uint8_t* public_key_metadata ATTRIBUTE_UNUSED,
-    size_t public_key_metadata_length ATTRIBUTE_UNUSED, bool* out_is_trusted) {
+        AvbOps* ops ATTRIBUTE_UNUSED, const uint8_t* public_key_data ATTRIBUTE_UNUSED,
+        size_t public_key_length ATTRIBUTE_UNUSED,
+        const uint8_t* public_key_metadata ATTRIBUTE_UNUSED,
+        size_t public_key_metadata_length ATTRIBUTE_UNUSED, bool* out_is_trusted) {
     // vbmeta public key has been checked in bootloader phase.
     // In user-space, returns true to pass the check.
     //
@@ -98,7 +103,7 @@ static AvbIOResult dummy_get_size_of_partition(AvbOps* ops ATTRIBUTE_UNUSED,
     return AVB_IO_RESULT_OK;
 }
 
-void FsManagerAvbOps::InitializeAvbOps() {
+FsManagerAvbOps::FsManagerAvbOps() {
     // We only need to provide the implementation of read_from_partition()
     // operation since that's all what is being used by the avb_slot_verify().
     // Other I/O operations are only required in bootloader but not in
@@ -116,31 +121,10 @@ void FsManagerAvbOps::InitializeAvbOps() {
     avb_ops_.user_data = this;
 }
 
-FsManagerAvbOps::FsManagerAvbOps(std::map<std::string, std::string>&& by_name_symlink_map)
-    : by_name_symlink_map_(std::move(by_name_symlink_map)) {
-    InitializeAvbOps();
-}
-
-FsManagerAvbOps::FsManagerAvbOps(const fstab& fstab) {
-    // Constructs the by-name symlink map for each fstab record.
-    // /dev/block/platform/soc.0/7824900.sdhci/by-name/system_a =>
-    // by_name_symlink_map_["system_a"] = "/dev/block/platform/soc.0/7824900.sdhci/by-name/system_a"
-    for (int i = 0; i < fstab.num_entries; i++) {
-        std::string partition_name = basename(fstab.recs[i].blk_device);
-        by_name_symlink_map_[partition_name] = fstab.recs[i].blk_device;
-    }
-    InitializeAvbOps();
-}
-
 AvbIOResult FsManagerAvbOps::ReadFromPartition(const char* partition, int64_t offset,
                                                size_t num_bytes, void* buffer,
                                                size_t* out_num_read) {
-    const auto iter = by_name_symlink_map_.find(partition);
-    if (iter == by_name_symlink_map_.end()) {
-        LERROR << "by-name symlink not found for partition: '" << partition << "'";
-        return AVB_IO_RESULT_ERROR_NO_SUCH_PARTITION;
-    }
-    std::string path = iter->second;
+    const std::string path = "/dev/block/by-name/"s + partition;
 
     // Ensures the device path (a symlink created by init) is ready to access.
     if (!fs_mgr_wait_for_file(path, 1s)) {
@@ -197,3 +181,6 @@ AvbSlotVerifyResult FsManagerAvbOps::AvbSlotVerify(const std::string& ab_suffix,
     return avb_slot_verify(&avb_ops_, requested_partitions, ab_suffix.c_str(), flags,
                            AVB_HASHTREE_ERROR_MODE_RESTART_AND_INVALIDATE, out_data);
 }
+
+}  // namespace fs_mgr
+}  // namespace android
