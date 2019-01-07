@@ -269,7 +269,7 @@ TEST_F(ElfTest, rel_pc) {
   elf.FakeSetInterface(interface);
 
   elf.FakeSetValid(true);
-  MapInfo map_info(nullptr, 0x1000, 0x2000);
+  MapInfo map_info(nullptr, 0x1000, 0x2000, 0, 0, "");
 
   ASSERT_EQ(0x101U, elf.GetRelPc(0x1101, &map_info));
 
@@ -311,6 +311,7 @@ class ElfInterfaceMock : public ElfInterface {
   void InitHeaders(uint64_t) override {}
   bool GetSoname(std::string*) override { return false; }
   bool GetFunctionName(uint64_t, std::string*, uint64_t*) override { return false; }
+  bool GetBuildID(std::string*) override { return false; }
 
   MOCK_METHOD4(Step, bool(uint64_t, Regs*, Memory*, bool*));
   MOCK_METHOD2(GetGlobalVariable, bool(const std::string&, uint64_t*));

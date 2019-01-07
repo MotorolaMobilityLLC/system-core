@@ -103,7 +103,7 @@ bool dev_is_overlayfs(const std::string& dev) {
 
 bool make_block_device_writable(const std::string& dev) {
     if (dev_is_overlayfs(dev)) return true;
-    int fd = unix_open(dev.c_str(), O_RDONLY | O_CLOEXEC);
+    int fd = unix_open(dev, O_RDONLY | O_CLOEXEC);
     if (fd == -1) {
         return false;
     }
@@ -245,9 +245,8 @@ void remount_service(unique_fd fd, const std::string& cmd) {
     // If we can use overlayfs, lets get it in place first
     // before we struggle with determining deduplication operations.
     if (!verity_enabled && fs_mgr_overlayfs_setup()) {
-        std::unique_ptr<fstab, decltype(&fs_mgr_free_fstab)> fstab(fs_mgr_read_fstab_default(),
-                                                                   fs_mgr_free_fstab);
-        if (fs_mgr_overlayfs_mount_all(fstab.get())) {
+        Fstab fstab;
+        if (ReadDefaultFstab(&fstab) && fs_mgr_overlayfs_mount_all(&fstab)) {
             WriteFdExactly(fd.get(), "overlayfs mounted\n");
         }
     }

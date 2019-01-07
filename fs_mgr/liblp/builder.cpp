@@ -212,7 +212,7 @@ void MetadataBuilder::OverrideABForTesting(bool ab_device) {
     sABOverrideValue = ab_device;
 }
 
-MetadataBuilder::MetadataBuilder() : auto_slot_suffixing_(false) {
+MetadataBuilder::MetadataBuilder() : auto_slot_suffixing_(false), ignore_slot_suffixing_(false) {
     memset(&geometry_, 0, sizeof(geometry_));
     geometry_.magic = LP_METADATA_GEOMETRY_MAGIC;
     geometry_.struct_size = sizeof(geometry_);
@@ -436,7 +436,7 @@ Partition* MetadataBuilder::AddPartition(const std::string& name, const std::str
         LERROR << "Could not find partition group: " << group_name;
         return nullptr;
     }
-    if (IsABDevice() && !auto_slot_suffixing_ && name != "scratch" &&
+    if (IsABDevice() && !auto_slot_suffixing_ && name != "scratch" && !ignore_slot_suffixing_ &&
         GetPartitionSlotSuffix(name).empty()) {
         LERROR << "Unsuffixed partition not allowed on A/B device: " << name;
         return nullptr;
@@ -578,6 +578,12 @@ bool MetadataBuilder::GrowPartition(Partition* partition, uint64_t aligned_size)
     CHECK_NE(sectors_per_block, 0);
     CHECK(sectors_needed % sectors_per_block == 0);
 
+    if (IsABDevice() && !IsRetrofitDevice() && GetPartitionSlotSuffix(partition->name()) == "_b") {
+        // Allocate "a" partitions top-down and "b" partitions bottom-up, to
+        // minimize fragmentation during OTA.
+        free_regions = PrioritizeSecondHalfOfSuper(free_regions);
+    }
+
     // Find gaps that we can use for new extents. Note we store new extents in a
     // temporary vector, and only commit them if we are guaranteed enough free
     // space.
@@ -600,14 +606,23 @@ bool MetadataBuilder::GrowPartition(Partition* partition, uint64_t aligned_size)
         }
 
         uint64_t sectors = std::min(sectors_needed, region.length());
+        if (sectors < region.length()) {
+            const auto& block_device = block_devices_[region.device_index];
+            if (block_device.alignment) {
+                const uint64_t alignment = block_device.alignment / LP_SECTOR_SIZE;
+                sectors = AlignTo(sectors, alignment);
+                sectors = std::min(sectors, region.length());
+            }
+        }
         CHECK(sectors % sectors_per_block == 0);
 
         auto extent = std::make_unique<LinearExtent>(sectors, region.device_index, region.start);
         new_extents.push_back(std::move(extent));
-        sectors_needed -= sectors;
-        if (!sectors_needed) {
+        if (sectors >= sectors_needed) {
+            sectors_needed = 0;
             break;
         }
+        sectors_needed -= sectors;
     }
     if (sectors_needed) {
         LERROR << "Not enough free space to expand partition: " << partition->name();
@@ -619,6 +634,40 @@ bool MetadataBuilder::GrowPartition(Partition* partition, uint64_t aligned_size)
         partition->AddExtent(std::move(extent));
     }
     return true;
+}
+
+std::vector<MetadataBuilder::Interval> MetadataBuilder::PrioritizeSecondHalfOfSuper(
+        const std::vector<Interval>& free_list) {
+    const auto& super = block_devices_[0];
+    uint64_t first_sector = super.first_logical_sector;
+    uint64_t last_sector = super.size / LP_SECTOR_SIZE;
+    uint64_t midpoint = first_sector + (last_sector - first_sector) / 2;
+
+    // Choose an aligned sector for the midpoint. This could lead to one half
+    // being slightly larger than the other, but this will not restrict the
+    // size of partitions (it might lead to one extra extent if "B" overflows).
+    midpoint = AlignSector(super, midpoint);
+
+    std::vector<Interval> first_half;
+    std::vector<Interval> second_half;
+    for (const auto& region : free_list) {
+        // Note: deprioritze if not the main super partition. Even though we
+        // don't call this for retrofit devices, we will allow adding additional
+        // block devices on non-retrofit devices.
+        if (region.device_index != 0 || region.end <= midpoint) {
+            first_half.emplace_back(region);
+            continue;
+        }
+        if (region.start < midpoint && region.end > midpoint) {
+            // Split this into two regions.
+            first_half.emplace_back(region.device_index, region.start, midpoint);
+            second_half.emplace_back(region.device_index, midpoint, region.end);
+        } else {
+            second_half.emplace_back(region);
+        }
+    }
+    second_half.insert(second_half.end(), first_half.begin(), first_half.end());
+    return second_half;
 }
 
 void MetadataBuilder::ShrinkPartition(Partition* partition, uint64_t aligned_size) {
@@ -923,11 +972,32 @@ void MetadataBuilder::SetAutoSlotSuffixing() {
     auto_slot_suffixing_ = true;
 }
 
+void MetadataBuilder::IgnoreSlotSuffixing() {
+    ignore_slot_suffixing_ = true;
+}
+
 bool MetadataBuilder::IsABDevice() const {
     if (sABOverrideSet) {
         return sABOverrideValue;
     }
     return android::base::GetBoolProperty("ro.build.ab_update", false);
+}
+
+bool MetadataBuilder::IsRetrofitDevice() const {
+    return GetBlockDevicePartitionName(block_devices_[0]) != LP_METADATA_DEFAULT_PARTITION_NAME;
+}
+
+bool MetadataBuilder::AddLinearExtent(Partition* partition, const std::string& block_device,
+                                      uint64_t num_sectors, uint64_t physical_sector) {
+    uint32_t device_index;
+    if (!FindBlockDeviceByName(block_device, &device_index)) {
+        LERROR << "Could not find backing block device for extent: " << block_device;
+        return false;
+    }
+
+    auto extent = std::make_unique<LinearExtent>(num_sectors, device_index, physical_sector);
+    partition->AddExtent(std::move(extent));
+    return true;
 }
 
 }  // namespace fs_mgr

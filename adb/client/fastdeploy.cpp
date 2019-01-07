@@ -16,6 +16,7 @@
 
 #include "fastdeploy.h"
 
+#include <string.h>
 #include <algorithm>
 #include <array>
 #include <memory>
@@ -31,7 +32,7 @@
 
 #include "adb_utils.h"
 
-static constexpr long kRequiredAgentVersion = 0x00000001;
+static constexpr long kRequiredAgentVersion = 0x00000002;
 
 static constexpr const char* kDeviceAgentPath = "/data/local/tmp/";
 
@@ -228,11 +229,12 @@ void extract_metadata(const char* apkPath, FILE* outputFp) {
             android::base::StringPrintf(kAgentExtractCommandPattern, packageName.c_str());
 
     std::vector<char> extractErrorBuffer;
-    int statusCode;
-    DeployAgentFileCallback cb(outputFp, &extractErrorBuffer, &statusCode);
+    DeployAgentFileCallback cb(outputFp, &extractErrorBuffer);
     int returnCode = send_shell_command(extractCommand, false, &cb);
     if (returnCode != 0) {
-        error_exit("Executing %s returned %d", extractCommand.c_str(), returnCode);
+        fprintf(stderr, "Executing %s returned %d\n", extractCommand.c_str(), returnCode);
+        fprintf(stderr, "%*s\n", int(extractErrorBuffer.size()), extractErrorBuffer.data());
+        error_exit("Aborting");
     }
 }
 
@@ -312,9 +314,16 @@ void install_patch(const char* apkPath, const char* patchPath, int argc, const c
     std::vector<unsigned char> applyErrorBuffer;
     std::string argsString;
 
+    bool rSwitchPresent = false;
     for (int i = 0; i < argc; i++) {
         argsString.append(argv[i]);
         argsString.append(" ");
+        if (!strcmp(argv[i], "-r")) {
+            rSwitchPresent = true;
+        }
+    }
+    if (!rSwitchPresent) {
+        argsString.append("-r");
     }
 
     std::string applyPatchCommand =
@@ -324,4 +333,10 @@ void install_patch(const char* apkPath, const char* patchPath, int argc, const c
     if (returnCode != 0) {
         error_exit("Executing %s returned %d", applyPatchCommand.c_str(), returnCode);
     }
+}
+
+bool find_package(const char* apkPath) {
+    const std::string findCommand =
+            "/data/local/tmp/deployagent find " + get_packagename_from_apk(apkPath);
+    return !send_shell_command(findCommand);
 }

@@ -99,14 +99,13 @@ static std::string bytes_to_hex(const uint8_t* bytes, size_t bytes_len) {
 }
 
 template <typename Hasher>
-static std::pair<size_t, bool> verify_vbmeta_digest(const AvbSlotVerifyData& verify_data,
+static std::pair<size_t, bool> verify_vbmeta_digest(const std::vector<VBMetaData>& vbmeta_images,
                                                     const uint8_t* expected_digest) {
     size_t total_size = 0;
     Hasher hasher;
-    for (size_t n = 0; n < verify_data.num_vbmeta_images; n++) {
-        hasher.update(verify_data.vbmeta_images[n].vbmeta_data,
-                      verify_data.vbmeta_images[n].vbmeta_size);
-        total_size += verify_data.vbmeta_images[n].vbmeta_size;
+    for (size_t n = 0; n < vbmeta_images.size(); n++) {
+        hasher.update(vbmeta_images[n].vbmeta_data(), vbmeta_images[n].vbmeta_size());
+        total_size += vbmeta_images[n].vbmeta_size();
     }
 
     bool matched = (memcmp(hasher.finalize(), expected_digest, Hasher::DIGEST_SIZE) == 0);
@@ -123,7 +122,7 @@ class AvbVerifier {
   public:
     // The factory method to return a unique_ptr<AvbVerifier>
     static std::unique_ptr<AvbVerifier> Create();
-    bool VerifyVbmetaImages(const AvbSlotVerifyData& verify_data);
+    bool VerifyVbmetaImages(const std::vector<VBMetaData>& vbmeta_images);
 
   protected:
     AvbVerifier() = default;
@@ -186,8 +185,8 @@ std::unique_ptr<AvbVerifier> AvbVerifier::Create() {
     return avb_verifier;
 }
 
-bool AvbVerifier::VerifyVbmetaImages(const AvbSlotVerifyData& verify_data) {
-    if (verify_data.num_vbmeta_images == 0) {
+bool AvbVerifier::VerifyVbmetaImages(const std::vector<VBMetaData>& vbmeta_images) {
+    if (vbmeta_images.empty()) {
         LERROR << "No vbmeta images";
         return false;
     }
@@ -197,10 +196,10 @@ bool AvbVerifier::VerifyVbmetaImages(const AvbSlotVerifyData& verify_data) {
 
     if (hash_alg_ == kSHA256) {
         std::tie(total_size, digest_matched) =
-                verify_vbmeta_digest<SHA256Hasher>(verify_data, digest_);
+                verify_vbmeta_digest<SHA256Hasher>(vbmeta_images, digest_);
     } else if (hash_alg_ == kSHA512) {
         std::tie(total_size, digest_matched) =
-                verify_vbmeta_digest<SHA512Hasher>(verify_data, digest_);
+                verify_vbmeta_digest<SHA512Hasher>(vbmeta_images, digest_);
     }
 
     if (total_size != vbmeta_size_) {
@@ -265,7 +264,7 @@ static bool construct_verity_table(const AvbHashtreeDescriptor& hashtree_desc,
     return table->AddTarget(std::make_unique<android::dm::DmTargetVerity>(target));
 }
 
-static bool hashtree_dm_verity_setup(struct fstab_rec* fstab_entry,
+static bool hashtree_dm_verity_setup(FstabEntry* fstab_entry,
                                      const AvbHashtreeDescriptor& hashtree_desc,
                                      const std::string& salt, const std::string& root_digest,
                                      bool wait_for_verity_dev) {
@@ -278,7 +277,7 @@ static bool hashtree_dm_verity_setup(struct fstab_rec* fstab_entry,
     }
     table.set_readonly(true);
 
-    const std::string mount_point(basename(fstab_entry->mount_point));
+    const std::string mount_point(basename(fstab_entry->mount_point.c_str()));
     android::dm::DeviceMapper& dm = android::dm::DeviceMapper::Instance();
     if (!dm.CreateDevice(mount_point, table)) {
         LERROR << "Couldn't create verity device!";
@@ -295,8 +294,7 @@ static bool hashtree_dm_verity_setup(struct fstab_rec* fstab_entry,
     fs_mgr_set_blk_ro(fstab_entry->blk_device);
 
     // Updates fstab_rec->blk_device to verity device name.
-    free(fstab_entry->blk_device);
-    fstab_entry->blk_device = strdup(dev_path.c_str());
+    fstab_entry->blk_device = dev_path;
 
     // Makes sure we've set everything up properly.
     if (wait_for_verity_dev && !fs_mgr_wait_for_file(dev_path, 1s)) {
@@ -307,18 +305,18 @@ static bool hashtree_dm_verity_setup(struct fstab_rec* fstab_entry,
 }
 
 static bool get_hashtree_descriptor(const std::string& partition_name,
-                                    const AvbSlotVerifyData& verify_data,
+                                    const std::vector<VBMetaData>& vbmeta_images,
                                     AvbHashtreeDescriptor* out_hashtree_desc, std::string* out_salt,
                                     std::string* out_digest) {
     bool found = false;
     const uint8_t* desc_partition_name;
 
-    for (size_t i = 0; i < verify_data.num_vbmeta_images && !found; i++) {
+    for (size_t i = 0; i < vbmeta_images.size() && !found; i++) {
         // Get descriptors from vbmeta_images[i].
         size_t num_descriptors;
         std::unique_ptr<const AvbDescriptor* [], decltype(&avb_free)> descriptors(
-                avb_descriptor_get_all(verify_data.vbmeta_images[i].vbmeta_data,
-                                       verify_data.vbmeta_images[i].vbmeta_size, &num_descriptors),
+                avb_descriptor_get_all(vbmeta_images[i].vbmeta_data(),
+                                       vbmeta_images[i].vbmeta_size(), &num_descriptors),
                 avb_free);
 
         if (!descriptors || num_descriptors < 1) {
@@ -378,7 +376,7 @@ AvbUniquePtr AvbHandle::Open() {
     AvbSlotVerifyFlags flags = is_device_unlocked ? AVB_SLOT_VERIFY_FLAGS_ALLOW_VERIFICATION_ERROR
                                                   : AVB_SLOT_VERIFY_FLAGS_NONE;
     AvbSlotVerifyResult verify_result =
-            avb_ops.AvbSlotVerify(fs_mgr_get_slot_suffix(), flags, &avb_handle->avb_slot_data_);
+            avb_ops.AvbSlotVerify(fs_mgr_get_slot_suffix(), flags, &avb_handle->vbmeta_images_);
 
     // Only allow two verify results:
     //   - AVB_SLOT_VERIFY_RESULT_OK.
@@ -418,8 +416,7 @@ AvbUniquePtr AvbHandle::Open() {
     //     and AVB HASHTREE descriptor(s).
     AvbVBMetaImageHeader vbmeta_header;
     avb_vbmeta_image_header_to_host_byte_order(
-            (AvbVBMetaImageHeader*)avb_handle->avb_slot_data_->vbmeta_images[0].vbmeta_data,
-            &vbmeta_header);
+            (AvbVBMetaImageHeader*)avb_handle->vbmeta_images_[0].vbmeta_data(), &vbmeta_header);
     bool verification_disabled = ((AvbVBMetaImageFlags)vbmeta_header.flags &
                                   AVB_VBMETA_IMAGE_FLAGS_VERIFICATION_DISABLED);
 
@@ -432,7 +429,7 @@ AvbUniquePtr AvbHandle::Open() {
             LERROR << "Failed to create AvbVerifier";
             return nullptr;
         }
-        if (!avb_verifier->VerifyVbmetaImages(*avb_handle->avb_slot_data_)) {
+        if (!avb_verifier->VerifyVbmetaImages(avb_handle->vbmeta_images_)) {
             LERROR << "VerifyVbmetaImages failed";
             return nullptr;
         }
@@ -449,10 +446,8 @@ AvbUniquePtr AvbHandle::Open() {
     return avb_handle;
 }
 
-AvbHashtreeResult AvbHandle::SetUpAvbHashtree(struct fstab_rec* fstab_entry,
-                                              bool wait_for_verity_dev) {
-    if (!fstab_entry || status_ == kAvbHandleUninitialized || !avb_slot_data_ ||
-        avb_slot_data_->num_vbmeta_images < 1) {
+AvbHashtreeResult AvbHandle::SetUpAvbHashtree(FstabEntry* fstab_entry, bool wait_for_verity_dev) {
+    if (!fstab_entry || status_ == kAvbHandleUninitialized || vbmeta_images_.size() < 1) {
         return AvbHashtreeResult::kFail;
     }
 
@@ -464,13 +459,13 @@ AvbHashtreeResult AvbHandle::SetUpAvbHashtree(struct fstab_rec* fstab_entry,
     // Derives partition_name from blk_device to query the corresponding AVB HASHTREE descriptor
     // to setup dm-verity. The partition_names in AVB descriptors are without A/B suffix.
     std::string partition_name;
-    if (fstab_entry->fs_mgr_flags & MF_LOGICAL) {
+    if (fstab_entry->fs_mgr_flags.logical) {
         partition_name = fstab_entry->logical_partition_name;
     } else {
-        partition_name = basename(fstab_entry->blk_device);
+        partition_name = basename(fstab_entry->blk_device.c_str());
     }
 
-    if (fstab_entry->fs_mgr_flags & MF_SLOTSELECT) {
+    if (fstab_entry->fs_mgr_flags.slot_select) {
         auto ab_suffix = partition_name.rfind(fs_mgr_get_slot_suffix());
         if (ab_suffix != std::string::npos) {
             partition_name.erase(ab_suffix);
@@ -480,7 +475,7 @@ AvbHashtreeResult AvbHandle::SetUpAvbHashtree(struct fstab_rec* fstab_entry,
     AvbHashtreeDescriptor hashtree_descriptor;
     std::string salt;
     std::string root_digest;
-    if (!get_hashtree_descriptor(partition_name, *avb_slot_data_, &hashtree_descriptor, &salt,
+    if (!get_hashtree_descriptor(partition_name, vbmeta_images_, &hashtree_descriptor, &salt,
                                  &root_digest)) {
         return AvbHashtreeResult::kFail;
     }

@@ -23,10 +23,6 @@ cc_defaults {
     cflags: [
         "-Wall",
         "-Werror",
-        "-Wno-unused-variable",
-    ],
-    cppflags: [
-        "-std=gnu++1z",
     ],
 }
 
@@ -44,6 +40,7 @@ cc_library {
         "fs_mgr_verity.cpp",
         "fs_mgr_dm_linear.cpp",
         "fs_mgr_overlayfs.cpp",
+        "fs_mgr_roots.cpp",
         "fs_mgr_vendor_overlay.cpp",
     ],
     shared_libs: [

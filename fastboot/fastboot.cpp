@@ -1158,6 +1158,10 @@ static void reboot_to_userspace_fastboot() {
     std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
     fb->set_transport(open_device());
+
+    if (!is_userspace_fastboot()) {
+        die("Failed to boot into userspace fastboot; one or more components might be unbootable.");
+    }
 }
 
 class ImageSource {
@@ -1313,9 +1317,6 @@ void FlashAllTool::UpdateSuperPartition() {
     }
     if (!is_userspace_fastboot()) {
         reboot_to_userspace_fastboot();
-    }
-    if (!is_userspace_fastboot()) {
-        die("Failed to boot into userspace; one or more components might be unbootable.");
     }
 
     std::string super_name;
@@ -1541,7 +1542,7 @@ static bool should_flash_in_userspace(const std::string& partition_name) {
         return false;
     }
     auto path = find_item_given_name("super_empty.img");
-    if (path.empty()) {
+    if (path.empty() || access(path.c_str(), R_OK)) {
         return false;
     }
     auto metadata = android::fs_mgr::ReadFromImageFile(path);
@@ -1962,8 +1963,7 @@ int FastBootTool::Main(int argc, char* argv[]) {
         fb->RebootTo("recovery");
         fb->WaitForDisconnect();
     } else if (wants_reboot_fastboot) {
-        fb->RebootTo("fastboot");
-        fb->WaitForDisconnect();
+        reboot_to_userspace_fastboot();
     }
 
     fprintf(stderr, "Finished. Total time: %.3fs\n", (now() - start));

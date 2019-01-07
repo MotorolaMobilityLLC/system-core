@@ -473,9 +473,10 @@ static Result<int> mount_fstab(const char* fstabfile, int mount_mode) {
         // Only needed if someone explicitly changes the default log level in their init.rc.
         android::base::ScopedLogSeverity info(android::base::INFO);
 
-        struct fstab* fstab = fs_mgr_read_fstab(fstabfile);
-        int child_ret = fs_mgr_mount_all(fstab, mount_mode);
-        fs_mgr_free_fstab(fstab);
+        Fstab fstab;
+        ReadFstabFromFile(fstabfile, &fstab);
+
+        int child_ret = fs_mgr_mount_all(&fstab, mount_mode);
         if (child_ret == -1) {
             PLOG(ERROR) << "fs_mgr_mount_all returned an error";
         }
@@ -619,14 +620,15 @@ static Result<Success> do_mount_all(const BuiltinArguments& args) {
 }
 
 static Result<Success> do_swapon_all(const BuiltinArguments& args) {
-    struct fstab *fstab;
-    int ret;
+    Fstab fstab;
+    if (!ReadFstabFromFile(args[1], &fstab)) {
+        return Error() << "Could not read fstab '" << args[1] << "'";
+    }
 
-    fstab = fs_mgr_read_fstab(args[1].c_str());
-    ret = fs_mgr_swapon_all(fstab);
-    fs_mgr_free_fstab(fstab);
+    if (!fs_mgr_swapon_all(fstab)) {
+        return Error() << "fs_mgr_swapon_all() failed";
+    }
 
-    if (ret != 0) return Error() << "fs_mgr_swapon_all() failed";
     return Success();
 }
 
@@ -740,13 +742,10 @@ static Result<Success> do_verity_load_state(const BuiltinArguments& args) {
     return Success();
 }
 
-static void verity_update_property(fstab_rec *fstab, const char *mount_point,
-                                   int mode, int status) {
-    property_set("partition."s + mount_point + ".verified", std::to_string(mode));
-}
-
 static Result<Success> do_verity_update_state(const BuiltinArguments& args) {
-    if (!fs_mgr_update_verity_state(verity_update_property)) {
+    if (!fs_mgr_update_verity_state([](const std::string& mount_point, int mode) {
+            property_set("partition." + mount_point + ".verified", std::to_string(mode));
+        })) {
         return Error() << "fs_mgr_update_verity_state() failed";
     }
     return Success();

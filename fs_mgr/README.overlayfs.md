@@ -83,10 +83,28 @@ Caveats
 -------
 
 - Space used in the backing storage is on a file by file basis
-  and will require more space than if updated in place.
+  and will require more space than if updated in place.  As such
+  it is important to be mindful of any wasted space, for instance
+  **BOARD_<partition>IMAGE_PARTITION_RESERVED_SIZE** being defined
+  will have a negative impact on the overall right-sizing of images
+  and thus free dynamic partition space.
 - Kernel must have CONFIG_OVERLAY_FS=y and will need to be patched
   with "*overlayfs: override_creds=off option bypass creator_cred*"
   if higher than 4.6.
 - *adb enable-verity* will free up overlayfs and as a bonus the
   device will be reverted pristine to before any content was updated.
+  Update engine does not take advantage of this, will perform a full OTA.
+- Update engine may not run if *fs_mgr_overlayfs_is_setup*() reports
+  true as adb remount overrides are incompatable with an OTA resources.
+- For implementation simplicity on retrofit dynamic partition devices,
+  take the whole alternate super (eg: if "*a*" slot, then the whole of
+  "*system_b*").
+  Since landing a filesystem on the alternate super physical device
+  without differentiating if it is setup to support logical or physical,
+  the alternate slot metadata and previous content will be lost.
+- If dynamic partitions runs out of space, resizing a logical
+  partition larger may fail because of the scratch partition.
+  If this happens, either fastboot flashall or adb enable-verity can
+  be used to clear scratch storage to permit the flash.
+  Then reinstate the overrides and continue.
 - File bugs or submit fixes for review.
