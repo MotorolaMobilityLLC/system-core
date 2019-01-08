@@ -415,6 +415,7 @@ static void export_kernel_boot_props() {
         { "ro.boot.device", "ro.vendor.hw.device", NULL, },
         { "ro.boot.hwrev", "ro.vendor.hw.hwrev", NULL, },
         { "ro.boot.modelno", "ro.vendor.hw.modelno", NULL, },
+        { "ro.boot.uid", "ro.vendor.hw.uid", NULL, },
     };
     for (size_t i = 0; i < arraysize(prop_map); i++) {
         std::string value = GetProperty(prop_map[i].src_prop, "");
