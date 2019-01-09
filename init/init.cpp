@@ -575,6 +575,8 @@ void initJourneyDebugeMode() {
     if(cmdline.find("androidboot.journey.debug=1") != std::string::npos) {
         LOG(INFO) << "we are in journey_debug_mode now.";
         journey_debug_mode = true;
+    } else if(cmdline.find("androidboot.journey.debug=0") != std::string::npos) {
+        LOG(INFO) << "we are support journey_debug_mode.";
     }
 }
 #endif

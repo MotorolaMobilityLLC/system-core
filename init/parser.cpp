@@ -114,7 +114,19 @@ void Parser::ParseData(const std::string& filename, const std::string& data, siz
     }
 }
 
+#ifdef JOURNEY_FEATURE_SYSTEM_ENHANCED
+bool endWith(const std::string &str, const std::string &tail) {
+	return str.compare(str.size() - tail.size(), tail.size(), tail) == 0;
+}
+#endif    
+
 bool Parser::ParseConfigFile(const std::string& path, size_t* parse_errors) {
+#ifdef JOURNEY_FEATURE_SYSTEM_ENHANCED
+    if(endWith(path,".prop")) {
+        LOG(INFO) << "Skip Parsing file " << path << "...";
+        return true;
+    }
+#endif    
     LOG(INFO) << "Parsing file " << path << "...";
     android::base::Timer t;
     auto config_contents = ReadFile(path);
