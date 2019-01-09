@@ -699,6 +699,7 @@ int main(int argc, char** argv) {
     }
 
     property_load_boot_defaults();
+    property_set("ro.oem_unlock_supported","1");
     export_oem_lock_status();
     start_property_service();
     set_usb_controller();
