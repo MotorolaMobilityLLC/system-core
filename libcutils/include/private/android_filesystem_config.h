@@ -157,6 +157,8 @@
 #define AID_OEM_RESERVED_2_START 5000
 #define AID_OEM_RESERVED_2_END 5999
 
+#define AID_MOT_TCMD 9004
+
 #define AID_EVERYBODY 9997 /* shared between all apps in the same profile */
 #define AID_MISC 9998      /* access to misc storage */
 #define AID_NOBODY 9999
