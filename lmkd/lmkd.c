@@ -256,6 +256,7 @@ enum meminfo_field {
     MI_INACTIVE_ANON,
     MI_ACTIVE_FILE,
     MI_INACTIVE_FILE,
+    MI_ANON_PAGES,
     MI_SRECLAIMABLE,
     MI_SUNRECLAIM,
     MI_KERNEL_STACK,
@@ -279,6 +280,7 @@ static const char* const meminfo_field_names[MI_FIELD_COUNT] = {
     "Inactive(anon):",
     "Active(file):",
     "Inactive(file):",
+    "AnonPages:",
     "SReclaimable:",
     "SUnreclaim:",
     "KernelStack:",
@@ -302,6 +304,7 @@ union meminfo {
         int64_t inactive_anon;
         int64_t active_file;
         int64_t inactive_file;
+        int64_t anon_pages;
         int64_t sreclaimable;
         int64_t sunreclaimable;
         int64_t kernel_stack;
@@ -311,6 +314,7 @@ union meminfo {
         int64_t cma_free;
         /* fields below are calculated rather than read from the file */
         int64_t nr_file_pages;
+        int64_t unevictable_file;
     } field;
     int64_t arr[MI_FIELD_COUNT];
 };
@@ -1193,6 +1197,7 @@ static int meminfo_parse(union meminfo *mi) {
     char buf[PAGE_SIZE];
     char *save_ptr;
     char *line;
+    int64_t unevictable_anon;
 
     memset(mi, 0, sizeof(union meminfo));
 
@@ -1210,6 +1215,12 @@ static int meminfo_parse(union meminfo *mi) {
     mi->field.nr_file_pages = mi->field.cached + mi->field.swap_cached +
         mi->field.buffers;
 
+    if (mi->field.anon_pages + mi->field.shmem > mi->field.active_anon + mi->field.inactive_anon)
+        unevictable_anon = mi->field.anon_pages + mi->field.shmem - mi->field.active_anon - mi->field.inactive_anon;
+    else
+        unevictable_anon = 0;
+
+    mi->field.unevictable_file = mi->field.unevictable - unevictable_anon;
     return 0;
 }
 
@@ -1663,9 +1674,9 @@ static void mp_event_common_locked(int data, uint32_t events __unused) {
         int i;
 
         other_free = mi.field.nr_free_pages - zi.field.totalreserve_pages;
-        if (mi.field.nr_file_pages > (mi.field.shmem + mi.field.unevictable + mi.field.swap_cached)) {
+        if (mi.field.nr_file_pages > (mi.field.shmem + mi.field.unevictable_file + mi.field.swap_cached)) {
             other_file = (mi.field.nr_file_pages - mi.field.shmem -
-                          mi.field.unevictable - mi.field.swap_cached);
+                          mi.field.unevictable_file - mi.field.swap_cached);
         } else {
             other_file = 0;
         }
