@@ -977,7 +977,7 @@ int fs_mgr_mount_all(Fstab* fstab, int mount_mode) {
         auto& current_entry = (*fstab)[i];
 
         /* Skip userdata partition in ffbm mode */
-        if (is_ffbm && !strcmp(current_entry.mount_point, "/data")){
+        if (is_ffbm && !strcmp(current_entry.mount_point.c_str(), "/data")){
             continue;
         }
 
@@ -1155,8 +1155,8 @@ int fs_mgr_mount_all(Fstab* fstab, int mount_mode) {
                 PERROR << android::base::StringPrintf(
                     "Failure while mounting metadata, setting flag to needing recovery "
                     "partition on %s at %s options: %s",
-                    attempted_entry.blk_device, attempted_entry.mount_point,
-                    attempted_entry.fs_options);
+                    attempted_entry.blk_device.c_str(), attempted_entry.mount_point.c_str(),
+                    attempted_entry.fs_options.c_str());
                 encryptable = FS_MGR_MNTALL_DEV_NEEDS_RECOVERY_WIPE_PROMPT;
             } else {
                 encryptable = FS_MGR_MNTALL_DEV_IS_METADATA_ENCRYPTED;
