@@ -48,6 +48,8 @@ sp<storaged_t> storaged_sp;
 void* storaged_main(void* /* unused */) {
     LOG(INFO) << "storaged: Start";
 
+    signal(SIGPIPE,SIG_IGN);
+
     for (;;) {
         storaged_sp->event_checked();
         storaged_sp->pause();
