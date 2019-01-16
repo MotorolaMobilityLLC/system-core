@@ -56,6 +56,8 @@ void* storaged_main(void* /* unused */) {
 
     LOG_TO(SYSTEM, INFO) << "storaged: Start";
 
+    signal(SIGPIPE,SIG_IGN);
+
     for (;;) {
         storaged_sp->event_checked();
         storaged_sp->pause();
