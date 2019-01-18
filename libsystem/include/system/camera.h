@@ -313,6 +313,7 @@ typedef struct camera_frame_metadata {
 #define TN_MPP_DATA_TYPE_RAW        0x0002
 #define TN_MPP_DATA_TYPE_RGB        0x0004
 #define TN_MPP_DATA_TYPE_JPEGCB     0x0008
+#define TN_MPP_DATA_TYPE_JPEG_YUV  0x0010   //capture yuv data before jpeg encoder
 
 // data fomat
 #define TN_MPP_DATA_FORMAT_NV21     0x0010         // Y.....vuvuvu
