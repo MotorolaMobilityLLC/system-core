@@ -326,9 +326,10 @@ int get_sched_policy(int tid, SchedPolicy *policy)
     if ((grpBuf[0] == '\0') && cpusets_enabled()) {
         if (getCGroupSubsys(tid, "cpuset", grpBuf, sizeof(grpBuf)) < 0) return -1;
     }
-    if ((grpBuf[0] == '\0') && __sys_supports_schedgroups) {
-        if (getCGroupSubsys(tid, "cpu", grpBuf, sizeof(grpBuf)) < 0) return -1;
-    }
+	if ((grpBuf[0] == '\0') && __sys_supports_schedgroups) {
+        if (getCGroupSubsys(tid, "cpu", grpBuf, sizeof(grpBuf)) < 0)
+            return -1;
+	}
     if (grpBuf[0] == '\0') {
         *policy = SP_FOREGROUND;
     } else if (!strcmp(grpBuf, "foreground")) {
@@ -336,8 +337,6 @@ int get_sched_policy(int tid, SchedPolicy *policy)
     } else if (!strcmp(grpBuf, "system-background")) {
         *policy = SP_SYSTEM;
     } else if (!strcmp(grpBuf, "background")) {
-        *policy = SP_BACKGROUND;
-    } else if (!strcmp(grpBuf, "bg_non_interactive")) {
         *policy = SP_BACKGROUND;
     } else if (!strcmp(grpBuf, "top-app")) {
         *policy = SP_TOP_APP;
@@ -528,6 +527,7 @@ int set_sched_policy(int tid, SchedPolicy policy)
             boost_fd = -1;
             break;
         }
+
 
         if (fd > 0 && add_tid_to_cgroup(tid, fd) != 0) {
              if (errno != ESRCH && errno != ENOENT)
