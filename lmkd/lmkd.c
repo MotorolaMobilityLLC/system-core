@@ -85,6 +85,7 @@
 #define MEMINFO_LOG_TAG 10195355
 
 /* gid containing AID_SYSTEM required */
+#define INKERNEL_EMEM_PATH "/sys/module/emem/parameters/enable"
 #define INKERNEL_MINFREE_PATH "/sys/module/lowmemorykiller/parameters/minfree"
 #define INKERNEL_ADJ_PATH "/sys/module/lowmemorykiller/parameters/adj"
 
@@ -121,6 +122,7 @@
 /* default to old in-kernel interface if no memory pressure events */
 static bool use_inkernel_interface = true;
 static bool has_inkernel_module;
+static bool enhance_meminfo_enable;
 
 /* memory pressure levels */
 enum vmpressure_level {
@@ -1326,6 +1328,26 @@ static void set_process_group_and_prio(int pid, SchedPolicy sp, int prio) {
     closedir(d);
 }
 
+static void trigger_enhance_meminfo(int oomadj) {
+    char val[8];
+    char *path = "/proc/sys/vm/emem_trigger";
+    int fd = open(path, O_WRONLY);
+    int ret;
+
+    if (fd < 0) {
+        ALOGE("Error opening %s; errno=%d", path, errno);
+        return;
+    }
+
+    snprintf(val, sizeof(val), "%d", oomadj);
+    ret = write(fd, val, strlen(val));
+    if (ret < 0) {
+        ALOGE("Error writing %s; errno=%d", path, errno);
+    }
+
+    close(fd);
+}
+
 static int last_killed_pid = -1;
 
 /* Kill one process specified by procp.  Returns the size of the process killed */
@@ -1397,6 +1419,12 @@ static int kill_one_process(struct proc* procp, int min_oom_score) {
         }
 #endif
         result = tasksize;
+
+        if (enhance_meminfo_enable)
+            trigger_enhance_meminfo(procp->oomadj);
+
+        return tasksize;
+
     }
 
 out:
@@ -1905,6 +1933,7 @@ static int init(void) {
     }
     maxevents++;
 
+    enhance_meminfo_enable = !access(INKERNEL_EMEM_PATH, F_OK);
     has_inkernel_module = !access(INKERNEL_MINFREE_PATH, W_OK);
     use_inkernel_interface = has_inkernel_module;
 
