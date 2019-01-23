@@ -13,10 +13,6 @@ func mtkInitExtraDefaultsFactory() android.Module {
     module := cc.DefaultsFactory()
     android.AddLoadHook(module, preferBuildRoot)
     android.AddLoadHook(module, preferBuildAee)
-//TINNO BEGIN
-//WJ add for user version debug
-    android.AddLoadHook(module, preferBuildTinnoDebug)
-//TINNO END
     return module
 }
 
@@ -46,21 +42,7 @@ func preferBuildAee(ctx android.LoadHookContext) {
         ctx.AppendProperties(p)
     }
 }
-//TINNO BEGIN
-//WJ add for user version debug
-func preferBuildTinnoDebug(ctx android.LoadHookContext) {
-    type props struct {
-        Cflags       []string
-        Include_dirs []string
-    }
-    vars := ctx.Config().VendorConfig("tinnoPlugin")
-    if vars.Bool("TINNO_DEBUG_SUPPORT") {
-        p := &props{}
-        p.Cflags = append(p.Cflags, "-DTINNO_DEBUG_SUPPORT")
-        ctx.AppendProperties(p)
-    }
-}
-//TINNO END
+
 //get FO from command line
 func envYes(ctx android.BaseContext, key string) bool {
     return ctx.AConfig().Getenv(key) == "yes"
