@@ -49,7 +49,7 @@ inFastboot() {
 Returns: true if device is in adb mode" ]
 inAdb() {
   adb devices |
-    grep -v 'List of devices attached' |
+    grep -v -e 'List of devices attached' -e '^$' |
     if [ -n "${ANDROID_SERIAL}" ]; then
       grep "^${ANDROID_SERIAL}[${SPACE}${TAB}]" > /dev/null
     else
@@ -61,7 +61,17 @@ inAdb() {
 
 Returns: true if the command succeeded" ]
 adb_sh() {
-  adb shell "${@}"
+  args=
+  for i in ${@}; do
+    if [ X"${i}" != X"${i#\'}" ]; then
+      args="${args} ${i}"
+    elif [ X"${i}" != X"${i#* }" ]; then
+      args="${args} '${i}'"
+    else
+      args="${args} ${i}"
+    fi
+  done
+  adb shell ${args}
 }
 
 [ "USAGE: adb_date >/dev/stdout
@@ -92,7 +102,7 @@ get_property() {
 
 Returns: true if device is (likely) a debug build" ]
 isDebuggable() {
-  if inAdb && [ 1 -ne "`get_property ro.debuggable`" ]; then
+  if inAdb && [ 1 != "`get_property ro.debuggable`" ]; then
     false
   fi
 }
@@ -154,10 +164,24 @@ NB: This can be flakey on devices due to USB state
 
 Returns: true if device in root state" ]
 adb_root() {
+  [ `adb_sh echo '${USER}'` != root ] || return 0
   adb root >/dev/null </dev/null 2>/dev/null
   sleep 2
   adb_wait 2m &&
     [ `adb_sh echo '${USER}'` = root ]
+}
+
+[ "USAGE: adb_unroot
+
+NB: This can be flakey on devices due to USB state
+
+Returns: true if device in un root state" ]
+adb_unroot() {
+  [ `adb_sh echo '${USER}'` = root ] || return 0
+  adb unroot >/dev/null </dev/null 2>/dev/null
+  sleep 2
+  adb_wait 2m &&
+    [ `adb_sh echo '${USER}'` != root ]
 }
 
 [ "USAGE: fastboot_getvar var expected
@@ -184,6 +208,15 @@ fastboot_getvar() {
   echo ${O} >&2
 }
 
+[ "USAGE: cleanup
+
+Do nothing: should be redefined when necessary
+
+Returns: cleans up any latent resources, reverses configurations" ]
+cleanup () {
+  :
+}
+
 [ "USAGE: die [-d|-t <epoch>] [message] >/dev/stderr
 
 If -d, or -t <epoch> argument is supplied, dump logcat.
@@ -202,6 +235,7 @@ die() {
     shift 2
   fi
   echo "${RED}[  FAILED  ]${NORMAL} ${@}" >&2
+  cleanup
   exit 1
 }
 
@@ -356,15 +390,19 @@ if ${reboot}; then
 fi
 D=`adb_sh df -k </dev/null` &&
   H=`echo "${D}" | head -1` &&
-  D=`echo "${D}" | grep "^overlay "` &&
+  D=`echo "${D}" | grep -v " /vendor/..*$" | grep "^overlay "` &&
   echo "${H}" &&
   echo "${D}" &&
   echo "${ORANGE}[  WARNING ]${NORMAL} overlays present before setup" >&2 ||
   echo "${GREEN}[       OK ]${NORMAL} no overlay present before setup" >&2
 overlayfs_needed=true
 D=`adb_sh cat /proc/mounts </dev/null |
-   skip_administrative_mounts data |
-   cut -s -d' ' -f1`
+   skip_administrative_mounts data`
+if echo "${D}" | grep /dev/root >/dev/null; then
+  D=`echo / /
+     echo "${D}" | grep -v /dev/root`
+fi
+D=`echo "${D}" | cut -s -d' ' -f1 | sort -u`
 D=`adb_sh df -k ${D} </dev/null`
 echo "${D}"
 if [ X"${D}" = X"${D##* 100[%] }" ]; then
@@ -396,7 +434,7 @@ if [ X"${D}" != X"${H}" ]; then
   fi
   D=`adb_sh df -k </dev/null` &&
     H=`echo "${D}" | head -1` &&
-    D=`echo "${D}" | grep "^overlay " || true` &&
+    D=`echo "${D}" | grep -v " /vendor/..*$" | grep "^overlay " || true` &&
     [ -z "${D}" ] ||
     ( echo "${H}" && echo "${D}" && false ) ||
     die -t ${T} "overlay takeover unexpected at this phase"
@@ -429,7 +467,7 @@ if [ X"${D}" != X"${D##*Successfully disabled verity}" ]; then
   echo "${H}"
   D=`adb_sh df -k </dev/null` &&
     H=`echo "${D}" | head -1` &&
-    D=`echo "${D}" | grep "^overlay " || true` &&
+    D=`echo "${D}" | grep -v " /vendor/..*$" | grep "^overlay " || true` &&
     [ -z "${D}" ] ||
     ( echo "${H}" && echo "${D}" && false ) ||
     ( [ -n "${L}" ] && echo "${L}" && false ) ||
@@ -449,7 +487,7 @@ adb remount ||
   die -t "${T}" "adb remount failed"
 D=`adb_sh df -k </dev/null` &&
   H=`echo "${D}" | head -1` &&
-  D=`echo "${D}" | grep "^overlay "` ||
+  D=`echo "${D}" | grep -v " /vendor/..*$" | grep "^overlay "` ||
   ( [ -n "${L}" ] && echo "${L}" && false )
 ret=${?}
 uses_dynamic_scratch=false
@@ -492,7 +530,9 @@ if ${overlayfs_needed}; then
     echo "${D}" &&
     echo "${D}" | grep "^overlay .* /system\$" >/dev/null ||
     die  "overlay takeover after remount"
-  !(adb_sh grep "^overlay " /proc/mounts </dev/null | grep " overlay ro,") &&
+  !(adb_sh grep "^overlay " /proc/mounts </dev/null |
+    grep -v "^overlay /\(vendor\|system\)/..* overlay ro," |
+    grep " overlay ro,") &&
     !(adb_sh grep " rw," /proc/mounts </dev/null |
       skip_administrative_mounts data) ||
     die "remount overlayfs missed a spot (ro)"
@@ -525,7 +565,7 @@ adb_reboot &&
 if ${overlayfs_needed}; then
   D=`adb_su df -k </dev/null` &&
     H=`echo "${D}" | head -1` &&
-    D=`echo "${D}" | grep "^overlay "` ||
+    D=`echo "${D}" | grep -v " /vendor/..*$" | grep "^overlay "` ||
     ( echo "${L}" && false ) ||
     die -d "overlay takeover failed after reboot"
 
@@ -542,6 +582,7 @@ check_eq "${A}" "${B}" /system after reboot
 echo "${GREEN}[       OK ]${NORMAL} /system content remains after reboot" >&2
 # Only root can read vendor if sepolicy permissions are as expected
 if ${enforcing}; then
+  adb_unroot
   B="`adb_cat /vendor/hello`" &&
     die "re-read /vendor/hello after reboot w/o root"
   check_eq "cat: /vendor/hello: Permission denied" "${B}" vendor after reboot w/o root
@@ -607,7 +648,7 @@ else
     adb_root &&
       D=`adb_sh df -k </dev/null` &&
       H=`echo "${D}" | head -1` &&
-      D=`echo "${D}" | grep "^overlay "` &&
+      D=`echo "${D}" | grep -v " /vendor/..*$" | grep "^overlay "` &&
       echo "${H}" &&
       echo "${D}" &&
       echo "${D}" | grep "^overlay .* /system\$" >/dev/null ||

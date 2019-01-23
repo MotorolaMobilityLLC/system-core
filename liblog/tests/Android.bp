@@ -29,10 +29,10 @@ cc_benchmark {
         "-fno-builtin",
     ],
     shared_libs: [
-        "liblog",
         "libm",
         "libbase",
     ],
+    static_libs: ["liblog"],
     srcs: ["liblog_benchmark.cpp"],
 }
 
@@ -54,9 +54,7 @@ cc_defaults {
     srcs: [
         "libc_test.cpp",
         "liblog_test_default.cpp",
-        "liblog_test_local.cpp",
         "liblog_test_stderr.cpp",
-        "liblog_test_stderr_local.cpp",
         "log_id_test.cpp",
         "log_radio_test.cpp",
         "log_read_test.cpp",
@@ -65,10 +63,10 @@ cc_defaults {
         "log_wrap_test.cpp",
     ],
     shared_libs: [
-        "liblog",
         "libcutils",
         "libbase",
     ],
+    static_libs: ["liblog"],
 }
 
 // Build tests for the device (with .so). Run with:

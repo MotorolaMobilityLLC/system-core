@@ -259,6 +259,12 @@ bool FlashPartitionTable(const IPartitionOpener& opener, const std::string& supe
         return false;
     }
 
+    // On retrofit devices, super_partition is system_other and might be set to readonly by
+    // fs_mgr_set_blk_ro(). Unset readonly so that fd can be written to.
+    if (!SetBlockReadonly(fd.get(), false)) {
+        PWARNING << __PRETTY_FUNCTION__ << " BLKROSET 0 failed: " << super_partition;
+    }
+
     // Write zeroes to the first block.
     std::string zeroes(LP_PARTITION_RESERVED_BYTES, 0);
     if (SeekFile64(fd, 0, SEEK_SET) < 0) {
@@ -367,11 +373,11 @@ bool UpdatePartitionTable(const IPartitionOpener& opener, const std::string& sup
         // safety.
         std::string old_blob;
         if (!ValidateAndSerializeMetadata(opener, *backup.get(), slot_suffix, &old_blob)) {
-            LERROR << "Error serializing primary metadata to repair corrupted backup";
+            LERROR << "Error serializing backup metadata to repair corrupted primary";
             return false;
         }
         if (!WritePrimaryMetadata(fd, metadata, slot_number, old_blob, writer)) {
-            LERROR << "Error writing primary metadata to repair corrupted backup";
+            LERROR << "Error writing backup metadata to repair corrupted primary";
             return false;
         }
     }

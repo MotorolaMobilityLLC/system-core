@@ -79,6 +79,7 @@
 
 #define ZRAM_CONF_DEV   "/sys/block/zram0/disksize"
 #define ZRAM_CONF_MCS   "/sys/block/zram0/max_comp_streams"
+#define ZRAM_BACK_DEV   "/sys/block/zram0/backing_dev"
 
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(*(a)))
 
@@ -523,13 +524,13 @@ static int prepare_fs_for_mount(const std::string& blk_device, const FstabEntry&
 }
 
 // Mark the given block device as read-only, using the BLKROSET ioctl.
-bool fs_mgr_set_blk_ro(const std::string& blockdev) {
+bool fs_mgr_set_blk_ro(const std::string& blockdev, bool readonly) {
     unique_fd fd(TEMP_FAILURE_RETRY(open(blockdev.c_str(), O_RDONLY | O_CLOEXEC)));
     if (fd < 0) {
         return false;
     }
 
-    int ON = 1;
+    int ON = readonly;
     return ioctl(fd, BLKROSET, &ON) == 0;
 }
 
@@ -556,9 +557,17 @@ static int __mount(const std::string& source, const std::string& target, const F
     mkdir(target.c_str(), 0755);
     errno = 0;
     unsigned long mountflags = entry.flags;
-    int ret = mount(source.c_str(), target.c_str(), entry.fs_type.c_str(), mountflags,
+    int ret = 0;
+    int save_errno = 0;
+    do {
+        if (save_errno == EAGAIN) {
+            PINFO << "Retrying mount (source=" << source << ",target=" << target
+                  << ",type=" << entry.fs_type << ")=" << ret << "(" << save_errno << ")";
+        }
+        ret = mount(source.c_str(), target.c_str(), entry.fs_type.c_str(), mountflags,
                     entry.fs_options.c_str());
-    int save_errno = errno;
+        save_errno = errno;
+    } while (ret && save_errno == EAGAIN);
     const char* target_missing = "";
     const char* source_missing = "";
     if (save_errno == ENOENT) {
@@ -954,6 +963,17 @@ class CheckpointManager {
     std::map<std::string, std::string> device_map_;
 };
 
+static bool IsMountPointMounted(const std::string& mount_point) {
+    // Check if this is already mounted.
+    Fstab fstab;
+    if (!ReadFstabFromFile("/proc/mounts", &fstab)) {
+        return false;
+    }
+    auto it = std::find_if(fstab.begin(), fstab.end(),
+                           [&](const auto& entry) { return entry.mount_point == mount_point; });
+    return it != fstab.end();
+}
+
 // When multiple fstab records share the same mount_point, it will try to mount each
 // one in turn, and ignore any duplicates after a first successful mount.
 // Returns -1 on error, and  FS_MGR_MNTALL_* otherwise.
@@ -981,9 +1001,17 @@ int fs_mgr_mount_all(Fstab* fstab, int mount_mode) {
             continue;
         }
 
+        // If a filesystem should have been mounted in the first stage, we
+        // ignore it here. With one exception, if the filesystem is
+        // formattable, then it can only be formatted in the second stage,
+        // so we allow it to mount here.
+        if (current_entry.fs_mgr_flags.first_stage_mount &&
+            (!current_entry.fs_mgr_flags.formattable ||
+             IsMountPointMounted(current_entry.mount_point))) {
+            continue;
+        }
         // Don't mount entries that are managed by vold or not for the mount mode.
         if (current_entry.fs_mgr_flags.vold_managed || current_entry.fs_mgr_flags.recovery_only ||
-            current_entry.fs_mgr_flags.first_stage_mount ||
             ((mount_mode == MOUNT_MODE_LATE) && !current_entry.fs_mgr_flags.late_mount) ||
             ((mount_mode == MOUNT_MODE_EARLY) && current_entry.fs_mgr_flags.late_mount)) {
             continue;
@@ -1362,12 +1390,80 @@ int fs_mgr_do_tmpfs_mount(const char *n_name)
     return 0;
 }
 
+static bool InstallZramDevice(const std::string& device) {
+    if (!android::base::WriteStringToFile(device, ZRAM_BACK_DEV)) {
+        PERROR << "Cannot write " << device << " in: " << ZRAM_BACK_DEV;
+        return false;
+    }
+    LINFO << "Success to set " << device << " to " << ZRAM_BACK_DEV;
+    return true;
+}
+
+static bool PrepareZramDevice(const std::string& loop, off64_t size, const std::string& bdev) {
+    if (loop.empty() && bdev.empty()) return true;
+
+    if (bdev.length()) {
+        return InstallZramDevice(bdev);
+    }
+
+    // Get free loopback
+    unique_fd loop_fd(TEMP_FAILURE_RETRY(open("/dev/loop-control", O_RDWR | O_CLOEXEC)));
+    if (loop_fd.get() == -1) {
+        PERROR << "Cannot open loop-control";
+        return false;
+    }
+
+    int num = ioctl(loop_fd.get(), LOOP_CTL_GET_FREE);
+    if (num == -1) {
+        PERROR << "Cannot get free loop slot";
+        return false;
+    }
+
+    // Prepare target path
+    unique_fd target_fd(TEMP_FAILURE_RETRY(open(loop.c_str(), O_RDWR | O_CREAT | O_CLOEXEC, 0664)));
+    if (target_fd.get() == -1) {
+        PERROR << "Cannot open target path: " << loop;
+        return false;
+    }
+    if (fallocate(target_fd.get(), 0, 0, size) < 0) {
+        PERROR << "Cannot truncate target path: " << loop;
+        return false;
+    }
+
+    // Connect loopback (device_fd) to target path (target_fd)
+    std::string device = android::base::StringPrintf("/dev/block/loop%d", num);
+    unique_fd device_fd(TEMP_FAILURE_RETRY(open(device.c_str(), O_RDWR | O_CLOEXEC)));
+    if (device_fd.get() == -1) {
+        PERROR << "Cannot open /dev/block/loop" << num;
+        return false;
+    }
+
+    if (ioctl(device_fd.get(), LOOP_SET_FD, target_fd.get())) {
+        PERROR << "Cannot set loopback to target path";
+        return false;
+    }
+
+    // set block size & direct IO
+    if (ioctl(device_fd.get(), LOOP_SET_BLOCK_SIZE, 4096)) {
+        PWARNING << "Cannot set 4KB blocksize to /dev/block/loop" << num;
+    }
+    if (ioctl(device_fd.get(), LOOP_SET_DIRECT_IO, 1)) {
+        PWARNING << "Cannot set direct_io to /dev/block/loop" << num;
+    }
+
+    return InstallZramDevice(device);
+}
+
 bool fs_mgr_swapon_all(const Fstab& fstab) {
     bool ret = true;
     for (const auto& entry : fstab) {
         // Skip non-swap entries.
         if (entry.fs_type != "swap") {
             continue;
+        }
+
+        if (!PrepareZramDevice(entry.zram_loopback_path, entry.zram_loopback_size, entry.zram_backing_dev_path)) {
+            LERROR << "Skipping losetup for '" << entry.blk_device << "'";
         }
 
         if (entry.zram_size > 0) {

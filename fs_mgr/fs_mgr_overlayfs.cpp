@@ -48,6 +48,7 @@
 #include <fs_mgr_overlayfs.h>
 #include <fstab/fstab.h>
 #include <libdm/dm.h>
+#include <libgsi/libgsi.h>
 #include <liblp/builder.h>
 #include <liblp/liblp.h>
 
@@ -276,6 +277,9 @@ std::vector<std::string> fs_mgr_overlayfs_verity_enabled_list() {
 bool fs_mgr_wants_overlayfs(FstabEntry* entry) {
     // Don't check entries that are managed by vold.
     if (entry->fs_mgr_flags.vold_managed || entry->fs_mgr_flags.recovery_only) return false;
+
+    // *_other doesn't want overlayfs.
+    if (entry->fs_mgr_flags.slot_select_other) return false;
 
     // Only concerned with readonly partitions.
     if (!(entry->flags & MS_RDONLY)) return false;
@@ -575,8 +579,14 @@ std::vector<std::string> fs_mgr_candidate_list(Fstab* fstab, const char* mount_p
 }
 
 // Mount kScratchMountPoint
-bool fs_mgr_overlayfs_mount_scratch(const std::string& device_path, const std::string mnt_type) {
-    if (!fs_mgr_rw_access(device_path)) return false;
+bool fs_mgr_overlayfs_mount_scratch(const std::string& device_path, const std::string mnt_type,
+                                    bool readonly = false) {
+    if (readonly) {
+        if (!fs_mgr_access(device_path)) return false;
+    } else {
+        if (!fs_mgr_rw_access(device_path)) return false;
+    }
+
     if (setfscreatecon(kOverlayfsFileContext)) {
         PERROR << "setfscreatecon " << kOverlayfsFileContext;
     }
@@ -589,6 +599,11 @@ bool fs_mgr_overlayfs_mount_scratch(const std::string& device_path, const std::s
     entry.mount_point = kScratchMountPoint;
     entry.fs_type = mnt_type;
     entry.flags = MS_RELATIME;
+    if (readonly) {
+        entry.flags |= MS_RDONLY;
+    } else {
+        fs_mgr_set_blk_ro(device_path, false);
+    }
     auto save_errno = errno;
     auto mounted = fs_mgr_do_mount_one(entry) == 0;
     if (!mounted) {
@@ -646,6 +661,7 @@ bool fs_mgr_overlayfs_make_scratch(const std::string& scratch_device, const std:
         return false;
     }
     command += " " + scratch_device;
+    fs_mgr_set_blk_ro(scratch_device, false);
     auto ret = system(command.c_str());
     if (ret) {
         LERROR << "make " << mnt_type << " filesystem on " << scratch_device << " return=" << ret;
@@ -751,8 +767,14 @@ bool fs_mgr_overlayfs_setup_scratch(const Fstab& fstab, bool* change) {
     auto mnt_type = fs_mgr_overlayfs_scratch_mount_type();
     if (partition_exists) {
         if (fs_mgr_overlayfs_mount_scratch(scratch_device, mnt_type)) {
-            if (change) *change = true;
-            return true;
+            if (!fs_mgr_access(kScratchMountPoint + kOverlayTopDir) &&
+                !fs_mgr_filesystem_has_space(kScratchMountPoint)) {
+                // declare it useless, no overrides and no free space
+                fs_mgr_overlayfs_umount_scratch();
+            } else {
+                if (change) *change = true;
+                return true;
+            }
         }
         // partition existed, but was not initialized; fall through to make it.
         errno = 0;
@@ -781,8 +803,9 @@ bool fs_mgr_overlayfs_scratch_can_be_mounted(const std::string& scratch_device) 
 bool fs_mgr_overlayfs_invalid() {
     if (fs_mgr_overlayfs_valid() == OverlayfsValidResult::kNotSupported) return true;
 
-    // in recovery or fastbootd mode, not allowed!
+    // in recovery, fastbootd, or gsi mode, not allowed!
     if (fs_mgr_access("/system/bin/recovery")) return true;
+    if (android::gsi::IsGsiRunning()) return true;
 
     return false;
 }
@@ -800,11 +823,15 @@ bool fs_mgr_overlayfs_mount_all(Fstab* fstab) {
             scratch_can_be_mounted = false;
             auto scratch_device = fs_mgr_overlayfs_scratch_device();
             if (fs_mgr_overlayfs_scratch_can_be_mounted(scratch_device) &&
-                fs_mgr_wait_for_file(scratch_device, 10s) &&
-                fs_mgr_overlayfs_mount_scratch(scratch_device,
-                                               fs_mgr_overlayfs_scratch_mount_type()) &&
-                !fs_mgr_access(kScratchMountPoint + kOverlayTopDir)) {
-                fs_mgr_overlayfs_umount_scratch();
+                fs_mgr_wait_for_file(scratch_device, 10s)) {
+                const auto mount_type = fs_mgr_overlayfs_scratch_mount_type();
+                if (fs_mgr_overlayfs_mount_scratch(scratch_device, mount_type,
+                                                   true /* readonly */)) {
+                    auto has_overlayfs_dir = fs_mgr_access(kScratchMountPoint + kOverlayTopDir);
+                    fs_mgr_overlayfs_umount_scratch();
+                    if (has_overlayfs_dir)
+                        fs_mgr_overlayfs_mount_scratch(scratch_device, mount_type);
+                }
             }
         }
         if (fs_mgr_overlayfs_mount(mount_point)) ret = true;
