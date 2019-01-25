@@ -48,6 +48,7 @@
 #include "uevent.h"
 #include "uevent_listener.h"
 #include "util.h"
+#include "mboot.h"
 
 using android::base::ReadFileToString;
 using android::base::Split;
@@ -462,7 +463,8 @@ bool FirstStageMount::TrySwitchSystemAsRoot() {
             LOG(ERROR) << "check_most_at_once forbidden on external media";
             return false;
         }
-        SwitchRoot("/system");
+        if (!android::mboot::IsMboot())
+            SwitchRoot("/system");
     } else {
         PLOG(ERROR) << "Failed to mount /system";
         return false;

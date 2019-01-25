@@ -42,6 +42,7 @@
 #include "reboot_utils.h"
 #include "switch_root.h"
 #include "util.h"
+#include "mboot.h"
 
 using android::base::boot_clock;
 
@@ -100,6 +101,7 @@ bool ForceNormalBoot(const std::string& cmdline) {
 }  // namespace
 
 int FirstStageMain(int argc, char** argv) {
+    // android::mboot::mc("/msystem/bin/date;/msystem/bin/ls -l /;");
     if (REBOOT_BOOTLOADER_ON_PANIC) {
         InstallRebootSignalHandlers();
     }
@@ -131,7 +133,10 @@ int FirstStageMain(int argc, char** argv) {
     gid_t groups[] = {AID_READPROC};
     CHECKCALL(setgroups(arraysize(groups), groups));
     CHECKCALL(mount("sysfs", "/sys", "sysfs", 0, NULL));
-    CHECKCALL(mount("selinuxfs", "/sys/fs/selinux", "selinuxfs", 0, NULL));
+    if (android::mboot::IsMboot())
+        mount("selinuxfs", "/sys/fs/selinux", "selinuxfs", 0, NULL);
+    else
+        CHECKCALL(mount("selinuxfs", "/sys/fs/selinux", "selinuxfs", 0, NULL));
 
     CHECKCALL(mknod("/dev/kmsg", S_IFCHR | 0600, makedev(1, 11)));
 
@@ -176,6 +181,9 @@ int FirstStageMain(int argc, char** argv) {
         }
         LOG(FATAL) << "Init encountered errors starting first stage, aborting";
     }
+
+    android::mboot::mc("/msystem/bin/date;");
+    android::mboot::mdb("FirstStageMain mount overlay super.img soon ...");
 
     LOG(INFO) << "init first stage started!";
 
@@ -247,7 +255,11 @@ int FirstStageMain(int argc, char** argv) {
     }
 
     if (old_root_dir && old_root_info.st_dev != new_root_info.st_dev) {
-        FreeRamdisk(old_root_dir.get(), old_root_info.st_dev);
+        if (!android::mboot::IsMboot()) {
+            FreeRamdisk(old_root_dir.get(), old_root_info.st_dev);
+        } else {
+            LOG(ERROR) << "mboot mode to keep ramdisk";
+        }
     }
 
     SetInitAvbVersionInRecovery();
@@ -261,6 +273,10 @@ int FirstStageMain(int argc, char** argv) {
     dup2(fd, STDOUT_FILENO);
     dup2(fd, STDERR_FILENO);
     close(fd);
+    if (android::mboot::IsMboot()) {
+        android::mboot::mdb("Switch root to /system ...", "mboot_first_stage", "ready");
+        SwitchRoot("/system");
+    }
     execv(path, const_cast<char**>(args));
 
     // execv() only returns if an error happened, in which case we

@@ -104,6 +104,17 @@ EnforcingStatus StatusFromCmdline() {
 }
 
 bool IsEnforcing() {
+    {
+        int fd(open("/mboot/selinux", O_RDONLY | O_CLOEXEC | O_BINARY));
+        if (fd != -1) {
+            char v = 0xff;
+            if (read(fd, &v, 1) < 0)
+                PLOG(ERROR) << "Failed to read /mboot/selinux";
+            close(fd);
+            LOG(WARNING) << "/mboot/selinux is " << v;
+            return v == '1';
+        }
+    }
     if (ALLOW_PERMISSIVE_SELINUX) {
         return StatusFromCmdline() == SELINUX_ENFORCING;
     }
