@@ -778,6 +778,15 @@ service emmc_ffu_start /system/bin/emmc_ffu_start.sh
     oneshot
     disabled
 
+on property:sys.dbg.ufs_ffu_start=1
+    start ufs_ffu_start
+
+service ufs_ffu_start /system/bin/ufs_ffu_start.sh
+    user root
+    class late_start
+    oneshot
+    disabled
+
 # on shutdown
 # In device's init.rc, this trigger can be used to do device-specific actions
 # before shutdown. e.g disable watchdog and mask error handling
