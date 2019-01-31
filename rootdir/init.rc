@@ -465,6 +465,8 @@ on early-fs
     start vold
 
 on post-fs
+    exec_start ufs_ffu
+
     exec - system system -- /system/bin/vdc checkpoint markBootAttempt
 
     # Once everything is setup, no need to modify /.
@@ -1034,6 +1036,11 @@ on property:security.perf_harden=1
     write /proc/sys/kernel/perf_cpu_time_max_percent 25
     write /proc/sys/kernel/perf_event_mlock_kb 516
 
+service ufs_ffu /system/bin/ufs_ffu.sh
+    user root
+    class core
+    oneshot
+    disabled
 
 # on shutdown
 # In device's init.rc, this trigger can be used to do device-specific actions
