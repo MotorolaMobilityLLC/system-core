@@ -702,7 +702,6 @@ void property_load_boot_defaults() {
 #ifdef JOURNEY_FEATURE_SYSTEM_ENHANCED
     //setup the ro prop in advance
     load_properties_from_file("/system/etc/init/journey/journey.default.prop", NULL);
-    load_properties_from_file("/vendor/etc/init/journey/journey.default.vendor.prop", NULL);
 #endif
 
     if (!load_properties_from_file("/system/etc/prop.default", NULL)) {
@@ -787,7 +786,6 @@ void load_recovery_id_prop() {
 void load_system_props() {
 #ifdef JOURNEY_FEATURE_SYSTEM_ENHANCED
     load_properties_from_file("/system/etc/init/journey/journey.build.prop", NULL);
-    load_properties_from_file("/vendor/etc/init/journey/journey.build.vendor.prop", NULL);
 #endif
     load_properties_from_file("/system/build.prop", NULL);
     load_properties_from_file("/odm/build.prop", NULL);
