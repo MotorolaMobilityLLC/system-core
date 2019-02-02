@@ -689,6 +689,19 @@ bool load_properties_from_file(const char* filename, const char* filter) {
 static void update_sys_usb_config() {
     bool is_debuggable = android::base::GetBoolProperty("ro.debuggable", false);
     std::string config = android::base::GetProperty("persist.sys.usb.config", "");
+
+    bool is_journey_debug_mode = android::base::GetBoolProperty("ro.boot.journey.debug", false);
+#ifdef JOURNEY_FEATURE_DEBUG_MODE
+    if(journey_debug_mode) {
+        is_debuggable = true; // we really need this in journey debug mode. it will force open adb
+        LOG(INFO) << "update_sys_usb_config change is_debuggable to true";
+
+        if(config.find("none") != std::string::npos) { // if it is none , we set is as empty
+            config = "";
+            LOG(INFO) << "update_sys_usb_config change config to empty";
+        }
+    }
+#endif
     if (config.empty()) {
         property_set("persist.sys.usb.config", is_debuggable ? "adb" : "none");
     } else if (is_debuggable && config.find("adb") == std::string::npos &&

@@ -362,19 +362,6 @@ static void handle_new_connection(atransport* t, apacket* p) {
 #if ADB_HOST
     handle_online(t);
 #else
-#ifdef JOURNEY_FEATURE_DEBUG_MODE
-    std::string journey_debug_mode_support = android::base::GetProperty("ro.boot.journey.debug", "");
-    bool boot_completed = android::base::GetBoolProperty("sys.boot_completed", false);
-    LOG(INFO) << "adbd handle_new_connection journey_debug_mode_support " << journey_debug_mode_support << " boot_completed " << boot_completed;
-    if(!boot_completed && !journey_debug_mode_support.empty()) {
-        int64_t elapsedRealtime = getElapsedRealtime();
-        if(elapsedRealtime > 180 * 1000 && elapsedRealtime > 0) {
-            LOG(INFO) << "adbd running in journey support debug mode. but still not boot complete after " << elapsedRealtime << "ms. so we disable the auth_required and open adb";
-            android::base::SetProperty("sys.usb.config", "adb");
-            auth_required = false;
-        }
-    }
-#endif
     if (!auth_required) {
         handle_online(t);
         send_connect(t);

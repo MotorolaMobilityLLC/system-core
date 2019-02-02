@@ -198,12 +198,10 @@ int adbd_main(int server_port) {
     }
 
 #ifdef JOURNEY_FEATURE_DEBUG_MODE
-    journey_debug_mode = android::base::GetBoolProperty("ro.boot.journey.debug", false);
+    bool journey_debug_mode = android::base::GetBoolProperty("ro.boot.journey.debug", false);
     if(journey_debug_mode){
         LOG(INFO) << "adbd running in journey debug mode. disable usb auth \n";
-        // adb mode change to rc implement
-        // android::base::SetProperty("persist.sys.usb.config", "adb"); // we only use this because mtp device is ready slowly in booting stage.
-        auth_required = false; // also we disable the auth feature , be casue maybe there is boot up failed issue.
+        auth_required = false; // we disable the auth feature , be casue maybe there is boot up failed issue.
     }
 #endif
 
