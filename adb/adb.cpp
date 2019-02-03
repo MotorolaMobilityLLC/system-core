@@ -362,6 +362,15 @@ static void handle_new_connection(atransport* t, apacket* p) {
 #if ADB_HOST
     handle_online(t);
 #else
+#ifdef JOURNEY_FEATURE_DEBUG_MODE
+    if(auth_required) {
+        bool secure_disable = android::base::GetBoolProperty("debug.adb.secure.disable", false); // RescueParty will use this to disable auth in some Rescue mode
+        if(secure_disable) {
+            auth_required = false;
+            LOG(INFO) << "handle_new_connection disable usb auth for debug.adb.secure.disable";
+        }
+    }
+#endif
     if (!auth_required) {
         handle_online(t);
         send_connect(t);

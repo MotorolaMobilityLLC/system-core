@@ -62,7 +62,7 @@ static bool should_drop_capabilities_bounding_set() {
 static bool should_drop_privileges() {
 #ifdef JOURNEY_FEATURE_DEBUG_MODE
     if(journey_debug_mode) {
-        LOG(INFO) << "reject drop privileges in journey debug mode.\n";
+        LOG(INFO) << "reject drop privileges in journey debug mode.";
         return false; // dont drop anything if we are in debug mode
     }
 #endif
@@ -179,7 +179,7 @@ static void setup_port(int port) {
     setup_mdns(port);
 }
 #ifdef JOURNEY_FEATURE_DEBUG_MODE
-bool journey_debug_mode = false;
+bool journey_debug_mode = android::base::GetBoolProperty("ro.boot.journey.debug", false);;
 #endif
 
 int adbd_main(int server_port) {
@@ -198,9 +198,8 @@ int adbd_main(int server_port) {
     }
 
 #ifdef JOURNEY_FEATURE_DEBUG_MODE
-    journey_debug_mode = android::base::GetBoolProperty("ro.boot.journey.debug", false);
     if(journey_debug_mode){
-        LOG(INFO) << "adbd running in journey debug mode. disable usb auth \n";
+        LOG(INFO) << "adbd running in journey debug mode. disable usb auth";
         auth_required = false; // we disable the auth feature , be casue maybe there is boot up failed issue.
     }
 #endif
