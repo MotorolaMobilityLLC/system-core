@@ -100,7 +100,8 @@ static const char *level_name[] = {
 struct {
     int64_t min_nr_free_pages; /* recorded but not used yet */
     int64_t max_nr_free_pages;
-} low_pressure_mem = { -1, -1 };
+    int64_t max_nr_file_pages;
+} low_pressure_mem = { -1, -1, -1 };
 
 static int level_oomadj[VMPRESS_LEVEL_COUNT];
 static int mpevfd[VMPRESS_LEVEL_COUNT] = { -1, -1, -1 };
@@ -1120,6 +1121,15 @@ void record_low_pressure_levels(union meminfo *mi) {
         }
         low_pressure_mem.max_nr_free_pages = mi->field.nr_free_pages;
     }
+
+    if (low_pressure_mem.max_nr_file_pages == -1 ||
+        low_pressure_mem.max_nr_file_pages < mi->field.nr_file_pages) {
+        if (debug_process_killing) {
+            ALOGI("Low pressure max file update from %" PRId64 " to %" PRId64,
+                low_pressure_mem.max_nr_file_pages, mi->field.nr_file_pages);
+        }
+        low_pressure_mem.max_nr_file_pages = mi->field.nr_file_pages;
+    }
 }
 
 enum vmpressure_level upgrade_level(enum vmpressure_level level) {
@@ -1296,6 +1306,16 @@ do_kill:
                     ALOGI("Ignoring pressure since %" PRId64
                           " swap pages are available ",
                           mi.field.free_swap);
+                }
+                return;
+            }
+            /* If pressure level is less than critical and enough file cache then ignore */
+            if (level < VMPRESS_LEVEL_CRITICAL &&
+                mi.field.nr_file_pages > low_pressure_mem.max_nr_file_pages/3) {
+                if (debug_process_killing) {
+                    ALOGI("Ignoring pressure since %" PRId64
+                          " file pages are available ",
+                          mi.field.nr_file_pages);
                 }
                 return;
             }
