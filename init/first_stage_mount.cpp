@@ -34,6 +34,7 @@
 #include <fs_mgr.h>
 #include <fs_mgr_dm_linear.h>
 #include <fs_mgr_overlayfs.h>
+#include <libgsi/libgsi.h>
 #include <liblp/liblp.h>
 
 #include "devices.h"
@@ -79,6 +80,7 @@ class FirstStageMount {
     bool IsDmLinearEnabled();
     bool GetDmLinearMetadataDevice();
     bool InitDmLinearBackingDevices(const android::fs_mgr::LpMetadata& metadata);
+    void UseGsiIfPresent();
 
     ListenerAction UeventCallback(const Uevent& uevent);
 
@@ -207,6 +209,8 @@ bool FirstStageMount::GetDmLinearMetadataDevice() {
     }
 
     required_devices_partition_names_.emplace(super_partition_name_);
+    // When booting from live GSI images, userdata is the super device.
+    required_devices_partition_names_.emplace("userdata");
     return true;
 }
 
@@ -410,19 +414,45 @@ bool FirstStageMount::MountPartition(FstabEntry* fstab_entry) {
 // this case, we mount system first then pivot to it.  From that point on,
 // we are effectively identical to a system-as-root device.
 bool FirstStageMount::TrySwitchSystemAsRoot() {
+    auto metadata_partition = std::find_if(fstab_.begin(), fstab_.end(), [](const auto& entry) {
+        return entry.mount_point == "/metadata";
+    });
+    if (metadata_partition != fstab_.end()) {
+        if (MountPartition(&(*metadata_partition))) {
+            fstab_.erase(metadata_partition);
+            UseGsiIfPresent();
+        }
+    }
+
     auto system_partition = std::find_if(fstab_.begin(), fstab_.end(), [](const auto& entry) {
         return entry.mount_point == "/system";
     });
 
-    if (system_partition != fstab_.end()) {
-        if (!MountPartition(&(*system_partition))) {
-            return false;
+    if (system_partition == fstab_.end()) return true;
+
+    bool mounted = false;
+    bool no_fail = false;
+    for (auto it = system_partition; it != fstab_.end();) {
+        if (it->mount_point != "/system") {
+            break;
         }
-
-        SwitchRoot((*system_partition).mount_point);
-
-        fstab_.erase(system_partition);
+        no_fail |= (it->fs_mgr_flags).no_fail;
+        if (MountPartition(&(*it))) {
+            mounted = true;
+            SwitchRoot("/system");
+            break;
+        }
+        it++;
     }
+
+    if (!mounted && !no_fail) {
+        LOG(ERROR) << "Failed to mount /system";
+        return false;
+    }
+
+    auto it = std::remove_if(fstab_.begin(), fstab_.end(),
+                             [](const auto& entry) { return entry.mount_point == "/system"; });
+    fstab_.erase(it, fstab_.end());
 
     return true;
 }
@@ -444,14 +474,12 @@ bool FirstStageMount::TrySkipMountingPartitions() {
         if (skip_mount_point.empty()) {
             continue;
         }
-        auto removing_entry =
-                std::find_if(fstab_.begin(), fstab_.end(), [&skip_mount_point](const auto& entry) {
-                    return entry.mount_point == skip_mount_point;
-                });
-        if (removing_entry != fstab_.end()) {
-            fstab_.erase(removing_entry);
-            LOG(INFO) << "Skip mounting partition: " << skip_mount_point;
-        }
+        auto it = std::remove_if(fstab_.begin(), fstab_.end(),
+                                 [&skip_mount_point](const auto& entry) {
+                                     return entry.mount_point == skip_mount_point;
+                                 });
+        fstab_.erase(it, fstab_.end());
+        LOG(INFO) << "Skip mounting partition: " << skip_mount_point;
     }
 
     return true;
@@ -462,8 +490,21 @@ bool FirstStageMount::MountPartitions() {
 
     if (!TrySkipMountingPartitions()) return false;
 
-    for (auto& fstab_entry : fstab_) {
-        if (!MountPartition(&fstab_entry) && !fstab_entry.fs_mgr_flags.no_fail) {
+    for (auto it = fstab_.begin(); it != fstab_.end();) {
+        bool mounted = false;
+        bool no_fail = false;
+        auto start_mount_point = it->mount_point;
+        do {
+            no_fail |= (it->fs_mgr_flags).no_fail;
+            if (!mounted)
+                mounted = MountPartition(&(*it));
+            else
+                LOG(INFO) << "Skip already-mounted partition: " << start_mount_point;
+            it++;
+        } while (it != fstab_.end() && it->mount_point == start_mount_point);
+
+        if (!mounted && !no_fail) {
+            LOG(ERROR) << start_mount_point << " mounted unsuccessfully but it is required!";
             return false;
         }
     }
@@ -484,6 +525,40 @@ bool FirstStageMount::MountPartitions() {
     fs_mgr_overlayfs_mount_all(&fstab_);
 
     return true;
+}
+
+void FirstStageMount::UseGsiIfPresent() {
+    std::string metadata_file, error;
+
+    if (!android::gsi::CanBootIntoGsi(&metadata_file, &error)) {
+        LOG(INFO) << "GSI " << error << ", proceeding with normal boot";
+        return;
+    }
+
+    auto metadata = android::fs_mgr::ReadFromImageFile(metadata_file.c_str());
+    if (!metadata) {
+        LOG(ERROR) << "GSI partition layout could not be read";
+        return;
+    }
+
+    if (!android::fs_mgr::CreateLogicalPartitions(*metadata.get(), "/dev/block/by-name/userdata")) {
+        LOG(ERROR) << "GSI partition layout could not be instantiated";
+        return;
+    }
+
+    if (!android::gsi::MarkSystemAsGsi()) {
+        PLOG(ERROR) << "GSI indicator file could not be written";
+        return;
+    }
+
+    // Replace the existing system fstab entry.
+    auto system_partition = std::find_if(fstab_.begin(), fstab_.end(), [](const auto& entry) {
+        return entry.mount_point == "/system";
+    });
+    if (system_partition != fstab_.end()) {
+        fstab_.erase(system_partition);
+    }
+    fstab_.emplace_back(BuildGsiSystemFstabEntry());
 }
 
 bool FirstStageMountVBootV1::GetDmVerityDevices() {

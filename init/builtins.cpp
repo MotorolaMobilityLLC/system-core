@@ -54,6 +54,7 @@
 #include <fs_mgr.h>
 #include <fscrypt/fscrypt.h>
 #include <fscrypt/fscrypt_init_extensions.h>
+#include <libgsi/libgsi.h>
 #include <selinux/android.h>
 #include <selinux/label.h>
 #include <selinux/selinux.h>
@@ -100,6 +101,9 @@ static void ForEachServiceInClass(const std::string& classname, F function) {
 }
 
 static Result<Success> do_class_start(const BuiltinArguments& args) {
+    // Do not start a class if it has a property persist.dont_start_class.CLASS set to 1.
+    if (android::base::GetBoolProperty("persist.init.dont_start_class." + args[1], false))
+        return Success();
     // Starting a class does not start services which are explicitly disabled.
     // They must  be started individually.
     for (const auto& service : ServiceList::GetInstance()) {
@@ -124,6 +128,9 @@ static Result<Success> do_class_reset(const BuiltinArguments& args) {
 }
 
 static Result<Success> do_class_restart(const BuiltinArguments& args) {
+    // Do not restart a class if it has a property persist.dont_start_class.CLASS set to 1.
+    if (android::base::GetBoolProperty("persist.init.dont_start_class." + args[1], false))
+        return Success();
     ForEachServiceInClass(args[1], &Service::Restart);
     return Success();
 }
@@ -514,6 +521,9 @@ static Result<Success> queue_fs_event(int code) {
         return Success();
     } else if (code == FS_MGR_MNTALL_DEV_NEEDS_RECOVERY) {
         /* Setup a wipe via recovery, and reboot into recovery */
+        if (android::gsi::IsGsiRunning()) {
+            return Error() << "cannot wipe within GSI";
+        }
         PLOG(ERROR) << "fs_mgr_mount_all suggested recovery, so wiping data via recovery.";
         const std::vector<std::string> options = {"--wipe_data", "--reason=fs_mgr_mount_all" };
         return reboot_into_recovery(options);
@@ -973,7 +983,7 @@ static Result<Success> do_load_persist_props(const BuiltinArguments& args) {
 }
 
 static Result<Success> do_load_system_props(const BuiltinArguments& args) {
-    load_system_props();
+    LOG(INFO) << "deprecated action `load_system_props` called.";
     return Success();
 }
 
@@ -1023,7 +1033,8 @@ static Result<Success> ExecWithRebootOnFailure(const std::string& reboot_reason,
     }
     service->AddReapCallback([reboot_reason](const siginfo_t& siginfo) {
         if (siginfo.si_code != CLD_EXITED || siginfo.si_status != 0) {
-            if (fscrypt_is_native()) {
+            // TODO (b/122850122): support this in gsi
+            if (fscrypt_is_native() && !android::gsi::IsGsiRunning()) {
                 LOG(ERROR) << "Rebooting into recovery, reason: " << reboot_reason;
                 if (auto result = reboot_into_recovery(
                             {"--prompt_and_wipe_data", "--reason="s + reboot_reason});

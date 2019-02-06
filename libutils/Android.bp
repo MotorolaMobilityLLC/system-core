@@ -22,11 +22,13 @@ cc_library_headers {
         "liblog_headers",
         "libsystem_headers",
         "libcutils_headers",
+        "libprocessgroup_headers",
     ],
     export_header_lib_headers: [
         "liblog_headers",
         "libsystem_headers",
         "libcutils_headers",
+        "libprocessgroup_headers",
     ],
     export_include_dirs: ["include"],
 
@@ -82,6 +84,7 @@ cc_defaults {
 
             shared_libs: [
                 "libcutils",
+                "libprocessgroup",
                 "libdl",
                 "libvndksupport",
             ],
@@ -155,7 +158,7 @@ cc_library {
             ],
         },
         linux: {
-            shared_libs: ["libbase"],
+            header_libs: ["libbase_headers"],
             srcs: [
                 "Looper.cpp",
             ],

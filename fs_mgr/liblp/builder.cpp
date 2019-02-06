@@ -33,6 +33,8 @@ namespace fs_mgr {
 bool MetadataBuilder::sABOverrideSet;
 bool MetadataBuilder::sABOverrideValue;
 
+static const std::string kDefaultGroup = "default";
+
 bool LinearExtent::AddTo(LpMetadata* out) const {
     if (device_index_ >= out->block_devices.size()) {
         LERROR << "Extent references unknown block device.";
@@ -267,6 +269,11 @@ void MetadataBuilder::ImportExtents(Partition* dest, const LpMetadata& metadata,
 }
 
 static bool VerifyDeviceProperties(const BlockDeviceInfo& device_info) {
+    if (device_info.logical_block_size == 0) {
+        LERROR << "Block device " << device_info.partition_name
+               << " logical block size must not be zero.";
+        return false;
+    }
     if (device_info.logical_block_size % LP_SECTOR_SIZE != 0) {
         LERROR << "Block device " << device_info.partition_name
                << " logical block size must be a multiple of 512.";
@@ -333,7 +340,7 @@ bool MetadataBuilder::Init(const std::vector<BlockDeviceInfo>& block_devices,
         out.alignment = device_info.alignment;
         out.alignment_offset = device_info.alignment_offset;
         out.size = device_info.size;
-        if (device_info.partition_name.size() >= sizeof(out.partition_name)) {
+        if (device_info.partition_name.size() > sizeof(out.partition_name)) {
             LERROR << "Partition name " << device_info.partition_name << " exceeds maximum length.";
             return false;
         }
@@ -403,7 +410,7 @@ bool MetadataBuilder::Init(const std::vector<BlockDeviceInfo>& block_devices,
     geometry_.metadata_slot_count = metadata_slot_count;
     geometry_.logical_block_size = logical_block_size;
 
-    if (!AddGroup("default", 0)) {
+    if (!AddGroup(kDefaultGroup, 0)) {
         return false;
     }
     return true;
@@ -419,7 +426,7 @@ bool MetadataBuilder::AddGroup(const std::string& group_name, uint64_t maximum_s
 }
 
 Partition* MetadataBuilder::AddPartition(const std::string& name, uint32_t attributes) {
-    return AddPartition(name, "default", attributes);
+    return AddPartition(name, kDefaultGroup, attributes);
 }
 
 Partition* MetadataBuilder::AddPartition(const std::string& name, const std::string& group_name,
@@ -675,6 +682,10 @@ void MetadataBuilder::ShrinkPartition(Partition* partition, uint64_t aligned_siz
 }
 
 std::unique_ptr<LpMetadata> MetadataBuilder::Export() {
+    if (!ValidatePartitionGroups()) {
+        return nullptr;
+    }
+
     std::unique_ptr<LpMetadata> metadata = std::make_unique<LpMetadata>();
     metadata->header = header_;
     metadata->geometry = geometry_;
@@ -695,7 +706,7 @@ std::unique_ptr<LpMetadata> MetadataBuilder::Export() {
             LERROR << "Partition group name is too long: " << group->name();
             return nullptr;
         }
-        if (auto_slot_suffixing_ && group->name() != "default") {
+        if (auto_slot_suffixing_ && group->name() != kDefaultGroup) {
             out.flags |= LP_GROUP_SLOT_SUFFIXED;
         }
         strncpy(out.name, group->name().c_str(), sizeof(out.name));
@@ -877,7 +888,7 @@ std::vector<std::string> MetadataBuilder::ListGroups() const {
 }
 
 void MetadataBuilder::RemoveGroupAndPartitions(const std::string& group_name) {
-    if (group_name == "default") {
+    if (group_name == kDefaultGroup) {
         // Cannot remove the default group.
         return;
     }
@@ -997,6 +1008,54 @@ bool MetadataBuilder::AddLinearExtent(Partition* partition, const std::string& b
 
     auto extent = std::make_unique<LinearExtent>(num_sectors, device_index, physical_sector);
     partition->AddExtent(std::move(extent));
+    return true;
+}
+
+std::vector<Partition*> MetadataBuilder::ListPartitionsInGroup(const std::string& group_name) {
+    std::vector<Partition*> partitions;
+    for (const auto& partition : partitions_) {
+        if (partition->group_name() == group_name) {
+            partitions.emplace_back(partition.get());
+        }
+    }
+    return partitions;
+}
+
+bool MetadataBuilder::ChangePartitionGroup(Partition* partition, const std::string& group_name) {
+    if (!FindGroup(group_name)) {
+        LERROR << "Partition cannot change to unknown group: " << group_name;
+        return false;
+    }
+    partition->set_group_name(group_name);
+    return true;
+}
+
+bool MetadataBuilder::ValidatePartitionGroups() const {
+    for (const auto& group : groups_) {
+        if (!group->maximum_size()) {
+            continue;
+        }
+        uint64_t used = TotalSizeOfGroup(group.get());
+        if (used > group->maximum_size()) {
+            LERROR << "Partition group " << group->name() << " exceeds maximum size (" << used
+                   << " bytes used, maximum " << group->maximum_size() << ")";
+            return false;
+        }
+    }
+    return true;
+}
+
+bool MetadataBuilder::ChangeGroupSize(const std::string& group_name, uint64_t maximum_size) {
+    if (group_name == kDefaultGroup) {
+        LERROR << "Cannot change the size of the default group";
+        return false;
+    }
+    PartitionGroup* group = FindGroup(group_name);
+    if (!group) {
+        LERROR << "Cannot change size of unknown partition group: " << group_name;
+        return false;
+    }
+    group->set_maximum_size(maximum_size);
     return true;
 }
 
