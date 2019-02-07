@@ -172,6 +172,11 @@ struct FstabEntry {
             bool zram_loopback_size : 1;
             bool zram_backing_dev_path : 1;
             bool fs_verity : 1;
+
+            bool reserved : 26;
+
+            // bit 63
+            bool wrapped_key : 1;
         };
     } fs_mgr_flags;
 

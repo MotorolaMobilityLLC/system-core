@@ -118,19 +118,18 @@
 #define MF_LOGICAL        0x10000000
 #define MF_CHECKPOINT_BLK 0x20000000
 #define MF_CHECKPOINT_FS  0x40000000
-#define MF_WRAPPEDKEY     0x80000000
 #define MF_FIRST_STAGE_MOUNT \
-                         0x100000000
+                          0x80000000
 #define MF_SLOTSELECT_OTHER  \
-                         0x200000000
+                         0x100000000
 #define MF_ZRAM_LOOPBACK_PATH    \
-                         0x400000000
+                         0x200000000
 #define MF_ZRAM_LOOPBACK_SIZE    \
-                         0x800000000
+                         0x400000000
 #define MF_ZRAM_BACKING_DEV_PATH \
-                        0x1000000000
+                         0x800000000
 #define MF_FS_VERITY  \
-                        0x2000000000
+                        0x1000000000
 
 // clang-format on
 

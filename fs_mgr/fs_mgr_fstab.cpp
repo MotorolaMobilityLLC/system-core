@@ -209,6 +209,7 @@ void ParseFsMgrFlags(const std::string& flags, FstabEntry* entry) {
         CheckFlag("first_stage_mount", first_stage_mount);
         CheckFlag("slotselect_other", slot_select_other);
         CheckFlag("fsverity", fs_verity);
+        CheckFlag("wrappedkey", wrapped_key);
 
 #undef CheckFlag
 
@@ -992,5 +993,6 @@ int fs_mgr_is_checkpoint_blk(const struct fstab_rec* fstab) {
 
 int fs_mgr_is_wrapped_key_supported(const struct fstab_rec *fstab)
 {
-    return fstab->fs_mgr_flags & MF_WRAPPEDKEY;
+    FstabEntry::FsMgrFlags flags{fstab->fs_mgr_flags};
+    return flags.wrapped_key;
 }
