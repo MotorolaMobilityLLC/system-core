@@ -733,8 +733,6 @@ on property:vold.decrypt=trigger_restart_min_framework
     class_start main
 
 on property:vold.decrypt=trigger_restart_framework
-    stop surfaceflinger
-    start surfaceflinger
     # BEGIN Motorola, reshma, IKSWP-20874 explicitly restart audioserver
     # during framework restart due to encryption
     stop audioserver
@@ -744,6 +742,9 @@ on property:vold.decrypt=trigger_restart_framework
     exec_start update_verifier
     class_start main
     class_start late_start
+    setprop service.bootanim.exit 0
+    start bootanim
+
 
 on property:vold.decrypt=trigger_shutdown_framework
     class_reset late_start
