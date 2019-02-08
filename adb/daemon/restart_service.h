@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 The Android Open Source Project
+ * Copyright (C) 2019 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,16 +14,13 @@
  * limitations under the License.
  */
 
-#ifndef _DEBUGGERD_ELF_UTILS_H
-#define _DEBUGGERD_ELF_UTILS_H
+#pragma once
 
-#include <stdint.h>
-#include <string>
+#include "adb_unique_fd.h"
 
-namespace unwindstack {
-class Memory;
-}
-
-bool elf_get_build_id(unwindstack::Memory*, uintptr_t, std::string*);
-
-#endif // _DEBUGGERD_ELF_UTILS_H
+#if defined(__ANDROID__)
+void restart_root_service(unique_fd fd);
+void restart_unroot_service(unique_fd fd);
+void restart_tcp_service(unique_fd fd, int port);
+void restart_usb_service(unique_fd fd);
+#endif

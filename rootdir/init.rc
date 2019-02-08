@@ -11,7 +11,14 @@ import /vendor/etc/init/hw/init.${ro.hardware}.rc
 import /init.usb.configfs.rc
 import /init.${ro.zygote}.rc
 
+# Cgroups are mounted right before early-init using list from /etc/cgroups.json
 on early-init
+    # Mount shared so changes propagate into child namespaces
+    # Do this before other processes are started from init. Otherwise,
+    # processes launched while the propagation type of / is 'private'
+    # won't get mount events from others.
+    mount rootfs rootfs / shared rec
+
     # Set init and its forked children's oom_adj.
     write /proc/1/oom_score_adj -1000
 
@@ -24,9 +31,6 @@ on early-init
     # Set the security context of /postinstall if present.
     restorecon /postinstall
 
-    # Mount cgroup mount point for cpu accounting
-    mount cgroup none /acct nodev noexec nosuid cpuacct
-    chmod 0555 /acct
     mkdir /acct/uid
 
     # memory.pressure_level used by lmkd
@@ -39,7 +43,7 @@ on init
 
     # Mix device-specific information into the entropy pool
     copy /proc/cmdline /dev/urandom
-    copy /default.prop /dev/urandom
+    copy /system/etc/prop.default /dev/urandom
 
     symlink /proc/self/fd/0 /dev/stdin
     symlink /proc/self/fd/1 /dev/stdout
@@ -55,8 +59,6 @@ on init
     symlink /system/vendor /vendor
 
     # Create energy-aware scheduler tuning nodes
-    mkdir /dev/stune
-    mount cgroup none /dev/stune nodev noexec nosuid schedtune
     mkdir /dev/stune/foreground
     mkdir /dev/stune/background
     mkdir /dev/stune/top-app
@@ -154,8 +156,6 @@ on init
     chmod 0400 /proc/net/fib_trie
 
     # Create cgroup mount points for process groups
-    mkdir /dev/cpuctl
-    mount cgroup none /dev/cpuctl nodev noexec nosuid cpu
     chown system system /dev/cpuctl
     chown system system /dev/cpuctl/tasks
     chmod 0666 /dev/cpuctl/tasks
@@ -163,9 +163,6 @@ on init
     write /dev/cpuctl/cpu.rt_runtime_us 950000
 
     # sets up initial cpusets for ActivityManager
-    mkdir /dev/cpuset
-    mount cpuset none /dev/cpuset nodev noexec nosuid
-
     # this ensures that the cpusets are present and usable, but the device's
     # init.rc must actually set the correct cpus
     mkdir /dev/cpuset/foreground
@@ -234,8 +231,6 @@ on init
     # This is needed by any process that uses socket tagging.
     chmod 0644 /dev/xt_qtaguid
 
-    mkdir /dev/cg2_bpf
-    mount cgroup2 cg2_bpf /dev/cg2_bpf nodev noexec nosuid
     chown root root /dev/cg2_bpf
     chmod 0600 /dev/cg2_bpf
     mount bpf bpf /sys/fs/bpf nodev noexec nosuid
@@ -351,8 +346,6 @@ on post-fs
     # Once everything is setup, no need to modify /.
     # The bind+remount combination allows this to work in containers.
     mount rootfs rootfs / remount bind ro nodev
-    # Mount shared so changes propagate into child namespaces
-    mount rootfs rootfs / shared rec
     # Mount default storage into root namespace
     mount none /mnt/runtime/default /storage bind rec
     mount none none /storage slave rec
@@ -588,6 +581,17 @@ on post-fs-data
     # Check any timezone data in /data is newer than the copy in the runtime module, delete if not.
     exec - system system -- /system/bin/tzdatacheck /apex/com.android.runtime/etc/tz /data/misc/zoneinfo
 
+    # load fsverity keys
+    exec -- /system/bin/mini-keyctl -c /product/etc/security/cacerts_fsverity,/vendor/etc/security/cacerts_fsverity -k .fs-verity
+
+    # Wait for apexd to finish activating APEXes before starting more processes.
+    # This certainly reduces the parallelism but is required to make as many processes
+    # as possible to use the bionic libs from the runtime APEX. This takes less than 50ms
+    # so the impact on the booting time is not significant.
+    wait_for_prop apexd.status ready
+    setup_runtime_bionic
+    parse_apex_configs
+
     # If there is no post-fs-data action in the init.<device>.rc file, you
     # must uncomment this line, otherwise encrypted filesystems
     # won't work.
@@ -820,6 +824,3 @@ on property:ro.debuggable=1
 service flash_recovery /system/bin/install-recovery.sh
     class main
     oneshot
-
-on property:apexd.status=ready
-    parse_apex_configs

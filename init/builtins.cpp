@@ -63,6 +63,7 @@
 #include "action_manager.h"
 #include "bootchart.h"
 #include "init.h"
+#include "mount_namespace.h"
 #include "parser.h"
 #include "property_service.h"
 #include "reboot.h"
@@ -75,6 +76,8 @@
 using namespace std::literals::string_literals;
 
 using android::base::unique_fd;
+using android::fs_mgr::Fstab;
+using android::fs_mgr::ReadFstabFromFile;
 
 #define chmod DO_NOT_USE_CHMOD_USE_FCHMODAT_SYMLINK_NOFOLLOW
 
@@ -1105,6 +1108,14 @@ static Result<Success> do_parse_apex_configs(const BuiltinArguments& args) {
     }
 }
 
+static Result<Success> do_setup_runtime_bionic(const BuiltinArguments& args) {
+    if (SwitchToDefaultMountNamespace()) {
+        return Success();
+    } else {
+        return Error() << "Failed to setup runtime bionic";
+    }
+}
+
 // Builtin-function-map start
 const BuiltinFunctionMap::Map& BuiltinFunctionMap::map() const {
     constexpr std::size_t kMax = std::numeric_limits<std::size_t>::max();
@@ -1152,6 +1163,7 @@ const BuiltinFunctionMap::Map& BuiltinFunctionMap::map() const {
         {"rmdir",                   {1,     1,    {true,   do_rmdir}}},
         {"setprop",                 {2,     2,    {true,   do_setprop}}},
         {"setrlimit",               {3,     3,    {false,  do_setrlimit}}},
+        {"setup_runtime_bionic",    {0,     0,    {false,  do_setup_runtime_bionic}}},
         {"start",                   {1,     1,    {false,  do_start}}},
         {"stop",                    {1,     1,    {false,  do_stop}}},
         {"swapon_all",              {1,     1,    {false,  do_swapon_all}}},

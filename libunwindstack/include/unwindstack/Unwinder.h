@@ -72,7 +72,7 @@ class Unwinder {
     frames_.reserve(max_frames);
   }
 
-  ~Unwinder() = default;
+  virtual ~Unwinder() = default;
 
   void Unwind(const std::vector<std::string>* initial_map_names_to_skip = nullptr,
               const std::vector<std::string>* map_suffixes_to_ignore = nullptr);
@@ -80,6 +80,12 @@ class Unwinder {
   size_t NumFrames() { return frames_.size(); }
 
   const std::vector<FrameData>& frames() { return frames_; }
+
+  std::vector<FrameData> ConsumeFrames() {
+    std::vector<FrameData> frames = std::move(frames_);
+    frames_.clear();
+    return frames;
+  }
 
   std::string FormatFrame(size_t frame_num);
   static std::string FormatFrame(const FrameData& frame, bool is32bit);
@@ -124,7 +130,7 @@ class Unwinder {
 class UnwinderFromPid : public Unwinder {
  public:
   UnwinderFromPid(size_t max_frames, pid_t pid) : Unwinder(max_frames), pid_(pid) {}
-  ~UnwinderFromPid() = default;
+  virtual ~UnwinderFromPid() = default;
 
   bool Init(ArchEnum arch);
 

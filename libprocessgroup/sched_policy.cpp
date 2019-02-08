@@ -1,37 +1,38 @@
 /*
-** Copyright 2007, The Android Open Source Project
-**
-** Licensed under the Apache License, Version 2.0 (the "License");
-** you may not use this file except in compliance with the License.
-** You may obtain a copy of the License at
-**
-**     http://www.apache.org/licenses/LICENSE-2.0
-**
-** Unless required by applicable law or agreed to in writing, software
-** distributed under the License is distributed on an "AS IS" BASIS,
-** WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-** See the License for the specific language governing permissions and
-** limitations under the License.
-*/
+ * Copyright (C) 2019 The Android Open Source Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 #include <processgroup/sched_policy.h>
 
 #define LOG_TAG "SchedPolicy"
 
 #include <errno.h>
-#include <fcntl.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 #include <unistd.h>
 
-#include <android-base/macros.h>
-#include <log/log.h>
+#include <android-base/logging.h>
+#include <android-base/threads.h>
+#include <cgroup_map.h>
+#include <processgroup/processgroup.h>
+
+using android::base::GetThreadId;
 
 /* Re-map SP_DEFAULT to the system default policy, and leave other values unchanged.
  * Call this any place a SchedPolicy is used as an input parameter.
  * Returns the possibly re-mapped policy.
  */
+<<<<<<< HEAD
 static inline SchedPolicy _policy(SchedPolicy p)
 {
    return p == SP_DEFAULT ? SP_SYSTEM_DEFAULT : p;
@@ -326,13 +327,21 @@ int set_cpuset_policy(int tid, SchedPolicy policy)
     if (!cpusets_enabled()) {
         return set_sched_policy(tid, policy);
     }
+=======
+static inline SchedPolicy _policy(SchedPolicy p) {
+    return p == SP_DEFAULT ? SP_SYSTEM_DEFAULT : p;
+}
 
+#if defined(__ANDROID__)
+>>>>>>> q-fs-release
+
+int set_cpuset_policy(int tid, SchedPolicy policy) {
     if (tid == 0) {
-        tid = gettid();
+        tid = GetThreadId();
     }
     policy = _policy(policy);
-    pthread_once(&the_once, __initialize);
 
+<<<<<<< HEAD
     int fd = -1;
     int blkio_fd = -1;
     int boost_fd = -1;
@@ -380,6 +389,32 @@ int set_cpuset_policy(int tid, SchedPolicy policy)
             if (errno != ESRCH && errno != ENOENT)
                 return -errno;
         }
+=======
+    switch (policy) {
+        case SP_BACKGROUND:
+            return SetTaskProfiles(tid,
+                                   {"HighEnergySaving", "ProcessCapacityLow", "TimerSlackHigh"})
+                           ? 0
+                           : -1;
+        case SP_FOREGROUND:
+        case SP_AUDIO_APP:
+        case SP_AUDIO_SYS:
+            return SetTaskProfiles(tid,
+                                   {"HighPerformance", "ProcessCapacityHigh", "TimerSlackNormal"})
+                           ? 0
+                           : -1;
+        case SP_TOP_APP:
+            return SetTaskProfiles(tid,
+                                   {"MaxPerformance", "ProcessCapacityMax", "TimerSlackNormal"})
+                           ? 0
+                           : -1;
+        case SP_SYSTEM:
+            return SetTaskProfiles(tid, {"ServiceCapacityLow", "TimerSlackNormal"}) ? 0 : -1;
+        case SP_RESTRICTED:
+            return SetTaskProfiles(tid, {"ServiceCapacityRestricted", "TimerSlackNormal"}) ? 0 : -1;
+        default:
+            break;
+>>>>>>> q-fs-release
     }
 
     if (blkio_enabled()) {
@@ -391,38 +426,11 @@ int set_cpuset_policy(int tid, SchedPolicy policy)
     return 0;
 }
 
-static void set_timerslack_ns(int tid, unsigned long slack) {
-    // v4.6+ kernels support the /proc/<tid>/timerslack_ns interface.
-    // TODO: once we've backported this, log if the open(2) fails.
-    if (__sys_supports_timerslack) {
-        char buf[64];
-        snprintf(buf, sizeof(buf), "/proc/%d/timerslack_ns", tid);
-        int fd = open(buf, O_WRONLY | O_CLOEXEC);
-        if (fd != -1) {
-            int len = snprintf(buf, sizeof(buf), "%lu", slack);
-            if (write(fd, buf, len) != len) {
-                SLOGE("set_timerslack_ns write failed: %s\n", strerror(errno));
-            }
-            close(fd);
-            return;
-        }
-    }
-
-    // TODO: Remove when /proc/<tid>/timerslack_ns interface is backported.
-    if ((tid == 0) || (tid == gettid())) {
-        if (prctl(PR_SET_TIMERSLACK, slack) == -1) {
-            SLOGE("set_timerslack_ns prctl failed: %s\n", strerror(errno));
-        }
-    }
-}
-
-int set_sched_policy(int tid, SchedPolicy policy)
-{
+int set_sched_policy(int tid, SchedPolicy policy) {
     if (tid == 0) {
-        tid = gettid();
+        tid = GetThreadId();
     }
     policy = _policy(policy);
-    pthread_once(&the_once, __initialize);
 
 #if POLICY_DEBUG
     char statfile[64];
@@ -432,21 +440,23 @@ int set_sched_policy(int tid, SchedPolicy policy)
     snprintf(statfile, sizeof(statfile), "/proc/%d/stat", tid);
     memset(thread_name, 0, sizeof(thread_name));
 
-    int fd = open(statfile, O_RDONLY | O_CLOEXEC);
+    unique_fd fd(TEMP_FAILURE_RETRY(open(statfile, O_RDONLY | O_CLOEXEC)));
     if (fd >= 0) {
         int rc = read(fd, statline, 1023);
-        close(fd);
         statline[rc] = 0;
-        char *p = statline;
-        char *q;
+        char* p = statline;
+        char* q;
 
-        for (p = statline; *p != '('; p++);
+        for (p = statline; *p != '('; p++)
+            ;
         p++;
-        for (q = p; *q != ')'; q++);
+        for (q = p; *q != ')'; q++)
+            ;
 
-        strncpy(thread_name, p, (q-p));
+        strncpy(thread_name, p, (q - p));
     }
     switch (policy) {
+<<<<<<< HEAD
     case SP_BACKGROUND:
         SLOGD("vvv tid %d (%s)", tid, thread_name);
         break;
@@ -471,34 +481,83 @@ int set_sched_policy(int tid, SchedPolicy policy)
     if (schedboost_enabled()) {
         int boost_fd = -1;
         switch (policy) {
+=======
+>>>>>>> q-fs-release
         case SP_BACKGROUND:
-            boost_fd = bg_schedboost_fd;
+            SLOGD("vvv tid %d (%s)", tid, thread_name);
             break;
         case SP_FOREGROUND:
+<<<<<<< HEAD
             boost_fd = fg_schedboost_fd;
             break;
+=======
+        case SP_AUDIO_APP:
+        case SP_AUDIO_SYS:
+>>>>>>> q-fs-release
         case SP_TOP_APP:
-            boost_fd = ta_schedboost_fd;
+            SLOGD("^^^ tid %d (%s)", tid, thread_name);
+            break;
+        case SP_SYSTEM:
+            SLOGD("/// tid %d (%s)", tid, thread_name);
             break;
         case SP_RT_APP:
+<<<<<<< HEAD
 	    boost_fd = rt_schedboost_fd;
 	    break;
         case SP_AUDIO_APP:
         case SP_AUDIO_SYS:
             boost_fd = fg_schedboost_fd;
+=======
+            SLOGD("RT  tid %d (%s)", tid, thread_name);
+>>>>>>> q-fs-release
             break;
         default:
-            boost_fd = -1;
+            SLOGD("??? tid %d (%s)", tid, thread_name);
             break;
-        }
+    }
+#endif
 
-        if (boost_fd > 0 && add_tid_to_cgroup(tid, boost_fd) != 0) {
-            if (errno != ESRCH && errno != ENOENT)
-                return -errno;
-        }
-
+    switch (policy) {
+        case SP_BACKGROUND:
+            return SetTaskProfiles(tid, {"HighEnergySaving", "TimerSlackHigh"}) ? 0 : -1;
+        case SP_FOREGROUND:
+        case SP_AUDIO_APP:
+        case SP_AUDIO_SYS:
+            return SetTaskProfiles(tid, {"HighPerformance", "TimerSlackNormal"}) ? 0 : -1;
+        case SP_TOP_APP:
+            return SetTaskProfiles(tid, {"MaxPerformance", "TimerSlackNormal"}) ? 0 : -1;
+        case SP_RT_APP:
+            return SetTaskProfiles(tid, {"RealtimePerformance", "TimerSlackNormal"}) ? 0 : -1;
+        default:
+            return SetTaskProfiles(tid, {"TimerSlackNormal"}) ? 0 : -1;
     }
 
+    return 0;
+}
+
+bool cpusets_enabled() {
+    static bool enabled = (CgroupMap::GetInstance().FindController("cpuset") != nullptr);
+    return enabled;
+}
+
+bool schedboost_enabled() {
+    static bool enabled = (CgroupMap::GetInstance().FindController("schedtune") != nullptr);
+    return enabled;
+}
+
+static int getCGroupSubsys(int tid, const char* subsys, std::string& subgroup) {
+    const CgroupController* controller = CgroupMap::GetInstance().FindController(subsys);
+
+    if (!controller) return -1;
+
+    if (!controller->GetTaskGroup(tid, &subgroup)) {
+        PLOG(ERROR) << "Failed to find cgroup for tid " << tid;
+        return -1;
+    }
+    return 0;
+}
+
+<<<<<<< HEAD
     if (blkio_enabled()) {
         int blkio_fd = -1;
         switch (policy) {
@@ -524,7 +583,38 @@ int set_sched_policy(int tid, SchedPolicy policy)
     }
 
     set_timerslack_ns(tid, policy == SP_BACKGROUND ? TIMER_SLACK_BG : TIMER_SLACK_FG);
+=======
+int get_sched_policy(int tid, SchedPolicy* policy) {
+    if (tid == 0) {
+        tid = GetThreadId();
+    }
 
+    std::string group;
+    if (schedboost_enabled()) {
+        if (getCGroupSubsys(tid, "schedtune", group) < 0) return -1;
+    }
+    if (group.empty() && cpusets_enabled()) {
+        if (getCGroupSubsys(tid, "cpuset", group) < 0) return -1;
+    }
+>>>>>>> q-fs-release
+
+    // TODO: replace hardcoded directories
+    if (group.empty()) {
+        *policy = SP_FOREGROUND;
+    } else if (group == "foreground") {
+        *policy = SP_FOREGROUND;
+    } else if (group == "system-background") {
+        *policy = SP_SYSTEM;
+    } else if (group == "background") {
+        *policy = SP_BACKGROUND;
+    } else if (group == "top-app") {
+        *policy = SP_TOP_APP;
+    } else if (group == "restricted") {
+        *policy = SP_RESTRICTED;
+    } else {
+        errno = ERANGE;
+        return -1;
+    }
     return 0;
 }
 
@@ -532,11 +622,11 @@ int set_sched_policy(int tid, SchedPolicy policy)
 
 /* Stubs for non-Android targets. */
 
-int set_sched_policy(int /*tid*/, SchedPolicy /*policy*/) {
+int set_sched_policy(int, SchedPolicy) {
     return 0;
 }
 
-int get_sched_policy(int /*tid*/, SchedPolicy* policy) {
+int get_sched_policy(int, SchedPolicy* policy) {
     *policy = SP_SYSTEM_DEFAULT;
     return 0;
 }

@@ -22,6 +22,8 @@
 #include <mutex>
 #include <string>
 
+#include <android-base/stringprintf.h>
+
 #include <unwindstack/Elf.h>
 #include <unwindstack/MapInfo.h>
 #include <unwindstack/Maps.h>
@@ -309,6 +311,19 @@ std::string MapInfo::GetBuildID() {
     cur_build_id.release();
   }
   return *reinterpret_cast<std::string*>(id);
+}
+
+std::string MapInfo::GetPrintableBuildID() {
+  std::string raw_build_id = GetBuildID();
+  if (raw_build_id.empty()) {
+    return "";
+  }
+  std::string printable_build_id;
+  for (const char& c : raw_build_id) {
+    // Use %hhx to avoid sign extension on abis that have signed chars.
+    printable_build_id += android::base::StringPrintf("%02hhx", c);
+  }
+  return printable_build_id;
 }
 
 }  // namespace unwindstack

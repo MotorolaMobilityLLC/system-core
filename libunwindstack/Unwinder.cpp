@@ -144,7 +144,6 @@ void Unwinder::Unwind(const std::vector<std::string>* initial_map_names_to_skip,
 
   bool return_address_attempt = false;
   bool adjust_pc = false;
-  std::unique_ptr<JitDebug> jit_debug;
   for (; frames_.size() < max_frames_;) {
     uint64_t cur_pc = regs_->pc();
     uint64_t cur_sp = regs_->sp();
@@ -248,7 +247,7 @@ void Unwinder::Unwind(const std::vector<std::string>* initial_map_names_to_skip,
         // or the pc in the first frame is in a valid map.
         // This allows for a case where the code jumps into the middle of
         // nowhere, but there is no other unwind information after that.
-        if (frames_.size() != 2 || maps_->Find(frames_[0].pc) != nullptr) {
+        if (frames_.size() > 2 || (frames_.size() > 0 && maps_->Find(frames_[0].pc) != nullptr)) {
           // Remove the speculative frame.
           frames_.pop_back();
         }

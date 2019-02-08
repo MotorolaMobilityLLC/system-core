@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 The Android Open Source Project
+ * Copyright (C) 2019 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,19 +14,25 @@
  * limitations under the License.
  */
 
-#ifndef _DEBUGGERD_TEST_BACKTRACE_MOCK_H
-#define _DEBUGGERD_TEST_BACKTRACE_MOCK_H
+#include <adbd/usb.h>
 
-#include <backtrace/BacktraceMap.h>
+#include <android-base/logging.h>
 
-class BacktraceMapMock : public BacktraceMap {
- public:
-  BacktraceMapMock() : BacktraceMap(0) {}
-  virtual ~BacktraceMapMock() {}
+int usb_write(usb_handle*, const void*, int) {
+    LOG(FATAL) << "unimplemented";
+    return -1;
+}
 
-  void AddMap(backtrace_map_t& map) {
-    maps_.push_back(map);
-  }
-};
+int usb_read(usb_handle*, void*, int) {
+    LOG(FATAL) << "unimplemented";
+    return -1;
+}
 
-#endif //  _DEBUGGERD_TEST_BACKTRACE_MOCK_H
+int usb_close(usb_handle*) {
+    LOG(FATAL) << "unimplemented";
+    return -1;
+}
+
+void usb_kick(usb_handle*) {
+    LOG(FATAL) << "unimplemented";
+}
