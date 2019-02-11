@@ -645,7 +645,6 @@ int main(int argc, char** argv) {
         // Now that tmpfs is mounted on /dev and we have /dev/kmsg, we can actually
         // talk to the outside world...
         InitKernelLogging(argv);
-
 #ifdef JOURNEY_FEATURE_DEBUG_MODE
         initJourneyDebugeMode();
 #endif
@@ -684,16 +683,13 @@ int main(int argc, char** argv) {
         // execv() only returns if an error happened, in which case we
         // panic and never fall through this conditional.
         PLOG(FATAL) << "execv(\"" << path << "\") failed";
-    } else {
-#ifdef JOURNEY_FEATURE_DEBUG_MODE
-    // Tinno:CJ SECOND_STAGE use execv(path, args) to make a new process so we need init journey_debug_mode again
-    initJourneyDebugeMode();
-#endif
-
-    }
+    } 
 
     // At this point we're in the second stage of init.
     InitKernelLogging(argv);
+#ifdef JOURNEY_FEATURE_DEBUG_MODE
+    initJourneyDebugeMode();
+#endif
     LOG(INFO) << "init second stage started!";
 
     // Set up a session keyring that all processes will have access to. It

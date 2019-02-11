@@ -199,6 +199,12 @@ bool ReadFirstLine(const char* file, std::string* line) {
 }
 
 bool FindPrecompiledSplitPolicy(std::string* file) {
+#ifdef JOURNEY_FEATURE_DEBUG_MODE
+    if (journey_debug_mode) {
+        LOG(INFO) << "Skip precompiled sepolicy because we are in journey dbeug mode";
+        return false;
+    }
+#endif    
     file->clear();
     // If there is an odm partition, precompiled_sepolicy will be in
     // odm/etc/selinux. Otherwise it will be in vendor/etc/selinux.
@@ -270,11 +276,7 @@ bool LoadSplitPolicy() {
     // Load precompiled policy from vendor image, if a matching policy is found there. The policy
     // must match the platform policy on the system image.
     std::string precompiled_sepolicy_file;
-#ifdef JOURNEY_FEATURE_DEBUG_MODE
-    if (!journey_debug_mode && FindPrecompiledSplitPolicy(&precompiled_sepolicy_file)) {
-#else
     if (FindPrecompiledSplitPolicy(&precompiled_sepolicy_file)) {
-#endif
         unique_fd fd(open(precompiled_sepolicy_file.c_str(), O_RDONLY | O_CLOEXEC | O_BINARY));
         if (fd != -1) {
             if (selinux_android_load_policy_from_fd(fd, precompiled_sepolicy_file.c_str()) < 0) {
@@ -334,12 +336,14 @@ bool LoadSplitPolicy() {
     }
     const std::string version_as_string = std::to_string(max_policy_version);
 #ifdef JOURNEY_FEATURE_DEBUG_MODE
-    std::string journey_plat_policy_cil_file;
+    std::string journey_plat_policy_cil_file = plat_policy_cil_file;
     if(journey_debug_mode) {
-        journey_plat_policy_cil_file = plat_policy_journey_debug_mode_cil_file;
-        LOG(INFO) << "plat_policy_cil_file change to " << journey_plat_policy_cil_file;
-    } else {
-        journey_plat_policy_cil_file = plat_policy_cil_file;
+        if (access(plat_policy_journey_debug_mode_cil_file, R_OK) == 0) {
+            journey_plat_policy_cil_file = plat_policy_journey_debug_mode_cil_file;
+            LOG(INFO) << "plat_policy_cil_file change to " << journey_plat_policy_cil_file;
+        } else {
+            LOG(INFO) << "NOT found " << journey_plat_policy_cil_file << " , ignore journey sepolicy";
+        }
     }
 #endif
     // clang-format off

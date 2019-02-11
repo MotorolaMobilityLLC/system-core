@@ -160,7 +160,7 @@ void set_verity_enabled_state_service(int fd, void* cookie) {
     // Should never be possible to disable dm-verity on a USER build
     // regardless of using AVB or VB1.0.
     if (!__android_log_is_debuggable()) {
-#ifdef JOURNEY_FEATURE_DEBUG_MODE
+#ifdef JOURNEY_FEATURE_DEBUGG_MODE_ROOT
         if (journey_debug_mode) {
             bool flash_locked = android::base::GetBoolProperty("ro.boot.flash.locked",true);
             if(flash_locked) {

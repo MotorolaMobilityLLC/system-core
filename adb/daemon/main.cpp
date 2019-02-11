@@ -60,7 +60,7 @@ static bool should_drop_capabilities_bounding_set() {
 }
 
 static bool should_drop_privileges() {
-#ifdef JOURNEY_FEATURE_DEBUG_MODE
+#ifdef JOURNEY_FEATURE_DEBUGG_MODE_ROOT
     if(journey_debug_mode) {
         LOG(INFO) << "reject drop privileges in journey debug mode.";
         return false; // dont drop anything if we are in debug mode
