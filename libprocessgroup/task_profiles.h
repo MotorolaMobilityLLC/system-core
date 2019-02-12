@@ -46,8 +46,8 @@ class ProfileAction {
     virtual ~ProfileAction() {}
 
     // Default implementations will fail
-    virtual bool ExecuteForProcess(uid_t, pid_t) const { return -1; };
-    virtual bool ExecuteForTask(int) const { return -1; };
+    virtual bool ExecuteForProcess(uid_t, pid_t) const { return false; };
+    virtual bool ExecuteForTask(int) const { return false; };
 };
 
 // Profile actions
@@ -117,7 +117,9 @@ class SetCgroupAction : public ProfileAction {
   private:
     const CgroupController* controller_;
     std::string path_;
+#ifdef CACHE_FILE_DESCRIPTORS
     android::base::unique_fd fd_;
+#endif
 
     static bool IsAppDependentPath(const std::string& path);
     static bool AddTidToCgroup(int tid, int fd);
