@@ -32,7 +32,10 @@
 #include <functional>
 #include <list>
 #include <mutex>
+#include <optional>
 #include <unordered_map>
+#include <utility>
+#include <variant>
 #include <vector>
 
 #include <android-base/chrono_utils.h>
@@ -121,13 +124,8 @@ static std::string dump_fde(const fdevent* fde) {
                                        state.c_str());
 }
 
-void fdevent_install(fdevent* fde, int fd, fd_func func, void* arg) {
-    check_main_thread();
-    CHECK_GE(fd, 0);
-    memset(fde, 0, sizeof(fdevent));
-}
-
-fdevent* fdevent_create(int fd, fd_func func, void* arg) {
+template <typename F>
+static fdevent* fdevent_create_impl(int fd, F func, void* arg) {
     check_main_thread();
     CHECK_GE(fd, 0);
 
@@ -148,6 +146,14 @@ fdevent* fdevent_create(int fd, fd_func func, void* arg) {
 
     fde->state |= FDE_CREATED;
     return fde;
+}
+
+fdevent* fdevent_create(int fd, fd_func func, void* arg) {
+    return fdevent_create_impl(fd, func, arg);
+}
+
+fdevent* fdevent_create(int fd, fd_func2 func, void* arg) {
+    return fdevent_create_impl(fd, func, arg);
 }
 
 unique_fd fdevent_release(fdevent* fde) {
@@ -220,12 +226,20 @@ void fdevent_set(fdevent* fde, unsigned events) {
 
 void fdevent_add(fdevent* fde, unsigned events) {
     check_main_thread();
+    CHECK(!(events & FDE_TIMEOUT));
     fdevent_set(fde, (fde->state & FDE_EVENTMASK) | events);
 }
 
 void fdevent_del(fdevent* fde, unsigned events) {
     check_main_thread();
+    CHECK(!(events & FDE_TIMEOUT));
     fdevent_set(fde, (fde->state & FDE_EVENTMASK) & ~events);
+}
+
+void fdevent_set_timeout(fdevent* fde, std::optional<std::chrono::milliseconds> timeout) {
+    check_main_thread();
+    fde->timeout = timeout;
+    fde->last_active = std::chrono::steady_clock::now();
 }
 
 static std::string dump_pollfds(const std::vector<adb_pollfd>& pollfds) {
@@ -243,6 +257,32 @@ static std::string dump_pollfds(const std::vector<adb_pollfd>& pollfds) {
     return result;
 }
 
+static std::optional<std::chrono::milliseconds> calculate_timeout() {
+    std::optional<std::chrono::milliseconds> result = std::nullopt;
+    auto now = std::chrono::steady_clock::now();
+    check_main_thread();
+
+    for (const auto& [fd, pollnode] : g_poll_node_map) {
+        UNUSED(fd);
+        auto timeout_opt = pollnode.fde->timeout;
+        if (timeout_opt) {
+            auto deadline = pollnode.fde->last_active + *timeout_opt;
+            auto time_left = std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now);
+            if (time_left < std::chrono::milliseconds::zero()) {
+                time_left = std::chrono::milliseconds::zero();
+            }
+
+            if (!result) {
+                result = time_left;
+            } else {
+                result = std::min(*result, time_left);
+            }
+        }
+    }
+
+    return result;
+}
+
 static void fdevent_process() {
     std::vector<adb_pollfd> pollfds;
     for (const auto& pair : g_poll_node_map) {
@@ -251,11 +291,22 @@ static void fdevent_process() {
     CHECK_GT(pollfds.size(), 0u);
     D("poll(), pollfds = %s", dump_pollfds(pollfds).c_str());
 
-    int ret = adb_poll(&pollfds[0], pollfds.size(), -1);
+    auto timeout = calculate_timeout();
+    int timeout_ms;
+    if (!timeout) {
+        timeout_ms = -1;
+    } else {
+        timeout_ms = timeout->count();
+    }
+
+    int ret = adb_poll(&pollfds[0], pollfds.size(), timeout_ms);
     if (ret == -1) {
         PLOG(ERROR) << "poll(), ret = " << ret;
         return;
     }
+
+    auto post_poll = std::chrono::steady_clock::now();
+
     for (const auto& pollfd : pollfds) {
         if (pollfd.revents != 0) {
             D("for fd %d, revents = %x", pollfd.fd, pollfd.revents);
@@ -277,12 +328,24 @@ static void fdevent_process() {
             events |= FDE_READ | FDE_ERROR;
         }
 #endif
+        auto it = g_poll_node_map.find(pollfd.fd);
+        CHECK(it != g_poll_node_map.end());
+        fdevent* fde = it->second.fde;
+
+        if (events == 0) {
+            // Check for timeout.
+            if (fde->timeout) {
+                auto deadline = fde->last_active + *fde->timeout;
+                if (deadline < post_poll) {
+                    events |= FDE_TIMEOUT;
+                }
+            }
+        }
+
         if (events != 0) {
-            auto it = g_poll_node_map.find(pollfd.fd);
-            CHECK(it != g_poll_node_map.end());
-            fdevent* fde = it->second.fde;
             CHECK_EQ(fde->fd.get(), pollfd.fd);
             fde->events |= events;
+            fde->last_active = post_poll;
             D("%s got events %x", dump_fde(fde).c_str(), events);
             fde->state |= FDE_PENDING;
             g_pending_list.push_back(fde);
@@ -290,13 +353,27 @@ static void fdevent_process() {
     }
 }
 
+template <class T>
+struct always_false : std::false_type {};
+
 static void fdevent_call_fdfunc(fdevent* fde) {
     unsigned events = fde->events;
     fde->events = 0;
     CHECK(fde->state & FDE_PENDING);
     fde->state &= (~FDE_PENDING);
     D("fdevent_call_fdfunc %s", dump_fde(fde).c_str());
-    fde->func(fde->fd.get(), events, fde->arg);
+    std::visit(
+            [&](auto&& f) {
+                using F = std::decay_t<decltype(f)>;
+                if constexpr (std::is_same_v<fd_func, F>) {
+                    f(fde->fd.get(), events, fde->arg);
+                } else if constexpr (std::is_same_v<fd_func2, F>) {
+                    f(fde, events, fde->arg);
+                } else {
+                    static_assert(always_false<F>::value, "non-exhaustive visitor");
+                }
+            },
+            fde->func);
 }
 
 static void fdevent_run_flush() EXCLUDES(run_queue_mutex) {

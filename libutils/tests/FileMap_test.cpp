@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2015 The Android Open Source Project
+ * Copyright (C) 2019 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,19 +14,21 @@
  * limitations under the License.
  */
 
-#ifndef _DEBUGGERD_TEST_BACKTRACE_MOCK_H
-#define _DEBUGGERD_TEST_BACKTRACE_MOCK_H
+#include "utils/FileMap.h"
 
-#include <backtrace/BacktraceMap.h>
+#include <gtest/gtest.h>
 
-class BacktraceMapMock : public BacktraceMap {
- public:
-  BacktraceMapMock() : BacktraceMap(0) {}
-  virtual ~BacktraceMapMock() {}
+#include "android-base/file.h"
 
-  void AddMap(backtrace_map_t& map) {
-    maps_.push_back(map);
-  }
-};
+TEST(FileMap, zero_length_mapping) {
+    // http://b/119818070 "app crashes when reading asset of zero length".
+    // mmap fails with EINVAL for a zero length region.
+    TemporaryFile tf;
+    ASSERT_TRUE(tf.fd != -1);
 
-#endif //  _DEBUGGERD_TEST_BACKTRACE_MOCK_H
+    android::FileMap m;
+    ASSERT_TRUE(m.create("test", tf.fd, 4096, 0, true));
+    ASSERT_STREQ("test", m.getFileName());
+    ASSERT_EQ(0u, m.getDataLength());
+    ASSERT_EQ(4096, m.getDataOffset());
+}
