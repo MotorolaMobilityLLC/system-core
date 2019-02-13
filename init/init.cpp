@@ -42,6 +42,7 @@
 #include <fs_mgr_vendor_overlay.h>
 #include <keyutils.h>
 #include <libavb/libavb.h>
+#include <processgroup/processgroup.h>
 #include <selinux/android.h>
 
 #ifndef RECOVERY
@@ -54,6 +55,7 @@
 #include "first_stage_mount.h"
 #include "import_parser.h"
 #include "keychords.h"
+#include "mount_namespace.h"
 #include "property_service.h"
 #include "reboot.h"
 #include "reboot_utils.h"
@@ -190,7 +192,8 @@ void property_changed(const std::string& name, const std::string& value) {
 
     if (waiting_for_prop) {
         if (wait_prop_name == name && wait_prop_value == value) {
-            LOG(INFO) << "Wait for property took " << *waiting_for_prop;
+            LOG(INFO) << "Wait for property '" << wait_prop_name << "=" << wait_prop_value
+                      << "' took " << *waiting_for_prop;
             ResetWaitForProp();
         }
     }
@@ -343,6 +346,17 @@ static Result<Success> console_init_action(const BuiltinArguments& args) {
     if (!console.empty()) {
         default_console = "/dev/" + console;
     }
+    return Success();
+}
+
+static Result<Success> SetupCgroupsAction(const BuiltinArguments&) {
+    // Have to create <CGROUPS_RC_DIR> using make_dir function
+    // for appropriate sepolicy to be set for it
+    make_dir(CGROUPS_RC_DIR, 0711);
+    if (!CgroupSetupCgroups()) {
+        return ErrnoError() << "Failed to setup cgroups";
+    }
+
     return Success();
 }
 
@@ -666,6 +680,10 @@ int SecondStageMain(int argc, char** argv) {
     const BuiltinFunctionMap function_map;
     Action::set_function_map(&function_map);
 
+    if (!SetupMountNamespaces()) {
+        PLOG(FATAL) << "SetupMountNamespaces failed";
+    }
+
     subcontexts = InitializeSubcontexts();
 
     ActionManager& am = ActionManager::GetInstance();
@@ -676,6 +694,8 @@ int SecondStageMain(int argc, char** argv) {
     // Turning this on and letting the INFO logging be discarded adds 0.2s to
     // Nexus 9 boot time, so it's disabled by default.
     if (false) DumpState();
+
+    am.QueueBuiltinAction(SetupCgroupsAction, "SetupCgroups");
 
     am.QueueEventTrigger("early-init");
 

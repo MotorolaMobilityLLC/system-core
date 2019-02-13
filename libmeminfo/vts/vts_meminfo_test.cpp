@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007-2014 The Android Open Source Project
+ * Copyright (C) 2019 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,34 +14,18 @@
  * limitations under the License.
  */
 
-#pragma once
+#include <gtest/gtest.h>
 
-#if !defined(_WIN32)
+#include <meminfo/procmeminfo.h>
 
-#include <sys/uio.h>
+namespace android {
+namespace meminfo {
 
-#else
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-//
-// Implementation of sys/uio.h for Win32.
-//
-
-#include <stddef.h>
-
-struct iovec {
-  void* iov_base;
-  size_t iov_len;
-};
-
-extern int readv(int fd, struct iovec* vecs, int count);
-extern int writev(int fd, const struct iovec* vecs, int count);
-
-#ifdef __cplusplus
+// /proc/<pid>/smaps_rollup support is required.
+TEST(SmapsRollup, IsSupported) {
+    // Use init's pid for this test since it's the only known pid.
+    ASSERT_TRUE(IsSmapsRollupSupported(1));
 }
-#endif
 
-#endif
+}  // namespace meminfo
+}  // namespace android

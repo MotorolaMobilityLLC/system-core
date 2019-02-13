@@ -19,7 +19,6 @@ cc_defaults {
     cpp_std: "experimental",
     sanitize: {
         misc_undefined: ["signed-integer-overflow"],
-        address: false,  // TODO(b/120561310): Fix ASAN to work without /proc mounted and re-enable.
     },
     cflags: [
         "-DLOG_UEVENTS=0",
@@ -61,7 +60,6 @@ cc_defaults {
     },
     static_libs: [
         "libseccomp_policy",
-        "libprocessgroup",
         "libavb",
         "libprotobuf-cpp-lite",
         "libpropertyinfoserializer",
@@ -77,11 +75,13 @@ cc_defaults {
         "libext4_utils",
         "libfs_mgr",
         "libfscrypt",
+        "libgsi",
         "libhidl-gen-utils",
         "libkeyutils",
         "liblog",
         "liblogwrap",
         "liblp",
+        "libprocessgroup",
         "libselinux",
         "libutils",
     ],
@@ -110,6 +110,7 @@ cc_library_static {
         "init.cpp",
         "keychords.cpp",
         "modalias_handler.cpp",
+        "mount_namespace.cpp",
         "parser.cpp",
         "persistent_properties.cpp",
         "persistent_properties.proto",
@@ -166,6 +167,7 @@ cc_binary {
             exclude_shared_libs: ["libbinder", "libutils"],
         },
     },
+    ldflags: ["-Wl,--rpath,/system/${LIB}/bootstrap"],
 }
 
 // Tests
