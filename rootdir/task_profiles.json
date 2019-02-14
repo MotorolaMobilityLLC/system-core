@@ -15,6 +15,11 @@
       "Controller": "cpuset",
       "File": "top-app/cpus"
     },
+    {
+      "Name": "AudioAppCapacityCPUs",
+      "Controller": "cpuset",
+      "File": "audio-app/cpus"
+    },
 
     {
       "Name": "MemLimit",
@@ -115,6 +120,19 @@
           {
             "Controller": "schedtune",
             "Path": "rt"
+          }
+        }
+      ]
+    },
+    {
+      "Name": "AudioAppPerformance",
+      "Actions" : [
+        {
+          "Name" : "JoinCgroup",
+          "Params" :
+          {
+            "Controller": "schedtune",
+            "Path": "audio-app"
           }
         }
       ]
@@ -328,6 +346,19 @@
           {
             "Controller": "cpuset",
             "Path": "camera-daemon"
+          }
+        }
+      ]
+    },
+    {
+      "Name": "AudioAppCapacity",
+      "Actions" : [
+        {
+          "Name" : "JoinCgroup",
+          "Params" :
+          {
+            "Controller": "cpuset",
+            "Path": "audio-app"
           }
         }
       ]
