@@ -365,6 +365,33 @@
     },
 
     {
+      "Name": "BlkIOForeground",
+      "Actions" : [
+        {
+          "Name" : "JoinCgroup",
+          "Params" :
+          {
+            "Controller": "blkio",
+            "Path": ""
+          }
+        }
+      ]
+    },
+    {
+      "Name": "BlkIOBackground",
+      "Actions" : [
+        {
+          "Name" : "JoinCgroup",
+          "Params" :
+          {
+            "Controller": "blkio",
+            "Path": "bg"
+          }
+        }
+      ]
+    },
+
+    {
       "Name": "TimerSlackHigh",
       "Actions" : [
         {
