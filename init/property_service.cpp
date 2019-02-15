@@ -701,6 +701,24 @@ static void load_override_properties() {
     }
 }
 
+#ifdef MTK_RSC
+static void LoadRscRoProps() {
+    const std::string rscname = android::base::GetProperty("ro.boot.rsc", "");
+    const std::string rscpath = rscname == "" ? "" : "etc/rsc/"+rscname+"/";
+
+    load_properties_from_file (std::string("/system/" + rscpath + "ro.prop").c_str(), NULL);
+    load_properties_from_file (std::string("/vendor/" + rscpath + "ro.prop").c_str(), NULL);
+}
+
+static void LoadRscRwProps() {
+    const std::string rscname = android::base::GetProperty("ro.boot.rsc", "");
+    const std::string rscpath = rscname == "" ? "" : "etc/rsc/"+rscname+"/";
+
+    load_properties_from_file (std::string("/system/" + rscpath + "rw.prop").c_str(), NULL);
+    load_properties_from_file (std::string("/vendor/" + rscpath + "rw.prop").c_str(), NULL);
+}
+#endif
+
 /* When booting an encrypted system, /data is not mounted when the
  * property service is started, so any properties stored there are
  * not loaded.  Vold triggers init to load these properties once it
@@ -719,6 +737,9 @@ void load_persist_props(void) {
     }
 
     load_override_properties();
+#ifdef MTK_RSC
+    LoadRscRwProps();
+#endif
     /* Read persistent properties after all default values have been loaded. */
     auto persistent_properties = LoadPersistentProperties();
     for (const auto& persistent_property_record : persistent_properties.properties()) {
@@ -733,6 +754,11 @@ void property_load_boot_defaults() {
     // TODO(b/122864654): read the prop files from all partitions and then
     // resolve the duplication by their origin so that RO and non-RO properties
     // have a consistent overriding order.
+
+#ifdef MTK_RSC
+    LoadRscRoProps();
+#endif
+
     if (!load_properties_from_file("/system/etc/prop.default", NULL)) {
         // Try recovery path
         if (!load_properties_from_file("/prop.default", NULL)) {
