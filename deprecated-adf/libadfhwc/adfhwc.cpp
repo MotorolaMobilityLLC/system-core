@@ -231,6 +231,35 @@ int adf_set_active_config_hwc2(struct adf_hwc_helper *dev, int disp,
     return adf_interface_set_mode(dev->intf_fds[disp], &mode);
 }
 
+int adf_get_active_config_hwc2(struct adf_hwc_helper *dev, int disp,
+       uint32_t *pConfig)
+{
+    int ret = 0;
+    uint32_t i;
+
+    if ((size_t)disp >= dev->intf_fds.size())
+        return -EINVAL;
+
+    adf_interface_data data;
+    int err = adf_get_interface_data(dev->intf_fds[disp], &data);
+    if (err < 0) {
+        ALOGE("failed to get ADF interface data: %s", strerror(err));
+        return err;
+    }
+
+    for (i = 0; i < dev->display_configs.size(); i++) {
+        if ((data.current_mode.hdisplay == dev->display_configs[i].hdisplay)
+            && (data.current_mode.vdisplay == dev->display_configs[i].vdisplay)) {
+            *pConfig = i;
+            break;
+        }
+    }
+
+    adf_free_interface_data(&data);
+
+    return 0;
+}
+
 static void handle_adf_event(struct adf_hwc_helper *dev, int disp)
 {
     adf_event *event;
