@@ -59,6 +59,7 @@ using namespace std::chrono_literals;
 #define cpu_to_le32(x) htole32(x)
 
 static int dummy_fd = -1;
+int check_adb_error = 0;
 
 struct func_desc {
     struct usb_interface_descriptor intf;
@@ -506,12 +507,19 @@ static void usb_ffs_close(usb_handle* h) {
     h->open_new_connection = true;
     h->lock.unlock();
     h->notify.notify_one();
+
+    if (check_adb_error == 1) {
+        LOG(INFO) << "Close adb control node " << check_adb_error;
+        adb_close(h->control);
+        h->control = -1;
+    }
 }
 
 static void usb_ffs_init() {
     D("[ usb_init - using FunctionFS ]");
 
     usb_handle* h = new usb_handle();
+    check_adb_error = 0;
 
     if (android::base::GetBoolProperty("sys.usb.ffs.aio_compat", false)) {
         // Devices on older kernels (< 3.18) will not have aio support for ffs
