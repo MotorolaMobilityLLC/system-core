@@ -67,6 +67,13 @@ bool fs_mgr_access(const std::string& path) {
     return ret;
 }
 
+// determine if a filesystem is available
+bool fs_mgr_overlayfs_filesystem_available(const std::string& filesystem) {
+    std::string filesystems;
+    if (!android::base::ReadFileToString("/proc/filesystems", &filesystems)) return false;
+    return filesystems.find("\t" + filesystem + "\n") != std::string::npos;
+}
+
 }  // namespace
 
 #if ALLOW_ADBD_DISABLE_VERITY == 0  // If we are a user build, provide stubs
@@ -321,6 +328,7 @@ bool fs_mgr_overlayfs_setup_dir(const std::string& dir, std::string* overlay, bo
 bool fs_mgr_overlayfs_setup_one(const std::string& overlay, const std::string& mount_point,
                                 bool* change) {
     auto ret = true;
+    if (fs_mgr_overlayfs_already_mounted(mount_point)) return ret;
     auto fsrec_mount_point = overlay + "/" + android::base::Basename(mount_point) + "/";
 
     if (setfscreatecon(kOverlayfsFileContext)) {
@@ -531,7 +539,10 @@ std::vector<std::string> fs_mgr_candidate_list(Fstab* fstab, const char* mount_p
     std::vector<std::string> mounts;
     auto verity = fs_mgr_overlayfs_verity_enabled_list();
     for (auto& entry : *fstab) {
-        if (!fs_mgr_wants_overlayfs(&entry)) continue;
+        if (!fs_mgr_overlayfs_already_mounted(entry.mount_point) &&
+            !fs_mgr_wants_overlayfs(&entry)) {
+            continue;
+        }
         std::string new_mount_point(fs_mgr_mount_point(entry.mount_point.c_str()));
         if (mount_point && (new_mount_point != mount_point)) continue;
         if (std::find(verity.begin(), verity.end(), android::base::Basename(new_mount_point)) !=
@@ -554,26 +565,6 @@ std::vector<std::string> fs_mgr_candidate_list(Fstab* fstab, const char* mount_p
         if (!duplicate_or_more_specific) mounts.emplace_back(new_mount_point);
     }
 
-    // if not itemized /system or /, system as root, fake one up?
-
-    // do we want or need to?
-    if (mount_point && ("/system"s != mount_point)) return mounts;
-    if (std::find(mounts.begin(), mounts.end(), "/system") != mounts.end()) return mounts;
-
-    // fs_mgr_overlayfs_verity_enabled_list says not to?
-    if (std::find(verity.begin(), verity.end(), "system") != verity.end()) return mounts;
-
-    // confirm that fstab is missing system
-    if (GetEntryForMountPoint(fstab, "/") != nullptr ||
-        GetEntryForMountPoint(fstab, "/system") != nullptr) {
-        return mounts;
-    }
-
-    // We have a stunted fstab (w/o system or / ) passed in by the caller,
-    // verity claims are assumed accurate because they are collected internally
-    // from fs_mgr_fstab_default() from within fs_mgr_update_verity_state(),
-    // Can (re)evaluate /system with impunity since we know it is ever-present.
-    mounts.emplace_back("/system");
     return mounts;
 }
 
@@ -625,8 +616,12 @@ const std::string kMkExt4("/system/bin/mke2fs");
 
 // Only a suggestion for _first_ try during mounting
 std::string fs_mgr_overlayfs_scratch_mount_type() {
-    if (!access(kMkF2fs.c_str(), X_OK) && fs_mgr_access("/sys/fs/f2fs")) return "f2fs";
-    if (!access(kMkExt4.c_str(), X_OK) && fs_mgr_access("/sys/fs/ext4")) return "ext4";
+    if (!access(kMkF2fs.c_str(), X_OK) && fs_mgr_overlayfs_filesystem_available("f2fs")) {
+        return "f2fs";
+    }
+    if (!access(kMkExt4.c_str(), X_OK) && fs_mgr_overlayfs_filesystem_available("ext4")) {
+        return "ext4";
+    }
     return "auto";
 }
 
@@ -657,7 +652,7 @@ bool fs_mgr_overlayfs_make_scratch(const std::string& scratch_device, const std:
     if (mnt_type == "f2fs") {
         command = kMkF2fs + " -w 4096 -f -d1 -l" + android::base::Basename(kScratchMountPoint);
     } else if (mnt_type == "ext4") {
-        command = kMkExt4 + " -b 4096 -t ext4 -m 0 -O has_journal -M " + kScratchMountPoint;
+        command = kMkExt4 + " -F -b 4096 -t ext4 -m 0 -O has_journal -M " + kScratchMountPoint;
     } else {
         errno = ESRCH;
         LERROR << mnt_type << " has no mkfs cookbook";
@@ -821,7 +816,10 @@ bool fs_mgr_overlayfs_mount_all(Fstab* fstab) {
 
     auto scratch_can_be_mounted = true;
     for (const auto& mount_point : fs_mgr_candidate_list(fstab)) {
-        if (fs_mgr_overlayfs_already_mounted(mount_point)) continue;
+        if (fs_mgr_overlayfs_already_mounted(mount_point)) {
+            ret = true;
+            continue;
+        }
         if (scratch_can_be_mounted) {
             scratch_can_be_mounted = false;
             auto scratch_device = fs_mgr_overlayfs_scratch_device();
@@ -1002,7 +1000,7 @@ OverlayfsValidResult fs_mgr_overlayfs_valid() {
     if (fs_mgr_access("/sys/module/overlay/parameters/override_creds")) {
         return OverlayfsValidResult::kOverrideCredsRequired;
     }
-    if (!fs_mgr_access("/sys/module/overlay")) {
+    if (!fs_mgr_overlayfs_filesystem_available("overlay")) {
         return OverlayfsValidResult::kNotSupported;
     }
     struct utsname uts;
