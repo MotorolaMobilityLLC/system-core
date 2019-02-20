@@ -1345,8 +1345,13 @@ do_kill:
         }
 
         if (pages_freed < pages_to_free) {
-            ALOGI("Unable to free enough memory (pages to free=%d, pages freed=%d)",
-                  pages_to_free, pages_freed);
+            if (level == VMPRESS_LEVEL_CRITICAL) {
+                ALOGI("Unable to free enough memory in critical pressure (pages to free=%d, pages freed=%d)",
+                    pages_to_free, pages_freed);
+            } else if (debug_process_killing) {
+                ALOGI("Unable to free enough memory in medium pressure (pages to free=%d, pages freed=%d)",
+                    pages_to_free, pages_freed);
+            }
         } else {
             ALOGI("Reclaimed enough memory (pages to free=%d, pages freed=%d)",
                   pages_to_free, pages_freed);
