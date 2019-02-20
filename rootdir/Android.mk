@@ -42,6 +42,23 @@ LOCAL_MODULE_PATH := $(TARGET_OUT_ETC)/init
 LOCAL_POST_INSTALL_CMD = mkdir -p $(TARGET_OUT)/usr && rm -rf $(TARGET_OUT)/usr/icu
 LOCAL_POST_INSTALL_CMD += ; ln -sf /apex/com.android.runtime/etc/icu $(TARGET_OUT)/usr/icu
 
+# TODO(b/124106384): Clean up compat symlinks for ART binaries.
+ART_BINARIES= \
+  dalvikvm32 \
+  dalvikvm64 \
+  dex2oat \
+  dexdiag \
+  dexdump \
+  dexlist \
+  dexoptanalyzer \
+  oatdump \
+  profman \
+
+$(foreach b,$(ART_BINARIES), \
+  $(eval LOCAL_POST_INSTALL_CMD += \
+    ; ln -sf /apex/com.android.runtime/bin/$(b) $(TARGET_OUT)/bin/$(b)) \
+)
+
 # End of runtime APEX compatibilty.
 
 include $(BUILD_PREBUILT)
@@ -55,6 +72,16 @@ LOCAL_SRC_FILES := $(LOCAL_MODULE)
 LOCAL_MODULE_CLASS := ETC
 LOCAL_MODULE_PATH := $(TARGET_OUT_ETC)
 
+include $(BUILD_PREBUILT)
+
+#######################################
+# cgroups.json for recovery
+include $(CLEAR_VARS)
+LOCAL_MODULE := cgroups.recovery.json
+LOCAL_SRC_FILES := $(LOCAL_MODULE)
+LOCAL_MODULE_CLASS := ETC
+LOCAL_MODULE_PATH := $(TARGET_RECOVERY_ROOT_OUT)/system/etc
+LOCAL_MODULE_STEM := cgroups.json
 include $(BUILD_PREBUILT)
 
 #######################################

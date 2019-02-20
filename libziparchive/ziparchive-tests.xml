@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Copyright (C) 2017 The Android Open Source Project
+<!-- Copyright (C) 2019 The Android Open Source Project
 
      Licensed under the Apache License, Version 2.0 (the "License");
      you may not use this file except in compliance with the License.
@@ -13,14 +13,18 @@
      See the License for the specific language governing permissions and
      limitations under the License.
 -->
-<configuration description="Config for libcutils_test">
+<!-- Derived from auto-generated config. b/117891984 & b/124515549. -->
+<configuration description="Runs ziparchive-tests.">
+    <option name="test-suite-tag" value="apct" />
+    <option name="test-suite-tag" value="apct-native" />
     <target_preparer class="com.android.tradefed.targetprep.PushFilePreparer">
         <option name="cleanup" value="true" />
-        <option name="push" value="libcutils_test->/data/local/tmp/libcutils_test" />
+        <option name="push" value="ziparchive-tests->/data/local/tmp/ziparchive-tests/ziparchive-tests" />
+        <option name="push" value="testdata->/data/local/tmp/ziparchive-tests/testdata" />
     </target_preparer>
-    <option name="test-suite-tag" value="apct" />
+
     <test class="com.android.tradefed.testtype.GTest" >
-        <option name="native-test-device-path" value="/data/local/tmp" />
-        <option name="module-name" value="libcutils_test" />
+        <option name="native-test-device-path" value="/data/local/tmp/ziparchive-tests" />
+        <option name="module-name" value="ziparchive-tests" />
     </test>
 </configuration>
