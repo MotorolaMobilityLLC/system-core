@@ -1559,7 +1559,7 @@ int main(int argc __unused, char **argv __unused) {
         property_get_bool("ro.lmk.kill_heaviest_task", false);
     low_ram_device = property_get_bool("ro.config.low_ram", false);
     kill_timeout_ms =
-        (unsigned long)property_get_int32("ro.lmk.kill_timeout_ms", 0);
+        (unsigned long)property_get_int32("ro.lmk.kill_timeout_ms", 100);
     use_minfree_levels =
         property_get_bool("ro.lmk.use_minfree_levels", false);
 
