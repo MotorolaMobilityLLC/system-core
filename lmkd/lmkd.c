@@ -1189,8 +1189,11 @@ static void mp_event_common(int data, uint32_t events __unused) {
     if (kill_timeout_ms) {
         struct timeval curr_tm;
         gettimeofday(&curr_tm, NULL);
-        if (get_time_diff_ms(&last_report_tm, &curr_tm) < kill_timeout_ms) {
-            skip_count++;
+        if (skip_count < 15 && get_time_diff_ms(&last_report_tm, &curr_tm) < kill_timeout_ms) {
+            if (level == VMPRESS_LEVEL_MEDIUM)
+                skip_count++;
+            else if (level == VMPRESS_LEVEL_CRITICAL)
+                skip_count+=2;
             return;
         }
     }
@@ -1199,6 +1202,8 @@ static void mp_event_common(int data, uint32_t events __unused) {
         ALOGI("%lu memory pressure events were skipped after a kill!",
               skip_count);
         skip_count = 0;
+        last_report_tm.tv_sec = 0;
+        last_report_tm.tv_usec = 0;
     }
 
     if (meminfo_parse(&mi) < 0 || zoneinfo_parse(&zi) < 0) {
@@ -1248,6 +1253,7 @@ static void mp_event_common(int data, uint32_t events __unused) {
 
     if (level_oomadj[level] > OOM_SCORE_ADJ_MAX) {
         /* Do not monitor this pressure level */
+        if (debug_process_killing) ALOGI("Ignore pressure level %d", level);
         return;
     }
 
@@ -1561,7 +1567,7 @@ int main(int argc __unused, char **argv __unused) {
     downgrade_pressure =
         (int64_t)property_get_int32("ro.lmk.downgrade_pressure", 100);
     kill_heaviest_task =
-        property_get_bool("ro.lmk.kill_heaviest_task", false);
+        property_get_bool("ro.lmk.kill_heaviest_task", true);
     low_ram_device = property_get_bool("ro.config.low_ram", false);
     kill_timeout_ms =
         (unsigned long)property_get_int32("ro.lmk.kill_timeout_ms", 100);
