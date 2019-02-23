@@ -1554,7 +1554,7 @@ int main(int argc __unused, char **argv __unused) {
     level_oomadj[VMPRESS_LEVEL_LOW] =
         property_get_int32("ro.lmk.low", OOM_SCORE_ADJ_MAX + 1);
     level_oomadj[VMPRESS_LEVEL_MEDIUM] =
-        property_get_int32("ro.lmk.medium", 800);
+        property_get_int32("ro.lmk.medium", 900);
     level_oomadj[VMPRESS_LEVEL_CRITICAL] =
         property_get_int32("ro.lmk.critical", 0);
     debug_process_killing = property_get_bool("ro.lmk.debug", false);
