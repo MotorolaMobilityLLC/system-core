@@ -66,6 +66,9 @@
 #define MEMCG_SYSFS_PATH "/dev/memcg/"
 #define MEMCG_MEMORY_USAGE "/dev/memcg/memory.usage_in_bytes"
 #define MEMCG_MEMORYSW_USAGE "/dev/memcg/memory.memsw.usage_in_bytes"
+#define MEMCG_SWAPPINESS "/dev/memcg/memory.swappiness"
+#define MEMCG_SYSTEM_SWAPPINESS "/dev/memcg/system/memory.swappiness"
+#define MEMCG_APPS_SWAPPINESS "/dev/memcg/apps/memory.swappiness"
 #define ZONEINFO_PATH "/proc/zoneinfo"
 #define MEMINFO_PATH "/proc/meminfo"
 #define LINE_MAX 128
@@ -191,6 +194,7 @@ enum meminfo_field {
     MI_BUFFERS,
     MI_SHMEM,
     MI_UNEVICTABLE,
+    MI_TOTAL_SWAP,
     MI_FREE_SWAP,
     MI_DIRTY,
     MI_FIELD_COUNT
@@ -203,6 +207,7 @@ static const char* const meminfo_field_names[MI_FIELD_COUNT] = {
     "Buffers:",
     "Shmem:",
     "Unevictable:",
+    "SwapTotal:",
     "SwapFree:",
     "Dirty:",
 };
@@ -215,6 +220,7 @@ union meminfo {
         int64_t buffers;
         int64_t shmem;
         int64_t unevictable;
+        int64_t total_swap;
         int64_t free_swap;
         int64_t dirty;
         /* fields below are calculated rather than read from the file */
@@ -1096,6 +1102,33 @@ static int64_t get_memory_usage(struct reread_data *file_data) {
     return mem_usage;
 }
 
+static int64_t get_swappiness() {
+    static struct reread_data file_data = {
+        .filename = MEMCG_SWAPPINESS,
+        .fd = -1,
+    };
+    int64_t swappiness;
+    char buf[32];
+
+    if (reread_file(&file_data, buf, sizeof(buf)) < 0) {
+        return -1;
+    }
+
+    if (!parse_int64(buf, &swappiness)) {
+        ALOGE("%s parse error", file_data.filename);
+        return -1;
+    }
+    return swappiness;
+}
+
+static void set_swappiness(int swappiness) {
+    char val[20];
+    snprintf(val, sizeof(val), "%d", swappiness);
+    writefilestring(MEMCG_SWAPPINESS, val);
+    writefilestring(MEMCG_SYSTEM_SWAPPINESS, val);
+    writefilestring(MEMCG_APPS_SWAPPINESS, val);
+}
+
 void record_low_pressure_levels(union meminfo *mi) {
     if (low_pressure_mem.min_nr_free_pages == -1 ||
         low_pressure_mem.min_nr_free_pages > mi->field.nr_free_pages) {
@@ -1156,7 +1189,9 @@ static void mp_event_common(int data, uint32_t events __unused) {
     enum vmpressure_level lvl;
     union meminfo mi;
     union zoneinfo zi;
+    struct timeval curr_tm;
     static struct timeval last_report_tm;
+    static struct timeval last_critical_pressure_tm;
     static unsigned long skip_count = 0;
     enum vmpressure_level level = (enum vmpressure_level)data;
     long other_free = 0, other_file = 0;
@@ -1186,9 +1221,8 @@ static void mp_event_common(int data, uint32_t events __unused) {
         }
     }
 
+    gettimeofday(&curr_tm, NULL);
     if (kill_timeout_ms) {
-        struct timeval curr_tm;
-        gettimeofday(&curr_tm, NULL);
         if (skip_count < 15 && get_time_diff_ms(&last_report_tm, &curr_tm) < kill_timeout_ms) {
             if (level == VMPRESS_LEVEL_MEDIUM)
                 skip_count++;
@@ -1233,7 +1267,7 @@ static void mp_event_common(int data, uint32_t events __unused) {
 
         if (min_score_adj == OOM_SCORE_ADJ_MAX + 1) {
             if (debug_process_killing) {
-                ALOGI("Ignore %s memory pressure event "
+                ALOGI("Ignoring %s memory pressure event "
                       "(free memory=%ldkB, cache=%ldkB, limit=%ldkB)",
                       level_name[level], other_free * page_k, other_file * page_k,
                       (long)lowmem_minfree[lowmem_targets_size - 1] * page_k);
@@ -1245,52 +1279,71 @@ static void mp_event_common(int data, uint32_t events __unused) {
         pages_to_free = lowmem_minfree[lowmem_targets_size - 1] -
             ((other_free < other_file) ? other_free : other_file);
         goto do_kill;
-    }
 
-    if (level == VMPRESS_LEVEL_LOW) {
-        record_low_pressure_levels(&mi);
-    }
+    } else {
 
-    if (level_oomadj[level] > OOM_SCORE_ADJ_MAX) {
-        /* Do not monitor this pressure level */
-        if (debug_process_killing) ALOGI("Ignore pressure level %d", level);
-        return;
-    }
+        if (level == VMPRESS_LEVEL_LOW) {
+            record_low_pressure_levels(&mi);
+        }
 
-    if ((mem_usage = get_memory_usage(&mem_usage_file_data)) < 0) {
-        goto do_kill;
-    }
-    if ((memsw_usage = get_memory_usage(&memsw_usage_file_data)) < 0) {
-        goto do_kill;
-    }
+        if (level_oomadj[level] > OOM_SCORE_ADJ_MAX) {
+            /* Do not monitor this pressure level */
+            return;
+        }
 
-    // Calculate percent for swappinness.
-    mem_pressure = (mem_usage * 100) / memsw_usage;
-
-    if (enable_pressure_upgrade && level != VMPRESS_LEVEL_CRITICAL) {
-        // We are swapping too much.
-        if (mem_pressure < upgrade_pressure) {
-            level = upgrade_level(level);
-            if (debug_process_killing) {
-                ALOGI("Event upgraded to %s", level_name[level]);
+        // file/swap balance
+        int64_t swappiness = get_swappiness();
+        int64_t used_swap = mi.field.total_swap - mi.field.free_swap;
+        if (used_swap < mi.field.total_swap/2
+                || mi.field.nr_file_pages < low_pressure_mem.max_nr_file_pages/3) {
+            if (swappiness != 100) {
+                set_swappiness(100);
+                if (debug_process_killing) ALOGI("Resume swap, %" PRId64 " swap used, %" PRId64 " file available",
+                    used_swap, mi.field.nr_file_pages);
+            }
+        } else {
+            if (swappiness != 0) {
+                set_swappiness(0);
+                if (debug_process_killing) ALOGI("Pause swap, %" PRId64 " swap used, %" PRId64 " file available",
+                    used_swap, mi.field.nr_file_pages);
             }
         }
-    }
 
-    // If the pressure is larger than downgrade_pressure lmk will not
-    // kill any process, since enough memory is available.
-    if (mem_pressure > downgrade_pressure) {
-        if (debug_process_killing) {
-            ALOGI("Ignore %s memory pressure", level_name[level]);
+        // make kill decision
+        if (mi.field.nr_file_pages > low_pressure_mem.max_nr_file_pages/4
+            || mi.field.free_swap > low_pressure_mem.max_nr_free_pages) {
+            if (level == VMPRESS_LEVEL_CRITICAL) {
+                if (get_time_diff_ms(&last_critical_pressure_tm, &curr_tm) > 3000) {
+                    gettimeofday(&last_critical_pressure_tm, NULL);
+                    if (debug_process_killing) ALOGI("Ignore first critical pressure above threshold");
+                    return;
+                }
+            } else {
+                if (debug_process_killing) {
+                    ALOGI("Ignoring medium pressure, %" PRId64 " swap free, %" PRId64 " file available",
+                    mi.field.free_swap, mi.field.nr_file_pages);
+                }
+                return;
+            }
         }
-        return;
-    } else if (level == VMPRESS_LEVEL_CRITICAL &&
-               mem_pressure > upgrade_pressure) {
-        if (debug_process_killing) {
-            ALOGI("Downgrade critical memory pressure");
+
+        if (level == VMPRESS_LEVEL_CRITICAL) {
+            gettimeofday(&last_critical_pressure_tm, NULL);
         }
-        // Downgrade event, since enough memory available.
-        level = downgrade_level(level);
+
+        /* Free up enough memory to downgrate the memory pressure to low level */
+        if (mi.field.nr_free_pages < low_pressure_mem.max_nr_free_pages) {
+            pages_to_free = low_pressure_mem.max_nr_free_pages -
+                mi.field.nr_free_pages;
+        } else {
+            if (debug_process_killing) {
+                ALOGI("Ignoring pressure since more memory is "
+                    "available (%" PRId64 ") than watermark (%" PRId64 ")",
+                    mi.field.nr_free_pages, low_pressure_mem.max_nr_free_pages);
+            }
+            return;
+        }
+        min_score_adj = level_oomadj[level];
     }
 
 do_kill:
@@ -1302,45 +1355,7 @@ do_kill:
             }
         }
     } else {
-        int pages_freed;
-
-        if (!use_minfree_levels) {
-            /* If pressure level is less than critical and enough free swap then ignore */
-            if (level < VMPRESS_LEVEL_CRITICAL &&
-                mi.field.free_swap > low_pressure_mem.max_nr_free_pages) {
-                if (debug_process_killing) {
-                    ALOGI("Ignoring pressure since %" PRId64
-                          " swap pages are available ",
-                          mi.field.free_swap);
-                }
-                return;
-            }
-            /* If pressure level is less than critical and enough file cache then ignore */
-            if (level < VMPRESS_LEVEL_CRITICAL &&
-                mi.field.nr_file_pages > low_pressure_mem.max_nr_file_pages/3) {
-                if (debug_process_killing) {
-                    ALOGI("Ignoring pressure since %" PRId64
-                          " file pages are available ",
-                          mi.field.nr_file_pages);
-                }
-                return;
-            }
-            /* Free up enough memory to downgrate the memory pressure to low level */
-            if (mi.field.nr_free_pages < low_pressure_mem.max_nr_free_pages) {
-                pages_to_free = low_pressure_mem.max_nr_free_pages -
-                    mi.field.nr_free_pages;
-            } else {
-                if (debug_process_killing) {
-                    ALOGI("Ignoring pressure since more memory is "
-                        "available (%" PRId64 ") than watermark (%" PRId64 ")",
-                        mi.field.nr_free_pages, low_pressure_mem.max_nr_free_pages);
-                }
-                return;
-            }
-            min_score_adj = level_oomadj[level];
-        }
-
-        pages_freed = find_and_kill_processes(level, min_score_adj, pages_to_free);
+        int pages_freed = find_and_kill_processes(level, min_score_adj, pages_to_free);
 
         if (use_minfree_levels) {
             ALOGI("Killing because cache %ldkB is below "
@@ -1348,6 +1363,11 @@ do_kill:
                   "   Free memory is %ldkB %s reserved",
                   other_file * page_k, minfree * page_k, min_score_adj,
                   other_free * page_k, other_free >= 0 ? "above" : "below");
+        } else {
+            ALOGI("Killing because free swap %" PRId64 " (%" PRId64 ")" 
+                    " and file %" PRId64 " (%" PRId64")",
+                    mi.field.free_swap, low_pressure_mem.max_nr_free_pages,
+                    mi.field.nr_file_pages, low_pressure_mem.max_nr_file_pages/4);
         }
 
         if (pages_freed < pages_to_free) {
