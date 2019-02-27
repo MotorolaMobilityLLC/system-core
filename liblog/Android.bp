@@ -65,6 +65,8 @@ cc_library_headers {
     name: "liblog_vendor_headers",
     vendor: true,
     export_include_dirs: ["include"],
+    system_shared_libs: [],
+    stl: "none",
 }
 
 cc_library {
@@ -94,10 +96,15 @@ cc_library {
     export_header_lib_headers: ["liblog_vendor_headers"],
     cflags: [
         "-Werror",
-        "-fvisibility=hidden",
         "-DLIBLOG_LOG_TAG=1006",
         "-DSNET_EVENT_LOG_TAG=1397638484",
     ],
+
+    stubs: {
+        symbol_file: "liblog.map.txt",
+        versions: ["10000"],
+    },
+
     logtags: ["event.logtags"],
     compile_multilib: "both",
 }
