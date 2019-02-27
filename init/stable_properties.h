@@ -44,7 +44,6 @@ static const std::set<std::string> kExportedActionableProperties = {
     "ro.crypto.state",
     "ro.crypto.type",
     "ro.debuggable",
-    "ro.product.manufacturer",
     "sys.boot_completed",
     "sys.boot_from_charger_mode",
     "sys.retaildemo.enabled",
