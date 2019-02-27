@@ -681,7 +681,6 @@ bool load_properties_from_file(const char* filename, const char* filter) {
 #endif
     return true;
 }
-
 // persist.sys.usb.config values can't be combined on build-time when property
 // files are split into each partition.
 // So we need to apply the same rule of build/make/tools/post_process_props.py
@@ -691,7 +690,18 @@ static void update_sys_usb_config() {
     std::string config = android::base::GetProperty("persist.sys.usb.config", "");
 
 #ifdef JOURNEY_FEATURE_DEBUG_MODE
-    if(journey_debug_mode) {
+    is_debuggable |= journey_debug_mode;
+    if(journey_debug_mode)
+        LOG(INFO) << "update_sys_usb_config journey_debug_mode";
+#endif
+#ifdef JOURNEY_FEATURE_FACTORY_REQUEST
+    bool is_factory_mode = android::base::GetBoolProperty("debug.adb.factory.mode", false);
+    is_debuggable |= is_factory_mode;
+    if(is_factory_mode)
+        LOG(INFO) << "update_sys_usb_config is_factory_mode";
+#endif
+#if defined(JOURNEY_FEATURE_DEBUG_MODE) || defined(JOURNEY_FEATURE_FACTORY_REQUEST)
+    if(is_debuggable) {
         is_debuggable = true; // we really need this in journey debug mode. it will force open adb
         LOG(INFO) << "update_sys_usb_config change is_debuggable to true";
 
@@ -735,6 +745,15 @@ static void load_override_properties() {
         load_properties_from_file("/data/local.prop", NULL);
     }
 }
+#ifdef JOURNEY_FEATURE_FACTORY_REQUEST
+static void load_factory_properties() {
+    if(persistent_properties_loaded) { // not useful if persist not loaded(data not mount)
+        if(load_properties_from_file("/data/journey.factory.prop", NULL)) {
+            update_sys_usb_config(); // if load successed , we need update the usb config again
+        }
+    }
+}
+#endif
 
 /* When booting an encrypted system, /data is not mounted when the
  * property service is started, so any properties stored there are
@@ -742,6 +761,10 @@ static void load_override_properties() {
  * has mounted /data.
  */
 void load_persist_props(void) {
+#ifdef JOURNEY_FEATURE_FACTORY_REQUEST
+    LOG(INFO) << "load_persist_props -> load_factory_properties";
+    load_factory_properties(); // we found there is a logic bug here. so we load factory prop first every time if it exist
+#endif
     // Devices with FDE have load_persist_props called twice; the first time when the temporary
     // /data partition is mounted and then again once /data is truly mounted.  We do not want to
     // read persistent properties from the temporary /data partition or mark persistent properties

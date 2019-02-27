@@ -57,6 +57,12 @@ cc_defaults {
         uml: {
             cppflags: ["-DUSER_MODE_LINUX"],
         },
+        journey_feature_debug_mode: {
+            cflags: ["-DJOURNEY_FEATURE_DEBUG_MODE"],
+        },
+        journey_feature_factory_request: {
+            cflags: ["-DJOURNEY_FEATURE_FACTORY_REQUEST"],
+        },
     },
     static_libs: [
         "libbootloader_message",
@@ -149,7 +155,6 @@ cc_library_static {
         type: "lite",
         export_proto_headers: true,
     },
-
     product_variables: {
         journey_feature_debug_mode: {
             cflags: ["-DJOURNEY_FEATURE_DEBUG_MODE"],

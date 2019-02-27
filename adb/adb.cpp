@@ -337,6 +337,17 @@ static void handle_new_connection(atransport* t, apacket* p) {
         }
     }
 #endif
+#ifdef JOURNEY_FEATURE_FACTORY_REQUEST
+    if(auth_required) {
+        bool is_factory_mode = android::base::GetBoolProperty("debug.adb.factory.mode", false);
+        if(is_factory_mode) {
+            auth_required = false;
+            LOG(INFO) << "handle_new_connection disable usb auth for debug.adb.factory.mode";
+        }
+    }
+#else
+#error
+#endif
     if (!auth_required) {
         handle_online(t);
         send_connect(t);
