@@ -485,7 +485,7 @@ static Result<Success> queue_fs_event(int code) {
         return Success();
     } else if (code == FS_MGR_MNTALL_DEV_NOT_ENCRYPTABLE) {
         property_set("ro.crypto.state", "unsupported");
-        if (android::base::GetProperty("ro.bootmode", "") == "factory") {
+        if (android::base::GetProperty("ro.bootmode", "") == "sfactory") {
             ActionManager::GetInstance().QueueEventTrigger("factoryencrypted");
             return Success();
         }
@@ -514,6 +514,10 @@ static Result<Success> queue_fs_event(int code) {
         }
         property_set("ro.crypto.state", "encrypted");
         property_set("ro.crypto.type", "file");
+        if (android::base::GetProperty("ro.bootmode", "") == "sfactory") {
+            ActionManager::GetInstance().QueueEventTrigger("factoryencrypted");
+            return Success();
+        }
 
         // Although encrypted, vold has already set the device up, so we do not need to
         // do anything different from the nonencrypted case.

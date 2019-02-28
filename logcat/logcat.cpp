@@ -266,6 +266,17 @@ static void rotateLogs(android_logcat_context_internal* context) {
             perror("while rotating log files");
             break;
         }
+        std::string slogd = android::base::GetProperty("persist.slogd.enable", "false");
+        if (slogd == "true" || slogd == "TRUE" || slogd == "1" || slogd == "YES" || slogd == "yes") {
+            if (!(i - 1)) {
+                std::string cmd = "gzip -c " + file0 + " > " + file0 + ".gz";
+                system(cmd.c_str());
+                cmd = "rm -fr " + file0;
+                system(cmd.c_str());
+            }
+            file1 = file1 + ".gz";
+            file0 = file0 + ".gz";
+        }
 
         err = rename(file0.c_str(), file1.c_str());
 
