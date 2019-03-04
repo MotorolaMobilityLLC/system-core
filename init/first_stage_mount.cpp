@@ -47,6 +47,7 @@ using android::base::ReadFileToString;
 using android::base::Split;
 using android::base::Timer;
 using android::fs_mgr::AvbHandle;
+using android::fs_mgr::AvbHandleStatus;
 using android::fs_mgr::AvbHashtreeResult;
 using android::fs_mgr::AvbUniquePtr;
 using android::fs_mgr::BuildGsiSystemFstabEntry;
@@ -155,6 +156,60 @@ static Fstab ReadFirstStageFstab() {
         }
     }
     return fstab;
+}
+
+static bool GetRootEntry(FstabEntry* root_entry) {
+    Fstab proc_mounts;
+    if (!ReadFstabFromFile("/proc/mounts", &proc_mounts)) {
+        LOG(ERROR) << "Could not read /proc/mounts and /system not in fstab, /system will not be "
+                      "available for overlayfs";
+        return false;
+    }
+
+    auto entry = std::find_if(proc_mounts.begin(), proc_mounts.end(), [](const auto& entry) {
+        return entry.mount_point == "/" && entry.fs_type != "rootfs";
+    });
+
+    if (entry == proc_mounts.end()) {
+        LOG(ERROR) << "Could not get mount point for '/' in /proc/mounts, /system will not be "
+                      "available for overlayfs";
+        return false;
+    }
+
+    *root_entry = std::move(*entry);
+
+    // We don't know if we're avb or not, so we query device mapper as if we are avb.  If we get a
+    // success, then mark as avb, otherwise default to verify.
+    auto& dm = android::dm::DeviceMapper::Instance();
+    if (dm.GetState("vroot") != android::dm::DmDeviceState::INVALID) {
+        root_entry->fs_mgr_flags.avb = true;
+    } else {
+        root_entry->fs_mgr_flags.verify = true;
+    }
+    return true;
+}
+
+static bool IsStandaloneImageRollback(const AvbHandle& builtin_vbmeta,
+                                      const AvbHandle& standalone_vbmeta,
+                                      const FstabEntry& fstab_entry) {
+    std::string old_spl = builtin_vbmeta.GetSecurityPatchLevel(fstab_entry);
+    std::string new_spl = standalone_vbmeta.GetSecurityPatchLevel(fstab_entry);
+
+    bool rollbacked = false;
+    if (old_spl.empty() || new_spl.empty() || new_spl < old_spl) {
+        rollbacked = true;
+    }
+
+    if (rollbacked) {
+        LOG(ERROR) << "Image rollback detected for " << fstab_entry.mount_point
+                   << ", SPL switches from '" << old_spl << "' to '" << new_spl << "'";
+        if (AvbHandle::IsDeviceUnlocked()) {
+            LOG(INFO) << "Allowing rollbacked standalone image when the device is unlocked";
+            return false;
+        }
+    }
+
+    return rollbacked;
 }
 
 // Class Definitions
@@ -443,7 +498,7 @@ bool FirstStageMount::TrySwitchSystemAsRoot() {
 
     if (system_partition == fstab_.end()) return true;
 
-    if (MountPartition(system_partition, true /* erase_used_fstab_entry */)) {
+    if (MountPartition(system_partition, false)) {
         SwitchRoot("/system");
     } else {
         PLOG(ERROR) << "Failed to mount /system";
@@ -487,6 +542,12 @@ bool FirstStageMount::MountPartitions() {
     if (!TrySkipMountingPartitions()) return false;
 
     for (auto current = fstab_.begin(); current != fstab_.end();) {
+        // We've already mounted /system above.
+        if (current->mount_point == "/system") {
+            ++current;
+            continue;
+        }
+
         Fstab::iterator end;
         if (!MountPartition(current, false, &end)) {
             if (current->fs_mgr_flags.no_fail) {
@@ -501,6 +562,15 @@ bool FirstStageMount::MountPartitions() {
             }
         }
         current = end;
+    }
+
+    // If we don't see /system or / in the fstab, then we need to create an root entry for
+    // overlayfs.
+    if (!GetEntryForMountPoint(&fstab_, "/system") && !GetEntryForMountPoint(&fstab_, "/")) {
+        FstabEntry root_entry;
+        if (GetRootEntry(&root_entry)) {
+            fstab_.emplace_back(std::move(root_entry));
+        }
     }
 
     // heads up for instantiating required device(s) for overlayfs logic
@@ -690,9 +760,26 @@ bool FirstStageMountVBootV2::SetUpDmVerity(FstabEntry* fstab_entry) {
         if (!InitAvbHandle()) return false;
         hashtree_result =
                 avb_handle_->SetUpAvbHashtree(fstab_entry, false /* wait_for_verity_dev */);
-    } else if (!fstab_entry->avb_key.empty()) {
-        hashtree_result =
-                AvbHandle::SetUpStandaloneAvbHashtree(fstab_entry, false /* wait_for_verity_dev */);
+    } else if (!fstab_entry->avb_keys.empty()) {
+        if (!InitAvbHandle()) return false;
+        // Checks if hashtree should be disabled from the top-level /vbmeta.
+        if (avb_handle_->status() == AvbHandleStatus::kHashtreeDisabled ||
+            avb_handle_->status() == AvbHandleStatus::kVerificationDisabled) {
+            LOG(ERROR) << "Top-level vbmeta is disabled, skip Hashtree setup for "
+                       << fstab_entry->mount_point;
+            return true;  // Returns true to mount the partition directly.
+        } else {
+            auto avb_standalone_handle = AvbHandle::LoadAndVerifyVbmeta(*fstab_entry);
+            if (!avb_standalone_handle) {
+                LOG(ERROR) << "Failed to load offline vbmeta for " << fstab_entry->mount_point;
+                return false;
+            }
+            if (IsStandaloneImageRollback(*avb_handle_, *avb_standalone_handle, *fstab_entry)) {
+                return false;
+            }
+            hashtree_result = avb_standalone_handle->SetUpAvbHashtree(
+                    fstab_entry, false /* wait_for_verity_dev */);
+        }
     } else {
         return true;  // No need AVB, returns true to mount the partition directly.
     }
@@ -708,8 +795,6 @@ bool FirstStageMountVBootV2::SetUpDmVerity(FstabEntry* fstab_entry) {
         default:
             return false;
     }
-
-    return true;  // Returns true to mount the partition.
 }
 
 bool FirstStageMountVBootV2::InitAvbHandle() {

@@ -84,6 +84,15 @@ on init
     chmod 0664 /dev/stune/top-app/tasks
     chmod 0664 /dev/stune/rt/tasks
 
+    # Create blkio tuning nodes
+    mkdir /dev/blkio/background
+    chown system system /dev/blkio
+    chown system system /dev/blkio/background
+    chown system system /dev/blkio/tasks
+    chown system system /dev/blkio/background/tasks
+    chmod 0664 /dev/blkio/tasks
+    chmod 0664 /dev/blkio/background/tasks
+
     restorecon_recursive /mnt
 
     mount configfs none /config nodev noexec nosuid
@@ -277,6 +286,10 @@ on init
 
     # Start logd before any other services run to ensure we capture all of their logs.
     start logd
+
+    # Start apexd as soon as we can
+    start apexd
+
     # Start essential services.
     start servicemanager
     start hwservicemanager
@@ -412,8 +425,8 @@ on post-fs-data
     mkdir /data/bootchart 0755 shell shell
     bootchart start
 
-    # Start apexd as soon as we can
-    start apexd
+    # /data/apex is now available. Let apexd to scan and activate APEXes.
+    setprop apexd.data.status ready
 
     # Avoid predictable entropy pool. Carry over entropy from previous boot.
     copy /data/system/entropy.dat /dev/urandom
@@ -534,7 +547,7 @@ on post-fs-data
     mkdir /data/apex/active 0750 root system
     mkdir /data/apex/backup 0700 root system
     mkdir /data/apex/sessions 0700 root system
-    mkdir /data/staging 0750 system system
+    mkdir /data/pkg_staging 0750 system system
 
     # NFC: create data/nfc for nv storage
     mkdir /data/nfc 0770 nfc nfc
@@ -573,9 +586,6 @@ on post-fs-data
     # Set SELinux security contexts on upgrade or policy update.
     restorecon --recursive --skip-ce /data
 
-    # Check any timezone data in /data is newer than the copy in the runtime module, delete if not.
-    exec - system system -- /system/bin/tzdatacheck /apex/com.android.runtime/etc/tz /data/misc/zoneinfo
-
     # load fsverity keys
     exec -- /system/bin/mini-keyctl -c /product/etc/security/cacerts_fsverity,/vendor/etc/security/cacerts_fsverity -k .fs-verity
 
@@ -586,6 +596,9 @@ on post-fs-data
     wait_for_prop apexd.status ready
     setup_runtime_bionic
     parse_apex_configs
+
+    # Check any timezone data in /data is newer than the copy in the runtime module, delete if not.
+    exec - system system -- /system/bin/tzdatacheck /apex/com.android.runtime/etc/tz /data/misc/zoneinfo
 
     # If there is no post-fs-data action in the init.<device>.rc file, you
     # must uncomment this line, otherwise encrypted filesystems

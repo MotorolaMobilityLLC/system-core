@@ -78,6 +78,10 @@ bool fs_mgr_overlayfs_filesystem_available(const std::string& filesystem) {
 
 #if ALLOW_ADBD_DISABLE_VERITY == 0  // If we are a user build, provide stubs
 
+Fstab fs_mgr_overlayfs_candidate_list(const Fstab&) {
+    return {};
+}
+
 bool fs_mgr_overlayfs_mount_all(Fstab*) {
     return false;
 }
@@ -153,7 +157,12 @@ bool fs_mgr_overlayfs_enabled(FstabEntry* entry) {
         fs_mgr_update_logical_partition(entry);
     }
     auto save_errno = errno;
+    errno = 0;
     auto has_shared_blocks = fs_mgr_has_shared_blocks(entry->mount_point, entry->blk_device);
+    // special case for first stage init for system as root (taimen)
+    if (!has_shared_blocks && (errno == ENOENT) && (entry->blk_device == "/dev/root")) {
+        has_shared_blocks = true;
+    }
     errno = save_errno;
     return has_shared_blocks;
 }
@@ -238,8 +247,7 @@ std::string fs_mgr_get_overlayfs_options(const std::string& mount_point) {
     return ret;
 }
 
-const char* fs_mgr_mount_point(const char* mount_point) {
-    if (!mount_point) return mount_point;
+const std::string fs_mgr_mount_point(const std::string& mount_point) {
     if ("/"s != mount_point) return mount_point;
     return "/system";
 }
@@ -270,15 +278,6 @@ bool fs_mgr_overlayfs_already_mounted(const std::string& mount_point, bool overl
         }
     }
     return false;
-}
-
-std::vector<std::string> fs_mgr_overlayfs_verity_enabled_list() {
-    std::vector<std::string> ret;
-    auto save_errno = errno;
-    fs_mgr_update_verity_state(
-            [&ret](const std::string& mount_point, int) { ret.emplace_back(mount_point); });
-    if ((errno == ENOENT) || (errno == ENXIO)) errno = save_errno;
-    return ret;
 }
 
 bool fs_mgr_wants_overlayfs(FstabEntry* entry) {
@@ -535,59 +534,6 @@ bool fs_mgr_overlayfs_mount(const std::string& mount_point) {
     }
 }
 
-std::vector<std::string> fs_mgr_candidate_list(Fstab* fstab, const char* mount_point = nullptr) {
-    std::vector<std::string> mounts;
-    auto verity = fs_mgr_overlayfs_verity_enabled_list();
-    for (auto& entry : *fstab) {
-        if (!fs_mgr_overlayfs_already_mounted(entry.mount_point) &&
-            !fs_mgr_wants_overlayfs(&entry)) {
-            continue;
-        }
-        std::string new_mount_point(fs_mgr_mount_point(entry.mount_point.c_str()));
-        if (mount_point && (new_mount_point != mount_point)) continue;
-        if (std::find(verity.begin(), verity.end(), android::base::Basename(new_mount_point)) !=
-            verity.end()) {
-            continue;
-        }
-        auto duplicate_or_more_specific = false;
-        for (auto it = mounts.begin(); it != mounts.end();) {
-            if ((*it == new_mount_point) ||
-                (android::base::StartsWith(new_mount_point, *it + "/"))) {
-                duplicate_or_more_specific = true;
-                break;
-            }
-            if (android::base::StartsWith(*it, new_mount_point + "/")) {
-                it = mounts.erase(it);
-            } else {
-                ++it;
-            }
-        }
-        if (!duplicate_or_more_specific) mounts.emplace_back(new_mount_point);
-    }
-
-    // if not itemized /system or /, system as root, fake one up?
-
-    // do we want or need to?
-    if (mount_point && ("/system"s != mount_point)) return mounts;
-    if (std::find(mounts.begin(), mounts.end(), "/system") != mounts.end()) return mounts;
-
-    // fs_mgr_overlayfs_verity_enabled_list says not to?
-    if (std::find(verity.begin(), verity.end(), "system") != verity.end()) return mounts;
-
-    // confirm that fstab is missing system
-    if (GetEntryForMountPoint(fstab, "/") != nullptr ||
-        GetEntryForMountPoint(fstab, "/system") != nullptr) {
-        return mounts;
-    }
-
-    // We have a stunted fstab (w/o system or / ) passed in by the caller,
-    // verity claims are assumed accurate because they are collected internally
-    // from fs_mgr_fstab_default() from within fs_mgr_update_verity_state(),
-    // Can (re)evaluate /system with impunity since we know it is ever-present.
-    mounts.emplace_back("/system");
-    return mounts;
-}
-
 // Mount kScratchMountPoint
 bool fs_mgr_overlayfs_mount_scratch(const std::string& device_path, const std::string mnt_type,
                                     bool readonly = false) {
@@ -830,12 +776,42 @@ bool fs_mgr_overlayfs_invalid() {
 
 }  // namespace
 
+Fstab fs_mgr_overlayfs_candidate_list(const Fstab& fstab) {
+    Fstab candidates;
+    for (const auto& entry : fstab) {
+        FstabEntry new_entry = entry;
+        if (!fs_mgr_overlayfs_already_mounted(entry.mount_point) &&
+            !fs_mgr_wants_overlayfs(&new_entry)) {
+            continue;
+        }
+        auto new_mount_point = fs_mgr_mount_point(entry.mount_point);
+        auto duplicate_or_more_specific = false;
+        for (auto it = candidates.begin(); it != candidates.end();) {
+            auto it_mount_point = fs_mgr_mount_point(it->mount_point);
+            if ((it_mount_point == new_mount_point) ||
+                (android::base::StartsWith(new_mount_point, it_mount_point + "/"))) {
+                duplicate_or_more_specific = true;
+                break;
+            }
+            if (android::base::StartsWith(it_mount_point, new_mount_point + "/")) {
+                it = candidates.erase(it);
+            } else {
+                ++it;
+            }
+        }
+        if (!duplicate_or_more_specific) candidates.emplace_back(std::move(new_entry));
+    }
+    return candidates;
+}
+
 bool fs_mgr_overlayfs_mount_all(Fstab* fstab) {
     auto ret = false;
     if (fs_mgr_overlayfs_invalid()) return ret;
 
     auto scratch_can_be_mounted = true;
-    for (const auto& mount_point : fs_mgr_candidate_list(fstab)) {
+    for (const auto& entry : fs_mgr_overlayfs_candidate_list(*fstab)) {
+        if (fs_mgr_is_verity_enabled(entry)) continue;
+        auto mount_point = fs_mgr_mount_point(entry.mount_point);
         if (fs_mgr_overlayfs_already_mounted(mount_point)) {
             ret = true;
             continue;
@@ -868,8 +844,9 @@ std::vector<std::string> fs_mgr_overlayfs_required_devices(Fstab* fstab) {
         return {};
     }
 
-    for (const auto& mount_point : fs_mgr_candidate_list(fstab)) {
-        if (fs_mgr_overlayfs_already_mounted(mount_point)) continue;
+    for (const auto& entry : fs_mgr_overlayfs_candidate_list(*fstab)) {
+        if (fs_mgr_is_verity_enabled(entry)) continue;
+        if (fs_mgr_overlayfs_already_mounted(fs_mgr_mount_point(entry.mount_point))) continue;
         auto device = fs_mgr_overlayfs_scratch_device();
         if (!fs_mgr_overlayfs_scratch_can_be_mounted(device)) break;
         return {device};
@@ -895,8 +872,24 @@ bool fs_mgr_overlayfs_setup(const char* backing, const char* mount_point, bool* 
         return false;
     }
     errno = save_errno;
-    auto mounts = fs_mgr_candidate_list(&fstab, fs_mgr_mount_point(mount_point));
-    if (mounts.empty()) return ret;
+    auto candidates = fs_mgr_overlayfs_candidate_list(fstab);
+    for (auto it = candidates.begin(); it != candidates.end();) {
+        if (mount_point &&
+            (fs_mgr_mount_point(it->mount_point) != fs_mgr_mount_point(mount_point))) {
+            it = candidates.erase(it);
+            continue;
+        }
+        save_errno = errno;
+        auto verity_enabled = fs_mgr_is_verity_enabled(*it);
+        if (errno == ENOENT || errno == ENXIO) errno = save_errno;
+        if (verity_enabled) {
+            it = candidates.erase(it);
+            continue;
+        }
+        ++it;
+    }
+
+    if (candidates.empty()) return ret;
 
     std::string dir;
     for (const auto& overlay_mount_point : kOverlayMountPoints) {
@@ -919,8 +912,8 @@ bool fs_mgr_overlayfs_setup(const char* backing, const char* mount_point, bool* 
 
     std::string overlay;
     ret |= fs_mgr_overlayfs_setup_dir(dir, &overlay, change);
-    for (const auto& fsrec_mount_point : mounts) {
-        ret |= fs_mgr_overlayfs_setup_one(overlay, fsrec_mount_point, change);
+    for (const auto& entry : candidates) {
+        ret |= fs_mgr_overlayfs_setup_one(overlay, fs_mgr_mount_point(entry.mount_point), change);
     }
     return ret;
 }
@@ -929,7 +922,6 @@ bool fs_mgr_overlayfs_setup(const char* backing, const char* mount_point, bool* 
 // If something is altered, set *change.
 bool fs_mgr_overlayfs_teardown(const char* mount_point, bool* change) {
     if (change) *change = false;
-    mount_point = fs_mgr_mount_point(mount_point);
     auto ret = true;
     // If scratch exists, but is not mounted, lets gain access to clean
     // specific override entries.
@@ -947,7 +939,8 @@ bool fs_mgr_overlayfs_teardown(const char* mount_point, bool* change) {
                                                        fs_mgr_overlayfs_scratch_mount_type());
     }
     for (const auto& overlay_mount_point : kOverlayMountPoints) {
-        ret &= fs_mgr_overlayfs_teardown_one(overlay_mount_point, mount_point ?: "", change);
+        ret &= fs_mgr_overlayfs_teardown_one(
+                overlay_mount_point, mount_point ? fs_mgr_mount_point(mount_point) : "", change);
     }
     if (fs_mgr_overlayfs_valid() == OverlayfsValidResult::kNotSupported) {
         // After obligatory teardown to make sure everything is clean, but if
@@ -974,8 +967,9 @@ bool fs_mgr_overlayfs_is_setup() {
         return false;
     }
     if (fs_mgr_overlayfs_invalid()) return false;
-    for (const auto& mount_point : fs_mgr_candidate_list(&fstab)) {
-        if (fs_mgr_overlayfs_already_mounted(mount_point)) return true;
+    for (const auto& entry : fs_mgr_overlayfs_candidate_list(fstab)) {
+        if (fs_mgr_is_verity_enabled(entry)) continue;
+        if (fs_mgr_overlayfs_already_mounted(fs_mgr_mount_point(entry.mount_point))) return true;
     }
     return false;
 }
@@ -1037,7 +1031,7 @@ OverlayfsValidResult fs_mgr_overlayfs_valid() {
     if (major > 4) {
         return OverlayfsValidResult::kNotSupported;
     }
-    if (minor > 6) {
+    if (minor > 3) {
         return OverlayfsValidResult::kNotSupported;
     }
     return OverlayfsValidResult::kOk;
