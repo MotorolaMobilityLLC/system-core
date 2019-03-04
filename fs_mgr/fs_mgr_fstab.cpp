@@ -325,8 +325,8 @@ void ParseFsMgrFlags(const std::string& flags, FstabEntry* entry) {
             }
         } else if (StartsWith(flag, "zram_backing_dev_path=")) {
             entry->zram_backing_dev_path = arg;
-        } else if (StartsWith(flag, "avb_key=")) {
-            entry->avb_key = arg;
+        } else if (StartsWith(flag, "avb_keys=")) {
+            entry->avb_keys = arg;
         } else {
             LWARNING << "Warning: unknown flag: " << flag;
         }
@@ -588,18 +588,7 @@ std::set<std::string> ExtraBootDevices(const Fstab& fstab) {
     return boot_devices;
 }
 
-void EraseFstabEntry(Fstab* fstab, const std::string& mount_point) {
-    auto iter = std::remove_if(fstab->begin(), fstab->end(),
-                               [&](const auto& entry) { return entry.mount_point == mount_point; });
-    fstab->erase(iter, fstab->end());
-}
-
-void TransformFstabForGsi(Fstab* fstab) {
-    EraseFstabEntry(fstab, "/system");
-    EraseFstabEntry(fstab, "/data");
-
-    fstab->emplace_back(BuildGsiSystemFstabEntry());
-
+FstabEntry BuildGsiUserdataFstabEntry() {
     constexpr uint32_t kFlags = MS_NOATIME | MS_NOSUID | MS_NODEV;
 
     FstabEntry userdata = {
@@ -615,7 +604,41 @@ void TransformFstabForGsi(Fstab* fstab) {
     userdata.fs_mgr_flags.quota = true;
     userdata.fs_mgr_flags.late_mount = true;
     userdata.fs_mgr_flags.formattable = true;
-    fstab->emplace_back(userdata);
+    return userdata;
+}
+
+bool EraseFstabEntry(Fstab* fstab, const std::string& mount_point) {
+    auto iter = std::remove_if(fstab->begin(), fstab->end(),
+                               [&](const auto& entry) { return entry.mount_point == mount_point; });
+    if (iter != fstab->end()) {
+        fstab->erase(iter, fstab->end());
+        return true;
+    }
+    return false;
+}
+
+void TransformFstabForGsi(Fstab* fstab) {
+    // Inherit fstab properties for userdata.
+    FstabEntry userdata;
+    if (FstabEntry* entry = GetEntryForMountPoint(fstab, "/data")) {
+        userdata = *entry;
+        userdata.blk_device = "userdata_gsi";
+        userdata.fs_mgr_flags.logical = true;
+        userdata.fs_mgr_flags.formattable = true;
+        if (!userdata.key_dir.empty()) {
+            userdata.key_dir += "/gsi";
+        }
+    } else {
+        userdata = BuildGsiUserdataFstabEntry();
+    }
+
+    if (EraseFstabEntry(fstab, "/system")) {
+        fstab->emplace_back(BuildGsiSystemFstabEntry());
+    }
+
+    if (EraseFstabEntry(fstab, "/data")) {
+        fstab->emplace_back(userdata);
+    }
 }
 
 }  // namespace
@@ -736,7 +759,8 @@ FstabEntry BuildGsiSystemFstabEntry() {
                          .fs_type = "ext4",
                          .flags = MS_RDONLY,
                          .fs_options = "barrier=1",
-                         .avb_key = "/gsi.avbpubkey",
+                         // could add more keys separated by ':'.
+                         .avb_keys = "/avb/gsi.avbpubkey:",
                          .logical_partition_name = "system"};
     system.fs_mgr_flags.wait = true;
     system.fs_mgr_flags.logical = true;

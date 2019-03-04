@@ -39,6 +39,7 @@
 #define _REALLY_INCLUDE_SYS__SYSTEM_PROPERTIES_H_
 #include <sys/_system_properties.h>
 
+#include <map>
 #include <memory>
 #include <queue>
 #include <vector>
@@ -65,6 +66,7 @@
 
 using namespace std::literals;
 
+using android::base::GetProperty;
 using android::base::ReadFileToString;
 using android::base::Split;
 using android::base::StartsWith;
@@ -441,8 +443,8 @@ bool CheckControlPropertyPerms(const std::string& name, const std::string& value
 }
 
 // This returns one of the enum of PROP_SUCCESS or PROP_ERROR*.
-uint32_t HandlePropertySet(const std::string& name, const std::string& value,
-                           const std::string& source_context, const ucred& cr, std::string* error) {
+uint32_t CheckPermissions(const std::string& name, const std::string& value,
+                          const std::string& source_context, const ucred& cr, std::string* error) {
     if (!IsLegalPropertyName(name)) {
         *error = "Illegal property name";
         return PROP_ERROR_INVALID_NAME;
@@ -455,7 +457,6 @@ uint32_t HandlePropertySet(const std::string& name, const std::string& value,
             return PROP_ERROR_HANDLE_CONTROL_MESSAGE;
         }
 
-        HandleControlMessage(name.c_str() + 4, value, cr.pid);
         return PROP_SUCCESS;
     }
 
@@ -472,6 +473,21 @@ uint32_t HandlePropertySet(const std::string& name, const std::string& value,
         *error = StringPrintf("Property type check failed, value doesn't match expected type '%s'",
                               (type ?: "(null)"));
         return PROP_ERROR_INVALID_VALUE;
+    }
+
+    return PROP_SUCCESS;
+}
+
+// This returns one of the enum of PROP_SUCCESS or PROP_ERROR*.
+uint32_t HandlePropertySet(const std::string& name, const std::string& value,
+                           const std::string& source_context, const ucred& cr, std::string* error) {
+    if (auto ret = CheckPermissions(name, value, source_context, cr, error); ret != PROP_SUCCESS) {
+        return ret;
+    }
+
+    if (StartsWith(name, "ctl.")) {
+        HandleControlMessage(name.c_str() + 4, value, cr.pid);
+        return PROP_SUCCESS;
     }
 
     // sys.powerctl is a special property that is used to make the device reboot.  We want to log
@@ -578,13 +594,15 @@ static void handle_property_set_fd() {
     }
 }
 
-static bool load_properties_from_file(const char *, const char *);
+static bool load_properties_from_file(const char*, const char*,
+                                      std::map<std::string, std::string>*);
 
 /*
  * Filter is used to decide which properties to load: NULL loads all keys,
  * "ro.foo.*" is a prefix match, and "ro.foo.bar" is an exact match.
  */
-static void LoadProperties(char* data, const char* filter, const char* filename) {
+static void LoadProperties(char* data, const char* filter, const char* filename,
+                           std::map<std::string, std::string>* properties) {
     char *key, *value, *eol, *sol, *tmp, *fn;
     size_t flen = 0;
 
@@ -623,7 +641,7 @@ static void LoadProperties(char* data, const char* filter, const char* filename)
                 while (isspace(*key)) key++;
             }
 
-            load_properties_from_file(fn, key);
+            load_properties_from_file(fn, key, properties);
 
         } else {
             value = strchr(key, '=');
@@ -650,12 +668,19 @@ static void LoadProperties(char* data, const char* filter, const char* filename)
                 continue;
             }
 
-            uint32_t result = 0;
             ucred cr = {.pid = 1, .uid = 0, .gid = 0};
             std::string error;
-            result = HandlePropertySet(key, value, context, cr, &error);
-            if (result != PROP_SUCCESS) {
-                LOG(ERROR) << "Unable to set property '" << key << "' to '" << value
+            if (CheckPermissions(key, value, context, cr, &error) == PROP_SUCCESS) {
+                auto it = properties->find(key);
+                if (it == properties->end()) {
+                    (*properties)[key] = value;
+                } else if (it->second != value) {
+                    LOG(WARNING) << "Overriding previous 'ro.' property '" << key << "':'"
+                                 << it->second << "' with new value '" << value << "'";
+                    it->second = value;
+                }
+            } else {
+                LOG(ERROR) << "Do not have permissions to set '" << key << "' to '" << value
                            << "' in property file '" << filename << "': " << error;
             }
         }
@@ -664,7 +689,8 @@ static void LoadProperties(char* data, const char* filter, const char* filename)
 
 // Filter is used to decide which properties to load: NULL loads all keys,
 // "ro.foo.*" is a prefix match, and "ro.foo.bar" is an exact match.
-static bool load_properties_from_file(const char* filename, const char* filter) {
+static bool load_properties_from_file(const char* filename, const char* filter,
+                                      std::map<std::string, std::string>* properties) {
     Timer t;
     auto file_contents = ReadFile(filename);
     if (!file_contents) {
@@ -674,7 +700,7 @@ static bool load_properties_from_file(const char* filename, const char* filter) 
     }
     file_contents->push_back('\n');
 
-    LoadProperties(file_contents->data(), filter, filename);
+    LoadProperties(file_contents->data(), filter, filename, properties);
     LOG(VERBOSE) << "(Loading properties from " << filename << " took " << t << ".)";
     return true;
 }
@@ -697,7 +723,15 @@ static void update_sys_usb_config() {
 
 static void load_override_properties() {
     if (ALLOW_LOCAL_PROP_OVERRIDE) {
-        load_properties_from_file("/data/local.prop", NULL);
+        std::map<std::string, std::string> properties;
+        load_properties_from_file("/data/local.prop", nullptr, &properties);
+        for (const auto& [name, value] : properties) {
+            std::string error;
+            if (PropertySet(name, value, &error) != PROP_SUCCESS) {
+                LOG(ERROR) << "Could not set '" << name << "' to '" << value
+                           << "' in /data/local.prop: " << error;
+            }
+        }
     }
 }
 
@@ -749,31 +783,147 @@ void load_persist_props(void) {
     property_set("ro.persistent_properties.ready", "true");
 }
 
+// If the ro.product.[brand|device|manufacturer|model|name] properties have not been explicitly
+// set, derive them from ro.product.${partition}.* properties
+static void property_initialize_ro_product_props() {
+    const char* RO_PRODUCT_PROPS_PREFIX = "ro.product.";
+    const char* RO_PRODUCT_PROPS[] = {
+            "brand", "device", "manufacturer", "model", "name",
+    };
+    const char* RO_PRODUCT_PROPS_ALLOWED_SOURCES[] = {
+            "odm", "product", "product_services", "system", "vendor",
+    };
+    const char* RO_PRODUCT_PROPS_DEFAULT_SOURCE_ORDER =
+            "product,product_services,odm,vendor,system";
+    const std::string EMPTY = "";
+
+    std::string ro_product_props_source_order =
+            GetProperty("ro.product.property_source_order", EMPTY);
+
+    if (!ro_product_props_source_order.empty()) {
+        // Verify that all specified sources are valid
+        for (const auto& source : Split(ro_product_props_source_order, ",")) {
+            // Verify that the specified source is valid
+            bool is_allowed_source = false;
+            for (const auto& allowed_source : RO_PRODUCT_PROPS_ALLOWED_SOURCES) {
+                if (source == allowed_source) {
+                    is_allowed_source = true;
+                    break;
+                }
+            }
+            if (!is_allowed_source) {
+                LOG(ERROR) << "Found unexpected source in ro.product.property_source_order; "
+                              "using the default property source order";
+                ro_product_props_source_order = RO_PRODUCT_PROPS_DEFAULT_SOURCE_ORDER;
+                break;
+            }
+        }
+    } else {
+        ro_product_props_source_order = RO_PRODUCT_PROPS_DEFAULT_SOURCE_ORDER;
+    }
+
+    for (const auto& ro_product_prop : RO_PRODUCT_PROPS) {
+        std::string base_prop(RO_PRODUCT_PROPS_PREFIX);
+        base_prop += ro_product_prop;
+
+        std::string base_prop_val = GetProperty(base_prop, EMPTY);
+        if (!base_prop_val.empty()) {
+            continue;
+        }
+
+        for (const auto& source : Split(ro_product_props_source_order, ",")) {
+            std::string target_prop(RO_PRODUCT_PROPS_PREFIX);
+            target_prop += source;
+            target_prop += '.';
+            target_prop += ro_product_prop;
+
+            std::string target_prop_val = GetProperty(target_prop, EMPTY);
+            if (!target_prop_val.empty()) {
+                LOG(INFO) << "Setting product property " << base_prop << " to '" << target_prop_val
+                          << "' (from " << target_prop << ")";
+                std::string error;
+                uint32_t res = PropertySet(base_prop, target_prop_val, &error);
+                if (res != PROP_SUCCESS) {
+                    LOG(ERROR) << "Error setting product property " << base_prop << ": err=" << res
+                               << " (" << error << ")";
+                }
+                break;
+            }
+        }
+    }
+}
+
+// If the ro.build.fingerprint property has not been set, derive it from constituent pieces
+static void property_derive_build_fingerprint() {
+    std::string build_fingerprint = GetProperty("ro.build.fingerprint", "");
+    if (!build_fingerprint.empty()) {
+        return;
+    }
+
+    const std::string UNKNOWN = "unknown";
+    build_fingerprint = GetProperty("ro.product.brand", UNKNOWN);
+    build_fingerprint += '/';
+    build_fingerprint += GetProperty("ro.product.name", UNKNOWN);
+    build_fingerprint += '/';
+    build_fingerprint += GetProperty("ro.product.device", UNKNOWN);
+    build_fingerprint += ':';
+    build_fingerprint += GetProperty("ro.build.version.release", UNKNOWN);
+    build_fingerprint += '/';
+    build_fingerprint += GetProperty("ro.build.id", UNKNOWN);
+    build_fingerprint += '/';
+    build_fingerprint += GetProperty("ro.build.version.incremental", UNKNOWN);
+    build_fingerprint += ':';
+    build_fingerprint += GetProperty("ro.build.type", UNKNOWN);
+    build_fingerprint += '/';
+    build_fingerprint += GetProperty("ro.build.tags", UNKNOWN);
+
+    LOG(INFO) << "Setting property 'ro.build.fingerprint' to '" << build_fingerprint << "'";
+
+    std::string error;
+    uint32_t res = PropertySet("ro.build.fingerprint", build_fingerprint, &error);
+    if (res != PROP_SUCCESS) {
+        LOG(ERROR) << "Error setting property 'ro.build.fingerprint': err=" << res << " (" << error
+                   << ")";
+    }
+}
+
 void property_load_boot_defaults() {
-    // TODO(b/117892318): merge prop.default and build.prop files into one
-    // TODO(b/122864654): read the prop files from all partitions and then
-    // resolve the duplication by their origin so that RO and non-RO properties
-    // have a consistent overriding order.
 
 #ifdef MTK_RSC
     LoadRscRoProps();
 #endif
 
-    if (!load_properties_from_file("/system/etc/prop.default", NULL)) {
+    // TODO(b/117892318): merge prop.default and build.prop files into one
+    // We read the properties and their values into a map, in order to always allow properties
+    // loaded in the later property files to override the properties in loaded in the earlier
+    // property files, regardless of if they are "ro." properties or not.
+    std::map<std::string, std::string> properties;
+    if (!load_properties_from_file("/system/etc/prop.default", nullptr, &properties)) {
         // Try recovery path
-        if (!load_properties_from_file("/prop.default", NULL)) {
+        if (!load_properties_from_file("/prop.default", nullptr, &properties)) {
             // Try legacy path
-            load_properties_from_file("/default.prop", NULL);
+            load_properties_from_file("/default.prop", nullptr, &properties);
         }
     }
-    load_properties_from_file("/product/build.prop", NULL);
-    load_properties_from_file("/product_services/build.prop", NULL);
-    load_properties_from_file("/odm/default.prop", NULL);
-    load_properties_from_file("/vendor/default.prop", NULL);
-    load_properties_from_file("/system/build.prop", NULL);
-    load_properties_from_file("/odm/build.prop", NULL);
-    load_properties_from_file("/vendor/build.prop", NULL);
-    load_properties_from_file("/factory/factory.prop", "ro.*");
+    load_properties_from_file("/system/build.prop", nullptr, &properties);
+    load_properties_from_file("/vendor/default.prop", nullptr, &properties);
+    load_properties_from_file("/vendor/build.prop", nullptr, &properties);
+    load_properties_from_file("/odm/default.prop", nullptr, &properties);
+    load_properties_from_file("/odm/build.prop", nullptr, &properties);
+    load_properties_from_file("/product/build.prop", nullptr, &properties);
+    load_properties_from_file("/product_services/build.prop", nullptr, &properties);
+    load_properties_from_file("/factory/factory.prop", "ro.*", &properties);
+
+    for (const auto& [name, value] : properties) {
+        std::string error;
+        if (PropertySet(name, value, &error) != PROP_SUCCESS) {
+            LOG(ERROR) << "Could not set '" << name << "' to '" << value
+                       << "' while loading .prop files" << error;
+        }
+    }
+
+    property_initialize_ro_product_props();
+    property_derive_build_fingerprint();
 
     update_sys_usb_config();
 }
@@ -826,6 +976,13 @@ void CreateSerializedPropertyInfo() {
             LoadPropertyInfoFromFile("/vendor/etc/selinux/nonplat_property_contexts",
                                      &property_infos);
         }
+        if (access("/product/etc/selinux/product_property_contexts", R_OK) != -1) {
+            LoadPropertyInfoFromFile("/product/etc/selinux/product_property_contexts",
+                                     &property_infos);
+        }
+        if (access("/odm/etc/selinux/odm_property_contexts", R_OK) != -1) {
+            LoadPropertyInfoFromFile("/odm/etc/selinux/odm_property_contexts", &property_infos);
+        }
     } else {
         if (!LoadPropertyInfoFromFile("/plat_property_contexts", &property_infos)) {
             return;
@@ -834,6 +991,8 @@ void CreateSerializedPropertyInfo() {
             // Fallback to nonplat_* if vendor_* doesn't exist.
             LoadPropertyInfoFromFile("/nonplat_property_contexts", &property_infos);
         }
+        LoadPropertyInfoFromFile("/product_property_contexts", &property_infos);
+        LoadPropertyInfoFromFile("/odm_property_contexts", &property_infos);
     }
 
     auto serialized_contexts = std::string();
