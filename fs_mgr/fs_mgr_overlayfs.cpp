@@ -157,7 +157,12 @@ bool fs_mgr_overlayfs_enabled(FstabEntry* entry) {
         fs_mgr_update_logical_partition(entry);
     }
     auto save_errno = errno;
+    errno = 0;
     auto has_shared_blocks = fs_mgr_has_shared_blocks(entry->mount_point, entry->blk_device);
+    // special case for first stage init for system as root (taimen)
+    if (!has_shared_blocks && (errno == ENOENT) && (entry->blk_device == "/dev/root")) {
+        has_shared_blocks = true;
+    }
     errno = save_errno;
     return has_shared_blocks;
 }
@@ -1026,7 +1031,7 @@ OverlayfsValidResult fs_mgr_overlayfs_valid() {
     if (major > 4) {
         return OverlayfsValidResult::kNotSupported;
     }
-    if (minor > 6) {
+    if (minor > 3) {
         return OverlayfsValidResult::kNotSupported;
     }
     return OverlayfsValidResult::kOk;

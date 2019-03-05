@@ -37,6 +37,9 @@ struct ChainInfo {
         : partition_name(chain_partition_name), public_key_blob(chain_public_key_blob) {}
 };
 
+std::string GetAvbPropertyDescriptor(const std::string& key,
+                                     const std::vector<VBMetaData>& vbmeta_images);
+
 // AvbHashtreeDescriptor to dm-verity table setup.
 std::unique_ptr<FsAvbHashtreeDescriptor> GetHashtreeDescriptor(
         const std::string& partition_name, const std::vector<VBMetaData>& vbmeta_images);
@@ -75,7 +78,10 @@ VBMetaVerifyResult VerifyVBMetaSignature(const VBMetaData& vbmeta,
                                          const std::string& expected_public_key_blob,
                                          std::string* out_public_key_data);
 
-bool VerifyPublicKeyBlob(const uint8_t* key, size_t length, const std::string& expected_key_blob);
+bool ValidatePublicKeyBlob(const uint8_t* key, size_t length, const std::string& expected_key_blob);
+
+bool ValidatePublicKeyBlob(const std::string key_blob_to_validate,
+                           const std::vector<std::string>& expected_key_paths);
 
 // Detects if whether a partition contains a rollback image.
 bool RollbackDetected(const std::string& partition_name, uint64_t rollback_index);

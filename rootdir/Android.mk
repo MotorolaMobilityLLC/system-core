@@ -44,6 +44,7 @@ LOCAL_POST_INSTALL_CMD += ; ln -sf /apex/com.android.runtime/etc/icu $(TARGET_OU
 
 # TODO(b/124106384): Clean up compat symlinks for ART binaries.
 ART_BINARIES= \
+  dalvikvm \
   dalvikvm32 \
   dalvikvm64 \
   dex2oat \
@@ -60,38 +61,6 @@ $(foreach b,$(ART_BINARIES), \
 )
 
 # End of runtime APEX compatibilty.
-
-include $(BUILD_PREBUILT)
-
-#######################################
-# cgroups.json
-include $(CLEAR_VARS)
-
-LOCAL_MODULE := cgroups.json
-LOCAL_SRC_FILES := $(LOCAL_MODULE)
-LOCAL_MODULE_CLASS := ETC
-LOCAL_MODULE_PATH := $(TARGET_OUT_ETC)
-
-include $(BUILD_PREBUILT)
-
-#######################################
-# cgroups.json for recovery
-include $(CLEAR_VARS)
-LOCAL_MODULE := cgroups.recovery.json
-LOCAL_SRC_FILES := $(LOCAL_MODULE)
-LOCAL_MODULE_CLASS := ETC
-LOCAL_MODULE_PATH := $(TARGET_RECOVERY_ROOT_OUT)/system/etc
-LOCAL_MODULE_STEM := cgroups.json
-include $(BUILD_PREBUILT)
-
-#######################################
-# task_profiles.json
-include $(CLEAR_VARS)
-
-LOCAL_MODULE := task_profiles.json
-LOCAL_SRC_FILES := $(LOCAL_MODULE)
-LOCAL_MODULE_CLASS := ETC
-LOCAL_MODULE_PATH := $(TARGET_OUT_ETC)
 
 include $(BUILD_PREBUILT)
 
@@ -222,6 +191,7 @@ $(LOCAL_BUILT_MODULE): $(LOCAL_PATH)/init.environ.rc.in
 	@echo "Generate: $< -> $@"
 	@mkdir -p $(dir $@)
 	$(hide) sed -e 's?%BOOTCLASSPATH%?$(PRODUCT_BOOTCLASSPATH)?g' $< >$@
+	$(hide) sed -i -e 's?%DEX2OATBOOTCLASSPATH%?$(PRODUCT_DEX2OAT_BOOTCLASSPATH)?g' $@
 	$(hide) sed -i -e 's?%SYSTEMSERVERCLASSPATH%?$(PRODUCT_SYSTEM_SERVER_CLASSPATH)?g' $@
 	$(hide) sed -i -e 's?%EXPORT_GLOBAL_ASAN_OPTIONS%?$(EXPORT_GLOBAL_ASAN_OPTIONS)?g' $@
 	$(hide) sed -i -e 's?%EXPORT_GLOBAL_GCOV_OPTIONS%?$(EXPORT_GLOBAL_GCOV_OPTIONS)?g' $@
