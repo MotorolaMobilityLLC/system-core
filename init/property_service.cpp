@@ -739,17 +739,37 @@ static void load_override_properties() {
 static void LoadRscRoProps() {
     const std::string rscname = android::base::GetProperty("ro.boot.rsc", "");
     const std::string rscpath = rscname == "" ? "" : "etc/rsc/"+rscname+"/";
+    std::map<std::string, std::string> properties;
+    load_properties_from_file(
+        std::string("/system/" + rscpath + "ro.prop").c_str(), nullptr, &properties);
+    load_properties_from_file(
+        std::string("/vendor/" + rscpath + "ro.prop").c_str(), nullptr, &properties);
 
-    load_properties_from_file (std::string("/system/" + rscpath + "ro.prop").c_str(), NULL);
-    load_properties_from_file (std::string("/vendor/" + rscpath + "ro.prop").c_str(), NULL);
+    for (const auto& [name, value] : properties) {
+        std::string error;
+        if (PropertySet(name, value, &error) != PROP_SUCCESS) {
+            LOG(ERROR) << "Could not set '" << name << "' to '" << value
+                       << "' while loading RSC ro.prop files" << error;
+        }
+    }
 }
 
 static void LoadRscRwProps() {
     const std::string rscname = android::base::GetProperty("ro.boot.rsc", "");
     const std::string rscpath = rscname == "" ? "" : "etc/rsc/"+rscname+"/";
+    std::map<std::string, std::string> properties;
+    load_properties_from_file(
+        std::string("/system/" + rscpath + "rw.prop").c_str(), nullptr, &properties);
+    load_properties_from_file(
+        std::string("/vendor/" + rscpath + "rw.prop").c_str(), nullptr, &properties);
 
-    load_properties_from_file (std::string("/system/" + rscpath + "rw.prop").c_str(), NULL);
-    load_properties_from_file (std::string("/vendor/" + rscpath + "rw.prop").c_str(), NULL);
+    for (const auto& [name, value] : properties) {
+        std::string error;
+        if (PropertySet(name, value, &error) != PROP_SUCCESS) {
+            LOG(ERROR) << "Could not set '" << name << "' to '" << value
+                       << "' while loading RSC rw.prop files" << error;
+        }
+    }
 }
 #endif
 
@@ -888,15 +908,13 @@ static void property_derive_build_fingerprint() {
 }
 
 void property_load_boot_defaults() {
-
-#ifdef MTK_RSC
-    LoadRscRoProps();
-#endif
-
     // TODO(b/117892318): merge prop.default and build.prop files into one
     // We read the properties and their values into a map, in order to always allow properties
     // loaded in the later property files to override the properties in loaded in the earlier
     // property files, regardless of if they are "ro." properties or not.
+#ifdef MTK_RSC
+    LoadRscRoProps();
+#endif
     std::map<std::string, std::string> properties;
     if (!load_properties_from_file("/system/etc/prop.default", nullptr, &properties)) {
         // Try recovery path
