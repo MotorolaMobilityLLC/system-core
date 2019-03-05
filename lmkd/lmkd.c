@@ -80,6 +80,7 @@
 #define EIGHT_MEGA (1 << 23)
 
 #define MAX(a,b) ((a)>(b) ? (a):(b))
+#define MIN(a,b) ((a)<(b) ? (a):(b))
 
 #define STRINGIFY(x) STRINGIFY_INTERNAL(x)
 #define STRINGIFY_INTERNAL(x) #x
@@ -190,7 +191,8 @@ union zoneinfo {
 
 /* Fields to parse in /proc/meminfo */
 enum meminfo_field {
-    MI_NR_FREE_PAGES = 0,
+    MI_TOTAL_MEM = 0,
+    MI_NR_FREE_PAGES,
     MI_CACHED,
     MI_SWAP_CACHED,
     MI_BUFFERS,
@@ -203,6 +205,7 @@ enum meminfo_field {
 };
 
 static const char* const meminfo_field_names[MI_FIELD_COUNT] = {
+    "MemTotal:",
     "MemFree:",
     "Cached:",
     "SwapCached:",
@@ -216,6 +219,7 @@ static const char* const meminfo_field_names[MI_FIELD_COUNT] = {
 
 union meminfo {
     struct {
+        int64_t total_memory;
         int64_t nr_free_pages;
         int64_t cached;
         int64_t swap_cached;
@@ -1303,7 +1307,7 @@ static void mp_event_common(int data, uint32_t events __unused) {
         long swap = (mi.field.total_swap - mi.field.free_swap) * page_k;
         int swap_ratio = swap*100/max_swap;
 
-        long max_file = low_pressure_mem.max_nr_file_pages * page_k;
+        long max_file = (mi.field.total_memory/2) * page_k;
         long file = MAX((mi.field.nr_file_pages - mi.field.shmem -
                           mi.field.unevictable - mi.field.swap_cached), 0) * page_k;
         int file_ratio = file*100/max_file;
@@ -1323,7 +1327,14 @@ static void mp_event_common(int data, uint32_t events __unused) {
         }
 
         // adjust kill
-        if (file_ratio > 25 || swap_ratio < 75) {
+        if (file_ratio < 10 && swap_ratio > 90) {
+            // Upgrade pressure
+            level_oomadj[VMPRESS_LEVEL_MEDIUM] = 300;
+            level_oomadj[VMPRESS_LEVEL_CRITICAL] = 0;
+        } else if (file_ratio < 25 && swap_ratio > 75) {
+            level_oomadj[VMPRESS_LEVEL_MEDIUM] = 900;
+            level_oomadj[VMPRESS_LEVEL_CRITICAL] = 100;
+        } else {
             // Downgrade pressue
             level_oomadj[VMPRESS_LEVEL_MEDIUM] = 900;
             level_oomadj[VMPRESS_LEVEL_CRITICAL] = 900;
@@ -1340,13 +1351,6 @@ static void mp_event_common(int data, uint32_t events __unused) {
                 }
                 return;
             }
-        } else if (file_ratio < 10 && swap_ratio > 90) {
-            // Upgrade pressure
-            level_oomadj[VMPRESS_LEVEL_MEDIUM] = 300;
-            level_oomadj[VMPRESS_LEVEL_CRITICAL] = 0;
-        } else {
-            level_oomadj[VMPRESS_LEVEL_MEDIUM] = 900;
-            level_oomadj[VMPRESS_LEVEL_CRITICAL] = 100;
         }
 
         if (level == VMPRESS_LEVEL_CRITICAL) {
