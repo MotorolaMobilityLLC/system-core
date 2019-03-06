@@ -47,6 +47,7 @@
 
 #define ATRACE_TAG ATRACE_TAG_BIONIC
 #include <utils/Trace.h>
+#include <dlfcn.h>
 
 #include <unwindstack/DexFiles.h>
 #include <unwindstack/JitDebug.h>
@@ -352,6 +353,46 @@ static pid_t wait_for_vm_process(pid_t pseudothread_tid) {
   return vm_pid;
 }
 
+// add for crash_dump notify aee_aed
+#define LIB_AED "libaed.so"
+typedef void (*notify_function_pointer)(const char *tombstone_path);
+
+static void notify_aed(const char* tombstone_path)
+{
+  void *handle = NULL;
+  notify_function_pointer notify_fptr = NULL;
+
+  dlerror();
+  handle = dlopen(LIB_AED, RTLD_NOW);
+  if (!handle) {
+    LOG(WARNING) << "dlopen " << LIB_AED << " fail: " << dlerror();
+    return;
+  }
+
+  dlerror();
+  notify_fptr = (notify_function_pointer)dlsym(handle, "crash_dump_notify");
+  if (notify_fptr == NULL) {
+    LOG(WARNING) << "find crash_dump_notify fail: " << dlerror();
+    dlclose(handle);
+    return;
+  }
+
+  notify_fptr(tombstone_path);
+  dlclose(handle);
+}
+
+// confirm it's debuggerd_register_handlers crash signal
+static bool is_debuggerd_register_signal(int signo) {
+  if (signo == SIGABRT || signo == SIGBUS ||
+    signo == SIGFPE || signo == SIGILL ||
+    signo == SIGSEGV || signo == SIGSTKFLT ||
+    signo == SIGSYS || signo == SIGTRAP)
+    return true;
+  else
+    return false;
+}
+
+
 static void InstallSigPipeHandler() {
   struct sigaction action = {};
   action.sa_handler = SIG_IGN;
@@ -572,6 +613,21 @@ int main(int argc, char** argv) {
   }
 
   std::string amfd_data;
+
+  bool need_notify_aee = false;
+  char tombstone_path[PATH_MAX];
+  if (fatal_signal && is_debuggerd_register_signal(signo)) {
+    ssize_t ret = -1;
+    char buf[256];
+
+    snprintf(buf, sizeof(buf), "/proc/%d/task/%d/fd/%d", getpid(), gettid(), g_output_fd.get());
+    ret = readlink(buf, tombstone_path, sizeof(tombstone_path));
+    if (ret != -1)
+      need_notify_aee = true;
+    else
+      PLOG(WARNING) << "readlink fail: " << strerror(errno);
+  }
+
   if (backtrace) {
     ATRACE_NAME("dump_backtrace");
     dump_backtrace(std::move(g_output_fd), &unwinder, thread_info, g_target_thread);
@@ -586,6 +642,12 @@ int main(int argc, char** argv) {
       engrave_tombstone(std::move(g_output_fd), &unwinder, thread_info, g_target_thread,
                         abort_msg_address, &open_files, &amfd_data);
     }
+
+  }
+
+  // crash_dump notify aee_aed when NE occurs
+  if (need_notify_aee) {
+    notify_aed(tombstone_path);
   }
 
   if (fatal_signal) {
