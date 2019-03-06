@@ -1414,6 +1414,108 @@ static void property_derive_build_fingerprint() {
     }
 }
 
+// Initialize ro.build.product property with the value of ro.product.device, if it has not been set.
+static void property_derive_build_product() {
+    std::string build_product = GetProperty("ro.build.product", "");
+    if (!build_product.empty()) {
+        return;
+    }
+
+    const std::string UNKNOWN = "unknown";
+    build_product = GetProperty("ro.product.device", UNKNOWN);
+
+    LOG(INFO) << "Setting property 'ro.build.product' to '" << build_product << "'";
+
+    std::string error;
+    uint32_t res = PropertySet("ro.build.product", build_product, &error);
+    if (res != PROP_SUCCESS) {
+        LOG(ERROR) << "Error setting property 'ro.build.product': err=" << res << " (" << error
+                   << ")";
+    }
+}
+
+// If the ro.build.description property has not been set, derive it from constituent pieces
+static void property_derive_build_description() {
+    std::string build_description = GetProperty("ro.build.description", "");
+    if (!build_description.empty()) {
+        return;
+    }
+    const std::string UNKNOWN = "unknown";
+    build_description = GetProperty("ro.product.name", UNKNOWN);
+    build_description += '-';
+    build_description += GetProperty("ro.build.type", UNKNOWN);
+    build_description += ' ';
+    build_description += GetProperty("ro.build.version.release", UNKNOWN);
+    build_description += ' ';
+    build_description += GetProperty("ro.build.id", UNKNOWN);
+    build_description += ' ';
+    build_description += GetProperty("ro.build.version.incremental", UNKNOWN);
+    build_description += ' ';
+    build_description += GetProperty("ro.build.tags", UNKNOWN);
+
+    LOG(INFO) << "Setting property 'ro.build.description' to '" << build_description << "'";
+
+    std::string error;
+    uint32_t res = PropertySet("ro.build.description", build_description, &error);
+    if (res != PROP_SUCCESS) {
+        LOG(ERROR) << "Error setting property 'ro.build.description': err=" << res << " (" << error
+                   << ")";
+    }
+}
+
+// If the ro.build.display.id property has not been set, derive it from constituent pieces
+static void property_derive_build_display_id() {
+    std::string build_display_id = GetProperty("ro.build.display.id", "");
+    if (!build_display_id.empty()) {
+        return;
+    }
+
+    const std::string UNKNOWN = "unknown";
+    std::string build_type = GetProperty("ro.build.type", "");
+    if (build_type == "user") {
+        std::string display_build_number = GetProperty("ro.build.display_build_number", "");
+        if (display_build_number == "true") {
+            build_display_id = GetProperty("ro.build.id", UNKNOWN);
+            build_display_id += '.';
+            build_display_id += GetProperty("ro.build.version.incremental", UNKNOWN);
+            build_display_id += ' ';
+            build_display_id += GetProperty("ro.build.keys", UNKNOWN);
+        } else {
+            build_display_id = GetProperty("ro.build.id", UNKNOWN);
+            build_display_id += ' ';
+            build_display_id += GetProperty("ro.build.keys", UNKNOWN);
+        }
+    } else {
+            build_display_id = GetProperty("ro.product.name", UNKNOWN);
+            build_display_id += '-';
+            build_display_id += GetProperty("ro.build.type", UNKNOWN);
+            build_display_id += ' ';
+            build_display_id += GetProperty("ro.build.version.release", UNKNOWN);
+            build_display_id += ' ';
+            build_display_id += GetProperty("ro.build.id", UNKNOWN);
+            build_display_id += ' ';
+            build_display_id += GetProperty("ro.build.version.incremental", UNKNOWN);
+            build_display_id += ' ';
+            build_display_id += GetProperty("ro.build.tags", UNKNOWN);
+    }
+
+    LOG(INFO) << "Setting property 'ro.build.display.id' to '" << build_display_id << "'";
+
+    std::string error;
+    uint32_t res = PropertySet("ro.build.display.id", build_display_id, &error);
+    if (res != PROP_SUCCESS) {
+        LOG(ERROR) << "Error setting property 'ro.build.display.id': err=" << res << " (" << error
+                   << ")";
+    }
+}
+
+static void property_derive_build_props() {
+    property_derive_build_fingerprint();
+    property_derive_build_product();
+    property_derive_build_description();
+    property_derive_build_display_id();
+}
+
 // If the ro.product.cpu.abilist* properties have not been explicitly
 // set, derive them from ro.${partition}.product.cpu.abilist* properties.
 static void property_initialize_ro_cpu_abilist() {
@@ -1615,7 +1717,7 @@ void PropertyLoadBootDefaults() {
     property_initialize_build_id();
     // Motorola: Set the incremental if it hasn't been set
     mmi_property_initialize_incremental();
-    property_derive_build_fingerprint();
+    property_derive_build_props();
     property_derive_legacy_build_fingerprint();
     property_initialize_ro_cpu_abilist();
     property_initialize_ro_vendor_api_level();
