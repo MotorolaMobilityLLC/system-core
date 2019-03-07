@@ -142,6 +142,42 @@ static bool CheckMacPerms(const std::string& name, const char* target_context,
     return has_access;
 }
 
+#ifdef MTK_LOG
+static int PropSetFilter(const std::string& name)
+{
+#if 0
+    if ((android::base::StartsWith(name, "ro.") &&
+         !android::base::StartsWith(name, "ro.boottime.")) ||
+#else
+    if (android::base::StartsWith(name, "ro.") ||
+#endif
+        android::base::StartsWith(name, "vold.encrypt_") ||
+        android::base::StartsWith(name, "persist.log.tag") ||
+        android::base::StartsWith(name, "vendor.debug.mtk.aee") ||
+        android::base::StartsWith(name, "init.svc.")) {
+        return 1;
+    }
+
+    return 0;
+}
+
+static void PropSetLog(const std::string& name, const std::string& value, std::string* error)
+{
+    if (PropSetFilter(name))
+        return;
+
+    std::string new_value(value.c_str());
+    std::size_t found = new_value.find_first_of("\n");
+    while (found!=std::string::npos)
+    {
+        new_value[found]=' ';
+        found = new_value.find_first_of("\n", found + 1);
+    }
+
+    LOG(INFO) << "PropSet [" << name << "]=[" << new_value << "]";
+}
+#endif
+
 static uint32_t PropertySet(const std::string& name, const std::string& value, std::string* error) {
     size_t valuelen = value.size();
 
@@ -183,6 +219,12 @@ static uint32_t PropertySet(const std::string& name, const std::string& value, s
         WritePersistentProperty(name, value);
     }
     property_changed(name, value);
+
+#ifdef MTK_LOG
+    // MTK add log
+    PropSetLog(name, value, error);
+#endif
+
     return PROP_SUCCESS;
 }
 

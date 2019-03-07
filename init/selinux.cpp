@@ -484,6 +484,18 @@ void SelinuxSetupKernelLogging() {
     selinux_set_callback(SELINUX_CB_LOG, cb);
 }
 
+#ifdef MTK_LOG
+// This function sets up SELinux logging to be written to kmsg, to match init's logging.
+void SelinuxSetupKernelLogging_split() {
+    if (SelinuxSetupKernelLogging_split_check() >= 0)
+        return SelinuxSetupKernelLogging();
+
+    selinux_callback cb;
+    cb.func_log = selinux_klog_split_callback;
+    selinux_set_callback(SELINUX_CB_LOG, cb);
+}
+#endif
+
 // This function returns the Android version with which the vendor SEPolicy was compiled.
 // It is used for version checks such as whether or not vendor_init should be used
 int SelinuxGetVendorAndroidVersion() {
@@ -518,7 +530,11 @@ int SetupSelinux(char** argv) {
     }
 
     // Set up SELinux, loading the SELinux policy.
+#ifdef MTK_LOG
+    SelinuxSetupKernelLogging_split();
+#else
     SelinuxSetupKernelLogging();
+#endif
     SelinuxInitialize();
 
     // We're in the kernel domain and want to transition to the init domain.  File systems that
