@@ -33,6 +33,7 @@ cc_defaults {
         "-DDUMP_ON_UMOUNT_FAILURE=0",
         "-DSHUTDOWN_ZERO_TIMEOUT=0",
         "-DMTK_RSC=1",
+        "-DMTK_LOG=1",
     ],
     product_variables: {
         debuggable: {

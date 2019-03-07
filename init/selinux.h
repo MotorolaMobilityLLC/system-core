@@ -26,6 +26,9 @@ namespace init {
 int SetupSelinux(char** argv);
 void SelinuxRestoreContext();
 
+#ifdef MTK_LOG
+void SelinuxSetupKernelLogging_split();
+#endif
 void SelinuxSetupKernelLogging();
 int SelinuxGetVendorAndroidVersion();
 

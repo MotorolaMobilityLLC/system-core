@@ -291,8 +291,14 @@ void HandleControlMessage(const std::string& msg, const std::string& name, pid_t
         process_cmdline = "unknown process";
     }
 
+#ifndef MTK_LOG
     LOG(INFO) << "Received control message '" << msg << "' for '" << name << "' from pid: " << pid
               << " (" << process_cmdline << ")";
+#else
+    std::string RecvLog = std::string("Received control message '") + msg + std::string("' for '") +
+                          name + std::string("' from pid: ") + StringPrintf("%d", pid) +
+                          std::string(" (") + process_cmdline + std::string(").");
+#endif
 
     const ControlMessageFunction& function = it->second;
 
@@ -306,16 +312,27 @@ void HandleControlMessage(const std::string& msg, const std::string& name, pid_t
             svc = ServiceList::GetInstance().FindInterface(name);
             break;
         default:
+#ifndef MTK_LOG
             LOG(ERROR) << "Invalid function target from static map key '" << msg << "': "
                        << static_cast<std::underlying_type<ControlTarget>::type>(function.target);
+#else
+            LOG(ERROR) << RecvLog << " Invalid function target from static map key '" << msg << "': "
+                       << static_cast<std::underlying_type<ControlTarget>::type>(function.target);
+#endif
             return;
     }
 
     if (svc == nullptr) {
+#ifndef MTK_LOG
         LOG(ERROR) << "Could not find '" << name << "' for ctl." << msg;
+#else
+        LOG(ERROR) << RecvLog << " Could not find '" << name << "' for ctl." << msg;
+#endif
         return;
     }
-
+#ifdef MTK_LOG
+    LOG(INFO) << RecvLog;
+#endif
     if (auto result = function.action(svc); !result) {
         LOG(ERROR) << "Could not ctl." << msg << " for '" << name << "': " << result.error();
     }
@@ -616,13 +633,50 @@ static void GlobalSeccomp() {
     });
 }
 
+#ifdef MTK_LOG
+static int _LogReap() {
+    int wait_ = -1;
+    int log_ms = -1;
+
+    if (Service::is_exec_service_running()) {
+
+        Service *pService = Service::get_pexec_service_();
+
+        if (pService) {
+            wait_ = pService->DumpExecState();
+        }
+    } else if (waiting_for_prop)
+        wait_ = (*waiting_for_prop).duration().count() / 1000;
+
+    if (wait_ >= 60)
+        wait_ = 1000;
+    else if (wait_ >= 0)
+        wait_ = (60 - wait_) * 1000;
+
+    log_ms = PropSetLogReap(0);
+
+    if (log_ms == -1)
+        return wait_;
+    else if (wait_ == -1)
+        return log_ms;
+    else if (log_ms <= wait_)
+        return log_ms;
+
+    return wait_;
+}
+#endif
+
 int SecondStageMain(int argc, char** argv) {
     if (REBOOT_BOOTLOADER_ON_PANIC) {
         InstallRebootSignalHandlers();
     }
 
     // We need to set up stdin/stdout/stderr again now that we're running in init's context.
+#ifdef MTK_LOG
+    InitKernelLogging_split(argv, InitAborter);
+#else
     InitKernelLogging(argv, InitAborter);
+#endif
     LOG(INFO) << "init second stage started!";
 
     // Enable seccomp if global boot option was passed (otherwise it is enabled in zygote).
@@ -661,7 +715,11 @@ int SecondStageMain(int argc, char** argv) {
     unsetenv("INIT_AVB_VERSION");
 
     // Now set up SELinux for second stage.
+#ifdef MTK_LOG
+    SelinuxSetupKernelLogging_split();
+#else
     SelinuxSetupKernelLogging();
+#endif
     SelabelInitialize();
     SelinuxRestoreContext();
 
@@ -778,6 +836,12 @@ int SecondStageMain(int argc, char** argv) {
             // If there's more work to do, wake up again immediately.
             if (am.HasMoreCommands()) epoll_timeout = 0ms;
         }
+
+#ifdef MTK_LOG
+        int log_ms = _LogReap();//PropSetLogReap();
+        if (log_ms > -1 && (!epoll_timeout || epoll_timeout->count() > log_ms))
+            epoll_timeout = std::chrono::milliseconds(log_ms);
+#endif
 
         if (auto result = epoll.Wait(epoll_timeout); !result) {
             LOG(ERROR) << result.error();

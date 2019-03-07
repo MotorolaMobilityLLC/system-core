@@ -163,8 +163,11 @@ int FirstStageMain(int argc, char** argv) {
     // stage init as part of the mount process.  This closes /dev/console if the
     // kernel had previously opened it.
     auto reboot_bootloader = [](const char*) { RebootSystem(ANDROID_RB_RESTART2, "bootloader"); };
+#ifdef MTK_LOG
+    InitKernelLogging_split(argv, reboot_bootloader);
+#else
     InitKernelLogging(argv, reboot_bootloader);
-
+#endif
     if (!errors.empty()) {
         for (const auto& [error_string, error_errno] : errors) {
             LOG(ERROR) << error_string << " " << strerror(error_errno);
