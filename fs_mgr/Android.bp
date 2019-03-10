@@ -23,6 +23,7 @@ cc_defaults {
     cflags: [
         "-Wall",
         "-Werror",
+	"-DMTK_FSTAB_FLAGS",
     ],
 }
 
