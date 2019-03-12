@@ -21,7 +21,6 @@
 #ifdef __ANDROID__
 #define LOG_TAG "libnativeloader"
 #include "nativeloader/dlext_namespaces.h"
-#include "cutils/properties.h"
 #include "log/log.h"
 #endif
 #include <dirent.h>
@@ -116,6 +115,8 @@ static constexpr const char* kVendorNamespaceName = "sphal";
 
 static constexpr const char* kVndkNamespaceName = "vndk";
 
+static constexpr const char* kDefaultNamespaceName = "default";
+static constexpr const char* kPlatformNamespaceName = "platform";
 static constexpr const char* kRuntimeNamespaceName = "runtime";
 
 // classloader-namespace is a linker namespace that is created for the loaded
@@ -137,10 +138,18 @@ static constexpr const char* kWhitelistedDirectories = "/data:/mnt/expand";
 
 static constexpr const char* kApexPath = "/apex/";
 
+#if defined(__LP64__)
+static constexpr const char* kRuntimeApexLibPath = "/apex/com.android.runtime/lib64";
+#else
+static constexpr const char* kRuntimeApexLibPath = "/apex/com.android.runtime/lib";
+#endif
+
 static bool is_debuggable() {
-  char debuggable[PROP_VALUE_MAX];
-  property_get("ro.debuggable", debuggable, "0");
-  return std::string(debuggable) == "1";
+  bool debuggable = false;
+#ifdef __BIONIC__
+  debuggable = android::base::GetBoolProperty("ro.debuggable", false);
+#endif
+  return debuggable;
 }
 
 static std::string vndk_version_str() {
@@ -265,8 +274,19 @@ class LibraryNamespaces {
 
     NativeLoaderNamespace native_loader_ns;
     if (!is_native_bridge) {
-      android_namespace_t* android_parent_ns =
-          parent_ns == nullptr ? nullptr : parent_ns->get_android_ns();
+      android_namespace_t* android_parent_ns;
+      if (parent_ns != nullptr) {
+        android_parent_ns = parent_ns->get_android_ns();
+      } else {
+        // Fall back to the platform namespace if no parent is found. It is
+        // called "default" for binaries in /system and "platform" for those in
+        // the Runtime APEX. Try "platform" first since "default" always exists.
+        android_parent_ns = android_get_exported_namespace(kPlatformNamespaceName);
+        if (android_parent_ns == nullptr) {
+          android_parent_ns = android_get_exported_namespace(kDefaultNamespaceName);
+        }
+      }
+
       android_namespace_t* ns = android_create_namespace(namespace_name,
                                                          nullptr,
                                                          library_path.c_str(),
@@ -315,8 +335,16 @@ class LibraryNamespaces {
 
       native_loader_ns = NativeLoaderNamespace(ns);
     } else {
-      native_bridge_namespace_t* native_bridge_parent_namespace =
-          parent_ns == nullptr ? nullptr : parent_ns->get_native_bridge_ns();
+      native_bridge_namespace_t* native_bridge_parent_namespace;
+      if (parent_ns != nullptr) {
+        native_bridge_parent_namespace = parent_ns->get_native_bridge_ns();
+      } else {
+        native_bridge_parent_namespace = NativeBridgeGetExportedNamespace(kPlatformNamespaceName);
+        if (native_bridge_parent_namespace == nullptr) {
+          native_bridge_parent_namespace = NativeBridgeGetExportedNamespace(kDefaultNamespaceName);
+        }
+      }
+
       native_bridge_namespace_t* ns = NativeBridgeCreateNamespace(namespace_name,
                                                                   nullptr,
                                                                   library_path.c_str(),
@@ -407,6 +435,14 @@ class LibraryNamespaces {
                   std::back_inserter(sonames));
       }
     }
+
+    // Remove the public libs in the runtime namespace.
+    // These libs are listed in public.android.txt, but we don't want the rest of android
+    // in default namespace to dlopen the libs.
+    // For example, libicuuc.so is exposed to classloader namespace from runtime namespace.
+    // Unfortunately, it does not have stable C symbols, and default namespace should only use
+    // stable symbols in libandroidicu.so. http://b/120786417
+    removePublicLibsIfExistsInRuntimeApex(sonames);
 
     // android_init_namespaces() expects all the public libraries
     // to be loaded so that they can be found by soname alone.
@@ -502,6 +538,27 @@ class LibraryNamespaces {
     }
   }
 
+  /**
+   * Remove the public libs in runtime namespace
+   */
+  void removePublicLibsIfExistsInRuntimeApex(std::vector<std::string>& sonames) {
+    for (const std::string& lib_name : kRuntimePublicLibraries) {
+      std::string path(kRuntimeApexLibPath);
+      path.append("/").append(lib_name);
+
+      struct stat s;
+      // Do nothing if the path in /apex does not exist.
+      // Runtime APEX must be mounted since libnativeloader is in the same APEX
+      if (stat(path.c_str(), &s) != 0) {
+        continue;
+      }
+
+      auto it = std::find(sonames.begin(), sonames.end(), lib_name);
+      if (it != sonames.end()) {
+        sonames.erase(it);
+      }
+    }
+  }
 
   bool ReadConfig(const std::string& configFile, std::vector<std::string>* sonames,
                   const std::function<bool(const std::string& /* soname */,

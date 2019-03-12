@@ -326,8 +326,8 @@ void ParseFsMgrFlags(const std::string& flags, FstabEntry* entry) {
             }
         } else if (StartsWith(flag, "zram_backing_dev_path=")) {
             entry->zram_backing_dev_path = arg;
-        } else if (StartsWith(flag, "avb_key=")) {
-            entry->avb_key = arg;
+        } else if (StartsWith(flag, "avb_keys=")) {
+            entry->avb_keys = arg;
         } else {
             LWARNING << "Warning: unknown flag: " << flag;
         }
@@ -608,10 +608,14 @@ FstabEntry BuildGsiUserdataFstabEntry() {
     return userdata;
 }
 
-void EraseFstabEntry(Fstab* fstab, const std::string& mount_point) {
+bool EraseFstabEntry(Fstab* fstab, const std::string& mount_point) {
     auto iter = std::remove_if(fstab->begin(), fstab->end(),
                                [&](const auto& entry) { return entry.mount_point == mount_point; });
-    fstab->erase(iter, fstab->end());
+    if (iter != fstab->end()) {
+        fstab->erase(iter, fstab->end());
+        return true;
+    }
+    return false;
 }
 
 void TransformFstabForGsi(Fstab* fstab) {
@@ -629,11 +633,13 @@ void TransformFstabForGsi(Fstab* fstab) {
         userdata = BuildGsiUserdataFstabEntry();
     }
 
-    EraseFstabEntry(fstab, "/system");
-    EraseFstabEntry(fstab, "/data");
+    if (EraseFstabEntry(fstab, "/system")) {
+        fstab->emplace_back(BuildGsiSystemFstabEntry());
+    }
 
-    fstab->emplace_back(BuildGsiSystemFstabEntry());
-    fstab->emplace_back(userdata);
+    if (EraseFstabEntry(fstab, "/data")) {
+        fstab->emplace_back(userdata);
+    }
 }
 
 }  // namespace
@@ -754,7 +760,8 @@ FstabEntry BuildGsiSystemFstabEntry() {
                          .fs_type = "ext4",
                          .flags = MS_RDONLY,
                          .fs_options = "barrier=1",
-                         .avb_key = "/gsi.avbpubkey",
+                         // could add more keys separated by ':'.
+                         .avb_keys = "/avb/gsi.avbpubkey:",
                          .logical_partition_name = "system"};
     system.fs_mgr_flags.wait = true;
     system.fs_mgr_flags.logical = true;

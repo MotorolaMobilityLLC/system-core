@@ -189,6 +189,29 @@ static bool GetRootEntry(FstabEntry* root_entry) {
     return true;
 }
 
+static bool IsStandaloneImageRollback(const AvbHandle& builtin_vbmeta,
+                                      const AvbHandle& standalone_vbmeta,
+                                      const FstabEntry& fstab_entry) {
+    std::string old_spl = builtin_vbmeta.GetSecurityPatchLevel(fstab_entry);
+    std::string new_spl = standalone_vbmeta.GetSecurityPatchLevel(fstab_entry);
+
+    bool rollbacked = false;
+    if (old_spl.empty() || new_spl.empty() || new_spl < old_spl) {
+        rollbacked = true;
+    }
+
+    if (rollbacked) {
+        LOG(ERROR) << "Image rollback detected for " << fstab_entry.mount_point
+                   << ", SPL switches from '" << old_spl << "' to '" << new_spl << "'";
+        if (AvbHandle::IsDeviceUnlocked()) {
+            LOG(INFO) << "Allowing rollbacked standalone image when the device is unlocked";
+            return false;
+        }
+    }
+
+    return rollbacked;
+}
+
 // Class Definitions
 // -----------------
 FirstStageMount::FirstStageMount(Fstab fstab)
@@ -737,7 +760,7 @@ bool FirstStageMountVBootV2::SetUpDmVerity(FstabEntry* fstab_entry) {
         if (!InitAvbHandle()) return false;
         hashtree_result =
                 avb_handle_->SetUpAvbHashtree(fstab_entry, false /* wait_for_verity_dev */);
-    } else if (!fstab_entry->avb_key.empty()) {
+    } else if (!fstab_entry->avb_keys.empty()) {
         if (!InitAvbHandle()) return false;
         // Checks if hashtree should be disabled from the top-level /vbmeta.
         if (avb_handle_->status() == AvbHandleStatus::kHashtreeDisabled ||
@@ -746,7 +769,15 @@ bool FirstStageMountVBootV2::SetUpDmVerity(FstabEntry* fstab_entry) {
                        << fstab_entry->mount_point;
             return true;  // Returns true to mount the partition directly.
         } else {
-            hashtree_result = AvbHandle::SetUpStandaloneAvbHashtree(
+            auto avb_standalone_handle = AvbHandle::LoadAndVerifyVbmeta(*fstab_entry);
+            if (!avb_standalone_handle) {
+                LOG(ERROR) << "Failed to load offline vbmeta for " << fstab_entry->mount_point;
+                return false;
+            }
+            if (IsStandaloneImageRollback(*avb_handle_, *avb_standalone_handle, *fstab_entry)) {
+                return false;
+            }
+            hashtree_result = avb_standalone_handle->SetUpAvbHashtree(
                     fstab_entry, false /* wait_for_verity_dev */);
         }
     } else {

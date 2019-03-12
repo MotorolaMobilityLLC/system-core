@@ -132,6 +132,10 @@ namespace.default.link.runtime.shared_libs += libdexfile_external.so
 namespace.default.link.runtime.shared_libs += libnativebridge.so
 namespace.default.link.runtime.shared_libs += libnativehelper.so
 namespace.default.link.runtime.shared_libs += libnativeloader.so
+namespace.default.link.runtime.shared_libs += libandroidicu.so
+
+# TODO(b/122876336): Remove libpac.so once it's migrated to Webview
+namespace.default.link.runtime.shared_libs += libpac.so
 
 # When libnetd_resolv.so can't be found in the default namespace, search for it
 # in the resolv namespace. Don't allow any other libraries from the resolv namespace
@@ -165,6 +169,8 @@ namespace.media.visible = true
 namespace.media.search.paths = /apex/com.android.media/${LIB}
 namespace.media.asan.search.paths = /apex/com.android.media/${LIB}
 
+namespace.media.permitted.paths = /apex/com.android.media/${LIB}/extractors
+
 namespace.media.links = default
 namespace.media.link.default.shared_libs  = %LLNDK_LIBRARIES%
 namespace.media.link.default.shared_libs += libandroid.so
@@ -188,6 +194,7 @@ namespace.conscrypt.link.runtime.shared_libs  = libjavacore.so
 namespace.conscrypt.link.default.shared_libs  = libc.so
 namespace.conscrypt.link.default.shared_libs += libm.so
 namespace.conscrypt.link.default.shared_libs += libdl.so
+namespace.conscrypt.link.default.shared_libs += liblog.so
 
 ###############################################################################
 # "resolv" APEX namespace
@@ -204,6 +211,7 @@ namespace.resolv.link.default.shared_libs  = libc.so
 namespace.resolv.link.default.shared_libs += libm.so
 namespace.resolv.link.default.shared_libs += libdl.so
 namespace.resolv.link.default.shared_libs += libbinder_ndk.so
+namespace.resolv.link.default.shared_libs += liblog.so
 namespace.resolv.link.default.shared_libs += libvndksupport.so
 
 ###############################################################################
@@ -481,7 +489,8 @@ namespace.system.link.runtime.shared_libs  = libdexfile_external.so
 namespace.system.link.runtime.shared_libs += libnativebridge.so
 namespace.system.link.runtime.shared_libs += libnativehelper.so
 namespace.system.link.runtime.shared_libs += libnativeloader.so
-
+# Workaround for b/124772622
+namespace.system.link.runtime.shared_libs += libandroidicu.so
 
 ###############################################################################
 # Namespace config for native tests that need access to both system and vendor
@@ -546,6 +555,8 @@ namespace.media.visible = true
 namespace.media.search.paths = /apex/com.android.media/${LIB}
 namespace.media.asan.search.paths = /apex/com.android.media/${LIB}
 
+namespace.media.permitted.paths = /apex/com.android.media/${LIB}/extractors
+
 namespace.media.links = default
 namespace.media.link.default.shared_libs  = %LLNDK_LIBRARIES%
 namespace.media.link.default.shared_libs += libandroid.so
@@ -569,6 +580,7 @@ namespace.conscrypt.link.runtime.shared_libs  = libjavacore.so
 namespace.conscrypt.link.default.shared_libs  = libc.so
 namespace.conscrypt.link.default.shared_libs += libm.so
 namespace.conscrypt.link.default.shared_libs += libdl.so
+namespace.conscrypt.link.default.shared_libs += liblog.so
 
 ###############################################################################
 # "resolv" APEX namespace
@@ -585,6 +597,7 @@ namespace.resolv.link.default.shared_libs  = libc.so
 namespace.resolv.link.default.shared_libs += libm.so
 namespace.resolv.link.default.shared_libs += libdl.so
 namespace.resolv.link.default.shared_libs += libbinder_ndk.so
+namespace.resolv.link.default.shared_libs += liblog.so
 
 
 ###############################################################################
