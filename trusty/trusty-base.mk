@@ -20,7 +20,7 @@
 #
 
 PRODUCT_PACKAGES += \
-	android.hardware.keymaster@3.0-service.trusty \
+	android.hardware.keymaster@4.0-service.trusty \
 	gatekeeper.trusty
 
 PRODUCT_PROPERTY_OVERRIDES += \
