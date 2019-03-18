@@ -45,6 +45,7 @@ using android::base::StringPrintf;
 using android::base::unique_fd;
 
 static constexpr const char* CGROUPS_DESC_FILE = "/etc/cgroups.json";
+static constexpr const char* CGROUPS_DESC_VENDOR_FILE = "/vendor/etc/cgroups.json";
 
 static constexpr const char* CGROUP_PROCS_FILE = "/cgroup.procs";
 static constexpr const char* CGROUP_TASKS_FILE = "/tasks";
@@ -110,12 +111,13 @@ static bool Mkdir(const std::string& path, mode_t mode, const std::string& uid,
     return true;
 }
 
-static bool ReadDescriptors(std::map<std::string, CgroupDescriptor>* descriptors) {
+static bool ReadDescriptorsFromFile(const std::string& file_name,
+                                    std::map<std::string, CgroupDescriptor>* descriptors) {
     std::vector<CgroupDescriptor> result;
     std::string json_doc;
 
-    if (!android::base::ReadFileToString(CGROUPS_DESC_FILE, &json_doc)) {
-        LOG(ERROR) << "Failed to read task profiles from " << CGROUPS_DESC_FILE;
+    if (!android::base::ReadFileToString(file_name, &json_doc)) {
+        PLOG(ERROR) << "Failed to read task profiles from " << file_name;
         return false;
     }
 
@@ -130,21 +132,46 @@ static bool ReadDescriptors(std::map<std::string, CgroupDescriptor>* descriptors
         const Json::Value& cgroups = root["Cgroups"];
         for (Json::Value::ArrayIndex i = 0; i < cgroups.size(); ++i) {
             std::string name = cgroups[i]["Controller"].asString();
-            descriptors->emplace(std::make_pair(
-                    name,
-                    CgroupDescriptor(1, name, cgroups[i]["Path"].asString(),
+            auto iter = descriptors->find(name);
+            if (iter == descriptors->end()) {
+                descriptors->emplace(name, CgroupDescriptor(1, name, cgroups[i]["Path"].asString(),
                                      std::strtoul(cgroups[i]["Mode"].asString().c_str(), 0, 8),
-                                     cgroups[i]["UID"].asString(), cgroups[i]["GID"].asString())));
+                                     cgroups[i]["UID"].asString(), cgroups[i]["GID"].asString()));
+            } else {
+                iter->second = CgroupDescriptor(1, name, cgroups[i]["Path"].asString(),
+                                     std::strtoul(cgroups[i]["Mode"].asString().c_str(), 0, 8),
+                                     cgroups[i]["UID"].asString(), cgroups[i]["GID"].asString());
+            }
         }
     }
 
     if (root.isMember("Cgroups2")) {
         const Json::Value& cgroups2 = root["Cgroups2"];
-        descriptors->emplace(std::make_pair(
-                CGROUPV2_CONTROLLER_NAME,
-                CgroupDescriptor(2, CGROUPV2_CONTROLLER_NAME, cgroups2["Path"].asString(),
+        auto iter = descriptors->find(CGROUPV2_CONTROLLER_NAME);
+        if (iter == descriptors->end()) {
+            descriptors->emplace(CGROUPV2_CONTROLLER_NAME, CgroupDescriptor(2, CGROUPV2_CONTROLLER_NAME, cgroups2["Path"].asString(),
                                  std::strtoul(cgroups2["Mode"].asString().c_str(), 0, 8),
-                                 cgroups2["UID"].asString(), cgroups2["GID"].asString())));
+                                 cgroups2["UID"].asString(), cgroups2["GID"].asString()));
+        } else {
+            iter->second = CgroupDescriptor(2, CGROUPV2_CONTROLLER_NAME, cgroups2["Path"].asString(),
+                                 std::strtoul(cgroups2["Mode"].asString().c_str(), 0, 8),
+                                 cgroups2["UID"].asString(), cgroups2["GID"].asString());
+        }
+    }
+
+    return true;
+}
+
+static bool ReadDescriptors(std::map<std::string, CgroupDescriptor>* descriptors) {
+    // load system cgroup descriptors
+    if (!ReadDescriptorsFromFile(CGROUPS_DESC_FILE, descriptors)) {
+        return false;
+    }
+
+    // load vendor cgroup descriptors if the file exists
+    if (!access(CGROUPS_DESC_VENDOR_FILE, F_OK) &&
+        !ReadDescriptorsFromFile(CGROUPS_DESC_VENDOR_FILE, descriptors)) {
+        return false;
     }
 
     return true;
@@ -158,7 +185,7 @@ static bool SetupCgroup(const CgroupDescriptor& descriptor) {
 
     // mkdir <path> [mode] [owner] [group]
     if (!Mkdir(controller->path(), descriptor.mode(), descriptor.uid(), descriptor.gid())) {
-        PLOG(ERROR) << "Failed to create directory for " << controller->name() << " cgroup";
+        LOG(ERROR) << "Failed to create directory for " << controller->name() << " cgroup";
         return false;
     }
 
@@ -262,7 +289,7 @@ bool CgroupController::GetTaskGroup(int tid, std::string* group) const {
     std::string file_name = StringPrintf("/proc/%d/cgroup", tid);
     std::string content;
     if (!android::base::ReadFileToString(file_name, &content)) {
-        LOG(ERROR) << "Failed to read " << file_name;
+        PLOG(ERROR) << "Failed to read " << file_name;
         return false;
     }
 
@@ -296,7 +323,7 @@ CgroupDescriptor::CgroupDescriptor(uint32_t version, const std::string& name,
 
 CgroupMap::CgroupMap() : cg_file_data_(nullptr), cg_file_size_(0) {
     if (!LoadRcFile()) {
-        PLOG(ERROR) << "CgroupMap::LoadRcFile called for [" << getpid() << "] failed";
+        LOG(ERROR) << "CgroupMap::LoadRcFile called for [" << getpid() << "] failed";
     }
 }
 
@@ -333,27 +360,42 @@ bool CgroupMap::LoadRcFile() {
         return false;
     }
 
-    cg_file_size_ = sb.st_size;
-    if (cg_file_size_ < sizeof(CgroupFile)) {
-        PLOG(ERROR) << "Invalid file format " << cgroup_rc_path;
+    size_t file_size = sb.st_size;
+    if (file_size < sizeof(CgroupFile)) {
+        LOG(ERROR) << "Invalid file format " << cgroup_rc_path;
         return false;
     }
 
-    cg_file_data_ = (CgroupFile*)mmap(nullptr, cg_file_size_, PROT_READ, MAP_SHARED, fd, 0);
-    if (cg_file_data_ == MAP_FAILED) {
+    CgroupFile* file_data = (CgroupFile*)mmap(nullptr, file_size, PROT_READ, MAP_SHARED, fd, 0);
+    if (file_data == MAP_FAILED) {
         PLOG(ERROR) << "Failed to mmap " << cgroup_rc_path;
         return false;
     }
 
-    if (cg_file_data_->version_ != CgroupFile::FILE_CURR_VERSION) {
-        PLOG(ERROR) << cgroup_rc_path << " file version mismatch";
+    if (file_data->version_ != CgroupFile::FILE_CURR_VERSION) {
+        LOG(ERROR) << cgroup_rc_path << " file version mismatch";
+        munmap(file_data, file_size);
         return false;
     }
+
+    if (file_size != sizeof(CgroupFile) + file_data->controller_count_ * sizeof(CgroupController)) {
+        LOG(ERROR) << cgroup_rc_path << " file has invalid size";
+        munmap(file_data, file_size);
+        return false;
+    }
+
+    cg_file_data_ = file_data;
+    cg_file_size_ = file_size;
 
     return true;
 }
 
-void CgroupMap::Print() {
+void CgroupMap::Print() const {
+    if (!cg_file_data_) {
+        LOG(ERROR) << "CgroupMap::Print called for [" << getpid()
+                   << "] failed, RC file was not initialized properly";
+        return;
+    }
     LOG(INFO) << "File version = " << cg_file_data_->version_;
     LOG(INFO) << "File controller count = " << cg_file_data_->controller_count_;
 
@@ -370,7 +412,7 @@ bool CgroupMap::SetupCgroups() {
 
     // load cgroups.json file
     if (!ReadDescriptors(&descriptors)) {
-        PLOG(ERROR) << "Failed to load cgroup description file";
+        LOG(ERROR) << "Failed to load cgroup description file";
         return false;
     }
 
@@ -385,7 +427,7 @@ bool CgroupMap::SetupCgroups() {
 
     // mkdir <CGROUPS_RC_DIR> 0711 system system
     if (!Mkdir(CGROUPS_RC_DIR, 0711, "system", "system")) {
-        PLOG(ERROR) << "Failed to create directory for <CGROUPS_RC_FILE> file";
+        LOG(ERROR) << "Failed to create directory for <CGROUPS_RC_FILE> file";
         return false;
     }
 
@@ -401,7 +443,7 @@ bool CgroupMap::SetupCgroups() {
     std::string cgroup_rc_path = StringPrintf("%s/%s", CGROUPS_RC_DIR, CGROUPS_RC_FILE);
     // chmod 0644 <cgroup_rc_path>
     if (fchmodat(AT_FDCWD, cgroup_rc_path.c_str(), 0644, AT_SYMLINK_NOFOLLOW) < 0) {
-        LOG(ERROR) << "fchmodat() failed";
+        PLOG(ERROR) << "fchmodat() failed";
         return false;
     }
 
@@ -410,6 +452,8 @@ bool CgroupMap::SetupCgroups() {
 
 const CgroupController* CgroupMap::FindController(const std::string& name) const {
     if (!cg_file_data_) {
+        LOG(ERROR) << "CgroupMap::FindController called for [" << getpid()
+                   << "] failed, RC file was not initialized properly";
         return nullptr;
     }
 
