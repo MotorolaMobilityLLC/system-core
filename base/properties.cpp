@@ -27,11 +27,50 @@
 #include <string>
 
 #include <android-base/parseint.h>
-
+#ifdef JOURNEY_FEATURE_DEBUG_MODE_PROP
+#include "android-base/logging.h"
+#endif
 namespace android {
 namespace base {
 
+#ifdef JOURNEY_FEATURE_DEBUG_MODE_PROP
+
+// we have a new hook function
+std::string _GetProperty(const std::string& key, const std::string& default_value);
+
+bool _GetBoolProperty(const std::string& key, bool default_value) {
+  std::string value = _GetProperty(key, "");
+  if (value == "1" || value == "y" || value == "yes" || value == "on" || value == "true") {
+    return true;
+  } else if (value == "0" || value == "n" || value == "no" || value == "off" || value == "false") {
+    return false;
+  }
+  return default_value;
+}
+
+#define OVERLAYS_KEY "persist.jdf.overlays.prop"
+int overlays_prop = _GetBoolProperty(OVERLAYS_KEY,false);
+
 std::string GetProperty(const std::string& key, const std::string& default_value) {
+    if(overlays_prop) {
+        std::string  overlays_prop_key = OVERLAYS_KEY"." + key;
+        std::string  overlays_prop_value = _GetProperty(overlays_prop_key,"");
+        if(overlays_prop_value.empty()) {
+            return _GetProperty(key,default_value);
+        } else {
+            // warning we are in debug mode !!!
+            LOG(WARNING) << "GetProperty " << key << ":" << _GetProperty(key,default_value) << " is overlay by " << overlays_prop_key << ":" << overlays_prop_value;
+            return overlays_prop_value;
+        }
+    } else {
+        return _GetProperty(key,default_value);
+    }
+}
+// we have a new hook function
+std::string _GetProperty(const std::string& key, const std::string& default_value) {
+#else
+std::string GetProperty(const std::string& key, const std::string& default_value) {
+#endif
   const prop_info* pi = __system_property_find(key.c_str());
   if (pi == nullptr) return default_value;
 

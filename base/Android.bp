@@ -21,6 +21,11 @@ cc_defaults {
         "-Werror",
         "-Wextra",
     ],
+    product_variables: {
+        journey_feature_debug_mode_prop: {
+            cflags: ["-DJOURNEY_FEATURE_DEBUG_MODE_PROP"],
+        },
+    },
 }
 
 cc_library_headers {
