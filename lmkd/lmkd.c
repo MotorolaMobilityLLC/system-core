@@ -361,6 +361,9 @@ static uint32_t killcnt_total = 0;
 /* PAGE_SIZE / 1024 */
 static long page_k;
 
+/* FD for connecting duraSpeed */
+int duraspeed_fd = -1;
+
 static bool parse_int64(const char* str, int64_t* ret) {
     char* endptr;
     long long val = strtoll(str, &endptr, 10);
@@ -981,6 +984,49 @@ static void ctrl_connect_handler(int data __unused, uint32_t events __unused) {
         return;
     }
     maxevents++;
+}
+
+/*
+ * When memory is not enough, trigger duraSpeed to handle it.
+ * Connect to duraSpeed socket and return a socket fd which will be used
+ * to communicate with server side.
+ */
+static int connect_socket() {
+    ALOGD("connect socket start");
+    int fd = socket_local_client("duraspeed_memory",
+                  ANDROID_SOCKET_NAMESPACE_ABSTRACT, SOCK_STREAM);
+    if(fd < 0) {
+        ALOGE("Fail to connect to socket duraSpeedMem. return code: %d", fd);
+        return -1;
+    }
+    ALOGI("connect_socket: fd = %d, end", fd);
+    return fd;
+}
+
+/* Entry to trigger duraSpeed */
+static void trigger_duraSpeed(int level, int64_t mem_pressure) {
+    if (duraspeed_fd < 0) {
+        duraspeed_fd = connect_socket();
+        if (duraspeed_fd < 0) {
+            return;
+        }
+    }
+
+    int pressure = (int)mem_pressure;
+    char buf[16];
+    int ret = snprintf(buf, sizeof(buf), "%d:%d\r\n", level, pressure);
+    if (ret >= (ssize_t)sizeof(buf)) {
+        ALOGE ("trigger duraSpeed Error, out of size");
+    }
+
+    ssize_t written;
+    written = write(duraspeed_fd, buf, strlen(buf) + 1);
+    if (written < 0 && ((errno == EINTR) || (errno == EAGAIN))) {
+        ALOGE ("trigger duraSpeed written:%zu, errno:%d", written, errno);
+        close(duraspeed_fd);
+        duraspeed_fd = -1;
+        return;
+    }
 }
 
 #ifdef LMKD_LOG_STATS
@@ -1662,6 +1708,11 @@ static void mp_event_common(int data, uint32_t events __unused) {
             }
         }
     }
+    /// M: Add for duraSpeed @{
+    if (mem_pressure <= downgrade_pressure + 10) {
+        trigger_duraSpeed(level, mem_pressure);
+    }
+    /// @}
 
     // If we still have enough swap space available, check if we want to
     // ignore/downgrade pressure events.
