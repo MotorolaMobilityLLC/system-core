@@ -49,7 +49,7 @@ bool _GetBoolProperty(const std::string& key, bool default_value) {
 }
 
 #define OVERLAYS_KEY "persist.jdf.overlays.prop"
-static int overlays_prop = _GetBoolProperty(OVERLAYS_KEY,false);
+static bool overlays_prop = _GetBoolProperty(OVERLAYS_KEY,false);
 std::string GetProperty(const std::string& key, const std::string& default_value) {
     if(overlays_prop) {
         std::string  overlays_prop_key = OVERLAYS_KEY"." + key;
