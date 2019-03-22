@@ -58,6 +58,7 @@ cc_library {
     },
     recovery_available: true,
     host_supported: true,
+    defaults: ["mtk_malloc_debug_defaults"],
     srcs: [
         "config_utils.cpp",
         "canned_fs_config.cpp",
