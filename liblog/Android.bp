@@ -38,6 +38,7 @@ liblog_target_sources = [
     "pmsg_writer.cpp",
     "logd_reader.cpp",
     "logd_writer.cpp",
+    "ylogger.cpp",
 ]
 
 cc_library_headers {
@@ -116,6 +117,65 @@ cc_library {
         // so make sure we do not regret hard-coding it as follows:
         "-DLIBLOG_LOG_TAG=1006",
         "-DSNET_EVENT_LOG_TAG=1397638484",
+    ],
+    logtags: ["event.logtags"],
+    compile_multilib: "both",
+}
+
+cc_library {
+    name: "libylog",
+    host_supported: true,
+    recovery_available: true,
+    srcs: liblog_sources,
+
+    target: {
+        host: {
+            srcs: liblog_host_sources,
+            cflags: ["-DFAKE_LOG_DEVICE=1"],
+        },
+        android: {
+            version_script: "liblog.map.txt",
+            srcs: liblog_target_sources,
+            // AddressSanitizer runtime library depends on liblog.
+            sanitize: {
+                address: false,
+            },
+        },
+        android_arm: {
+            // TODO: This is to work around b/24465209. Remove after root cause is fixed
+            pack_relocations: false,
+            ldflags: ["-Wl,--hash-style=both"],
+        },
+        windows: {
+            enabled: true,
+        },
+        not_windows: {
+            srcs: ["event_tag_map.cpp"],
+        },
+        linux_bionic: {
+            enabled: true,
+        },
+    },
+
+    header_libs: ["liblog_headers"],
+    export_header_lib_headers: ["liblog_headers"],
+
+    stubs: {
+        symbol_file: "liblog.map.txt",
+        versions: ["10000"],
+    },
+
+    cflags: [
+        "-Werror",
+        // This is what we want to do:
+        //  liblog_cflags := $(shell \
+        //   sed -n \
+        //       's/^\([0-9]*\)[ \t]*liblog[ \t].*/-DLIBLOG_LOG_TAG=\1/p' \
+        //       $(LOCAL_PATH)/event.logtags)
+        // so make sure we do not regret hard-coding it as follows:
+        "-DLIBLOG_LOG_TAG=1006",
+        "-DSNET_EVENT_LOG_TAG=1397638484",
+        "-DLIBYLOG",
     ],
     logtags: ["event.logtags"],
     compile_multilib: "both",

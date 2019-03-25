@@ -538,6 +538,9 @@ int android_log_processLogBuffer(struct logger_entry* buf, AndroidLogEntry* entr
     msg = ((char*)buf2) + buf2->hdr_size;
     if (buf2->hdr_size >= sizeof(struct logger_entry_v4)) {
       entry->uid = ((struct logger_entry_v4*)buf)->uid;
+      #ifdef LIBYLOG
+        entry->uid =entry->uid+(((struct logger_entry_v4*)buf)->lid<<(4*6));
+      #endif
     }
   }
   for (i = 1; i < buf->len; i++) {
@@ -1625,12 +1628,26 @@ char* android_log_formatLogLine(AndroidLogFormat* p_format, char* defaultBuffer,
         snprintf(uid, sizeof(uid), "%5s:", pwd->pw_name);
       } else
 #endif
+	  #ifndef LIBYLOG
       {
         /* Not worth parsing package list, names all longer than 5 */
         snprintf(uid, sizeof(uid), "%5d:", entry->uid);
       }
+	  #else
+	  {
+			const char  *tokens[] = { "M", "R", "E", "S", "C" };
+			int lid=(entry->uid>>(4*6));
+	        if(lid <= LOG_ID_CRASH) {
+                strcpy(uid, tokens[lid]);
+            }else {
+                strcpy(uid, "B");
+            }
+			int ruid=entry->uid-(lid<<(4*6));
+			snprintf(uid+1, sizeof(uid)-1, "%06X:", ruid);
+	  }
+		#endif
     } else {
-      snprintf(uid, sizeof(uid), "      ");
+      snprintf(uid, sizeof(uid), "[4]      ");
     }
   }
 
@@ -1672,9 +1689,15 @@ char* android_log_formatLogLine(AndroidLogFormat* p_format, char* defaultBuffer,
       if (ret) {
         *ret = ' ';
       }
+      #ifndef LIBYLOG
       len = snprintf(prefixBuf + prefixLen, sizeof(prefixBuf) - prefixLen,
                      "%s %s%5d %5d %c %-8.*s: ", timeBuf, uid, entry->pid, entry->tid, priChar,
                      (int)entry->tagLen, entry->tag);
+      #else
+      len = snprintf(prefixBuf + prefixLen, sizeof(prefixBuf) - prefixLen,
+                     "%s %s %5d %5d %c %-8.*s: ", uid,timeBuf,  entry->pid,
+                     entry->tid, priChar, (int)entry->tagLen, entry->tag);
+      #endif
       strcpy(suffixBuf + suffixLen, "\n");
       ++suffixLen;
       break;

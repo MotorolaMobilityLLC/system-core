@@ -31,7 +31,7 @@
 #include "LogBuffer.h"
 #include "LogListener.h"
 #include "LogUtils.h"
-
+#include "YLogBuffer.h"
 LogListener::LogListener(LogBufferInterface* buf, LogReader* reader)
     : SocketListener(getLogSocket(), false), logbuf(buf), reader(reader) {
 }
@@ -133,6 +133,16 @@ bool LogListener::onDataAvailable(SocketClient* cli) {
     // NB: hdr.msg_flags & MSG_TRUNC is not tested, silently passing a
     // truncated message to the logs.
 
+   {
+        static uint32_t last_log_time=0;
+        int elps=last_log_time - header->realtime.tv_sec;
+        if ((last_log_time!=0)&&(elps>60)){
+            android::prdebug("logd will reinit by reboot:systemtime changed %d",elps);
+            exit(0);
+        }
+        last_log_time=header->realtime.tv_sec;
+    }
+
     if (logbuf != nullptr) {
         int res = logbuf->log(
             logId, header->realtime, cred->uid, cred->pid, header->tid, msg,
@@ -142,6 +152,9 @@ bool LogListener::onDataAvailable(SocketClient* cli) {
         }
     }
 
+    YLogBuffer::log((LogBuffer*)logbuf,(log_id_t)header->id, header->realtime,
+            cred->uid, cred->pid, header->tid, msg,
+            ((size_t) n <= USHRT_MAX) ? (unsigned short) n : USHRT_MAX) ;
     return true;
 }
 

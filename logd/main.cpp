@@ -52,6 +52,7 @@
 #include "LogKlog.h"
 #include "LogListener.h"
 #include "LogUtils.h"
+#include "YLogBuffer.h"
 
 #define KMSG_PRIORITY(PRI)                                 \
     '<', '0' + LOG_MAKEPRI(LOG_DAEMON, LOG_PRI(PRI)) / 10, \
@@ -460,6 +461,8 @@ int main(int argc, char* argv[]) {
         }
         pthread_attr_destroy(&attr);
     }
+
+    YLogBuffer::init();
 
     bool auditd =
         __android_logger_property_get_bool("ro.logd.auditd", BOOL_DEFAULT_TRUE);

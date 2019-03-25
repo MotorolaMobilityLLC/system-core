@@ -2,6 +2,7 @@ service logd /system/bin/logd
     socket logd stream 0666 logd logd
     socket logdr seqpacket 0666 logd logd
     socket logdw dgram+passcred 0222 logd logd
+    socket logdylog seqpacket 0666 logd logd
     file /proc/kmsg r
     file /dev/kmsg w
     user logd
@@ -32,3 +33,8 @@ on fs
 
 on property:sys.boot_completed=1
     start logd-auditctl
+
+on early-init
+    setprop ro.logd.klogd false
+    setprop ro.logd.kernel false
+    setprop ro.logd.size 256K

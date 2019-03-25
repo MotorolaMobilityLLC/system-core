@@ -340,7 +340,7 @@ static int logdOpen(struct android_log_logger_list* logger_list,
   if (sock > 0) {
     return sock;
   }
-
+#ifndef LIBYLOG
   sock = socket_local_client("logdr", SOCK_SEQPACKET);
   if (sock == 0) {
     /* Guarantee not file descriptor zero */
@@ -348,6 +348,15 @@ static int logdOpen(struct android_log_logger_list* logger_list,
     close(sock);
     sock = newsock;
   }
+#else
+  sock = socket_local_client("logdylog", SOCK_SEQPACKET);
+  if (sock == 0) {
+    /* Guarantee not file descriptor zero */
+    int newsock = socket_local_client("logdylog", SOCK_SEQPACKET);
+    close(sock);
+    sock = newsock;
+  }
+#endif
   if (sock <= 0) {
     if ((sock == -1) && errno) {
       return -errno;

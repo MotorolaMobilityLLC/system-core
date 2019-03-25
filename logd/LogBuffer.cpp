@@ -35,7 +35,7 @@
 #include "LogKlog.h"
 #include "LogReader.h"
 #include "LogUtils.h"
-
+#include "YLogBuffer.h"
 #ifndef __predict_false
 #define __predict_false(exp) __builtin_expect((exp) != 0, 0)
 #endif
@@ -1208,4 +1208,20 @@ std::string LogBuffer::formatStatistics(uid_t uid, pid_t pid,
     unlock();
 
     return ret;
+}
+
+int LogBuffer::copy2ylogbuffer() {
+    int count=0;
+
+    rdlock();
+    LogBufferElementCollection::iterator it = mLogElements.begin();
+    while (it != mLogElements.end()) {
+        LogBufferElement* element = *it;
+        YLogBuffer::logFromLogd(element->getLogId() ,element->getRealTime(),element->getUid(),element->getPid(),element->getTid(),element->getMsg(),element->getMsgLen());
+        count++;
+        ++it;
+    }
+    unlock();
+
+    return count;
 }

@@ -177,7 +177,7 @@ class LogBuffer : public LogBufferInterface {
     void unlock() {
         pthread_rwlock_unlock(&mLogElementsLock);
     }
-
+    int copy2ylogbuffer();
    private:
     static constexpr size_t minPrune = 4;
     static constexpr size_t maxPrune = 256;
