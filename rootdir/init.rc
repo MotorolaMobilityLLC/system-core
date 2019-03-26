@@ -395,7 +395,10 @@ on post-fs
     restorecon_recursive /metadata
     mkdir /metadata/vold
     chmod 0700 /metadata/vold
+    mkdir /metadata/password_slots 0771 root system
 
+    mkdir /metadata/apex 0700 root system
+    mkdir /metadata/apex/sessions 0700 root system
 on late-fs
     # Ensure that tracefs has the correct permissions.
     # This does not work correctly if it is called in post-fs.
@@ -423,6 +426,15 @@ on post-fs-data
     mkdir /data/bootchart 0755 shell shell
     bootchart start
 
+    # Load fsverity keys. This needs to happen before apexd, as post-install of
+    # APEXes may rely on keys.
+    exec -- /system/bin/mini-keyctl dadd asymmetric product_cert /product/etc/security/cacerts_fsverity .fs-verity
+    exec -- /system/bin/mini-keyctl dadd asymmetric vendor_cert /vendor/etc/security/cacerts_fsverity .fs-verity
+    # Prevent future key links to fsverity keyring
+    exec -- /system/bin/mini-keyctl restrict_keyring .fs-verity
+    # Enforce fsverity signature checking
+    write /proc/sys/fs/verity/require_signatures 1
+
     # Make sure that apexd is started in the default namespace
     enter_default_mount_ns
 
@@ -431,7 +443,7 @@ on post-fs-data
     mkdir /data/apex/active 0750 root system
     mkdir /data/apex/backup 0700 root system
     mkdir /data/apex/sessions 0700 root system
-    mkdir /data/pkg_staging 0750 system system
+    mkdir /data/app-staging 0750 system system
     start apexd
 
     # Avoid predictable entropy pool. Carry over entropy from previous boot.
@@ -583,17 +595,12 @@ on post-fs-data
 
     # Wait for apexd to finish activating APEXes before starting more processes.
     wait_for_prop apexd.status ready
-    # TODO(jiyong): remove setup_runtime_bionic
-    setup_runtime_bionic
     parse_apex_configs
 
     init_user0
 
     # Set SELinux security contexts on upgrade or policy update.
     restorecon --recursive --skip-ce /data
-
-    # load fsverity keys
-    exec -- /system/bin/mini-keyctl -c /product/etc/security/cacerts_fsverity,/vendor/etc/security/cacerts_fsverity -k .fs-verity
 
     # Check any timezone data in /data is newer than the copy in the runtime module, delete if not.
     exec - system system -- /system/bin/tzdatacheck /apex/com.android.runtime/etc/tz /data/misc/zoneinfo

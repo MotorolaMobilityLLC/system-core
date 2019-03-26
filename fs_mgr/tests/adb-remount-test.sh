@@ -48,6 +48,7 @@ NORMAL="${ESCAPE}[0m"
 TMPDIR=${TMPDIR:-/tmp}
 print_time=false
 start_time=`date +%s`
+ACTIVE_SLOT=
 
 ##
 ##  Helper Functions
@@ -77,6 +78,7 @@ inAdb() {
       wc -l | grep '^1$' >/dev/null
     fi
 }
+
 [ "USAGE: inRecovery
 
 Returns: true if device is in recovery mode" ]
@@ -221,15 +223,23 @@ format_duration() {
 
 Returns: waits until the device has returned for adb or optional timeout" ]
 adb_wait() {
+  local ret
   if [ -n "${1}" ]; then
     echo -n ". . . waiting `format_duration ${1}`" ${ANDROID_SERIAL} ${USB_ADDRESS} "${CR}"
     timeout --preserve-status --signal=KILL ${1} adb wait-for-device 2>/dev/null
-    local ret=${?}
+    ret=${?}
     echo -n "                                                                             ${CR}"
-    return ${ret}
   else
     adb wait-for-device
+    ret=${?}
   fi
+  if [ 0 = ${ret} -a -n "${ACTIVE_SLOT}" ]; then
+    local active_slot=`get_active_slot`
+    if [ X"${ACTIVE_SLOT}" != X"${active_slot}" ]; then
+      echo "${ORANGE}[  WARNING ]${NORMAL} Active slot changed from ${ACTIVE_SLOT} to ${active_slot}" >&2
+    fi
+  fi
+  return ${ret}
 }
 
 [ "USAGE: usb_status > stdout
@@ -254,33 +264,50 @@ usb_status() {
 
 Returns: waits until the device has returned for fastboot or optional timeout" ]
 fastboot_wait() {
+  local ret
   # fastboot has no wait-for-device, but it does an automatic
   # wait and requires (even a nonsensical) command to do so.
   if [ -n "${1}" ]; then
     echo -n ". . . waiting `format_duration ${1}`" ${ANDROID_SERIAL} ${USB_ADDRESS} "${CR}"
     timeout --preserve-status --signal=KILL ${1} fastboot wait-for-device >/dev/null 2>/dev/null
-    local ret=${?}
+    ret=${?}
     echo -n "                                                                             ${CR}"
     ( exit ${ret} )
   else
     fastboot wait-for-device >/dev/null 2>/dev/null
   fi ||
     inFastboot
+  ret=${?}
+  if [ 0 = ${ret} -a -n "${ACTIVE_SLOT}" ]; then
+    local active_slot=`get_active_slot`
+    if [ X"${ACTIVE_SLOT}" != X"${active_slot}" ]; then
+      echo "${ORANGE}[  WARNING ]${NORMAL} Active slot changed from ${ACTIVE_SLOT} to ${active_slot}" >&2
+    fi
+  fi
+  return ${ret}
 }
 
 [ "USAGE: recovery_wait [timeout]
 
 Returns: waits until the device has returned for recovery or optional timeout" ]
 recovery_wait() {
+  local ret
   if [ -n "${1}" ]; then
     echo -n ". . . waiting `format_duration ${1}`" ${ANDROID_SERIAL} ${USB_ADDRESS} "${CR}"
     timeout --preserve-status --signal=KILL ${1} adb wait-for-recovery 2>/dev/null
-    local ret=${?}
+    ret=${?}
     echo -n "                                                                             ${CR}"
-    return ${ret}
   else
     adb wait-for-recovery
+    ret=${?}
   fi
+  if [ 0 = ${ret} -a -n "${ACTIVE_SLOT}" ]; then
+    local active_slot=`get_active_slot`
+    if [ X"${ACTIVE_SLOT}" != X"${active_slot}" ]; then
+      echo "${ORANGE}[  WARNING ]${NORMAL} Active slot changed from ${ACTIVE_SLOT} to ${active_slot}" >&2
+    fi
+  fi
+  return ${ret}
 }
 
 [ "any_wait [timeout]
@@ -326,7 +353,7 @@ adb_unroot() {
     [ root != "`adb_sh echo '${USER}' </dev/null`" ]
 }
 
-[ "USAGE: fastboot_getvar var expected
+[ "USAGE: fastboot_getvar var expected >/dev/stderr
 
 Returns: true if var output matches expected" ]
 fastboot_getvar() {
@@ -348,6 +375,19 @@ fastboot_getvar() {
     return
   fi
   echo ${O} >&2
+}
+
+[ "USAGE: get_active_slot >/dev/stdout
+
+Returns: with a or b string reporting active slot" ]
+get_active_slot() {
+  if inAdb || inRecovery; then
+    get_property ro.boot.slot_suffix | tr -d _
+  elif inFastboot; then
+    fastboot_getvar current-slot 2>&1 | sed -n 's/current-slot: //p'
+  else
+    false
+  fi
 }
 
 [ "USAGE: restore
@@ -407,59 +447,71 @@ die() {
   exit 1
 }
 
-[ "USAGE: EXPECT_EQ <lval> <rval> [message]
+[ "USAGE: EXPECT_EQ <lval> <rval> [--warning [message]]
 
 Returns true if (regex) lval matches rval" ]
 EXPECT_EQ() {
   local lval="${1}"
   local rval="${2}"
   shift 2
+  local error=1
+  local prefix="${RED}[    ERROR ]${NORMAL}"
+  if [ X"${1}" = X"--warning" ]; then
+      prefix="${RED}[  WARNING ]${NORMAL}"
+      error=0
+      shift 1
+  fi
   if ! ( echo X"${rval}" | grep '^X'"${lval}"'$' >/dev/null 2>/dev/null ); then
     if [ `echo ${lval}${rval}${*} | wc -c` -gt 50 -o "${rval}" != "${rval%
 *}" ]; then
-      echo "ERROR: expected \"${lval}\"" >&2
-      echo "       got \"${rval}\"" |
+      echo "${prefix} expected \"${lval}\"" >&2
+      echo "${prefix} got \"${rval}\"" |
         sed ': again
              N
              s/\(\n\)\([^ ]\)/\1             \2/
              t again' >&2
       if [ -n "${*}" ] ; then
-        echo "       ${*}" >&2
+        echo "${prefix} ${*}" >&2
       fi
     else
-      echo "ERROR: expected \"${lval}\" got \"${rval}\" ${*}" >&2
+      echo "${prefix} expected \"${lval}\" got \"${rval}\" ${*}" >&2
     fi
-    return 1
+    return ${error}
   fi
   if [ -n "${*}" ] ; then
-    if [ X"${lval}" != X"${rval}" ]; then
+    prefix="${GREEN}[     INFO ]${NORMAL}"
+    if [ X"${lval}" != X"${rval}" ]; then  # we were supplied a regex?
       if [ `echo ${lval}${rval}${*} | wc -c` -gt 60 -o "${rval}" != "${rval% *}" ]; then
-        echo "INFO: ok \"${lval}\"" >&2
+        echo "${prefix} ok \"${lval}\"" >&2
         echo "       = \"${rval}\"" |
           sed ': again
                N
                s/\(\n\)\([^ ]\)/\1          \2/
                t again' >&2
         if [ -n "${*}" ] ; then
-          echo "      ${*}" >&2
+          echo "${prefix} ${*}" >&2
         fi
       else
-        echo "INFO: ok \"${lval}\" = \"${rval}\" ${*}" >&2
+        echo "${prefix} ok \"${lval}\" = \"${rval}\" ${*}" >&2
       fi
     else
-      echo "INFO: ok \"${lval}\" ${*}" >&2
+      echo "${prefix} ok \"${lval}\" ${*}" >&2
     fi
   fi
   return 0
 }
 
-[ "USAGE: check_eq <lval> <rval> [message]
+[ "USAGE: check_eq <lval> <rval> [--warning [message]]
 
 Exits if (regex) lval mismatches rval" ]
 check_eq() {
   local lval="${1}"
   local rval="${2}"
   shift 2
+  if [ X"${1}" = X"--warning" ]; then
+      EXPECT_EQ "${lval}" "${rval}" ${*}
+      return
+  fi
   EXPECT_EQ "${lval}" "${rval}" ||
     die "${@}"
 }
@@ -474,8 +526,8 @@ skip_administrative_mounts() {
     cat -
   fi |
   grep -v \
-    -e "^\(overlay\|tmpfs\|none\|sysfs\|proc\|selinuxfs\|debugfs\) " \
-    -e "^\(bpf\|cg2_bpf\|pstore\|tracefs\|adb\|mtp\|ptp\|devpts\) " \
+    -e "^\(overlay\|tmpfs\|none\|sysfs\|proc\|selinuxfs\|debugfs\|bpf\) " \
+    -e "^\(binfmt_misc\|cg2_bpf\|pstore\|tracefs\|adb\|mtp\|ptp\|devpts\) " \
     -e "^\(/data/media\|/dev/block/loop[0-9]*\) " \
     -e "^rootfs / rootfs rw," \
     -e " /\(cache\|mnt/scratch\|mnt/vendor/persist\|persist\|metadata\) "
@@ -568,7 +620,7 @@ fi
 
 D=`get_property ro.serialno`
 [ -n "${D}" ] || D=`get_property ro.boot.serialno`
-[ -z "${D}" ] || ANDROID_SERIAL=${D}
+[ -z "${D}" -o -n "${ANDROID_SERIAL}" ] || ANDROID_SERIAL=${D}
 USB_SERIAL=
 [ -z "${ANDROID_SERIAL}" ] || USB_SERIAL=`find /sys/devices -name serial |
                                           grep usb |
@@ -583,6 +635,9 @@ fi
 BUILD_DESCRIPTION=`get_property ro.build.description`
 [ -z "${BUILD_DESCRIPTION}" ] ||
   echo "${BLUE}[     INFO ]${NORMAL} ${BUILD_DESCRIPTION}" >&2
+ACTIVE_SLOT=`get_active_slot`
+[ -z "${ACTIVE_SLOT}" ] ||
+  echo "${BLUE}[     INFO ]${NORMAL} active slot is ${ACTIVE_SLOT}" >&2
 
 # Report existing partition sizes
 adb_sh ls -l /dev/block/by-name/ </dev/null 2>/dev/null |
@@ -908,7 +963,7 @@ echo "${GREEN}[ RUN      ]${NORMAL} reboot to confirm content persistent" >&2
 
 adb_reboot &&
   adb_wait 2m ||
-  die "reboot after override content added failed"
+  die "reboot after override content added failed `usb_status`"
 
 if ${overlayfs_needed}; then
   D=`adb_su df -k </dev/null` &&
@@ -955,8 +1010,14 @@ echo "${GREEN}[       OK ]${NORMAL} /system/lib/bootstrap/libc.so content remain
 echo "${GREEN}[ RUN      ]${NORMAL} flash vendor, confirm its content disappears" >&2
 
 H=`adb_sh echo '${HOSTNAME}' </dev/null 2>/dev/null`
+is_bootloader_fastboot=false
+# cuttlefish?
+[ X"${H}" != X"${H#vsoc}" ] || is_bootloader_fastboot=true
 is_userspace_fastboot=false
-if [ -z "${ANDROID_PRODUCT_OUT}" ]; then
+
+if ! ${is_bootloader_fastboot}; then
+  echo "${ORANGE}[  WARNING ]${NORMAL} does not support fastboot, skipping"
+elif [ -z "${ANDROID_PRODUCT_OUT}" ]; then
   echo "${ORANGE}[  WARNING ]${NORMAL} build tree not setup, skipping"
 elif [ ! -s "${ANDROID_PRODUCT_OUT}/vendor.img" ]; then
   echo "${ORANGE}[  WARNING ]${NORMAL} vendor image missing, skipping"
@@ -1031,25 +1092,14 @@ else
   check_eq "${A}" "${B}" system after flash vendor
   adb_root ||
     die "adb root"
-  B="`adb_cat /vendor/hello`" &&
-    if ${is_userspace_fastboot} || ! ${overlayfs_needed}; then
-      die "re-read /vendor/hello after flash vendor"
-    else
-      echo "${ORANGE}[  WARNING ]${NORMAL} user fastboot missing required to invalidate, ignoring a failure" >&2
-      echo "${ORANGE}[  WARNING ]${NORMAL} re-read /vendor/hello after flash vendor" >&2
-    fi
+  B="`adb_cat /vendor/hello`"
   if ${is_userspace_fastboot} || ! ${overlayfs_needed}; then
     check_eq "cat: /vendor/hello: No such file or directory" "${B}" \
              vendor content after flash vendor
   else
-    (
-      echo "${ORANGE}[  WARNING ]${NORMAL} user fastboot missing required to invalidate, ignoring a failure" >&2
-      restore() {
-        true
-      }
-      check_eq "cat: /vendor/hello: No such file or directory" "${B}" \
-               vendor content after flash vendor
-    )
+    echo "${ORANGE}[  WARNING ]${NORMAL} user fastboot missing required to invalidate, ignoring a failure" >&2
+    check_eq "cat: /vendor/hello: No such file or directory" "${B}" \
+             --warning vendor content after flash vendor
   fi
 fi
 

@@ -48,6 +48,7 @@ class FastBootTest : public testing::Test {
     static int MatchFastboot(usb_ifc_info* info, const char* local_serial = nullptr);
     bool UsbStillAvailible();
     bool UserSpaceFastboot();
+    void ReconnectFastbootDevice();
 
   protected:
     RetCode DownloadCommand(uint32_t size, std::string* response = nullptr,
@@ -69,6 +70,7 @@ class FastBootTest : public testing::Test {
     // This is an annoying hack
     static std::string cb_scratch;
     static std::string device_path;
+    static std::string initial_slot;
 };
 
 template <bool UNLOCKED>
@@ -86,6 +88,7 @@ class Fuzz : public ModeTest<true> {
 // differently
 class BasicFunctionality : public ModeTest<true> {};
 class Conformance : public ModeTest<true> {};
+class LogicalPartitionCompliance : public ModeTest<true> {};
 class UnlockPermissions : public ModeTest<true> {};
 class LockPermissions : public ModeTest<false> {};
 

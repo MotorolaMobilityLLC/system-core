@@ -115,7 +115,7 @@ struct TransferId {
 };
 
 struct IoBlock {
-    bool pending;
+    bool pending = false;
     struct iocb control;
     std::shared_ptr<Block> payload;
 
@@ -270,29 +270,15 @@ struct UsbFfsConnection : public Connection {
             bool started = false;
             bool running = true;
             while (running) {
-                int timeout = -1;
-                if (!bound || !started) {
-                    timeout = 5000 /*ms*/;
-                }
-
                 adb_pollfd pfd[2] = {
                   { .fd = control_fd_.get(), .events = POLLIN, .revents = 0 },
                   { .fd = monitor_event_fd_.get(), .events = POLLIN, .revents = 0 },
                 };
-                int rc = TEMP_FAILURE_RETRY(adb_poll(pfd, 2, timeout));
+                int rc = TEMP_FAILURE_RETRY(adb_poll(pfd, 2, -1));
                 if (rc == -1) {
                     PLOG(FATAL) << "poll on USB control fd failed";
                 } else if (rc == 0) {
-                    // Something in the kernel presumably went wrong.
-                    // Close our endpoints, wait for a bit, and then try again.
-                    StopWorker();
-                    aio_context_.reset();
-                    read_fd_.reset();
-                    write_fd_.reset();
-                    control_fd_.reset();
-                    std::this_thread::sleep_for(5s);
-                    HandleError("didn't receive FUNCTIONFS_ENABLE, retrying");
-                    return;
+                    LOG(FATAL) << "poll on USB control fd returned 0";
                 }
 
                 if (pfd[1].revents) {
@@ -654,9 +640,13 @@ static void usb_ffs_open_thread() {
 }
 
 void usb_init() {
-    if (!android::base::GetBoolProperty("persist.adb.nonblocking_ffs", false)) {
-        usb_init_legacy();
-    } else {
+    bool use_nonblocking = android::base::GetBoolProperty(
+            "persist.adb.nonblocking_ffs",
+            android::base::GetBoolProperty("ro.adb.nonblocking_ffs", true));
+
+    if (use_nonblocking) {
         std::thread(usb_ffs_open_thread).detach();
+    } else {
+        usb_init_legacy();
     }
 }
