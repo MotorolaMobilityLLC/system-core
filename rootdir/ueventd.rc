@@ -39,7 +39,7 @@ subsystem sound
 /dev/vndbinder            0666   root       root
 
 #For ATT IQI
-/dev/iqi_bridge           0660   system     bridge_rw
+/dev/iqi_bridge           0660   system     vendor_bridge_rw
 
 /dev/pmsg0                0222   root       log
 
