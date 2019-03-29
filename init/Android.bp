@@ -63,6 +63,9 @@ cc_defaults {
         journey_feature_factory_request: {
             cflags: ["-DJOURNEY_FEATURE_FACTORY_REQUEST"],
         },
+        moto_latam_feature_4176: {
+            cflags: ["-DMOTO_LATAM_FEATURE_4176"],
+        },
     },
     static_libs: [
         "libbootloader_message",

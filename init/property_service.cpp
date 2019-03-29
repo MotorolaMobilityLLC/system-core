@@ -725,7 +725,21 @@ void property_load_boot_defaults() {
     //setup the ro prop in advance
     load_properties_from_file("/system/etc/init/journey/journey.default.prop", NULL);
 #endif
+#ifdef MOTO_LATAM_FEATURE_4176
+    std::string carrier = android::base::GetProperty("ro.carrier", "");
+    std::string carrier_filename = "init.carrier.prop";
+    LOG(INFO) << "property_load_boot_defaults for carrier " << carrier;
+    if (!carrier.empty()) {
+        carrier_filename = "init.carrier." + carrier + ".prop";
+    }
+    std::string system_path = "/system/etc/carrier/";
+    system_path.append(carrier_filename);
+    load_properties_from_file(system_path.c_str(), NULL);
 
+//    std::string resource_path = "/resource/etc/carrier/";
+//    resource_path.append(carrier_filename);
+//    load_properties_from_file(resource_path.c_str(), NULL);
+#endif
     if (!load_properties_from_file("/system/etc/prop.default", NULL)) {
         // Try recovery path
         if (!load_properties_from_file("/prop.default", NULL)) {

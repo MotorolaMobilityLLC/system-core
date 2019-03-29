@@ -113,6 +113,19 @@ static void LoadBootScripts(ActionManager& action_manager, ServiceList& service_
     std::string bootscript = GetProperty("ro.boot.init_rc", "");
     if (bootscript.empty()) {
         parser.ParseConfig("/init.rc");
+#ifdef MOTO_LATAM_FEATURE_4176
+        std::string carrier = android::base::GetProperty("ro.carrier", "");
+        std::string carrier_filename = "init.carrier.rc";
+        LOG(INFO) << "LoadBootScripts for carrier " << carrier;
+        if (!carrier.empty()) {
+            carrier_filename = "init.carrier." + carrier + ".rc";
+        }
+        std::string system_path = "/system/etc/carrier/";
+        system_path.append(carrier_filename);
+        if (!parser.ParseConfig(system_path.c_str())) {
+            late_import_paths.emplace_back(system_path.c_str());
+        }
+#endif
         if (!parser.ParseConfig("/system/etc/init")) {
             late_import_paths.emplace_back("/system/etc/init");
         }
@@ -392,6 +405,11 @@ static void export_kernel_boot_props() {
         { "ro.boot.bootloader", "ro.bootloader", "unknown", },
         { "ro.boot.hardware",   "ro.hardware",   "unknown", },
         { "ro.boot.revision",   "ro.revision",   "0", },
+#ifdef MOTO_LATAM_FEATURE_4176
+        { "ro.boot.carrier",    "ro.carrier",    "unknown", },
+#else
+#error
+#endif
     };
     for (size_t i = 0; i < arraysize(prop_map); i++) {
         std::string value = GetProperty(prop_map[i].src_prop, "");
