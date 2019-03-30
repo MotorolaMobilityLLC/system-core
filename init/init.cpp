@@ -113,6 +113,12 @@ static void LoadBootScripts(ActionManager& action_manager, ServiceList& service_
     std::string bootscript = GetProperty("ro.boot.init_rc", "");
     if (bootscript.empty()) {
         parser.ParseConfig("/init.rc");
+#ifdef MOTO_GENERAL_FEATURE
+        parser.ParseConfig("/init.moto.rc");
+#endif
+#ifdef MOTO_GENERAL_FEATURE_OTA
+        parser.ParseConfig("/init.moto.ota.rc");
+#endif
 #ifdef MOTO_LATAM_FEATURE_4176
         std::string carrier = android::base::GetProperty("ro.carrier", "");
         std::string carrier_filename = "init.carrier.rc";
