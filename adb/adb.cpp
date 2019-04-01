@@ -345,8 +345,6 @@ static void handle_new_connection(atransport* t, apacket* p) {
             LOG(INFO) << "handle_new_connection disable usb auth for debug.adb.factory.mode";
         }
     }
-#else
-#error
 #endif
     if (!auth_required) {
         handle_online(t);
