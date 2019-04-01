@@ -326,6 +326,9 @@ static void fdevent_process() {
 #if defined(__linux__)
         if (pollfd.revents & POLLRDHUP) {
             events |= FDE_READ | FDE_ERROR;
+#if !ADB_HOST
+            ADBLOG("for fd %d, revents = %x\n", pollfd.fd, pollfd.revents);
+#endif
         }
 #endif
         auto it = g_poll_node_map.find(pollfd.fd);

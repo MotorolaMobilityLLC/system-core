@@ -201,6 +201,9 @@ struct UsbFfsConnection : public Connection {
         write_fd_.reset();
 
         destruction_notifier_.set_value();
+#if !ADB_HOST
+        ADBLOG("UsbFfsConnection being destroyed\n");
+#endif
     }
 
     virtual bool Write(std::unique_ptr<apacket> packet) override final {
@@ -267,6 +270,9 @@ struct UsbFfsConnection : public Connection {
 
         monitor_thread_ = std::thread([this]() {
             adb_thread_setname("UsbFfs-monitor");
+#if !ADB_HOST
+        ADBLOG("UsbFfs-monitor thread spawning\n");
+#endif
 
             bool bound = false;
             bool enabled = false;
@@ -301,6 +307,9 @@ struct UsbFfsConnection : public Connection {
 
                 LOG(INFO) << "USB event: "
                           << to_string(static_cast<usb_functionfs_event_type>(event.type));
+#if !ADB_HOST
+                ADBLOG("USB event: %s\n", to_string(static_cast<usb_functionfs_event_type>(event.type)));
+#endif
 
                 switch (event.type) {
                     case FUNCTIONFS_BIND:
@@ -370,6 +379,10 @@ struct UsbFfsConnection : public Connection {
         worker_started_ = true;
         worker_thread_ = std::thread([this]() {
             adb_thread_setname("UsbFfs-worker");
+#if !ADB_HOST
+        ADBLOG("UsbFfs-worker thread spawning\n");
+#endif
+
             for (size_t i = 0; i < kUsbReadQueueDepth; ++i) {
                 read_requests_[i] = CreateReadBlock(next_read_id_++);
                 if (!SubmitRead(&read_requests_[i])) {

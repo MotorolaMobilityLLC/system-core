@@ -268,6 +268,9 @@ BlockingConnectionAdapter::BlockingConnectionAdapter(std::unique_ptr<BlockingCon
 BlockingConnectionAdapter::~BlockingConnectionAdapter() {
     LOG(INFO) << "BlockingConnectionAdapter(" << this->transport_name_ << "): destructing";
     Stop();
+#if !ADB_HOST
+    ADBLOG("BlockingConnectionAdapter(%s): destructed\n", this->transport_name_.c_str());
+#endif
 }
 
 void BlockingConnectionAdapter::Start() {
@@ -279,6 +282,9 @@ void BlockingConnectionAdapter::Start() {
 
     read_thread_ = std::thread([this]() {
         LOG(INFO) << this->transport_name_ << ": read thread spawning";
+#if !ADB_HOST
+        ADBLOG("%s : read thread spawning\n", this->transport_name_.c_str());
+#endif
         while (true) {
             auto packet = std::make_unique<apacket>();
             if (!underlying_->Read(packet.get())) {
@@ -292,6 +298,9 @@ void BlockingConnectionAdapter::Start() {
 
     write_thread_ = std::thread([this]() {
         LOG(INFO) << this->transport_name_ << ": write thread spawning";
+#if !ADB_HOST
+        ADBLOG("%s : write thread spawning\n", this->transport_name_.c_str());
+#endif
         while (true) {
             std::unique_lock<std::mutex> lock(mutex_);
             ScopedLockAssertion assume_locked(mutex_);

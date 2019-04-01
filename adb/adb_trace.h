@@ -65,4 +65,11 @@ void adb_trace_enable(AdbTrace trace_tag);
 #include <cutils/trace.h>
 #include <utils/Trace.h>
 
+#if !ADB_HOST
+#include <log/log.h>
+
+#define ADBLOG(...) \
+    __android_log_print(ANDROID_LOG_INFO, "ADB_SERVICES", __VA_ARGS__ );
+#endif
+
 #endif /* __ADB_TRACE_H */

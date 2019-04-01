@@ -535,6 +535,9 @@ static bool handle_sync_command(int fd, std::vector<char>& buffer) {
     ATRACE_NAME(trace_name.c_str());
 
     D("sync: %s('%s')", id_name.c_str(), name);
+#if !ADB_HOST
+    ADBLOG("sync: %s('%s')\n", id_name.c_str(), name);
+#endif
     switch (request.id) {
         case ID_LSTAT_V1:
             if (!do_lstat_v1(fd, name)) return false;
