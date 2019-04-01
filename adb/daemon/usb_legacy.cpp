@@ -132,6 +132,9 @@ static int usb_ffs_write(usb_handle* h, const void* data, int len) {
         int n = adb_write(h->bulk_in, buf, write_len);
         if (n < 0) {
             D("ERROR: fd = %d, n = %d: %s", h->bulk_in.get(), n, strerror(errno));
+#if !ADB_HOST
+            ADBLOG("ERROR: fd = %d, n = %d: %s\n", h->bulk_in.get(), n, strerror(errno));
+#endif
             return -1;
         }
         buf += n;
@@ -152,6 +155,9 @@ static int usb_ffs_read(usb_handle* h, void* data, int len) {
         int n = adb_read(h->bulk_out, buf, read_len);
         if (n < 0) {
             D("ERROR: fd = %d, n = %d: %s", h->bulk_out.get(), n, strerror(errno));
+#if !ADB_HOST
+            ADBLOG("ERROR: fd = %d, n = %d: %s\n", h->bulk_out.get(), n, strerror(errno));
+#endif
             return -1;
         }
         buf += n;

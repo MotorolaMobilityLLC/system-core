@@ -318,9 +318,18 @@ void handle_packet(apacket *p, atransport *t)
 
     switch(p->msg.command){
     case A_CNXN:  // CONNECT(version, maxdata, "system-id-string")
+#if !ADB_HOST
+        {
+        std::string payload(p->payload.begin(), p->payload.end());
+        ADBLOG("%s: %s %08x %08x %04x %s\n",
+            "recv", "CNXN", p->msg.arg0, p->msg.arg1, p->msg.data_length, payload.c_str());
+#endif
         handle_new_connection(t, p);
         break;
 
+#if !ADB_HOST
+        }
+#endif
     case A_AUTH:
         switch (p->msg.arg0) {
 #if ADB_HOST

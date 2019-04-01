@@ -246,6 +246,16 @@ unique_fd daemon_service_to_fd(std::string_view name, atransport* transport) {
         return execute_abb_command(name);
     }
 #endif
+#if !ADB_HOST
+    if(name.find("logcat") != std::string::npos || name.find("jdwp") != std::string::npos){
+        // Do not print logcat command because its parameter may contain keywords
+        // which lead to false alarm in some tests
+        // No need to print jdwp command
+    } else {
+        std::string arg(name);
+        ADBLOG("service_to_fd %s\n", arg.c_str());
+    }
+#endif
 
 #if defined(__ANDROID__)
     if (name.starts_with("framebuffer:")) {
