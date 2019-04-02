@@ -111,7 +111,7 @@ static void handle_signal() {
 
 static void SIGCHLD_handler(int) {
     if (TEMP_FAILURE_RETRY(write(signal_write_fd, "1", 1)) == -1) {
-        PLOG(ERROR) << "write(signal_write_fd) failed";
+        //PLOG(ERROR) << "write(signal_write_fd) failed";
     }
 }
 
