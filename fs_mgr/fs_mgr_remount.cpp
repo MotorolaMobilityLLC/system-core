@@ -80,29 +80,6 @@ const android::fs_mgr::FstabEntry* is_wrapped(const android::fs_mgr::Fstab& over
     return &(*it);
 }
 
-void try_unmount_bionic(android::fs_mgr::Fstab* mounts) {
-    static constexpr const char* kBionic = "/bionic";
-
-    auto entry = GetEntryForMountPoint(mounts, kBionic);
-    if (!entry) return;
-
-    struct statfs buf;
-    if (::statfs(kBionic, &buf) == -1) {
-        PLOG(ERROR) << "statfs of " << kBionic;
-        return;
-    }
-    if (buf.f_flags & MS_RDONLY) {
-        // /bionic is on a read-only partition; can happen for
-        // non-system-as-root-devices. Don' try to unmount.
-        return;
-    }
-    fs_mgr_set_blk_ro(entry->blk_device, false);
-    if (::mount(entry->blk_device.c_str(), entry->mount_point.c_str(), entry->fs_type.c_str(),
-                MS_REMOUNT, nullptr) == -1) {
-        PLOG(ERROR) << "remount of " << kBionic;
-    }
-}
-
 void MyLogger(android::base::LogId id, android::base::LogSeverity severity, const char* tag,
               const char* file, unsigned int line, const char* message) {
     static const char log_characters[] = "VD\0WEFF";
@@ -199,6 +176,15 @@ int main(int argc, char* argv[]) {
         fstab_read = android::fs_mgr::ReadFstabFromFile(fstab_file, &fstab);
     } else {
         fstab_read = android::fs_mgr::ReadDefaultFstab(&fstab);
+        // Manufacture a / entry from /proc/mounts if missing.
+        if (!GetEntryForMountPoint(&fstab, "/system") && !GetEntryForMountPoint(&fstab, "/")) {
+            android::fs_mgr::Fstab mounts;
+            if (android::fs_mgr::ReadFstabFromFile("/proc/mounts", &mounts)) {
+                if (auto entry = GetEntryForMountPoint(&mounts, "/")) {
+                    if (entry->fs_type != "rootfs") fstab.emplace_back(*entry);
+                }
+            }
+        }
     }
     if (!fstab_read || fstab.empty()) {
         PLOG(ERROR) << "Failed to read fstab";
@@ -234,21 +220,21 @@ int main(int argc, char* argv[]) {
         // Do we know about the partition?
         auto it = std::find_if(fstab.begin(), fstab.end(), find_part);
         if (it == fstab.end()) {
-            LOG(ERROR) << "Unknown partition " << partition << ", skipping";
+            LOG(ERROR) << "Unknown partition " << argv[optind] << ", skipping";
             retval = UNKNOWN_PARTITION;
             continue;
         }
         // Is that one covered by an existing overlayfs?
         auto wrap = is_wrapped(overlayfs_candidates, *it);
         if (wrap) {
-            LOG(INFO) << "partition " << partition << " covered by overlayfs for "
+            LOG(INFO) << "partition " << argv[optind] << " covered by overlayfs for "
                       << wrap->mount_point << ", switching";
             partition = system_mount_point(*wrap);
         }
         // Is it a remountable partition?
         it = std::find_if(all.begin(), all.end(), find_part);
         if (it == all.end()) {
-            LOG(ERROR) << "Invalid partition " << partition << ", skipping";
+            LOG(ERROR) << "Invalid partition " << argv[optind] << ", skipping";
             retval = INVALID_PARTITION;
             continue;
         }
@@ -263,35 +249,43 @@ int main(int argc, char* argv[]) {
 
     // Check verity and optionally setup overlayfs backing.
     auto reboot_later = false;
+    auto uses_overlayfs = fs_mgr_overlayfs_valid() != OverlayfsValidResult::kNotSupported;
     for (auto it = partitions.begin(); it != partitions.end();) {
         auto& entry = *it;
         auto& mount_point = entry.mount_point;
         if (fs_mgr_is_verity_enabled(entry)) {
-            LOG(WARNING) << "Verity enabled on " << mount_point;
-            if (can_reboot &&
-                (android::base::GetProperty("ro.boot.vbmeta.devices_state", "") != "locked")) {
+            retval = VERITY_PARTITION;
+            if (android::base::GetProperty("ro.boot.vbmeta.devices_state", "") != "locked") {
                 if (AvbOps* ops = avb_ops_user_new()) {
                     auto ret = avb_user_verity_set(
                             ops, android::base::GetProperty("ro.boot.slot_suffix", "").c_str(),
                             false);
                     avb_ops_user_free(ops);
                     if (ret) {
-                        if (fs_mgr_overlayfs_valid() == OverlayfsValidResult::kNotSupported) {
-                            retval = VERITY_PARTITION;
+                        LOG(WARNING) << "Disable verity for " << mount_point;
+                        reboot_later = can_reboot;
+                        if (reboot_later) {
                             // w/o overlayfs available, also check for dedupe
-                            reboot_later = true;
-                            ++it;
-                            continue;
+                            if (!uses_overlayfs) {
+                                ++it;
+                                continue;
+                            }
+                            reboot(false);
                         }
-                        reboot(false);
                     } else if (fs_mgr_set_blk_ro(entry.blk_device, false)) {
                         fec::io fh(entry.blk_device.c_str(), O_RDWR);
-                        if (fh && fh.set_verity_status(false)) reboot_later = true;
+                        if (fh && fh.set_verity_status(false)) {
+                            LOG(WARNING) << "Disable verity for " << mount_point;
+                            reboot_later = can_reboot;
+                            if (reboot_later && !uses_overlayfs) {
+                                ++it;
+                                continue;
+                            }
+                        }
                     }
                 }
             }
             LOG(ERROR) << "Skipping " << mount_point;
-            retval = VERITY_PARTITION;
             it = partitions.erase(it);
             continue;
         }
@@ -318,7 +312,8 @@ int main(int argc, char* argv[]) {
     }
 
     // Mount overlayfs.
-    if (!fs_mgr_overlayfs_mount_all(&partitions)) {
+    errno = 0;
+    if (!fs_mgr_overlayfs_mount_all(&partitions) && errno) {
         retval = BAD_OVERLAY;
         PLOG(ERROR) << "Can not mount overlayfs for partitions";
     }
@@ -346,10 +341,14 @@ int main(int argc, char* argv[]) {
                 break;
             }
             if ((mount_point == "/") && (rentry.mount_point == "/system")) {
-                if (blk_device != "/dev/root") blk_device = rentry.blk_device;
+                blk_device = rentry.blk_device;
                 mount_point = "/system";
                 break;
             }
+        }
+        if (blk_device == "/dev/root") {
+            auto from_fstab = GetEntryForMountPoint(&fstab, mount_point);
+            if (from_fstab) blk_device = from_fstab->blk_device;
         }
         fs_mgr_set_blk_ro(blk_device, false);
 
@@ -381,8 +380,6 @@ int main(int argc, char* argv[]) {
     }
 
     if (reboot_later) reboot(false);
-
-    try_unmount_bionic(&mounts);
 
     return retval;
 }

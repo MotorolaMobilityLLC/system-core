@@ -39,6 +39,7 @@
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
 #include <cutils/android_reboot.h>
+#include <fs_avb/fs_avb.h>
 #include <fs_mgr_vendor_overlay.h>
 #include <keyutils.h>
 #include <libavb/libavb.h>
@@ -57,6 +58,7 @@
 #include "first_stage_mount.h"
 #include "import_parser.h"
 #include "keychords.h"
+#include "mount_handler.h"
 #include "mount_namespace.h"
 #include "property_service.h"
 #include "reboot.h"
@@ -75,6 +77,7 @@ using android::base::ReadFileToString;
 using android::base::StringPrintf;
 using android::base::Timer;
 using android::base::Trim;
+using android::fs_mgr::AvbHandle;
 
 namespace android {
 namespace init {
@@ -93,6 +96,7 @@ static std::string wait_prop_value;
 static bool shutting_down;
 static std::string shutdown_command;
 static bool do_shutdown = false;
+static bool load_debug_prop = false;
 
 std::vector<std::string> late_import_paths;
 
@@ -660,6 +664,12 @@ int SecondStageMain(int argc, char** argv) {
     const char* avb_version = getenv("INIT_AVB_VERSION");
     if (avb_version) property_set("ro.boot.avb_version", avb_version);
 
+    // See if need to load debug props to allow adb root, when the device is unlocked.
+    const char* force_debuggable_env = getenv("INIT_FORCE_DEBUGGABLE");
+    if (force_debuggable_env && AvbHandle::IsDeviceUnlocked()) {
+        load_debug_prop = "true"s == force_debuggable_env;
+    }
+
     // Set memcg property based on kernel cmdline argument
     bool memcg_enabled = android::base::GetBoolProperty("ro.boot.memcg",false);
     if (memcg_enabled) {
@@ -678,6 +688,7 @@ int SecondStageMain(int argc, char** argv) {
     unsetenv("INIT_STARTED_AT");
     unsetenv("INIT_SELINUX_TOOK");
     unsetenv("INIT_AVB_VERSION");
+    unsetenv("INIT_FORCE_DEBUGGABLE");
 
     // Now set up SELinux for second stage.
     SelinuxSetupKernelLogging();
@@ -691,10 +702,11 @@ int SecondStageMain(int argc, char** argv) {
 
     InstallSignalFdHandler(&epoll);
 
-    property_load_boot_defaults();
+    property_load_boot_defaults(load_debug_prop);
     fs_mgr_vendor_overlay_mount_all();
     export_oem_lock_status();
     StartPropertyService(&epoll);
+    MountHandler mount_handler(&epoll);
     set_usb_controller();
 
     const BuiltinFunctionMap function_map;
