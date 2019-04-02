@@ -406,6 +406,9 @@ static void export_kernel_boot_props() {
         const char *default_value;
     } prop_map[] = {
         { "ro.boot.serialno",   "ro.serialno",   "", },
+#ifdef MOTO_GENERAL_FEATURE_OTA
+        { "ro.boot.serialno",   "ro.serial",   "", },
+#endif
         { "ro.boot.mode",       "ro.bootmode",   "unknown", },
         { "ro.boot.baseband",   "ro.baseband",   "unknown", },
         { "ro.boot.bootloader", "ro.bootloader", "unknown", },
@@ -413,8 +416,6 @@ static void export_kernel_boot_props() {
         { "ro.boot.revision",   "ro.revision",   "0", },
 #ifdef MOTO_LATAM_FEATURE_4176
         { "ro.boot.carrier",    "ro.carrier",    "unknown", },
-#else
-#error
 #endif
     };
     for (size_t i = 0; i < arraysize(prop_map); i++) {
