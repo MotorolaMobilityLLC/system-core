@@ -813,6 +813,10 @@ static void getdiskinfo(int fd, const char *fname, const char *dtype,
         exit(1);
     }
 
+    /* BLKGETSIZE ioctl returns number of 512 byte sectors */
+    block_size = block_size << 9;
+    block_size = block_size / bpb->bps;
+
     if (block_size > UINT32_MAX) {
         fprintf(stderr, "Error blocksize too large: %lu\n", block_size);
         exit(1);
