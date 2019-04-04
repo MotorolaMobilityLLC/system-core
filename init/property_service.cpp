@@ -594,6 +594,11 @@ class SocketConnection {
     bool RecvFully(void* data_ptr, size_t size, uint32_t* timeout_ms) {
         size_t bytes_left = size;
         char* data = static_cast<char*>(data_ptr);
+        if (*timeout_ms <= 0) {
+            *timeout_ms = 1000;
+            LOG(ERROR) << "sys_prop: recv timeout, retry";
+        }
+
         while (*timeout_ms > 0 && bytes_left > 0) {
             if (!PollIn(timeout_ms)) {
                 return false;
