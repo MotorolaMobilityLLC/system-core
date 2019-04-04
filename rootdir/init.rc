@@ -722,6 +722,9 @@ on property:vold.decrypt=trigger_load_persist_props
     load_persist_props
     start logd
     start logd-reinit
+    # BEGIN Motorola, edufb, 04/04/2019, IKSWP-68573 Bootanim sound
+    setprop sys.persist_props.loaded 1
+    # END IKSWP-68573
 
 on property:vold.decrypt=trigger_post_fs_data
     trigger post-fs-data
