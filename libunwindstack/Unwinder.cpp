@@ -105,6 +105,12 @@ void Unwinder::FillInFrame(MapInfo* map_info, Elf* elf, uint64_t rel_pc, uint64_
 
   if (resolve_names_) {
     frame->map_name = map_info->name;
+    if (embedded_soname_ && map_info->elf_start_offset != 0 && !frame->map_name.empty()) {
+      std::string soname = elf->GetSoname();
+      if (!soname.empty()) {
+        frame->map_name += '!' + soname;
+      }
+    }
   }
   frame->map_elf_start_offset = map_info->elf_start_offset;
   frame->map_exact_offset = map_info->offset;
@@ -278,17 +284,9 @@ void Unwinder::Unwind(const std::vector<std::string>* initial_map_names_to_skip,
   }
 }
 
-std::string Unwinder::FormatFrame(size_t frame_num) {
-  if (frame_num >= frames_.size()) {
-    return "";
-  }
-  return FormatFrame(frames_[frame_num], regs_->Is32Bit());
-}
-
-std::string Unwinder::FormatFrame(const FrameData& frame, bool is32bit) {
+std::string Unwinder::FormatFrame(const FrameData& frame) {
   std::string data;
-
-  if (is32bit) {
+  if (regs_->Is32Bit()) {
     data += android::base::StringPrintf("  #%02zu pc %08" PRIx64, frame.num, frame.rel_pc);
   } else {
     data += android::base::StringPrintf("  #%02zu pc %016" PRIx64, frame.num, frame.rel_pc);
@@ -314,7 +312,22 @@ std::string Unwinder::FormatFrame(const FrameData& frame, bool is32bit) {
     }
     data += ')';
   }
+
+  MapInfo* map_info = maps_->Find(frame.map_start);
+  if (map_info != nullptr && display_build_id_) {
+    std::string build_id = map_info->GetPrintableBuildID();
+    if (!build_id.empty()) {
+      data += " (BuildId: " + build_id + ')';
+    }
+  }
   return data;
+}
+
+std::string Unwinder::FormatFrame(size_t frame_num) {
+  if (frame_num >= frames_.size()) {
+    return "";
+  }
+  return FormatFrame(frames_[frame_num]);
 }
 
 void Unwinder::SetJitDebug(JitDebug* jit_debug, ArchEnum arch) {

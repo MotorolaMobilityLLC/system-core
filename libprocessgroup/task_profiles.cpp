@@ -202,7 +202,7 @@ bool SetCgroupAction::ExecuteForProcess(uid_t uid, pid_t pid) const {
     std::string procs_path = controller_->GetProcsFilePath(path_, uid, pid);
     unique_fd tmp_fd(TEMP_FAILURE_RETRY(open(procs_path.c_str(), O_WRONLY | O_CLOEXEC)));
     if (tmp_fd < 0) {
-        PLOG(WARNING) << "Failed to open " << procs_path << ": " << strerror(errno);
+        PLOG(WARNING) << "Failed to open " << procs_path;
         return false;
     }
     if (!AddTidToCgroup(pid, tmp_fd)) {
@@ -284,8 +284,10 @@ bool TaskProfile::ExecuteForTask(int tid) const {
 }
 
 TaskProfiles& TaskProfiles::GetInstance() {
-    static TaskProfiles instance;
-    return instance;
+    // Deliberately leak this object to avoid a race between destruction on
+    // process exit and concurrent access from another thread.
+    static auto* instance = new TaskProfiles;
+    return *instance;
 }
 
 TaskProfiles::TaskProfiles() {

@@ -88,7 +88,7 @@ class Unwinder {
   }
 
   std::string FormatFrame(size_t frame_num);
-  static std::string FormatFrame(const FrameData& frame, bool is32bit);
+  std::string FormatFrame(const FrameData& frame);
 
   void SetJitDebug(JitDebug* jit_debug, ArchEnum arch);
 
@@ -99,6 +99,13 @@ class Unwinder {
   // Disabling the resolving of names results in the function name being
   // set to an empty string and the function offset being set to zero.
   void SetResolveNames(bool resolve) { resolve_names_ = resolve; }
+
+  // Enable/disable soname printing the soname for a map name if the elf is
+  // embedded in a file. This is enabled by default.
+  // NOTE: This does nothing unless resolving names is enabled.
+  void SetEmbeddedSoname(bool embedded_soname) { embedded_soname_ = embedded_soname; }
+
+  void SetDisplayBuildID(bool display_build_id) { display_build_id_ = display_build_id; }
 
 #if !defined(NO_LIBDEXFILE_SUPPORT)
   void SetDexFiles(DexFiles* dex_files, ArchEnum arch);
@@ -124,6 +131,8 @@ class Unwinder {
   DexFiles* dex_files_ = nullptr;
 #endif
   bool resolve_names_ = true;
+  bool embedded_soname_ = true;
+  bool display_build_id_ = false;
   ErrorData last_error_;
 };
 

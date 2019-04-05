@@ -447,59 +447,71 @@ die() {
   exit 1
 }
 
-[ "USAGE: EXPECT_EQ <lval> <rval> [message]
+[ "USAGE: EXPECT_EQ <lval> <rval> [--warning [message]]
 
 Returns true if (regex) lval matches rval" ]
 EXPECT_EQ() {
   local lval="${1}"
   local rval="${2}"
   shift 2
+  local error=1
+  local prefix="${RED}[    ERROR ]${NORMAL}"
+  if [ X"${1}" = X"--warning" ]; then
+      prefix="${RED}[  WARNING ]${NORMAL}"
+      error=0
+      shift 1
+  fi
   if ! ( echo X"${rval}" | grep '^X'"${lval}"'$' >/dev/null 2>/dev/null ); then
     if [ `echo ${lval}${rval}${*} | wc -c` -gt 50 -o "${rval}" != "${rval%
 *}" ]; then
-      echo "ERROR: expected \"${lval}\"" >&2
-      echo "       got \"${rval}\"" |
+      echo "${prefix} expected \"${lval}\"" >&2
+      echo "${prefix} got \"${rval}\"" |
         sed ': again
              N
              s/\(\n\)\([^ ]\)/\1             \2/
              t again' >&2
       if [ -n "${*}" ] ; then
-        echo "       ${*}" >&2
+        echo "${prefix} ${*}" >&2
       fi
     else
-      echo "ERROR: expected \"${lval}\" got \"${rval}\" ${*}" >&2
+      echo "${prefix} expected \"${lval}\" got \"${rval}\" ${*}" >&2
     fi
-    return 1
+    return ${error}
   fi
   if [ -n "${*}" ] ; then
-    if [ X"${lval}" != X"${rval}" ]; then
+    prefix="${GREEN}[     INFO ]${NORMAL}"
+    if [ X"${lval}" != X"${rval}" ]; then  # we were supplied a regex?
       if [ `echo ${lval}${rval}${*} | wc -c` -gt 60 -o "${rval}" != "${rval% *}" ]; then
-        echo "INFO: ok \"${lval}\"" >&2
+        echo "${prefix} ok \"${lval}\"" >&2
         echo "       = \"${rval}\"" |
           sed ': again
                N
                s/\(\n\)\([^ ]\)/\1          \2/
                t again' >&2
         if [ -n "${*}" ] ; then
-          echo "      ${*}" >&2
+          echo "${prefix} ${*}" >&2
         fi
       else
-        echo "INFO: ok \"${lval}\" = \"${rval}\" ${*}" >&2
+        echo "${prefix} ok \"${lval}\" = \"${rval}\" ${*}" >&2
       fi
     else
-      echo "INFO: ok \"${lval}\" ${*}" >&2
+      echo "${prefix} ok \"${lval}\" ${*}" >&2
     fi
   fi
   return 0
 }
 
-[ "USAGE: check_eq <lval> <rval> [message]
+[ "USAGE: check_eq <lval> <rval> [--warning [message]]
 
 Exits if (regex) lval mismatches rval" ]
 check_eq() {
   local lval="${1}"
   local rval="${2}"
   shift 2
+  if [ X"${1}" = X"--warning" ]; then
+      EXPECT_EQ "${lval}" "${rval}" ${*}
+      return
+  fi
   EXPECT_EQ "${lval}" "${rval}" ||
     die "${@}"
 }
@@ -514,8 +526,8 @@ skip_administrative_mounts() {
     cat -
   fi |
   grep -v \
-    -e "^\(overlay\|tmpfs\|none\|sysfs\|proc\|selinuxfs\|debugfs\) " \
-    -e "^\(bpf\|cg2_bpf\|pstore\|tracefs\|adb\|mtp\|ptp\|devpts\) " \
+    -e "^\(overlay\|tmpfs\|none\|sysfs\|proc\|selinuxfs\|debugfs\|bpf\) " \
+    -e "^\(binfmt_misc\|cg2_bpf\|pstore\|tracefs\|adb\|mtp\|ptp\|devpts\) " \
     -e "^\(/data/media\|/dev/block/loop[0-9]*\) " \
     -e "^rootfs / rootfs rw," \
     -e " /\(cache\|mnt/scratch\|mnt/vendor/persist\|persist\|metadata\) "
@@ -608,7 +620,7 @@ fi
 
 D=`get_property ro.serialno`
 [ -n "${D}" ] || D=`get_property ro.boot.serialno`
-[ -z "${D}" ] || ANDROID_SERIAL=${D}
+[ -z "${D}" -o -n "${ANDROID_SERIAL}" ] || ANDROID_SERIAL=${D}
 USB_SERIAL=
 [ -z "${ANDROID_SERIAL}" ] || USB_SERIAL=`find /sys/devices -name serial |
                                           grep usb |
@@ -951,7 +963,7 @@ echo "${GREEN}[ RUN      ]${NORMAL} reboot to confirm content persistent" >&2
 
 adb_reboot &&
   adb_wait 2m ||
-  die "reboot after override content added failed"
+  die "reboot after override content added failed `usb_status`"
 
 if ${overlayfs_needed}; then
   D=`adb_su df -k </dev/null` &&
@@ -998,8 +1010,14 @@ echo "${GREEN}[       OK ]${NORMAL} /system/lib/bootstrap/libc.so content remain
 echo "${GREEN}[ RUN      ]${NORMAL} flash vendor, confirm its content disappears" >&2
 
 H=`adb_sh echo '${HOSTNAME}' </dev/null 2>/dev/null`
+is_bootloader_fastboot=false
+# cuttlefish?
+[ X"${H}" != X"${H#vsoc}" ] || is_bootloader_fastboot=true
 is_userspace_fastboot=false
-if [ -z "${ANDROID_PRODUCT_OUT}" ]; then
+
+if ! ${is_bootloader_fastboot}; then
+  echo "${ORANGE}[  WARNING ]${NORMAL} does not support fastboot, skipping"
+elif [ -z "${ANDROID_PRODUCT_OUT}" ]; then
   echo "${ORANGE}[  WARNING ]${NORMAL} build tree not setup, skipping"
 elif [ ! -s "${ANDROID_PRODUCT_OUT}/vendor.img" ]; then
   echo "${ORANGE}[  WARNING ]${NORMAL} vendor image missing, skipping"
@@ -1079,14 +1097,9 @@ else
     check_eq "cat: /vendor/hello: No such file or directory" "${B}" \
              vendor content after flash vendor
   else
-    (
-      echo "${ORANGE}[  WARNING ]${NORMAL} user fastboot missing required to invalidate, ignoring a failure" >&2
-      restore() {
-        true
-      }
-      check_eq "cat: /vendor/hello: No such file or directory" "${B}" \
-               vendor content after flash vendor
-    )
+    echo "${ORANGE}[  WARNING ]${NORMAL} user fastboot missing required to invalidate, ignoring a failure" >&2
+    check_eq "cat: /vendor/hello: No such file or directory" "${B}" \
+             --warning vendor content after flash vendor
   fi
 fi
 
