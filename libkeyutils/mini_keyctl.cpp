@@ -20,16 +20,28 @@
 
 #include "mini_keyctl_utils.h"
 
+#include <error.h>
+#include <stdio.h>
 #include <unistd.h>
+
+#include <android-base/parseint.h>
 
 static void Usage(int exit_code) {
   fprintf(stderr, "usage: mini-keyctl <action> [args,]\n");
   fprintf(stderr, "       mini-keyctl add <type> <desc> <data> <keyring>\n");
   fprintf(stderr, "       mini-keyctl padd <type> <desc> <keyring>\n");
-  fprintf(stderr, "       mini-keyctl dadd <type> <desc_prefix> <cert_dir> <keyring>\n");
   fprintf(stderr, "       mini-keyctl unlink <key> <keyring>\n");
   fprintf(stderr, "       mini-keyctl restrict_keyring <keyring>\n");
+  fprintf(stderr, "       mini-keyctl security <key>\n");
   _exit(exit_code);
+}
+
+static key_serial_t parseKeyOrDie(const char* str) {
+  key_serial_t key;
+  if (!android::base::ParseInt(str, &key)) {
+    error(1 /* exit code */, 0 /* errno */, "Unparsable key: '%s'\n", str);
+  }
+  return key;
 }
 
 int main(int argc, const char** argv) {
@@ -43,14 +55,6 @@ int main(int argc, const char** argv) {
     std::string data = argv[4];
     std::string keyring = argv[5];
     return Add(type, desc, data, keyring);
-  } else if (action == "dadd") {
-    if (argc != 6) Usage(1);
-    std::string type = argv[2];
-    // The key description contains desc_prefix and an index.
-    std::string desc_prefix = argv[3];
-    std::string cert_dir = argv[4];
-    std::string keyring = argv[5];
-    return AddCertsFromDir(type, desc_prefix, cert_dir, keyring);
   } else if (action == "padd") {
     if (argc != 5) Usage(1);
     std::string type = argv[2];
@@ -63,10 +67,22 @@ int main(int argc, const char** argv) {
     return RestrictKeyring(keyring);
   } else if (action == "unlink") {
     if (argc != 4) Usage(1);
-    key_serial_t key = std::stoi(argv[2], nullptr, 16);
+    key_serial_t key = parseKeyOrDie(argv[2]);
     const std::string keyring = argv[3];
     return Unlink(key, keyring);
+  } else if (action == "security") {
+    if (argc != 3) Usage(1);
+    const char* key_str = argv[2];
+    key_serial_t key = parseKeyOrDie(key_str);
+    std::string context = RetrieveSecurityContext(key);
+    if (context.empty()) {
+      perror(key_str);
+      return 1;
+    }
+    fprintf(stderr, "%s\n", context.c_str());
+    return 0;
   } else {
+    fprintf(stderr, "Unrecognized action: %s\n", action.c_str());
     Usage(1);
   }
 

@@ -277,10 +277,6 @@ runs the service.
   since it has some peculiarities for backwards compatibility reasons. The 'imports' section of
   this file has more details on the order.
 
-`parse_apex_configs`
-  Parses config file(s) from the mounted APEXes. Intented to be used only once
-  when apexd notifies the mount event by setting apexd.status to ready.
-
 `priority <priority>`
 > Scheduling priority of the service process. This value has to be in range
   -20 to 19. Default priority is 0. Priority is set via setpriority().
@@ -512,6 +508,10 @@ Commands
   _options_ include "barrier=1", "noauto\_da\_alloc", "discard", ... as
   a comma separated string, eg: barrier=1,noauto\_da\_alloc
 
+`parse_apex_configs`
+> Parses config file(s) from the mounted APEXes. Intented to be used only once
+  when apexd notifies the mount event by setting apexd.status to ready.
+
 `restart <service>`
 > Stops and restarts a running service, does nothing if the service is currently
   restarting, otherwise, it just starts the service.
@@ -660,11 +660,18 @@ The below pseudocode may explain this more clearly:
 
 Properties
 ----------
-Init provides information about the services that it is responsible
-for via the below properties.
+Init provides state information with the following properties.
 
 `init.svc.<name>`
 > State of a named service ("stopped", "stopping", "running", "restarting")
+
+`dev.mnt.blk.<mount_point>`
+> Block device base name associated with a *mount_point*.
+  The *mount_point* has / replaced by . and if referencing the root mount point
+  "/", it will use "/root", specifically `dev.mnt.blk.root`.
+  Meant for references to `/sys/device/block/${dev.mnt.blk.<mount_point>}/` and
+  `/sys/fs/ext4/${dev.mnt.blk.<mount_point>}/` to tune the block device
+  characteristics in a device agnostic manner.
 
 
 Boot timing

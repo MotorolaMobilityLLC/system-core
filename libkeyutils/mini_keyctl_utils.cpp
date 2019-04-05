@@ -30,78 +30,32 @@
 
 #include <android-base/file.h>
 #include <android-base/logging.h>
+#include <android-base/parseint.h>
 #include <android-base/properties.h>
 #include <android-base/strings.h>
 #include <keyutils.h>
 
 static constexpr int kMaxCertSize = 4096;
 
-std::vector<std::string> SplitBySpace(const std::string& s) {
+static std::vector<std::string> SplitBySpace(const std::string& s) {
   std::istringstream iss(s);
   return std::vector<std::string>{std::istream_iterator<std::string>{iss},
                                   std::istream_iterator<std::string>{}};
 }
 
-int AddCertsFromDir(const std::string& type, const std::string& desc_prefix,
-                    const std::string& cert_dir, const std::string& keyring) {
-  key_serial_t keyring_id;
-  if (!GetKeyringId(keyring, &keyring_id)) {
-    LOG(ERROR) << "Can not find keyring id";
-    return 1;
-  }
-
-  std::unique_ptr<DIR, int (*)(DIR*)> dir(opendir(cert_dir.c_str()), closedir);
-  if (!dir) {
-    PLOG(WARNING) << "Failed to open directory " << cert_dir;
-    return 1;
-  }
-  int keys_added = 0;
-  struct dirent* dp;
-  while ((dp = readdir(dir.get())) != NULL) {
-    if (dp->d_type != DT_REG) {
-      continue;
-    }
-    std::string cert_path = cert_dir + "/" + dp->d_name;
-    std::string cert_buf;
-    if (!android::base::ReadFileToString(cert_path, &cert_buf, false /* follow_symlinks */)) {
-      LOG(ERROR) << "Failed to read " << cert_path;
-      continue;
-    }
-
-    if (cert_buf.size() > kMaxCertSize) {
-      LOG(ERROR) << "Certficate size too large: " << cert_path;
-      continue;
-    }
-
-    // Add key to keyring.
-    int key_desc_index = keys_added;
-    std::string key_desc = desc_prefix + std::to_string(key_desc_index);
-    key_serial_t key =
-        add_key(type.c_str(), key_desc.c_str(), &cert_buf[0], cert_buf.size(), keyring_id);
-    if (key < 0) {
-      PLOG(ERROR) << "Failed to add key to keyring: " << cert_path;
-      continue;
-    }
-    LOG(INFO) << "Key " << cert_path << " added to " << keyring << " with key id 0x" << std::hex
-              << key;
-    keys_added++;
-  }
-  return 0;
-}
-
-bool GetKeyringId(const std::string& keyring_desc, key_serial_t* keyring_id) {
+// Find the keyring id. Because request_key(2) syscall is not available or the key is
+// kernel keyring, the id is looked up from /proc/keys. The keyring description may contain other
+// information in the descritption section depending on the key type, only the first word in the
+// keyring description is used for searching.
+static bool GetKeyringId(const std::string& keyring_desc, key_serial_t* keyring_id) {
   if (!keyring_id) {
     LOG(ERROR) << "keyring_id is null";
     return false;
   }
 
   // If the keyring id is already a hex number, directly convert it to keyring id
-  try {
-    key_serial_t id = std::stoi(keyring_desc, nullptr, 16);
-    *keyring_id = id;
+  if (android::base::ParseInt(keyring_desc.c_str(), keyring_id)) {
     return true;
-  } catch (const std::exception& e) {
-    LOG(INFO) << "search /proc/keys for keyring id";
   }
 
   // Only keys allowed by SELinux rules will be shown here.
@@ -209,4 +163,22 @@ int RestrictKeyring(const std::string& keyring) {
     return 1;
   }
   return 0;
+}
+
+std::string RetrieveSecurityContext(key_serial_t key) {
+  // Simply assume this size is enough in practice.
+  const int kMaxSupportedSize = 256;
+  std::string context;
+  context.resize(kMaxSupportedSize);
+  long retval = keyctl_get_security(key, context.data(), kMaxSupportedSize);
+  if (retval < 0) {
+    PLOG(ERROR) << "Cannot get security context of key 0x" << std::hex << key;
+    return std::string();
+  }
+  if (retval > kMaxSupportedSize) {
+    LOG(ERROR) << "The key has unexpectedly long security context than " << kMaxSupportedSize;
+    return std::string();
+  }
+  context.resize(retval);
+  return context;
 }
