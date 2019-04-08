@@ -408,6 +408,7 @@ static void export_kernel_boot_props() {
         { "ro.boot.serialno",   "ro.serialno",   "", },
 #ifdef MOTO_GENERAL_FEATURE_OTA
         { "ro.boot.serialno",   "ro.serial",   "", },
+        { "ro.boot.carrier",    "ro.oem.key1",   "unknown", },
 #endif
         { "ro.boot.mode",       "ro.bootmode",   "unknown", },
         { "ro.boot.baseband",   "ro.baseband",   "unknown", },
