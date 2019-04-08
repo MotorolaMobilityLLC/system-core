@@ -56,7 +56,7 @@
                               // service list once it is reaped.
 #define SVC_STOPPING 0x2000  // service is being stopped by init
 
-#define NR_SVC_SUPP_GIDS 12    // twelve supplementary groups
+#define NR_SVC_SUPP_GIDS 32    // thirty two supplementary groups
 
 namespace android {
 namespace init {
