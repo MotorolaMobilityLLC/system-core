@@ -196,6 +196,12 @@ int adbd_main(int server_port) {
     if (ALLOW_ADBD_NO_AUTH && !android::base::GetBoolProperty("ro.adb.secure", false)) {
         auth_required = false;
     }
+#ifdef TINNO_FACTORY_SUPPORT
+    if(auth_required) {
+        auth_required = false;
+        LOG(INFO) << "adbd running in factory mode. disable usb auth";
+    }
+#endif
 
 #ifdef JOURNEY_FEATURE_DEBUG_MODE
     if(journey_debug_mode){
