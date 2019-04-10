@@ -418,6 +418,10 @@ static void export_kernel_boot_props() {
 #ifdef MOTO_LATAM_FEATURE_4176
         { "ro.boot.carrier",    "ro.carrier",    "unknown", },
 #endif
+#ifdef MOTO_GENERAL_FEATURE
+        { "ro.boot.revision",   "ro.hw.hwrev",   "0", },
+        { "ro.boot.bootloader", "ro.bootloader", "unknown", },
+#endif
     };
     for (size_t i = 0; i < arraysize(prop_map); i++) {
         std::string value = GetProperty(prop_map[i].src_prop, "");
