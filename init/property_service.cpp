@@ -761,10 +761,8 @@ static void load_override_properties() {
 }
 #ifdef JOURNEY_FEATURE_FACTORY_REQUEST
 static void load_factory_properties() {
-    if(persistent_properties_loaded) { // not useful if persist not loaded(data not mount)
-        if(load_properties_from_file("/data/journey.factory.prop", NULL)) {
-            update_sys_usb_config(); // if load successed , we need update the usb config again
-        }
+    if(load_properties_from_file("/data/journey.factory.prop", NULL)) {
+        update_sys_usb_config(); // if load successed , we need update the usb config again
     }
 }
 #endif
@@ -775,10 +773,6 @@ static void load_factory_properties() {
  * has mounted /data.
  */
 void load_persist_props(void) {
-#ifdef JOURNEY_FEATURE_FACTORY_REQUEST
-    LOG(INFO) << "load_persist_props -> load_factory_properties";
-    load_factory_properties(); // we found there is a logic bug here. so we load factory prop first every time if it exist
-#endif
     // Devices with FDE have load_persist_props called twice; the first time when the temporary
     // /data partition is mounted and then again once /data is truly mounted.  We do not want to
     // read persistent properties from the temporary /data partition or mark persistent properties
@@ -789,6 +783,11 @@ void load_persist_props(void) {
         static size_t num_calls = 0;
         if (++num_calls == 1) return;
     }
+
+#ifdef JOURNEY_FEATURE_FACTORY_REQUEST
+    LOG(INFO) << "load_persist_props -> load_factory_properties";
+    load_factory_properties(); // we found there is a logic bug here. so we load factory prop first every time if it exist
+#endif
 
     load_override_properties();
     LoadRscRwProps();
