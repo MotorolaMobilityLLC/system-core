@@ -1033,6 +1033,9 @@ int android_log_processBinaryLogBuffer(
     }
     if (buf2->hdr_size >= sizeof(struct logger_entry_v4)) {
       entry->uid = ((struct logger_entry_v4*)buf)->uid;
+      #ifdef LIBYLOG
+          entry->uid =entry->uid+(((struct logger_entry_v4*)buf)->lid<<(4*6));
+	  #endif
     }
   }
   inCount = buf->len;
