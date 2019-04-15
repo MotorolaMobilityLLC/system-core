@@ -19,6 +19,9 @@
 #include <keymaster/keymaster_configuration.h>
 #include <trusty_keymaster/TrustyKeymaster.h>
 #include <trusty_keymaster/ipc/trusty_keymaster_ipc.h>
+#ifdef TRUSTY_KEYMASTER_MESSAGE
+#include <trusty_keymaster/trusty_keymaster_messages.h>
+#endif
 
 namespace keymaster {
 
@@ -126,11 +129,6 @@ void TrustyKeymaster::ImportKey(const ImportKeyRequest& request, ImportKeyRespon
     ForwardCommand(KM_IMPORT_KEY, request, response);
 }
 
-void TrustyKeymaster::ImportWrappedKey(const ImportWrappedKeyRequest& request,
-                                       ImportWrappedKeyResponse* response) {
-    ForwardCommand(KM_IMPORT_WRAPPED_KEY, request, response);
-}
-
 void TrustyKeymaster::ExportKey(const ExportKeyRequest& request, ExportKeyResponse* response) {
     ForwardCommand(KM_EXPORT_KEY, request, response);
 }
@@ -172,25 +170,70 @@ void TrustyKeymaster::AbortOperation(const AbortOperationRequest& request,
     ForwardCommand(KM_ABORT_OPERATION, request, response);
 }
 
-/* Methods for Keymaster 4.0 functionality -- not yet implemented */
+#ifdef  TRUSTY_KEYMASTER_MESSAGE
+void TrustyKeymaster::ImportWrappedKey(const TrustyImportWrappedKeyRequest& request,
+                                       TrustyImportWrappedKeyResponse* response) {
+    ForwardCommand(KM_IMPORT_WRAPPED_KEY, request, response);
+}
+
+TrustyGetHmacSharingParametersResponse TrustyKeymaster::GetHmacSharingParameters() {
+    TrustyComputeSharedHmacRequest request;
+    TrustyGetHmacSharingParametersResponse response;
+
+    ForwardCommand(KM_GET_HMAC_SHARING_PARAMETERS, request, &response);
+
+    return response;
+}
+
+TrustyComputeSharedHmacResponse TrustyKeymaster::ComputeSharedHmac(
+        const TrustyComputeSharedHmacRequest& request) {
+    TrustyComputeSharedHmacResponse response;
+
+    ForwardCommand(KM_COMPUTE_SHARED_HMAC, request, &response);
+
+    return response;
+}
+
+TrustyVerifyAuthorizationResponse TrustyKeymaster::VerifyAuthorization(
+        const TrustyVerifyAuthorizationRequest& request) {
+    TrustyVerifyAuthorizationResponse response;
+
+    ForwardCommand(KM_VERIFY_AUTHORIZATION, request, &response);
+
+    return response;
+}
+#else
+void TrustyKeymaster::ImportWrappedKey(const ImportWrappedKeyRequest& request,
+                                       ImportWrappedKeyResponse* response) {
+    ForwardCommand(KM_IMPORT_WRAPPED_KEY, request, response);
+}
+
 GetHmacSharingParametersResponse TrustyKeymaster::GetHmacSharingParameters() {
+    ComputeSharedHmacRequest request;
     GetHmacSharingParametersResponse response;
-    response.error = KM_ERROR_UNIMPLEMENTED;
+
+    ForwardCommand(KM_GET_HMAC_SHARING_PARAMETERS, request, &response);
+
     return response;
 }
 
 ComputeSharedHmacResponse TrustyKeymaster::ComputeSharedHmac(
-        const ComputeSharedHmacRequest& /* request */) {
+        const ComputeSharedHmacRequest& request) {
     ComputeSharedHmacResponse response;
-    response.error = KM_ERROR_UNIMPLEMENTED;
+
+    ForwardCommand(KM_COMPUTE_SHARED_HMAC, request, &response);
+
     return response;
 }
 
 VerifyAuthorizationResponse TrustyKeymaster::VerifyAuthorization(
-        const VerifyAuthorizationRequest& /* request */) {
+        const VerifyAuthorizationRequest& request) {
     VerifyAuthorizationResponse response;
-    response.error = KM_ERROR_UNIMPLEMENTED;
+
+    ForwardCommand(KM_VERIFY_AUTHORIZATION, request, &response);
+
     return response;
 }
+#endif
 
 }  // namespace keymaster

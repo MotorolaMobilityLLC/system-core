@@ -90,18 +90,20 @@ int trusty_keymaster_call(uint32_t cmd, void* in, uint32_t in_size, uint8_t* out
             ALOGE("invalid response size (%d)\n", (int)rc);
             return -EINVAL;
         }
-
-        if ((cmd | KEYMASTER_RESP_BIT) != (header.cmd & ~(KEYMASTER_STOP_BIT))) {
+        /*lint -e527*/
+        if ((cmd | KEYMASTER_RESP_BIT) == header.cmd){
+            *out_size += ((size_t)rc - sizeof(struct keymaster_message));
+            break;
+        }else if(header.cmd & KEYMASTER_CONT_BIT){
+            *out_size += ((size_t)rc - sizeof(struct keymaster_message));
+            continue;
+        }else{
             ALOGE("invalid command (%d)", header.cmd);
             return -EINVAL;
         }
-        *out_size += ((size_t)rc - sizeof(struct keymaster_message));
-        if (header.cmd & KEYMASTER_STOP_BIT) {
-            break;
-        }
     }
 
-    return rc;
+    return *out_size;
 }
 
 void trusty_keymaster_disconnect() {
@@ -145,6 +147,7 @@ keymaster_error_t translate_error(int err) {
 keymaster_error_t trusty_keymaster_send(uint32_t command, const keymaster::Serializable& req,
                                         keymaster::KeymasterResponse* rsp) {
     uint32_t req_size = req.SerializedSize();
+
     if (req_size > TRUSTY_KEYMASTER_SEND_BUF_SIZE) {
         ALOGE("Request too big: %u Max size: %u", req_size, TRUSTY_KEYMASTER_SEND_BUF_SIZE);
         return KM_ERROR_INVALID_INPUT_LENGTH;

@@ -32,7 +32,7 @@ int main() {
 
     auto keymaster = new ::keymaster::TrustyKeymaster3Device(trustyKeymaster);
 
-    auto status = keymaster->registerAsService();
+    auto status = keymaster->registerAsService("default");
     if (status != android::OK) {
         LOG(FATAL) << "Could not register service for Keymaster 3.0 (" << status << ")";
         return -1;

@@ -15,7 +15,7 @@
  ** limitations under the License.
  */
 
-#define LOG_TAG "android.hardware.keymaster@3.0-impl.trusty"
+#define LOG_TAG "android.hardware.keymaster@3.0-impl.unisoc.trusty"
 
 #include <authorization_set.h>
 #include <cutils/log.h>
@@ -49,6 +49,9 @@ using ::keymaster::ng::Tag;
 namespace keymaster {
 
 namespace {
+
+const size_t kMaximumAttestationChallengeLength = 128;
+const uint32_t ROUND_BUF_SIZE = (4*990);
 
 inline keymaster_tag_t legacy_enum_conversion(const Tag value) {
     return keymaster_tag_t(value);
@@ -316,18 +319,37 @@ Return<void> TrustyKeymaster3Device::exportKey(KeyFormat exportFormat,
 Return<void> TrustyKeymaster3Device::attestKey(const hidl_vec<uint8_t>& keyToAttest,
                                                const hidl_vec<KeyParameter>& attestParams,
                                                attestKey_cb _hidl_cb) {
+    AttestKeyResponse response;
     AttestKeyRequest request;
+    hidl_vec<hidl_vec<uint8_t>> resultCertChain;
+    keymaster_blob_t attestation_challenge = {};
+
+    if (!keyToAttest.data() || !attestParams.data()) {
+        response.error = KM_ERROR_UNEXPECTED_NULL_POINTER;
+        goto fail_return;
+    }
+
     request.SetKeyMaterial(keyToAttest.data(), keyToAttest.size());
     request.attest_params.Reinitialize(KmParamSet(attestParams));
 
-    AttestKeyResponse response;
+    request.attest_params.GetTagValue(TAG_ATTESTATION_CHALLENGE, &attestation_challenge);
+    if (attestation_challenge.data_length > kMaximumAttestationChallengeLength) {
+        ALOGE("%ld-byte attestation challenge; only %ld bytes allowed",
+              attestation_challenge.data_length, kMaximumAttestationChallengeLength);
+        response.error =  KM_ERROR_INVALID_INPUT_LENGTH;
+        goto fail_return;
+    }
+
     impl_->AttestKey(request, &response);
 
-    hidl_vec<hidl_vec<uint8_t>> resultCertChain;
     if (response.error == KM_ERROR_OK) {
         resultCertChain = kmCertChain2Hidl(response.certificate_chain);
     }
     _hidl_cb(legacy_enum_conversion(response.error), resultCertChain);
+    return Void();
+
+fail_return:
+    _hidl_cb(legacy_enum_conversion(response.error), hidl_vec<hidl_vec<uint8_t>>());
     return Void();
 }
 
@@ -354,7 +376,9 @@ Return<ErrorCode> TrustyKeymaster3Device::deleteKey(const hidl_vec<uint8_t>& key
     request.SetKeyMaterial(keyBlob.data(), keyBlob.size());
 
     DeleteKeyResponse response;
-    impl_->DeleteKey(request, &response);
+    //impl_->DeleteKey(request, &response);
+
+    response.error = KM_ERROR_OK;
 
     return legacy_enum_conversion(response.error);
 }
@@ -362,7 +386,9 @@ Return<ErrorCode> TrustyKeymaster3Device::deleteKey(const hidl_vec<uint8_t>& key
 Return<ErrorCode> TrustyKeymaster3Device::deleteAllKeys() {
     DeleteAllKeysRequest request;
     DeleteAllKeysResponse response;
-    impl_->DeleteAllKeys(request, &response);
+    //impl_->DeleteAllKeys(request, &response);
+
+    response.error = KM_ERROR_OK;
 
     return legacy_enum_conversion(response.error);
 }
@@ -399,20 +425,43 @@ Return<void> TrustyKeymaster3Device::update(uint64_t operationHandle,
     hidl_vec<KeyParameter> resultParams;
     hidl_vec<uint8_t> resultBlob;
     uint32_t resultConsumed = 0;
+    uint32_t round = 0;
+    uint32_t left = 0;
+    uint8_t *tmp = NULL;
+    keymaster_blob_t output = {
+        .data = nullptr,
+        .data_length = 0,
+    };
+    keymaster_key_param_set_t out_params = {
+        .params = nullptr,
+        .length = 0,
+    };
 
-    request.op_handle = operationHandle;
-    request.additional_params.Reinitialize(KmParamSet(inParams));
+    if (input.data()) {
+        round = input.size()/ROUND_BUF_SIZE;
+        left = input.size()%ROUND_BUF_SIZE;
 
-    size_t inp_size = input.size();
-    size_t ser_size = request.SerializedSize();
+        if (left > 0)
+            round++;
 
-    if (ser_size > TRUSTY_KEYMASTER_SEND_BUF_SIZE) {
-        response.error = KM_ERROR_INVALID_INPUT_LENGTH;
-    } else {
-        if (ser_size + inp_size > TRUSTY_KEYMASTER_SEND_BUF_SIZE) {
-            inp_size = TRUSTY_KEYMASTER_SEND_BUF_SIZE - ser_size;
+        ALOGD("There have %dst rounds to send, left:%d, total:%ld", round, left, input.size());
+
+        if (round > 0) {
+            tmp = reinterpret_cast<uint8_t*>(malloc(input.size()+ROUND_BUF_SIZE));
+            if (!tmp) {
+                response.error = KM_ERROR_MEMORY_ALLOCATION_FAILED;
+                _hidl_cb(legacy_enum_conversion(response.error), resultConsumed, resultParams, resultBlob);
+                return Void();
+            }
+            output.data = tmp;
         }
-        request.input.Reinitialize(input.data(), inp_size);
+    }
+
+    //here for AES GCM aad update
+    if(0 == round) {
+        request.op_handle = operationHandle;
+        request.input.Reinitialize(input.data(), 0);
+        request.additional_params.Reinitialize(KmParamSet(inParams));
 
         impl_->UpdateOperation(request, &response);
 
@@ -420,8 +469,54 @@ Return<void> TrustyKeymaster3Device::update(uint64_t operationHandle,
             resultConsumed = response.input_consumed;
             resultParams = kmParamSet2Hidl(response.output_params);
             resultBlob = kmBuffer2hidlVec(response.output);
+        } else {
+            ALOGE("UpdateOperation done, line: %d, receive error:%d", __LINE__, response.error);
         }
+
+        if (tmp)
+            free(tmp);
+        output.data = NULL;
+        output.data_length = 0;
+        _hidl_cb(legacy_enum_conversion(response.error), resultConsumed, resultParams, resultBlob);
+        return Void();
     }
+
+    for(uint32_t i = 0; i < round; i++) {
+        request.op_handle = operationHandle;
+        uint32_t data_len = (i == round-1 && left > 0) ? left : ROUND_BUF_SIZE;
+        request.input.Reinitialize(input.data() + ROUND_BUF_SIZE*i, data_len);
+        if (0 == i)
+            request.additional_params.Reinitialize(KmParamSet(inParams));
+
+        impl_->UpdateOperation(request, &response);
+        if (response.error != KM_ERROR_OK) {
+            ALOGE("UpdateOperation done, line: %d, receive error:%d", __LINE__, response.error);
+            if (tmp)
+                free(tmp);
+            output.data = NULL;
+            output.data_length = 0;
+
+            _hidl_cb(legacy_enum_conversion(response.error), resultConsumed, resultParams, resultBlob);
+            return Void();
+        }
+
+        if (response.output_params.size() > 0) {
+            response.output_params.CopyToParamSet(&out_params);
+        }
+
+        resultConsumed += response.input_consumed;
+        memcpy(tmp + output.data_length, response.output.peek_read(), response.output.available_read());
+        output.data_length += response.output.available_read();
+    }
+
+    resultParams = kmParamSet2Hidl(out_params);
+    resultBlob = kmBlob2hidlVec(output);
+
+    if (tmp)
+        free(tmp);
+    output.data = NULL;
+    output.data_length = 0;
+
     _hidl_cb(legacy_enum_conversion(response.error), resultConsumed, resultParams, resultBlob);
     return Void();
 }

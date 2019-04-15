@@ -19,12 +19,12 @@
 // clang-format off
 
 #define KEYMASTER_PORT "com.android.trusty.keymaster"
-#define KEYMASTER_MAX_BUFFER_LENGTH 4096
+#define KEYMASTER_MAX_BUFFER_LENGTH 8192
 
 // Commands
 enum keymaster_command : uint32_t {
     KEYMASTER_RESP_BIT              = 1,
-    KEYMASTER_STOP_BIT              = 2,
+    KEYMASTER_CONT_BIT              = 2,
     KEYMASTER_REQ_SHIFT             = 2,
 
     KM_GENERATE_KEY                 = (0 << KEYMASTER_REQ_SHIFT),

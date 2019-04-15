@@ -1,0 +1,4 @@
+service vendor.unisoc.keymaster-3-0 /vendor/bin/hw/android.hardware.keymaster@3.0-unisoc.service
+    class early_hal
+    user system
+    group system drmrpc

@@ -18,6 +18,9 @@
 #define TRUSTY_KEYMASTER_H_
 
 #include <keymaster/android_keymaster_messages.h>
+#ifdef TRUSTY_KEYMASTER_MESSAGE
+#include <trusty_keymaster/trusty_keymaster_messages.h>
+#endif
 
 namespace keymaster {
 
@@ -45,8 +48,6 @@ class TrustyKeymaster {
     void GetKeyCharacteristics(const GetKeyCharacteristicsRequest& request,
                                GetKeyCharacteristicsResponse* response);
     void ImportKey(const ImportKeyRequest& request, ImportKeyResponse* response);
-    void ImportWrappedKey(const ImportWrappedKeyRequest& request,
-                          ImportWrappedKeyResponse* response);
     void ExportKey(const ExportKeyRequest& request, ExportKeyResponse* response);
     void AttestKey(const AttestKeyRequest& request, AttestKeyResponse* response);
     void UpgradeKey(const UpgradeKeyRequest& request, UpgradeKeyResponse* response);
@@ -56,9 +57,21 @@ class TrustyKeymaster {
     void UpdateOperation(const UpdateOperationRequest& request, UpdateOperationResponse* response);
     void FinishOperation(const FinishOperationRequest& request, FinishOperationResponse* response);
     void AbortOperation(const AbortOperationRequest& request, AbortOperationResponse* response);
+
+#ifdef TRUSTY_KEYMASTER_MESSAGE
+    void ImportWrappedKey(const TrustyImportWrappedKeyRequest& request,
+                          TrustyImportWrappedKeyResponse* response);
+    TrustyGetHmacSharingParametersResponse GetHmacSharingParameters();
+    TrustyComputeSharedHmacResponse ComputeSharedHmac(const TrustyComputeSharedHmacRequest& request);
+    TrustyVerifyAuthorizationResponse VerifyAuthorization(const TrustyVerifyAuthorizationRequest& request);
+#else
+    void ImportWrappedKey(const ImportWrappedKeyRequest& request,
+                          ImportWrappedKeyResponse* response);
     GetHmacSharingParametersResponse GetHmacSharingParameters();
     ComputeSharedHmacResponse ComputeSharedHmac(const ComputeSharedHmacRequest& request);
     VerifyAuthorizationResponse VerifyAuthorization(const VerifyAuthorizationRequest& request);
+#endif
+
 };
 
 }  // namespace keymaster
