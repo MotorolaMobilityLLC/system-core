@@ -50,6 +50,13 @@
 
 static const char* root_seclabel = nullptr;
 
+#ifdef JOURNEY_FEATURE_DEBUG_MODE
+bool journey_debug_mode = android::base::GetBoolProperty("ro.boot.journey.debug", false);
+#endif
+#ifdef MOTO_FACTORY_SUPPORT
+bool moto_factory_mode = android::base::GetBoolProperty("ro.boot.moto.factory", false);
+#endif
+
 static bool should_drop_capabilities_bounding_set() {
 #if defined(ALLOW_ADBD_ROOT)
     if (__android_log_is_debuggable()) {
@@ -64,6 +71,13 @@ static bool should_drop_privileges() {
     if(journey_debug_mode) {
         LOG(INFO) << "reject drop privileges in journey debug mode.";
         return false; // dont drop anything if we are in debug mode
+    }
+#endif
+
+#ifdef MOTO_FACTORY_SUPPORT
+    if(moto_factory_mode) { // service.adb.root will cause system crash. we just simple hack it here.
+        LOG(INFO) << "reject drop privileges in moto factory mode.";
+        return false; // dont drop anything if we are in factory mode
     }
 #endif
 
@@ -178,9 +192,6 @@ static void setup_port(int port) {
     local_init(port);
     setup_mdns(port);
 }
-#ifdef JOURNEY_FEATURE_DEBUG_MODE
-bool journey_debug_mode = android::base::GetBoolProperty("ro.boot.journey.debug", false);;
-#endif
 
 int adbd_main(int server_port) {
     umask(0);

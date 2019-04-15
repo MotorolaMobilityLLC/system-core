@@ -421,6 +421,7 @@ static void export_kernel_boot_props() {
 #ifdef MOTO_GENERAL_FEATURE
         { "ro.boot.revision",   "ro.hw.hwrev",   "0", },
         { "ro.boot.bootloader", "ro.bootloader", "unknown", },
+        { "ro.boot.moto.factory", "ro.moto.factory", "0", },        
 #endif
     };
     for (size_t i = 0; i < arraysize(prop_map); i++) {
