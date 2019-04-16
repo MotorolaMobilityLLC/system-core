@@ -11,4 +11,5 @@ service zygote /system/bin/app_process -Xzygote /system/bin --zygote --start-sys
     onrestart restart media
     onrestart restart netd
     onrestart restart wificond
+    onrestart restart vendor.servicetracker-1-0
     writepid /dev/cpuset/foreground/tasks
