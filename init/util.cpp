@@ -159,10 +159,39 @@ out_unlink:
     unlink(addr.sun_path);
     return -1;
 }
+#ifdef MOTO_GENERAL_FEATURE
+//CJ: 
+// To avoid incomplete control of header file macros 
+// we make a new funcion copy from ReadFile
+// but just remove the 
+Result<std::string> ReadFileFollow(const std::string& path, bool follow) {
+    android::base::unique_fd fd(
+        TEMP_FAILURE_RETRY(open(path.c_str(), O_RDONLY | O_CLOEXEC)));
 
+    if (fd == -1) {
+        return ErrnoError() << "open() failed";
+    }
+
+    // For security reasons, disallow world-writable
+    // or group-writable files.
+    struct stat sb;
+    if (fstat(fd, &sb) == -1) {
+        return ErrnoError() << "fstat failed()";
+    }
+    if ((sb.st_mode & (S_IWGRP | S_IWOTH)) != 0) {
+        return Error() << "Skipping insecure file";
+    }
+
+    std::string content;
+    if (!android::base::ReadFdToString(fd, &content)) {
+        return ErrnoError() << "Unable to read file contents";
+    }
+    return content;}
+#endif
 Result<std::string> ReadFile(const std::string& path) {
     android::base::unique_fd fd(
         TEMP_FAILURE_RETRY(open(path.c_str(), O_RDONLY | O_NOFOLLOW | O_CLOEXEC)));
+
     if (fd == -1) {
         return ErrnoError() << "open() failed";
     }

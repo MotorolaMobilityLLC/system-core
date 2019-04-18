@@ -168,6 +168,9 @@ cc_library_static {
         journey_feature_debug_mode: {
             cflags: ["-DJOURNEY_FEATURE_DEBUG_MODE"],
         },
+        moto_general_feature: {
+            cflags: ["-DMOTO_GENERAL_FEATURE"],
+        },
     },
 }
 

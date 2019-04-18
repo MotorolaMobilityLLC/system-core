@@ -41,6 +41,9 @@ namespace init {
 int CreateSocket(const char* name, int type, bool passcred, mode_t perm, uid_t uid, gid_t gid,
                  const char* socketcon);
 
+#ifdef MOTO_GENERAL_FEATURE
+Result<std::string> ReadFileFollow(const std::string& path,bool follow = false);
+#endif
 Result<std::string> ReadFile(const std::string& path);
 Result<Success> WriteFile(const std::string& path, const std::string& content);
 

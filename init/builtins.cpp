@@ -823,6 +823,21 @@ static Result<Success> do_copy(const BuiltinArguments& args) {
     return Success();
 }
 
+#ifdef MOTO_GENERAL_FEATURE
+//Tinno:CJ same as do_copy but follow the link
+static Result<Success> do_follow_copy(const BuiltinArguments& args) {
+    auto file_contents = ReadFileFollow(args[1]);
+    if (!file_contents) {
+        return Error() << "Could not read input file '" << args[1] << "': " << file_contents.error();
+    }
+    if (auto result = WriteFile(args[2], *file_contents); !result) {
+        return Error() << "Could not write to output file '" << args[2] << "': " << result.error();
+    }
+
+    return Success();
+}
+#endif
+
 static Result<Success> do_chown(const BuiltinArguments& args) {
     auto uid = DecodeUid(args[1]);
     if (!uid) {
@@ -1039,6 +1054,9 @@ const BuiltinFunctionMap::Map& BuiltinFunctionMap::map() const {
         {"class_start",             {1,     1,    {false,  do_class_start}}},
         {"class_stop",              {1,     1,    {false,  do_class_stop}}},
         {"copy",                    {2,     2,    {true,   do_copy}}},
+#ifdef MOTO_GENERAL_FEATURE
+        {"follow_copy",             {2,     2,    {true,   do_follow_copy}}},
+#endif
         {"domainname",              {1,     1,    {true,   do_domainname}}},
         {"enable",                  {1,     1,    {false,  do_enable}}},
         {"exec",                    {1,     kMax, {false,  do_exec}}},
