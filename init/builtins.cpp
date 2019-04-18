@@ -825,13 +825,27 @@ static Result<Success> do_copy(const BuiltinArguments& args) {
 
 #ifdef MOTO_GENERAL_FEATURE
 //Tinno:CJ same as do_copy but follow the link
-static Result<Success> do_follow_copy(const BuiltinArguments& args) {
+static Result<Success> do_follow_copy_once(const BuiltinArguments& args) {
     auto file_contents = ReadFileFollow(args[1]);
     if (!file_contents) {
         return Error() << "Could not read input file '" << args[1] << "': " << file_contents.error();
     }
+    auto file_contents_output = ReadFileFollow(args[2]);
+    if (!file_contents_output) {
+        LOG(WARNING) << "Could not read output file '" << args[1] << "': " << file_contents_output.error();
+    } else {
+        if (*file_contents_output == *file_contents) {
+            LOG(INFO) << "follow_copy_once found " << args[1] << " is same with " << args[2] << ". skip copy again.";
+            return Success();
+        } else {
+            LOG(INFO) << "follow_copy_once found " << args[1] << " is different with " << args[2] << ".";
+        }
+    }
+    
     if (auto result = WriteFile(args[2], *file_contents); !result) {
         return Error() << "Could not write to output file '" << args[2] << "': " << result.error();
+    } else {
+        LOG(INFO) << "follow_copy_once copy " << args[1] << " to " << args[2] << ".";
     }
 
     return Success();
@@ -1055,7 +1069,7 @@ const BuiltinFunctionMap::Map& BuiltinFunctionMap::map() const {
         {"class_stop",              {1,     1,    {false,  do_class_stop}}},
         {"copy",                    {2,     2,    {true,   do_copy}}},
 #ifdef MOTO_GENERAL_FEATURE
-        {"follow_copy",             {2,     2,    {true,   do_follow_copy}}},
+        {"follow_copy_once",        {2,     2,    {true,   do_follow_copy_once}}},
 #endif
         {"domainname",              {1,     1,    {true,   do_domainname}}},
         {"enable",                  {1,     1,    {false,  do_enable}}},

@@ -186,7 +186,8 @@ Result<std::string> ReadFileFollow(const std::string& path, bool follow) {
     if (!android::base::ReadFdToString(fd, &content)) {
         return ErrnoError() << "Unable to read file contents";
     }
-    return content;}
+    return content;
+}
 #endif
 Result<std::string> ReadFile(const std::string& path) {
     android::base::unique_fd fd(
