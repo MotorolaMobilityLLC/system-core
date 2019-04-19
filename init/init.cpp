@@ -120,16 +120,8 @@ static void LoadBootScripts(ActionManager& action_manager, ServiceList& service_
         parser.ParseConfig("/init.moto.ota.rc");
 #endif
 #ifdef MOTO_LATAM_FEATURE_4176
-        std::string carrier = android::base::GetProperty("ro.carrier", "");
-        std::string carrier_filename = "init.carrier.rc";
-        LOG(INFO) << "LoadBootScripts for carrier " << carrier;
-        if (!carrier.empty()) {
-            carrier_filename = "init.carrier." + carrier + ".rc";
-        }
-        std::string system_path = "/system/etc/carrier/";
-        system_path.append(carrier_filename);
-        if (!parser.ParseConfig(system_path.c_str())) {
-            late_import_paths.emplace_back(system_path.c_str());
+        if (!parser.ParseConfig("/system/etc/carrier/init.moto.carrier.rc")) {
+            late_import_paths.emplace_back("/system/etc/carrier/init.moto.carrier.rc");
         }
 #endif
         if (!parser.ParseConfig("/system/etc/init")) {
