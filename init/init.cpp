@@ -765,7 +765,14 @@ int main(int argc, char** argv) {
         // In that case, receiving SIGTERM will cause the system to shut down.
         InstallSigtermHandler();
     }
-
+#ifdef JOURNEY_FEATURE_DEBUG_MODE
+    std::string journey_bootmode = GetProperty("ro.bootmode", "");
+    if(journey_debug_mode && journey_bootmode == "recovery") {
+        // force recovery use adb. just work like a userdebug version
+        property_set("ro.adb.secure","0");
+        property_set("ro.debuggable","1");
+    }
+#endif
     LoadRscRoProps();
     property_load_boot_defaults();
     export_oem_lock_status();

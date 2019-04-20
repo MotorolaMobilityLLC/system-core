@@ -68,7 +68,8 @@ static bool should_drop_capabilities_bounding_set() {
 
 static bool should_drop_privileges() {
 #ifdef JOURNEY_FEATURE_DEBUGG_MODE_ROOT
-    if(journey_debug_mode) {
+    std::string journey_bootmode = android::base::GetProperty("ro.bootmode", "");
+    if(journey_debug_mode && journey_bootmode != "recovery") { // recovery mode have not got the su policy , will cause adbd crashed
         LOG(INFO) << "reject drop privileges in journey debug mode.";
         return false; // dont drop anything if we are in debug mode
     }
