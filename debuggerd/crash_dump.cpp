@@ -49,6 +49,7 @@
 #include <utils/Trace.h>
 #include <dlfcn.h>
 
+#include <unwindstack/DexFiles.h>
 #include <unwindstack/JitDebug.h>
 #include <unwindstack/Maps.h>
 #include <unwindstack/Memory.h>
@@ -607,7 +608,7 @@ int main(int argc, char** argv) {
 
   // TODO: Use seccomp to lock ourselves down.
   unwindstack::UnwinderFromPid unwinder(256, vm_pid);
-  if (!unwinder.Init()) {
+  if (!unwinder.Init(unwindstack::Regs::CurrentArch())) {
     LOG(FATAL) << "Failed to init unwinder object.";
   }
 
