@@ -1311,34 +1311,38 @@ static void mp_event_common(int data, uint32_t events __unused) {
         int target_pressure = 0;
 
         // 100 ~ 35
-        if (file_ratio > 34) {
+        if (file_ratio > 35) {
             target_swap_ratio = 50;
             target_pressure = 15;
-            level_oomadj[VMPRESS_LEVEL_MEDIUM] = 900;
-            level_oomadj[VMPRESS_LEVEL_CRITICAL] = 900;
-            do_kill = recent_pressure > target_pressure;
-        // 34 ~ 26
-        } else if (file_ratio > 25) {
+            level_oomadj[VMPRESS_LEVEL_MEDIUM] = 906;
+            level_oomadj[VMPRESS_LEVEL_CRITICAL] = 905;
+        // 35 ~ 21
+        } else if (file_ratio > 20) {
             target_swap_ratio = 75;
-            target_pressure = 10;
-            level_oomadj[VMPRESS_LEVEL_MEDIUM] = 900;
-            level_oomadj[VMPRESS_LEVEL_CRITICAL] = 900;
-            do_kill = recent_pressure > target_pressure;
-        // 25 ~ 11
+            target_pressure = 12;
+            level_oomadj[VMPRESS_LEVEL_MEDIUM] = 905;
+            level_oomadj[VMPRESS_LEVEL_CRITICAL] = 904;
+        // 20 ~ 11
         } else if (file_ratio > 10) {
             target_swap_ratio = 100;
-            target_pressure = 5;
+            target_pressure = 10;
             level_oomadj[VMPRESS_LEVEL_MEDIUM] = 900;
+            level_oomadj[VMPRESS_LEVEL_CRITICAL] = 300;
+        // 10 ~ 6
+        } else if (file_ratio > 5) {
+            target_swap_ratio = 100;
+            target_pressure = 5;
+            level_oomadj[VMPRESS_LEVEL_MEDIUM] = 700;
             level_oomadj[VMPRESS_LEVEL_CRITICAL] = 100;
-            do_kill = level == VMPRESS_LEVEL_CRITICAL || recent_pressure > target_pressure;
-        // 10 ~ 0
+        // 5 ~ 0
         } else {
             target_swap_ratio = 100;
+            target_pressure = 0;
             level_oomadj[VMPRESS_LEVEL_MEDIUM] = 300;
             level_oomadj[VMPRESS_LEVEL_CRITICAL] = 0;
-            do_kill = true;
         }
 
+        do_kill = recent_pressure > target_pressure;
         swappiness_to_set = swap_ratio < target_swap_ratio ? 100 : 0;
         if (swappiness != swappiness_to_set && ABS(swap_ratio - target_swap_ratio) > 3) {
             set_swappiness(swappiness_to_set);
