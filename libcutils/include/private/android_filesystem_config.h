@@ -155,9 +155,6 @@
 
 /* The range 5000-5999 is also reserved for OEM, and must never be used here. */
 #define AID_OEM_RESERVED_2_START 5000
-
-#define AID_MOT_TCMD 5104
-
 #define AID_OEM_RESERVED_2_END 5999
 
 #define AID_EVERYBODY 9997 /* shared between all apps in the same profile */
