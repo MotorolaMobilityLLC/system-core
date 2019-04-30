@@ -883,9 +883,7 @@ static int64_t get_sparse_limit(int64_t size) {
     if (limit == 0) {
         // Unlimited, so see what the target device's limit is.
         // TODO: shouldn't we apply this limit even if you've used -S?
-        if (target_sparse_limit == -1) {
-            target_sparse_limit = get_target_sparse_limit();
-        }
+        target_sparse_limit = get_target_sparse_limit();
         if (target_sparse_limit > 0) {
             limit = target_sparse_limit;
         } else {
