@@ -27,6 +27,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>
 #include <sys/ptrace.h>
 #include <sys/stat.h>
 #include <time.h>
@@ -44,6 +45,7 @@
 #include <log/log.h>
 #include <log/logprint.h>
 #include <private/android_filesystem_config.h>
+#include <unwindstack/DexFiles.h>
 #include <unwindstack/JitDebug.h>
 #include <unwindstack/Maps.h>
 #include <unwindstack/Memory.h>
@@ -369,13 +371,6 @@ static void dump_all_maps(log_t* log, unwindstack::Unwinder* unwinder, uint64_t 
   }
 }
 
-void dump_backtrace(log_t* log, unwindstack::Unwinder* unwinder, const char* prefix) {
-  unwinder->SetDisplayBuildID(true);
-  for (size_t i = 0; i < unwinder->NumFrames(); i++) {
-    _LOG(log, logtype::BACKTRACE, "%s%s\n", prefix, unwinder->FormatFrame(i).c_str());
-  }
-}
-
 static void print_register_row(log_t* log,
                                const std::vector<std::pair<std::string, uint64_t>>& registers) {
   std::string output;
@@ -468,7 +463,7 @@ static bool dump_thread(log_t* log, unwindstack::Unwinder* unwinder, const Threa
     _LOG(log, logtype::THREAD, "Failed to unwind");
   } else {
     _LOG(log, logtype::BACKTRACE, "\nbacktrace:\n");
-    dump_backtrace(log, unwinder, "    ");
+    log_backtrace(log, unwinder, "    ");
 
     _LOG(log, logtype::STACK, "\nstack:\n");
     dump_stack(log, unwinder->frames(), unwinder->GetMaps(), unwinder->GetProcessMemory().get());
@@ -649,7 +644,7 @@ void engrave_tombstone_ucontext(int tombstone_fd, uint64_t abort_msg_address, si
   };
 
   unwindstack::UnwinderFromPid unwinder(kMaxFrames, pid);
-  if (!unwinder.Init()) {
+  if (!unwinder.Init(unwindstack::Regs::CurrentArch())) {
     LOG(FATAL) << "Failed to init unwinder object.";
   }
 
