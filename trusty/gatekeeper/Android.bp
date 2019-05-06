@@ -21,7 +21,7 @@
 // are responsible for having their own logic, for fine-grained control.
 
 cc_library_shared {
-    name: "gatekeeper.trusty",
+    name: "gatekeeper.default",
     vendor: true,
 
     relative_install_path: "hw",
@@ -45,4 +45,11 @@ cc_library_shared {
         "libtrusty",
     ],
     header_libs: ["libhardware_headers"],
+
+    sanitize: {
+        cfi: true,
+        diag: {
+            cfi: true,
+        },
+    },
 }

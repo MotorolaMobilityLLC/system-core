@@ -68,6 +68,7 @@ public:
             ALOGW("falling back to software GateKeeper");
             soft_device.reset(new SoftGateKeeperDevice());
         }
+        ALOGD("init hw device ");
     }
 
     virtual ~GateKeeperProxy() {
@@ -135,6 +136,7 @@ public:
 
     void clear_sid(uint32_t uid) {
         char filename[21];
+        ALOGD("clear_sid");
         snprintf(filename, sizeof(filename), "%u", uid);
         if (remove(filename) < 0) {
             ALOGE("%s: could not remove file [%s], attempting 0 write", __func__, strerror(errno));
@@ -162,6 +164,7 @@ public:
         IPCThreadState* ipc = IPCThreadState::self();
         const int calling_pid = ipc->getCallingPid();
         const int calling_uid = ipc->getCallingUid();
+        ALOGD("gatekeeper enroll ");
         if (!PermissionCache::checkPermission(KEYGUARD_PERMISSION, calling_pid, calling_uid)) {
             return PERMISSION_DENIED;
         }
@@ -268,14 +271,33 @@ public:
         IPCThreadState* ipc = IPCThreadState::self();
         const int calling_pid = ipc->getCallingPid();
         const int calling_uid = ipc->getCallingUid();
+        ALOGD("gatekeeper verify ");
         if (!PermissionCache::checkPermission(KEYGUARD_PERMISSION, calling_pid, calling_uid)) {
             return PERMISSION_DENIED;
         }
 
-        // can't verify if we're missing either param
-        if (enrolled_password_handle == nullptr || provided_password == nullptr ||
-            enrolled_password_handle_length == 0 || provided_password_length == 0)
-            return -EINVAL;
+        if(enrolled_password_handle == NULL){
+          ALOGD("enrolled_password_handle is null");
+          return -EINVAL;
+        }
+
+        if(enrolled_password_handle_length == 0){
+          ALOGD("enrolled_password_handle_length is 0");
+          return -EINVAL;
+        }
+
+        if(provided_password == NULL){
+          ALOGD("provided_password is null");
+          return -EINVAL;
+        }
+
+        if(provided_password_length == 0){
+          ALOGD("provided_password_length is 0");
+          return -EINVAL;
+        }
+
+        ALOGD("handle addr:%p  handle length:%d",(void*)enrolled_password_handle,enrolled_password_handle_length);
+        ALOGD("provided addr:%p  provided length:%d",(void*)provided_password,provided_password_length);
 
         int ret;
         if (hw_device != nullptr) {
@@ -283,6 +305,10 @@ public:
                     reinterpret_cast<const gatekeeper::password_handle_t *>(enrolled_password_handle);
             // handle version 0 does not have hardware backed flag, and thus cannot be upgraded to
             // a HAL if there was none before
+            if(handle == NULL){
+              ALOGD("handle is null,may be something error,verify fail");
+              return -EINVAL;
+            }
             if (handle->version == 0 || handle->hardware_backed) {
                 uint32_t hw_uid = adjust_uid(uid);
                 android::hardware::hidl_vec<uint8_t> curPwdHandle;

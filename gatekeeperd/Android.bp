@@ -48,4 +48,11 @@ cc_binary {
     static_libs: ["libscrypt_static"],
     include_dirs: ["external/scrypt/lib/crypto"],
     init_rc: ["gatekeeperd.rc"],
+
+    sanitize: {
+        cfi: true,
+        diag: {
+            cfi: true,
+        },
+    },
 }

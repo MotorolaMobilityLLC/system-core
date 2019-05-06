@@ -89,6 +89,7 @@ int TrustyGateKeeperDevice::Enroll(uint32_t uid, const uint8_t *current_password
         return error_;
     }
 
+    ALOGD("TrustyGateKeeper  Enroll =========>>>>>>>>>");
     SizedBuffer desired_password_buffer(desired_password_length);
     memcpy(desired_password_buffer.buffer.get(), desired_password, desired_password_length);
 
@@ -110,14 +111,17 @@ int TrustyGateKeeperDevice::Enroll(uint32_t uid, const uint8_t *current_password
     gatekeeper_error_t error = Send(request, &response);
 
     if (error == ERROR_RETRY) {
+        ALOGD("TrustyGateKeeper  Enroll timeout:%d =========<<<<<<<<<<<<",response.retry_timeout);
         return response.retry_timeout;
     } else if (error != ERROR_NONE) {
+        ALOGD("TrustyGateKeeper  Enroll return error:%d =========<<<<<<<<<<<<",error);
         return -EINVAL;
     }
 
     *enrolled_password_handle = response.enrolled_password_handle.buffer.release();
     *enrolled_password_handle_length = response.enrolled_password_handle.length;
 
+    ALOGD("TrustyGateKeeper  Enroll =========<<<<<<<<<<<<");
 
     return 0;
 }
@@ -129,6 +133,7 @@ int TrustyGateKeeperDevice::Verify(uint32_t uid, uint64_t challenge,
     if (error_ != 0) {
         return error_;
     }
+    ALOGD("TrustyGateKeeper  Verify =========>>>>>>>>>");
 
     SizedBuffer password_handle_buffer(enrolled_password_handle_length);
     memcpy(password_handle_buffer.buffer.get(), enrolled_password_handle,
@@ -142,8 +147,10 @@ int TrustyGateKeeperDevice::Verify(uint32_t uid, uint64_t challenge,
     gatekeeper_error_t error = Send(request, &response);
 
     if (error == ERROR_RETRY) {
+        ALOGD("TrustyGateKeeper  Verify timeout:%d =========<<<<<<<<<<<<",response.retry_timeout);
         return response.retry_timeout;
     } else if (error != ERROR_NONE) {
+        ALOGD("TrustyGateKeeper  Verify return error:%d =========<<<<<<<<<<<<",error);
         return -EINVAL;
     }
 
@@ -156,6 +163,7 @@ int TrustyGateKeeperDevice::Verify(uint32_t uid, uint64_t challenge,
         *request_reenroll = response.request_reenroll;
     }
 
+    ALOGD("TrustyGateKeeper  Verify =========<<<<<<<<<<<<");
     return 0;
 }
 
