@@ -725,9 +725,6 @@ void property_load_boot_defaults() {
     //setup the ro prop in advance
     load_properties_from_file("/system/etc/init/journey/journey.default.prop", NULL);
 #endif
-#ifdef MOTO_LATAM_FEATURE_4176
-    load_properties_from_file("/system/etc/carrier/init.moto.carrier.prop", NULL);
-#endif
     if (!load_properties_from_file("/system/etc/prop.default", NULL)) {
         // Try recovery path
         if (!load_properties_from_file("/prop.default", NULL)) {

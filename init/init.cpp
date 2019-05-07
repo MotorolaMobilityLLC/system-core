@@ -119,11 +119,6 @@ static void LoadBootScripts(ActionManager& action_manager, ServiceList& service_
 #ifdef MOTO_GENERAL_FEATURE_OTA
         parser.ParseConfig("/init.moto.ota.rc");
 #endif
-#ifdef MOTO_LATAM_FEATURE_4176
-        if (!parser.ParseConfig("/system/etc/carrier/init.moto.carrier.rc")) {
-            late_import_paths.emplace_back("/system/etc/carrier/init.moto.carrier.rc");
-        }
-#endif
         if (!parser.ParseConfig("/system/etc/init")) {
             late_import_paths.emplace_back("/system/etc/init");
         }
