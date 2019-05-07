@@ -159,6 +159,9 @@ bool fs_mgr_overlayfs_enabled(FstabEntry* entry) {
     auto save_errno = errno;
     errno = 0;
     auto has_shared_blocks = fs_mgr_has_shared_blocks(entry->mount_point, entry->blk_device);
+    if (!has_shared_blocks && (entry->mount_point == "/system")) {
+        has_shared_blocks = fs_mgr_has_shared_blocks("/", entry->blk_device);
+    }
     // special case for first stage init for system as root (taimen)
     if (!has_shared_blocks && (errno == ENOENT) && (entry->blk_device == "/dev/root")) {
         has_shared_blocks = true;
@@ -631,7 +634,7 @@ bool fs_mgr_overlayfs_make_scratch(const std::string& scratch_device, const std:
         LERROR << mnt_type << " has no mkfs cookbook";
         return false;
     }
-    command += " " + scratch_device;
+    command += " " + scratch_device + " >/dev/null 2>/dev/null </dev/null";
     fs_mgr_set_blk_ro(scratch_device, false);
     auto ret = system(command.c_str());
     if (ret) {
@@ -715,7 +718,7 @@ bool fs_mgr_overlayfs_create_scratch(const Fstab& fstab, std::string* scratch_de
     }
 
     if (changed || partition_create) {
-        if (!CreateLogicalPartition(super_device, slot_number, partition_name, true, 0s,
+        if (!CreateLogicalPartition(super_device, slot_number, partition_name, true, 10s,
                                     scratch_device))
             return false;
 
@@ -940,7 +943,7 @@ bool fs_mgr_overlayfs_teardown(const char* mount_point, bool* change) {
             auto slot_number = fs_mgr_overlayfs_slot_number();
             auto super_device = fs_mgr_overlayfs_super_device(slot_number);
             const auto partition_name = android::base::Basename(kScratchMountPoint);
-            CreateLogicalPartition(super_device, slot_number, partition_name, true, 0s,
+            CreateLogicalPartition(super_device, slot_number, partition_name, true, 10s,
                                    &scratch_device);
         }
         mount_scratch = fs_mgr_overlayfs_mount_scratch(scratch_device,
