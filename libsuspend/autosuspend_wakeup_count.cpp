@@ -35,7 +35,7 @@
 #include "autosuspend_ops.h"
 
 #define BASE_SLEEP_TIME 100000
-#define MAX_SLEEP_TIME 60000000
+#define MAX_SLEEP_TIME 57000000
 
 static int state_fd = -1;
 static int wakeup_count_fd;
