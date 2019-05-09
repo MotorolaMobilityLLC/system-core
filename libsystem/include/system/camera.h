@@ -333,6 +333,7 @@ typedef struct camera_frame_metadata {
 typedef enum TN_3A_MetaData_TAG {
     TN_AE_BV = 0x1,
     TN_AE_ISO,
+    TN_FLASH_STATE,
 } TN_3A_MetaData_t;
 
 typedef struct TN_Media_Plugin_Packet {
