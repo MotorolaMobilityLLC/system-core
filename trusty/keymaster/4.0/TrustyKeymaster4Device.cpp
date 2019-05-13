@@ -25,6 +25,7 @@
 #ifdef TRUSTY_KEYMASTER_MESSAGE
 #include <trusty_keymaster/trusty_keymaster_messages.h>
 #endif
+#include <hardware/hw_auth_token.h>
 
 using ::keymaster::AbortOperationRequest;
 using ::keymaster::AbortOperationResponse;
@@ -99,6 +100,77 @@ inline ErrorCode legacy_enum_conversion(const keymaster_error_t value) {
 
 inline keymaster_tag_type_t typeFromTag(const keymaster_tag_t tag) {
     return keymaster_tag_get_type(tag);
+}
+
+KeyParameter convert(const ::android::hardware::keymaster::V3_0::KeyParameter& param) {
+    KeyParameter converted;
+    converted.tag = static_cast<Tag>(param.tag);
+    static_assert(sizeof(converted.f) == sizeof(param.f), "This function assumes sizes match");
+    memcpy(&converted.f, &param.f, sizeof(param.f));
+    converted.blob = param.blob;
+    return converted;
+}
+
+::android::hardware::keymaster::V3_0::KeyParameter convert(const KeyParameter& param) {
+    ::android::hardware::keymaster::V3_0::KeyParameter converted;
+    converted.tag = static_cast<::android::hardware::keymaster::V3_0::Tag>(param.tag);
+    static_assert(sizeof(converted.f) == sizeof(param.f), "This function assumes sizes match");
+    memcpy(&converted.f, &param.f, sizeof(param.f));
+    converted.blob = param.blob;
+    return converted;
+}
+
+template <typename T, typename OutIter>
+inline static OutIter copy_bytes_to_iterator(const T& value, OutIter dest) {
+    const uint8_t* value_ptr = reinterpret_cast<const uint8_t*>(&value);
+    return std::copy(value_ptr, value_ptr + sizeof(value), dest);
+}
+
+constexpr size_t kHmacSize = 32;
+
+hidl_vec<uint8_t> authToken2HidlVec(const ::android::hardware::keymaster::V4_0::HardwareAuthToken& token) {
+    static_assert(1 /* version size */ + sizeof(token.challenge) + sizeof(token.userId) +
+                          sizeof(token.authenticatorId) + sizeof(token.authenticatorType) +
+                          sizeof(token.timestamp) + kHmacSize ==
+                      sizeof(hw_auth_token_t),
+                  "HardwareAuthToken content size does not match hw_auth_token_t size");
+
+    hidl_vec<uint8_t> result;
+    result.resize(sizeof(hw_auth_token_t));
+    auto pos = result.begin();
+    *pos++ = 0;  // Version byte
+    pos = copy_bytes_to_iterator(token.challenge, pos);
+    pos = copy_bytes_to_iterator(token.userId, pos);
+    pos = copy_bytes_to_iterator(token.authenticatorId, pos);
+    auto auth_type = htonl(static_cast<uint32_t>(token.authenticatorType));
+    pos = copy_bytes_to_iterator(auth_type, pos);
+    auto timestamp = htonq(token.timestamp);
+    pos = copy_bytes_to_iterator(timestamp, pos);
+    if (token.mac.size() != kHmacSize) {
+        std::fill(pos, pos + kHmacSize, 0);
+    } else {
+        std::copy(token.mac.begin(), token.mac.end(), pos);
+    }
+
+    return result;
+}
+
+hidl_vec<KeyParameter>
+convertAndAddAuthToken(const hidl_vec<KeyParameter>& params,
+                       const ::android::hardware::keymaster::V4_0::HardwareAuthToken& authToken) {
+    hidl_vec<::android::hardware::keymaster::V3_0::KeyParameter> first_converted(params.size() + 1);
+    for (size_t i = 0; i < params.size(); ++i) {
+        first_converted[i] = convert(params[i]);
+    }
+    first_converted[params.size()].tag = ::android::hardware::keymaster::V3_0::Tag::AUTH_TOKEN;
+    first_converted[params.size()].blob = authToken2HidlVec(authToken);
+
+    hidl_vec<KeyParameter> second_converted(first_converted.size());
+    for (size_t i = 0; i < first_converted.size(); ++i) {
+        second_converted[i] = convert(first_converted[i]);
+    }
+
+    return second_converted;
 }
 
 class KmParamSet : public keymaster_key_param_set_t {
@@ -548,12 +620,12 @@ Return<ErrorCode> TrustyKeymaster4Device::destroyAttestationIds() {
 
 Return<void> TrustyKeymaster4Device::begin(KeyPurpose purpose, const hidl_vec<uint8_t>& key,
                                            const hidl_vec<KeyParameter>& inParams,
-                                           const ::android::hardware::keymaster::V4_0::HardwareAuthToken& /* authToken */,
+                                           const ::android::hardware::keymaster::V4_0::HardwareAuthToken& authToken,
                                            begin_cb _hidl_cb) {
     BeginOperationRequest request;
     request.purpose = legacy_enum_conversion(purpose);
     request.SetKeyMaterial(key.data(), key.size());
-    request.additional_params.Reinitialize(KmParamSet(inParams));
+    request.additional_params.Reinitialize(KmParamSet(convertAndAddAuthToken(inParams, authToken)));
 
     BeginOperationResponse response;
     impl_->BeginOperation(request, &response);
@@ -570,7 +642,7 @@ Return<void> TrustyKeymaster4Device::begin(KeyPurpose purpose, const hidl_vec<ui
 Return<void> TrustyKeymaster4Device::update(uint64_t operationHandle,
                                             const hidl_vec<KeyParameter>& inParams,
                                             const hidl_vec<uint8_t>& input,
-                                            const ::android::hardware::keymaster::V4_0::HardwareAuthToken& /* authToken */,
+                                            const ::android::hardware::keymaster::V4_0::HardwareAuthToken& authToken,
                                             const ::android::hardware::keymaster::V4_0::VerificationToken& /* verificationToken */,
                                             update_cb _hidl_cb) {
     UpdateOperationRequest request;
@@ -614,7 +686,7 @@ Return<void> TrustyKeymaster4Device::update(uint64_t operationHandle,
     if(0 == round) {
         request.op_handle = operationHandle;
         request.input.Reinitialize(input.data(), 0);
-        request.additional_params.Reinitialize(KmParamSet(inParams));
+        request.additional_params.Reinitialize(KmParamSet(convertAndAddAuthToken(inParams, authToken)));
 
         impl_->UpdateOperation(request, &response);
 
@@ -639,7 +711,7 @@ Return<void> TrustyKeymaster4Device::update(uint64_t operationHandle,
         uint32_t data_len = (i == round-1 && left > 0) ? left : ROUND_BUF_SIZE;
         request.input.Reinitialize(input.data() + ROUND_BUF_SIZE*i, data_len);
         if (0 == i)
-            request.additional_params.Reinitialize(KmParamSet(inParams));
+            request.additional_params.Reinitialize(KmParamSet(convertAndAddAuthToken(inParams, authToken)));
 
         impl_->UpdateOperation(request, &response);
         if (response.error != KM_ERROR_OK) {
@@ -678,14 +750,14 @@ Return<void> TrustyKeymaster4Device::finish(uint64_t operationHandle,
                                             const hidl_vec<KeyParameter>& inParams,
                                             const hidl_vec<uint8_t>& input,
                                             const hidl_vec<uint8_t>& signature,
-                                            const ::android::hardware::keymaster::V4_0::HardwareAuthToken& /* authToken */,
+                                            const ::android::hardware::keymaster::V4_0::HardwareAuthToken&  authToken,
                                             const ::android::hardware::keymaster::V4_0::VerificationToken& /* verificationToken */,
                                             finish_cb _hidl_cb) {
     FinishOperationRequest request;
     request.op_handle = operationHandle;
     request.input.Reinitialize(input.data(), input.size());
     request.signature.Reinitialize(signature.data(), signature.size());
-    request.additional_params.Reinitialize(KmParamSet(inParams));
+    request.additional_params.Reinitialize(KmParamSet(convertAndAddAuthToken(inParams, authToken)));
 
     FinishOperationResponse response;
     impl_->FinishOperation(request, &response);
