@@ -61,6 +61,19 @@ def get_recovery_dtbo_offset(args):
     return dtbo_offset
 
 
+def get_dtb_offset(args):
+    """calculates the offset of dtb image in the boot image"""
+    num_header_pages = 1 # header occupies a page
+    num_kernel_pages = get_number_of_pages(filesize(args.kernel), args.pagesize)
+    num_ramdisk_pages = get_number_of_pages(filesize(args.ramdisk), args.pagesize)
+    num_second_pages = get_number_of_pages(filesize(args.second), args.pagesize)
+    num_dtbo_pages = get_number_of_pages(filesize(args.recovery_dtbo), args.pagesize)
+    dtb_offset = args.pagesize * (num_header_pages + num_kernel_pages +
+                                   num_ramdisk_pages + num_second_pages +
+                                   num_dtbo_pages)
+    return dtb_offset
+
+
 def write_header(args):
     BOOT_IMAGE_HEADER_V1_SIZE = 1648
     BOOT_IMAGE_HEADER_V2_SIZE = 1660
@@ -114,7 +127,8 @@ def write_header(args):
 
     if args.header_version > 1:
         args.output.write(pack('I', filesize(args.dtb)))   # size in bytes
-        args.output.write(pack('Q', args.base + args.dtb_offset)) # dtb physical load address
+        #args.output.write(pack('Q', args.base + get_dtb_offset(args))) # dtb physical load address
+        args.output.write(pack('Q', get_dtb_offset(args))) # dtb address offset for unisoc bootloader
     pad_file(args.output, args.pagesize)
     return img_id
 
