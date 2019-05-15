@@ -255,7 +255,7 @@ int main(int argc, char* argv[]) {
         auto& mount_point = entry.mount_point;
         if (fs_mgr_is_verity_enabled(entry)) {
             retval = VERITY_PARTITION;
-            if (android::base::GetProperty("ro.boot.vbmeta.devices_state", "") != "locked") {
+            if (android::base::GetProperty("ro.boot.vbmeta.device_state", "") != "locked") {
                 if (AvbOps* ops = avb_ops_user_new()) {
                     auto ret = avb_user_verity_set(
                             ops, android::base::GetProperty("ro.boot.slot_suffix", "").c_str(),
@@ -371,17 +371,13 @@ int main(int argc, char* argv[]) {
                 continue;
             }
         }
-        PLOG(WARNING) << "failed to remount partition dev:" << blk_device << " mnt:" << mount_point;
-        // If errno = EROFS at this point, we are dealing with r/o
+        PLOG(ERROR) << "failed to remount partition dev:" << blk_device << " mnt:" << mount_point;
+        // If errno is EROFS at this point, we are dealing with r/o
         // filesystem types like squashfs, erofs or ext4 dedupe. We will
         // consider such a device that does not have CONFIG_OVERLAY_FS
-        // in the kernel as a misconfigured; except for ext4 dedupe.
-        if ((errno == EROFS) && can_reboot) {
-            const std::vector<std::string> msg = {"--fsck_unshare_blocks"};
-            std::string err;
-            if (write_bootloader_message(msg, &err)) reboot(true);
-            LOG(ERROR) << "Failed to set bootloader message: " << err;
-            errno = EROFS;
+        // in the kernel as a misconfigured.
+        if (errno == EROFS) {
+            LOG(ERROR) << "Consider providing all the dependencies to enable overlayfs";
         }
         retval = REMOUNT_FAILED;
     }
