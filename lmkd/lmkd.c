@@ -1332,13 +1332,13 @@ static void mp_event_common(int data, uint32_t events __unused) {
         } else if (file_ratio > 5) {
             target_swap_ratio = 100;
             target_pressure = 5;
-            level_oomadj[VMPRESS_LEVEL_MEDIUM] = 700;
+            level_oomadj[VMPRESS_LEVEL_MEDIUM] = 300;
             level_oomadj[VMPRESS_LEVEL_CRITICAL] = 100;
         // 5 ~ 0
         } else {
             target_swap_ratio = 100;
             target_pressure = 0;
-            level_oomadj[VMPRESS_LEVEL_MEDIUM] = 300;
+            level_oomadj[VMPRESS_LEVEL_MEDIUM] = 100;
             level_oomadj[VMPRESS_LEVEL_CRITICAL] = 0;
         }
 
