@@ -628,6 +628,23 @@ static void InstallSignalFdHandler() {
     register_epoll_handler(signal_fd, HandleSignalFd);
 }
 
+//BEGIN Lenovo lubm1 IKSAMP-8880 2019-05-16 Set DSDV at runtime.
+void SetDsdv(){
+    std::string rodevice = GetProperty("ro.boot.device","");
+    std::string rocarrier = GetProperty("ro.boot.carrier","");
+    //Only set dsdv for Troika retin.
+    if ((rodevice == "troika") && (rocarrier == "retin")){
+        property_set("persist.vendor.radio.dual.volte", "1");
+        property_set("ro.telephony.default_network", "10,10");
+    } else {
+        property_set("persist.vendor.radio.dual.volte", "0");
+        property_set("ro.telephony.default_network", "10,0");
+    }
+    LOG(INFO) << "After SetDsdv dual.volte is " << GetProperty("persist.vendor.radio.dual.volte","");
+    LOG(INFO) << "After SetDsdv default_network is " << GetProperty("ro.telephony.default_network","");
+}
+//END IKSAMP-8880
+
 int main(int argc, char** argv) {
     if (!strcmp(basename(argv[0]), "ueventd")) {
         return ueventd_main(argc, argv);
@@ -840,6 +857,9 @@ int main(int argc, char** argv) {
         else
             am.QueueEventTrigger("late-init");
     }
+
+    //Lenovo lubm1 IKSAMP-8880 2019-05-16 set DSDV at runtime.
+    SetDsdv();
 
     // Run all property triggers based on current state of the properties.
     am.QueueBuiltinAction(queue_property_triggers_action, "queue_property_triggers");
