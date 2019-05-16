@@ -149,6 +149,9 @@ static void TurnOffBacklight() {
         return;
     }
     service->Start();
+    //sleep for the blank screen running, otherwise it maybe run abnormal, because
+    //the service process which it depends on may be killed by init.
+    std::this_thread::sleep_for(200ms);
 }
 
 static void ShutdownVold() {
