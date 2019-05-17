@@ -139,7 +139,6 @@ cc_binary {
             cppflags: [
                 "-UALLOW_ADBD_DISABLE_VERITY",
                 "-DALLOW_ADBD_DISABLE_VERITY=1",
-                "-DALLOW_DYNAMIC_PARTITIONS_REMOUNT",
             ],
         },
     },

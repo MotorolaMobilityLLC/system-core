@@ -176,18 +176,13 @@ int main(int argc, char* argv[]) {
         fstab_read = android::fs_mgr::ReadFstabFromFile(fstab_file, &fstab);
     } else {
         fstab_read = android::fs_mgr::ReadDefaultFstab(&fstab);
-        // Manufacture a / , /vendor , /product ,/odm entry from /proc/mounts if missing.
+        // Manufacture a / entry from /proc/mounts if missing.
         if (!GetEntryForMountPoint(&fstab, "/system") && !GetEntryForMountPoint(&fstab, "/")) {
             android::fs_mgr::Fstab mounts;
             if (android::fs_mgr::ReadFstabFromFile("/proc/mounts", &mounts)) {
                 if (auto entry = GetEntryForMountPoint(&mounts, "/")) {
                     if (entry->fs_type != "rootfs") fstab.emplace_back(*entry);
                 }
-                #ifdef ALLOW_DYNAMIC_PARTITIONS_REMOUNT
-                    if(auto entry = GetEntryForMountPoint(&mounts, "/vendor")) fstab.emplace_back(*entry);
-                    if(auto entry = GetEntryForMountPoint(&mounts, "/product")) fstab.emplace_back(*entry);
-                    if(auto entry = GetEntryForMountPoint(&mounts, "/odm")) fstab.emplace_back(*entry);
-                #endif
             }
         }
     }
