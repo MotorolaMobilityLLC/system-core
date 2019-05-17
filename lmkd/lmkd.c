@@ -15,7 +15,9 @@
  */
 
 #define LOG_TAG "lowmemorykiller"
+#define PERFD_LIB  "libqti-perfd-client_system.so"
 
+#include <dlfcn.h>
 #include <dirent.h>
 #include <errno.h>
 #include <inttypes.h>
@@ -335,6 +337,10 @@ struct reread_data {
     const char* const filename;
     int fd;
 };
+
+typedef struct {
+     char value[PROPERTY_VALUE_MAX];
+} PropVal;
 
 #ifdef LMKD_LOG_STATS
 static bool enable_stats_log;
@@ -2060,15 +2066,48 @@ int main(int argc __unused, char **argv __unused) {
         property_get_bool("ro.lmk.use_minfree_levels", false);
     per_app_memcg =
         property_get_bool("ro.config.per_app_memcg", low_ram_device);
-    enhance_batch_kill =
-        property_get_bool("ro.lmk.enhance_batch_kill", true);
-    enable_adaptive_lmk =
-        property_get_bool("ro.lmk.enable_adaptive_lmk", false);
-    enable_userspace_lmk =
-        property_get_bool("ro.lmk.enable_userspace_lmk", false);
     swap_free_low_percentage =
         property_get_int32("ro.lmk.swap_free_low_percentage", 10);
 
+     /* Loading the vendor library at runtime to access property value */
+     PropVal (*perf_wait_get_prop)(const char *, const char *) = NULL;
+     void *handle = NULL;
+     handle = dlopen(PERFD_LIB, RTLD_NOW);
+     if (handle != NULL)
+         perf_wait_get_prop = (PropVal (*)(const char *, const char *))dlsym(handle, "perf_wait_get_prop");
+
+     if(!perf_wait_get_prop) {
+          ALOGE("Couldn't get perf_wait_get_prop function handle.");
+     } else {
+          char property[PROPERTY_VALUE_MAX];
+          char default_value[PROPERTY_VALUE_MAX];
+
+          /*Currently only the following properties introduced by Google
+          *are used outside. Hence their names are mirrored to _dup
+          *If it doesnot get value via get_prop it will use the value
+          *set by Google by default. To use the properties mentioned
+          *above, same can be followed*/
+          strlcpy(default_value, (kill_heaviest_task)? "true" : "false", PROPERTY_VALUE_MAX);
+          strlcpy(property, perf_wait_get_prop("ro.lmk.kill_heaviest_task_dup", default_value).value, PROPERTY_VALUE_MAX);
+          kill_heaviest_task = (!strncmp(property,"false",PROPERTY_VALUE_MAX))? false : true;
+
+          snprintf(default_value, PROPERTY_VALUE_MAX, "%lu", (kill_timeout_ms));
+          strlcpy(property, perf_wait_get_prop("ro.lmk.kill_timeout_ms_dup", default_value).value, PROPERTY_VALUE_MAX);
+          kill_timeout_ms =  strtod(property, NULL);
+
+          strlcpy(default_value, (use_minfree_levels)? "true" : "false", PROPERTY_VALUE_MAX);
+          strlcpy(property, perf_wait_get_prop("ro.lmk.use_minfree_levels_dup", default_value).value, PROPERTY_VALUE_MAX);
+          use_minfree_levels = (!strncmp(property,"false",PROPERTY_VALUE_MAX))? false : true;
+
+          /*The following properties are not intoduced by Google
+           *hence kept as it is */
+          strlcpy(property, perf_wait_get_prop("ro.lmk.enhance_batch_kill", "true").value, PROPERTY_VALUE_MAX);
+          enhance_batch_kill = (!strncmp(property,"false",PROPERTY_VALUE_MAX))? false : true;
+          strlcpy(property, perf_wait_get_prop("ro.lmk.enable_adaptive_lmk", "false").value, PROPERTY_VALUE_MAX);
+          enable_adaptive_lmk = (!strncmp(property,"false",PROPERTY_VALUE_MAX))? false : true;
+          strlcpy(property, perf_wait_get_prop("ro.lmk.enable_userspace_lmk", "false").value, PROPERTY_VALUE_MAX);
+          enable_userspace_lmk = (!strncmp(property,"false",PROPERTY_VALUE_MAX))? false : true;
+    }
     ctx = create_android_logger(MEMINFO_LOG_TAG);
 
 #ifdef LMKD_LOG_STATS
