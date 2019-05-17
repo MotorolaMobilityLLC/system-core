@@ -52,6 +52,7 @@
 static int rpmb_fd = -1;
 static uint8_t read_buf[4096];
 static enum dev_type dev_type = UNKNOWN_RPMB;
+static int mt_boot_type;
 
 #ifdef RPMB_DEBUG
 
@@ -76,6 +77,9 @@ static int send_mmc_rpmb_req(int mmc_fd, const struct storage_rpmb_send_req* req
     } mmc = {};
     struct mmc_ioc_cmd* cmd = mmc.multi.cmds;
     int rc;
+
+    if (mt_boot_type == BOOTDEV_UFS)
+        return rpmb_send_ufs(msg, r, req_len, rpmb_fd);
 
     const uint8_t* write_buf = req->payload;
     if (req->reliable_write_size) {
@@ -234,7 +238,12 @@ int rpmb_open(const char* rpmb_devname, enum dev_type open_dev_type) {
     int rc;
     dev_type = open_dev_type;
 
-    rc = open(rpmb_devname, O_RDWR, 0);
+    mt_boot_type = get_boot_type();
+    if (mt_boot_type == BOOTDEV_SDMMC)
+        rc = open(rpmb_devname, O_RDWR, 0);
+    else
+        rc = open("/dev/block/sdc", O_RDWR, 0);
+
     if (rc < 0) {
         ALOGE("unable (%d) to open rpmb device '%s': %s\n", errno, rpmb_devname, strerror(errno));
         return rc;

@@ -22,6 +22,7 @@ cc_binary {
     srcs: [
         "ipc.c",
         "rpmb.c",
+        "rpmb_ufs.c",
         "storage.c",
         "proxy.c",
     ],
