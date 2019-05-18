@@ -78,9 +78,6 @@ static int send_mmc_rpmb_req(int mmc_fd, const struct storage_rpmb_send_req* req
     struct mmc_ioc_cmd* cmd = mmc.multi.cmds;
     int rc;
 
-    if (mt_boot_type == BOOTDEV_UFS)
-        return rpmb_send_ufs(msg, r, req_len, rpmb_fd);
-
     const uint8_t* write_buf = req->payload;
     if (req->reliable_write_size) {
         cmd->write_flag = MMC_WRITE_FLAG_RELW;
@@ -158,6 +155,9 @@ static int send_virt_rpmb_req(int rpmb_fd, void* read_buf, size_t read_size, con
 int rpmb_send(struct storage_msg* msg, const void* r, size_t req_len) {
     int rc;
     const struct storage_rpmb_send_req* req = r;
+
+    if (mt_boot_type == BOOTDEV_UFS)
+        return rpmb_send_ufs(msg, r, req_len, rpmb_fd);
 
     if (req_len < sizeof(*req)) {
         ALOGW("malformed rpmb request: invalid length (%zu < %zu)\n", req_len, sizeof(*req));
