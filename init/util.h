@@ -65,6 +65,8 @@ bool IsLegalPropertyName(const std::string& name);
 
 void InitKernelLogging(char** argv, std::function<void(const char*)> abort_function);
 bool IsRecoveryMode();
+
+int get_present_memory_size(void);
 }  // namespace init
 }  // namespace android
 

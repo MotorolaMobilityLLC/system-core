@@ -627,6 +627,14 @@ static void UmountDebugRamdisk() {
     }
 }
 
+static void set_ramsize_property(void) {
+    char value[16];
+    int  memsize = get_present_memory_size();
+
+    snprintf(value, sizeof(value), "%dM", memsize);
+    property_set("ro.vendor.ramsize", value);
+}
+
 int SecondStageMain(int argc, char** argv) {
     if (REBOOT_BOOTLOADER_ON_PANIC) {
         InstallRebootSignalHandlers();
@@ -696,6 +704,7 @@ int SecondStageMain(int argc, char** argv) {
     InstallSignalFdHandler(&epoll);
 
     property_load_boot_defaults(load_debug_prop);
+    set_ramsize_property();
     UmountDebugRamdisk();
     fs_mgr_vendor_overlay_mount_all();
     export_oem_lock_status();
