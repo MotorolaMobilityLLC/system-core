@@ -1330,22 +1330,9 @@ static void set_process_group_and_prio(int pid, SchedPolicy sp, int prio) {
 
 static void trigger_enhance_meminfo(int oomadj) {
     char val[8];
-    char *path = "/proc/sys/vm/emem_trigger";
-    int fd = open(path, O_WRONLY);
-    int ret;
-
-    if (fd < 0) {
-        ALOGE("Error opening %s; errno=%d", path, errno);
-        return;
-    }
 
     snprintf(val, sizeof(val), "%d", oomadj);
-    ret = write(fd, val, strlen(val));
-    if (ret < 0) {
-        ALOGE("Error writing %s; errno=%d", path, errno);
-    }
-
-    close(fd);
+    property_set("sys.trigger_emem.oomadj", val);
 }
 
 static int last_killed_pid = -1;
