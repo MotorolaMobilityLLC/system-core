@@ -633,6 +633,7 @@ static void set_ramsize_property(void) {
 
     snprintf(value, sizeof(value), "%dM", memsize);
     property_set("ro.vendor.ramsize", value);
+    property_set("ro.ramsize", value);
 }
 
 int SecondStageMain(int argc, char** argv) {
