@@ -1,0 +1,26 @@
+// Shared library for target
+// ========================================================
+cc_library {
+    name: "libnativeloader",
+    host_supported: true,
+    srcs: ["native_loader.cpp"],
+    shared_libs: [
+        "libnativehelper",
+        "liblog",
+        "libcutils",
+        "libnativebridge",
+        "libbase",
+    ],
+    cflags: [
+        "-Werror",
+        "-Wall",
+    ],
+    cppflags: [
+        "-fvisibility=hidden",
+    ],
+    export_include_dirs: ["include"],
+    required: [
+        "llndk.libraries.txt",
+        "vndksp.libraries.txt",
+    ],
+}

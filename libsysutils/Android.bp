@@ -1,0 +1,34 @@
+cc_library_shared {
+    name: "libsysutils",
+    vendor_available: true,
+    vndk: {
+        enabled: true,
+    },
+
+    srcs: [
+        "src/SocketListener.cpp",
+        "src/FrameworkListener.cpp",
+        "src/NetlinkListener.cpp",
+        "src/NetlinkEvent.cpp",
+        "src/FrameworkCommand.cpp",
+        "src/SocketClient.cpp",
+        "src/ServiceManager.cpp",
+    ],
+
+    logtags: ["EventLogTags.logtags"],
+
+    cflags: [
+        "-Werror",
+        "-DFEATURE_SAFE_URL",
+        "-DFEATURE_ONLY_SEND_MSG",
+    ],
+
+    shared_libs: [
+        "libbase",
+        "libcutils",
+        "liblog",
+        "libnl",
+    ],
+
+    export_include_dirs: ["include"],
+}
