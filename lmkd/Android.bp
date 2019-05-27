@@ -1,12 +1,16 @@
 cc_binary {
     name: "lmkd",
 
-    srcs: ["lmkd.c"],
+    srcs: [
+        "lmkd.c",
+        "lmfs.c",
+        ],
     shared_libs: [
         "libcutils",
         "liblog",
         "libprocessgroup",
         "libpsi",
+	"libutils",
     ],
     static_libs: [
         "libstatslogc",

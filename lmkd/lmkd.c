@@ -69,6 +69,7 @@
 #define TRACE_KILL_END() ((void)0)
 
 #endif /* LMKD_TRACE_KILLS */
+#include "lmfs.h"
 
 #ifndef __unused
 #define __unused __attribute__((__unused__))
@@ -121,6 +122,7 @@
 
 /* default to old in-kernel interface if no memory pressure events */
 static bool use_inkernel_interface = true;
+static int vmpressure_enhanced;
 static bool has_inkernel_module;
 static bool enhance_meminfo_enable;
 
@@ -174,6 +176,7 @@ struct event_handler_info {
     int data;
     void (*handler)(int data, uint32_t events);
 };
+static bool lmfs_enabled;
 
 /* data required to handle socket events */
 struct sock_event_handler_info {
@@ -196,6 +199,7 @@ static struct event_handler_info vmpressure_hinfo[VMPRESS_LEVEL_COUNT];
 static int epollfd;
 static int maxevents;
 
+static pthread_mutex_t gLruMutex = PTHREAD_MUTEX_INITIALIZER;
 /* OOM score values used by both kernel and framework */
 #define OOM_SCORE_ADJ_MIN       (-1000)
 #define OOM_SCORE_ADJ_MAX       1000
@@ -393,7 +397,7 @@ static enum field_match_result match_field(const char* cp, const char* ap,
  * Read file content from the beginning up to max_len bytes or EOF
  * whichever happens first.
  */
-static ssize_t read_all(int fd, char *buf, size_t max_len)
+ssize_t read_all(int fd, char *buf, size_t max_len)
 {
     ssize_t ret = 0;
     off_t offset = 0;
@@ -582,7 +586,7 @@ static void cmd_procprio(LMKD_CTRL_PACKET packet) {
         return;
     }
 
-    if (use_inkernel_interface) {
+    if (use_inkernel_interface && !vmpressure_enhanced) {
         return;
     }
 
@@ -652,7 +656,7 @@ static void cmd_procprio(LMKD_CTRL_PACKET packet) {
 static void cmd_procremove(LMKD_CTRL_PACKET packet) {
     struct lmk_procremove params;
 
-    if (use_inkernel_interface) {
+    if (use_inkernel_interface  && !vmpressure_enhanced) {
         return;
     }
 
@@ -934,7 +938,9 @@ wronglen:
 
 static void ctrl_data_handler(int data, uint32_t events) {
     if (events & EPOLLIN) {
+        pthread_mutex_lock(&gLruMutex);
         ctrl_command_handler(data);
+        pthread_mutex_unlock(&gLruMutex);
     }
 }
 
@@ -1407,6 +1413,8 @@ static int kill_one_process(struct proc* procp, int min_oom_score) {
 #endif
         result = tasksize;
 
+        if (lmfs_enabled)
+            notify_lmfs_process_killed(procp->pid);
         if (enhance_meminfo_enable)
             trigger_enhance_meminfo(procp->oomadj);
 
@@ -1469,6 +1477,39 @@ static int find_and_kill_process(int min_score_adj) {
 #endif
 
     return killed_size;
+}
+
+int find_and_kill_process_adj_locked(int adj, bool is_critical) {
+    int i;
+    int killed_size = 0;
+    int min_score_adj = adj;
+
+    is_critical = 0;
+    for (i = OOM_SCORE_ADJ_MAX; i >= min_score_adj; i--) {
+        struct proc *procp;
+
+retry:
+        procp = proc_adj_lru(i);
+
+        if (procp) {
+            killed_size = kill_one_process(procp, adj);
+            if (killed_size < 0) {
+                goto retry;
+            } else {
+                return killed_size;
+            }
+        }
+    }
+
+    return 0;
+}
+
+int find_and_kill_process_adj(int adj, bool is_critical) {
+    int ret =0;
+    pthread_mutex_lock(&gLruMutex);
+    ret = find_and_kill_process_adj_locked(adj, is_critical);
+    pthread_mutex_unlock(&gLruMutex);
+    return ret;
 }
 
 static int64_t get_memory_usage(struct reread_data *file_data) {
@@ -1545,7 +1586,9 @@ static bool is_kill_pending(void) {
     return false;
 }
 
-static void mp_event_common(int data, uint32_t events __unused) {
+
+
+static void mp_event_common_locked(int data, uint32_t events __unused) {
     int ret;
     unsigned long long evcount;
     int64_t mem_usage, memsw_usage;
@@ -1761,6 +1804,40 @@ do_kill:
 
         last_report_tm = curr_tm;
     }
+}
+
+static void mp_event_common(int data, uint32_t events __unused) {
+    /*
+     * when only LMK enabled, we can pass vmpressure & swap-pressure to
+     * PerformanceManagerService because-of enable_adaptive_lmk,
+     * PerformanceManagerService then force-stop apps from the LRU list
+     * according to current vmpressure & swap-pressure;
+     *
+     * when only MEMCG enabled, the vmpressure & swap-pressure should also
+     * be passed to PerformanceManagerService
+     */
+    if (!use_inkernel_interface) {
+        enum vmpressure_level level = (enum vmpressure_level)data;
+        int vmpressure_value = 0;
+        switch (level) {
+            case VMPRESS_LEVEL_LOW:
+                vmpressure_value = 70;
+                break;
+            case VMPRESS_LEVEL_MEDIUM:
+                vmpressure_value = 80;
+                break;
+            case VMPRESS_LEVEL_CRITICAL:
+                vmpressure_value = 90;
+                break;
+            default:
+                break;
+        }
+        handle_vmpressure(vmpressure_value);
+    }
+
+    pthread_mutex_lock(&gLruMutex);
+    mp_event_common_locked(data, events);
+    pthread_mutex_unlock(&gLruMutex);
 }
 
 static bool init_mp_psi(enum vmpressure_level level) {
@@ -2043,6 +2120,7 @@ int main(int argc __unused, char **argv __unused) {
             .sched_priority = 1,
     };
 
+    vmpressure_enhanced = property_get_bool("ro.lmk.vmpressurenhanced", false);
     /* By default disable low level vmpressure events */
     level_oomadj[VMPRESS_LEVEL_LOW] =
         property_get_int32("ro.lmk.low", OOM_SCORE_ADJ_MAX + 1);
@@ -2050,6 +2128,7 @@ int main(int argc __unused, char **argv __unused) {
         property_get_int32("ro.lmk.medium", 800);
     level_oomadj[VMPRESS_LEVEL_CRITICAL] =
         property_get_int32("ro.lmk.critical", 0);
+    lmfs_enabled = property_get_bool("ro.lmk.lmfs", true);
     debug_process_killing = property_get_bool("ro.lmk.debug", false);
 
     /* By default disable upgrade/downgrade logic */
@@ -2100,6 +2179,8 @@ int main(int argc __unused, char **argv __unused) {
                 ALOGW("set SCHED_FIFO failed %s", strerror(errno));
             }
         }
+        if (lmfs_enabled)
+            start_lmfs();
 
         mainloop();
     }
