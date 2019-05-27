@@ -14,8 +14,31 @@
 // limitations under the License.
 //
 
+bootstrap_go_package {
+    name: "soong-gatekeeper",
+    pkgPath: "android/soong/gatekeeper",
+    deps: [
+        "blueprint",
+        "blueprint-pathtools",
+        "soong",
+        "soong-android",
+        "soong-cc",
+        "soong-genrule",
+    ],
+    srcs: [
+          "gatekeeper.go",
+    ],
+    pluginFor: ["soong_build"],
+}
+
+
+gatekeeper_cppflags {
+    name: "gatekeeper_flag",
+}
+
 cc_binary {
     name: "gatekeeperd",
+    defaults: ["gatekeeper_flag"],
     cflags: [
         "-Wall",
         "-Wextra",

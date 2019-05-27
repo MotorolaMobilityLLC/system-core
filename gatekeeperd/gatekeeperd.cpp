@@ -61,7 +61,13 @@ class GateKeeperProxy : public BnGateKeeperService {
 public:
     GateKeeperProxy() {
         clear_state_if_needed_done = false;
+#ifdef USE_SOFTWARE_GATEKEEPER
+        ALOGD("software gatekeeper");
+        hw_device = NULL;
+#else
+        ALOGD("hw gatekeeper");
         hw_device = IGatekeeper::getService();
+#endif
         is_running_gsi = android::base::GetBoolProperty(android::gsi::kGsiBootedProp, false);
 
         if (hw_device == nullptr) {
