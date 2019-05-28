@@ -401,6 +401,7 @@ AvbUniquePtr AvbHandle::Open() {
     if (verification_disabled) {
         avb_handle->status_ = AvbHandleStatus::kVerificationDisabled;
     } else {
+        /*hide because of the uboot wound't send the right digest data (both size and hash)
         // Verifies vbmeta structs against the digest passed from bootloader in kernel cmdline.
         std::unique_ptr<AvbVerifier> avb_verifier = AvbVerifier::Create();
         if (!avb_verifier) {
@@ -411,6 +412,7 @@ AvbUniquePtr AvbHandle::Open() {
             LERROR << "VerifyVbmetaImages failed";
             return nullptr;
         }
+        */
 
         // Checks whether FLAGS_HASHTREE_DISABLED is set.
         bool hashtree_disabled = ((AvbVBMetaImageFlags)vbmeta_header.flags &
