@@ -113,6 +113,9 @@ class LogBuffer : public LogBufferInterface {
     bool isMonotonic() {
         return monotonic;
     }
+#if defined(MTK_LOGD_ENHANCE) && defined(MSSI_HAVE_AEE_FEATURE) && defined(ANDROID_LOG_MUCH_COUNT)
+    void logMuchDetect(log_id_t log_id, log_time realtime);
+#endif
 
     int log(log_id_t log_id, log_time realtime, uid_t uid, pid_t pid, pid_t tid,
             const char* msg, uint16_t len) override;

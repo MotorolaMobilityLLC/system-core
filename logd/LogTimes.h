@@ -35,6 +35,9 @@ class LogBufferElement;
 
 class LogTimeEntry {
     static pthread_mutex_t timesLock;
+#if defined(MTK_LOGD_ENHANCE) && defined(MTK_LOGD_FILTER)
+    static pthread_mutex_t readerCntLock;
+#endif
     bool mRelease = false;
     bool leadingDropped;
     pthread_cond_t threadTriggeredCondition;
@@ -80,6 +83,9 @@ class LogTimeEntry {
     void triggerSkip_Locked(log_id_t id, unsigned int skip) {
         skipAhead[id] = skip;
     }
+#ifdef MTK_LOGD_ENHANCE
+    unsigned int getSkipAhead(log_id_t id) { return skipAhead[id]; }
+#endif
     void cleanSkip_Locked(void);
 
     void release_Locked(void) {
