@@ -242,6 +242,10 @@ size_t LogBufferElement::populateDroppedMessage(char*& buffer, LogBuffer* parent
 log_time LogBufferElement::flushTo(SocketClient* reader, LogBuffer* parent,
                                    bool privileged, bool lastSame) {
     struct logger_entry_v4 entry;
+#if defined(MTK_LOGD_ENHANCE) && defined(ANDROID_LOG_MUCH_COUNT)
+    char *ptr = NULL;
+    char *temp_msg = NULL;
+#endif
 
     memset(&entry, 0, sizeof(struct logger_entry_v4));
 
@@ -265,8 +269,27 @@ log_time LogBufferElement::flushTo(SocketClient* reader, LogBuffer* parent,
         if (!entry.len) return mRealTime;
         iovec[1].iov_base = buffer;
     } else {
+#if defined(MTK_LOGD_ENHANCE) && defined(ANDROID_LOG_MUCH_COUNT)
+
+        char *ptr = NULL;
+        if (mLogId != LOG_ID_KERNEL && mLogId != LOG_ID_EVENTS
+            && (ptr = strstr(mMsg + 1, "-0x"))) {
+            temp_msg = new char[mMsgLen];
+
+            temp_msg[0] = mMsg[0];
+            ptr += 3;
+            entry.len = mMsgLen - (ptr - mMsg);
+            memcpy(temp_msg + 1, ptr, entry.len);
+            entry.len += 1;
+            iovec[1].iov_base = temp_msg;
+        } else {
+            entry.len = mMsgLen;
+            iovec[1].iov_base = mMsg;
+        }
+#else
         entry.len = mMsgLen;
         iovec[1].iov_base = mMsg;
+#endif
     }
     iovec[1].iov_len = entry.len;
 
@@ -275,6 +298,9 @@ log_time LogBufferElement::flushTo(SocketClient* reader, LogBuffer* parent,
                           : mRealTime;
 
     if (buffer) free(buffer);
+#if defined(MTK_LOGD_ENHANCE) && defined(ANDROID_LOG_MUCH_COUNT)
+    if (temp_msg) delete[] temp_msg;
+#endif
 
     return retval;
 }

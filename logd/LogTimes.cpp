@@ -26,6 +26,9 @@
 #include "LogTimes.h"
 
 pthread_mutex_t LogTimeEntry::timesLock = PTHREAD_MUTEX_INITIALIZER;
+#if defined(MTK_LOGD_ENHANCE) && defined(MTK_LOGD_FILTER)
+pthread_mutex_t LogTimeEntry::readerCntLock = PTHREAD_MUTEX_INITIALIZER;
+#endif
 
 LogTimeEntry::LogTimeEntry(LogReader& reader, SocketClient* client,
                            bool nonBlock, unsigned long tail, log_mask_t logMask,
@@ -78,6 +81,16 @@ void* LogTimeEntry::threadStart(void* obj) {
     bool security = FlushCommand::hasSecurityLogs(client);
 
     me->leadingDropped = true;
+
+#ifdef MTK_LOGD_ENHANCE
+#if defined(MTK_LOGD_FILTER)
+    pthread_mutex_lock(&readerCntLock);
+    logd_reader_add();
+    pthread_mutex_unlock(&readerCntLock);
+#else
+    prdebug_ratelimit("logd.reader.per thread start.\n");
+#endif
+#endif
 
     wrlock();
 
@@ -139,6 +152,15 @@ void* LogTimeEntry::threadStart(void* obj) {
     }
 
     unlock();
+#ifdef MTK_LOGD_ENHANCE
+#if defined(MTK_LOGD_FILTER)
+    pthread_mutex_lock(&readerCntLock);
+    logd_reader_del();
+    pthread_mutex_unlock(&readerCntLock);
+#else
+    prdebug_ratelimit("logd.reader.per thread stop.\n");
+#endif
+#endif
 
     return nullptr;
 }

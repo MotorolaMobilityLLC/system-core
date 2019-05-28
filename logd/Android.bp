@@ -21,6 +21,28 @@
 //  event_flag += $(call event_logtags,logd)
 //  event_flag += $(call event_logtags,tag_def)
 // so make sure we do not regret hard-coding it as follows:
+
+bootstrap_go_package {
+    name: "soong-logdEnhance-mediatek",
+    pkgPath: "android/soong/logdEnhance-mediatek",
+    deps: [
+        "blueprint",
+        "blueprint-pathtools",
+        "soong",
+        "soong-android",
+        "soong-cc",
+        "soong-android-mediatek",
+        "soong-genrule",
+    ],
+    srcs: [
+        "logd.go",
+    ],
+    pluginFor: ["soong_build"],
+}
+mtk_logdEnhance_defaults {
+    name: "mtk_logdEnhance_defaults",
+}
+
 event_flag = [
     "-DAUDITD_LOG_TAG=1003",
     "-DCHATTY_LOG_TAG=1004",
@@ -29,6 +51,8 @@ event_flag = [
 ]
 
 cc_library_static {
+    defaults: ["mtk_logdEnhance_defaults"],
+
     name: "liblogd",
 
     srcs: [
@@ -50,7 +74,10 @@ cc_library_static {
     ],
     logtags: ["event.logtags"],
 
-    shared_libs: ["libbase"],
+    shared_libs: [
+        "libbase",
+        "libprocessgroup",
+    ],
 
     export_include_dirs: ["."],
 
@@ -58,10 +85,14 @@ cc_library_static {
 }
 
 cc_binary {
+    defaults: ["mtk_logdEnhance_defaults"],
+
     name: "logd",
     init_rc: ["logd.rc"],
 
-    srcs: ["main.cpp"],
+    srcs: ["main.cpp",
+           "LogMuchControl.cpp",
+    ],
 
     static_libs: [
         "liblog",
