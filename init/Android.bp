@@ -93,10 +93,31 @@ cc_defaults {
     bootstrap: true,
 }
 
+mtk_init_extra_defaults {
+    name: "mtk_init_extra_defaults",
+}
+
+bootstrap_go_package {
+    name:"soong-init_extra-mediatek",
+    pkgPath:"android/soong/init_extra/mediatek",
+    deps:[
+        "soong-android",
+        "soong-cc",
+    ],
+    srcs:[
+        "init_extra.go",
+    ],
+    pluginFor:["soong_build"],
+}
+
 cc_library_static {
     name: "libinit",
     recovery_available: true,
-    defaults: ["init_defaults", "selinux_policy_version"],
+    defaults: [
+        "init_defaults",
+        "selinux_policy_version",
+        "mtk_init_extra_defaults",
+    ],
     srcs: [
         "action.cpp",
         "action_manager.cpp",

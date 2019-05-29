@@ -57,6 +57,10 @@
 #include "service.h"
 #include "sigchld_handler.h"
 
+#ifdef MSSI_HAVE_AEE_FEATURE
+#include "aee.h"
+#endif
+
 using android::base::GetBoolProperty;
 using android::base::Split;
 using android::base::StringPrintf;
@@ -330,6 +334,26 @@ static void KillZramBackingDevice() {
     LOG(INFO) << "zram_backing_dev: `" << backing_dev << "` is cleared successfully.";
 }
 
+#ifdef MSSI_HAVE_AEE_FEATURE
+void hang_detect_set_reboot() {
+    int fd = open(AE_WDT_DEVICE_PATH, O_RDONLY);
+
+    if (fd < 0) {
+        LOG(INFO) << "[HANG_DETECT] ERROR: open hang detect device failed.";
+        return;
+    } else {
+        if (ioctl(fd, AEEIOCTL_SET_HANG_REBOOT) != 0) {
+            LOG(INFO) << "[HANG_DETECT] set hang detect reboot flag failed.";
+            close(fd);
+            return;
+        }
+    }
+    close(fd);
+    LOG(INFO) << "[HANG_DETECT] set hang detect reboot flag.";
+    return;
+}
+#endif
+
 //* Reboot / shutdown the system.
 // cmd ANDROID_RB_* as defined in android_reboot.h
 // reason Reason string like "reboot", "shutdown,userrequested"
@@ -368,6 +392,10 @@ static void DoReboot(unsigned int cmd, const std::string& reason, const std::str
         shutdown_timeout = std::chrono::seconds(shutdown_timeout_final);
     }
     LOG(INFO) << "Shutdown timeout: " << shutdown_timeout.count() << " ms";
+
+#ifdef MSSI_HAVE_AEE_FEATURE
+    hang_detect_set_reboot();
+#endif
 
     // keep debugging tools until non critical ones are all gone.
     const std::set<std::string> kill_after_apps{"tombstoned", "logd", "adbd"};
