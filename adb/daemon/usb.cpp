@@ -58,10 +58,12 @@ using android::base::StringPrintf;
 static std::optional<bool> gFfsAioSupported;
 
 // Not all USB controllers support operations larger than 16k, so don't go above that.
-static constexpr size_t kUsbReadQueueDepth = 32;
+// Also, each submitted operation does an allocation in the kernel of that size, so we want to
+// minimize our queue depth while still maintaining a deep enough queue to keep the USB stack fed.
+static constexpr size_t kUsbReadQueueDepth = 8;
 static constexpr size_t kUsbReadSize = 4 * PAGE_SIZE;
 
-static constexpr size_t kUsbWriteQueueDepth = 32;
+static constexpr size_t kUsbWriteQueueDepth = 8;
 static constexpr size_t kUsbWriteSize = 4 * PAGE_SIZE;
 
 static const char* to_string(enum usb_functionfs_event_type type) {
@@ -117,7 +119,7 @@ struct TransferId {
 
 struct IoBlock {
     bool pending = false;
-    struct iocb control;
+    struct iocb control = {};
     std::shared_ptr<Block> payload;
 
     TransferId id() const { return TransferId::from_value(control.aio_data); }
@@ -295,9 +297,15 @@ struct UsbFfsConnection : public Connection {
                 }
 
                 struct usb_functionfs_event event;
-                if (TEMP_FAILURE_RETRY(adb_read(control_fd_.get(), &event, sizeof(event))) !=
-                    sizeof(event)) {
+                rc = TEMP_FAILURE_RETRY(adb_read(control_fd_.get(), &event, sizeof(event)));
+                if (rc == -1) {
                     PLOG(FATAL) << "failed to read functionfs event";
+                } else if (rc == 0) {
+                    LOG(WARNING) << "hit EOF on functionfs control fd";
+                    break;
+                } else if (rc != sizeof(event)) {
+                    LOG(FATAL) << "read functionfs event of unexpected size, expected "
+                               << sizeof(event) << ", got " << rc;
                 }
 
                 LOG(INFO) << "USB event: "
@@ -308,11 +316,13 @@ struct UsbFfsConnection : public Connection {
                         if (bound) {
                             LOG(WARNING) << "received FUNCTIONFS_BIND while already bound?";
                             running = false;
+                            break;
                         }
 
                         if (enabled) {
                             LOG(WARNING) << "received FUNCTIONFS_BIND while already enabled?";
                             running = false;
+                            break;
                         }
 
                         bound = true;
@@ -322,11 +332,13 @@ struct UsbFfsConnection : public Connection {
                         if (!bound) {
                             LOG(WARNING) << "received FUNCTIONFS_ENABLE while not bound?";
                             running = false;
+                            break;
                         }
 
                         if (enabled) {
                             LOG(WARNING) << "received FUNCTIONFS_ENABLE while already enabled?";
                             running = false;
+                            break;
                         }
 
                         enabled = true;
@@ -358,6 +370,38 @@ struct UsbFfsConnection : public Connection {
                         bound = false;
                         running = false;
                         break;
+
+                    case FUNCTIONFS_SETUP: {
+                        LOG(INFO) << "received FUNCTIONFS_SETUP control transfer: bRequestType = "
+                                  << static_cast<int>(event.u.setup.bRequestType)
+                                  << ", bRequest = " << static_cast<int>(event.u.setup.bRequest)
+                                  << ", wValue = " << static_cast<int>(event.u.setup.wValue)
+                                  << ", wIndex = " << static_cast<int>(event.u.setup.wIndex)
+                                  << ", wLength = " << static_cast<int>(event.u.setup.wLength);
+
+                        if ((event.u.setup.bRequestType & USB_DIR_IN)) {
+                            LOG(INFO) << "acking device-to-host control transfer";
+                            ssize_t rc = adb_write(control_fd_.get(), "", 0);
+                            if (rc != 0) {
+                                PLOG(ERROR) << "failed to write empty packet to host";
+                                break;
+                            }
+                        } else {
+                            std::string buf;
+                            buf.resize(event.u.setup.wLength + 1);
+
+                            ssize_t rc = adb_read(control_fd_.get(), buf.data(), buf.size());
+                            if (rc != event.u.setup.wLength) {
+                                LOG(ERROR)
+                                        << "read " << rc
+                                        << " bytes when trying to read control request, expected "
+                                        << event.u.setup.wLength;
+                            }
+
+                            LOG(INFO) << "control request contents: " << buf;
+                            break;
+                        }
+                    }
                 }
             }
 
