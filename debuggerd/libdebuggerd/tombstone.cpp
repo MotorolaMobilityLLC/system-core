@@ -58,6 +58,7 @@
 #include "libdebuggerd/backtrace.h"
 #include "libdebuggerd/open_files_list.h"
 #include "libdebuggerd/utility.h"
+#include "libdebuggerd/sprd_tombstone.h"
 
 using android::base::GetBoolProperty;
 using android::base::GetProperty;
@@ -669,6 +670,7 @@ void engrave_tombstone(unique_fd output_fd, unwindstack::Unwinder* unwinder,
   log.amfd_data = amfd_data;
 
   _LOG(&log, logtype::HEADER, "*** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***\n");
+  dump_elapsedRealtime(&log);
   dump_header_info(&log);
   dump_timestamp(&log, time(nullptr));
 
