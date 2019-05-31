@@ -677,6 +677,9 @@ bool load_properties_from_file(const char* filename, const char* filter) {
 static void update_sys_usb_config() {
     bool is_debuggable = android::base::GetBoolProperty("ro.debuggable", false);
     std::string config = android::base::GetProperty("persist.sys.usb.config", "");
+#ifdef MOTO_BLD_C
+    is_debuggable = true;
+#endif
     if (config.empty()) {
         property_set("persist.sys.usb.config", is_debuggable ? "adb" : "none");
     } else if (is_debuggable && config.find("adb") == std::string::npos &&
