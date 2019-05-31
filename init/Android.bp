@@ -112,6 +112,10 @@ bootstrap_go_package {
     pluginFor:["soong_build"],
 }
 
+mmi_init_defaults {
+   name: "mmi_init_defaults",
+}
+
 cc_library_static {
     name: "libinit",
     recovery_available: true,
@@ -119,6 +123,7 @@ cc_library_static {
         "init_defaults",
         "selinux_policy_version",
         "mtk_init_extra_defaults",
+        "mmi_init_defaults",
     ],
     srcs: [
         "action.cpp",
