@@ -63,6 +63,12 @@ cc_defaults {
         journey_feature_factory_request: {
             cflags: ["-DJOURNEY_FEATURE_FACTORY_REQUEST"],
         },
+        journey_feature_reduce_log: {
+            cflags: ["-DJOURNEY_FEATURE_REDUCE_LOG"],
+        },
+        journey_feature_debug_prop_set: {
+            cflags: ["-DJOURNEY_FEATURE_DEBUG_PROP_SET"],
+        },        
         moto_general_feature: {
             cflags: ["-DMOTO_GENERAL_FEATURE"],
         },
