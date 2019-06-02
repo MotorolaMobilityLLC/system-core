@@ -34,6 +34,7 @@ cc_defaults {
         "-DSHUTDOWN_ZERO_TIMEOUT=0",
         "-DMTK_RSC=1",
         "-DMTK_LOG=1",
+        "-DMTK_TRACE=1",
     ],
     product_variables: {
         debuggable: {

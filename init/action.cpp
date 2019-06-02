@@ -118,7 +118,27 @@ void Action::ExecuteAllCommands() const {
 
 void Action::ExecuteCommand(const Command& command) const {
     android::base::Timer t;
+#ifndef MTK_TRACE
     auto result = command.InvokeFunc(subcontext_);
+#else
+    std::string tr_log("Command '");
+
+    std::string trigger_name = BuildTriggersString();
+    std::string cmd_str = command.BuildCommandString();
+
+    tr_log.append(cmd_str);
+    tr_log.append("' action=");
+    tr_log.append(trigger_name);
+    tr_log.append(" (");
+    tr_log.append(filename_);
+    tr_log.append(":");
+    tr_log.append(android::base::StringPrintf("%d", command.line()));
+    tr_log.append(")");
+
+    StartWriteTrace(tr_log.c_str(), 0);
+    auto result = command.InvokeFunc(subcontext_);
+    EndWriteTrace(0);
+#endif
     auto duration = t.duration();
 
     // There are many legacy paths in rootdir/init.rc that will virtually never exist on a new
@@ -134,9 +154,10 @@ void Action::ExecuteCommand(const Command& command) const {
     // Any action longer than 50ms will be warned to user as slow operation
     if (report_failure || duration > 50ms ||
         android::base::GetMinimumLogSeverity() <= android::base::DEBUG) {
+#ifndef MTK_TRACE
         std::string trigger_name = BuildTriggersString();
         std::string cmd_str = command.BuildCommandString();
-
+#endif
         LOG(INFO) << "Command '" << cmd_str << "' action=" << trigger_name << " (" << filename_
                   << ":" << command.line() << ") took " << duration.count() << "ms and "
                   << (result ? "succeeded" : "failed: " + result.error_string());
