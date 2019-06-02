@@ -718,5 +718,44 @@ int SelinuxSetupKernelLogging_split_check() {
 }
 #endif
 
+#ifdef MTK_TRACE
+static int marker_fd = -1;
+
+static int OpenTrace(int force) {
+    const char* m_path = "/sys/kernel/debug/tracing/trace_marker";
+
+    if (marker_fd != -1 || !force)
+        return marker_fd;
+
+    marker_fd = open(m_path, O_WRONLY);
+
+    return marker_fd;
+}
+
+void StartWriteTrace(const char* tracemsg, int pid) {
+    int fd = OpenTrace(1);
+    int _pid = pid ? pid : getpid();
+    char msg[256];
+    int ret;
+
+    if (fd != -1) {
+        snprintf (msg, 256, "B|%d|%s", _pid, tracemsg);
+        ret = write(fd, msg, strlen(msg));
+    }
+}
+
+void EndWriteTrace(int pid) {
+    int fd = OpenTrace(0);
+    int _pid = pid ? pid : getpid();
+    char msg[256];
+    int ret;
+
+    if (fd != -1) {
+        snprintf(msg, 256, "E|%d", _pid);
+        ret = write(fd, msg, strlen(msg));
+    }
+}
+#endif
+
 }  // namespace init
 }  // namespace android

@@ -74,6 +74,11 @@ int SelinuxSetupKernelLogging_split_check();
 #endif
 void InitKernelLogging(char** argv, std::function<void(const char*)> abort_function);
 bool IsRecoveryMode();
+
+#ifdef MTK_TRACE
+void StartWriteTrace(const char* tracemsg, int pid);
+void EndWriteTrace(int pid);
+#endif
 }  // namespace init
 }  // namespace android
 
