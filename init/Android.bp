@@ -196,9 +196,6 @@ cc_binary {
         },
     },
     ldflags: ["-Wl,--rpath,/system/${LIB}/bootstrap"],
-    sanitize: {
-        address: false,
-    },
 }
 
 // Tests
