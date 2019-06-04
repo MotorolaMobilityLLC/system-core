@@ -82,6 +82,7 @@
 #define ZONEINFO_PATH "/proc/zoneinfo"
 #define MEMINFO_PATH "/proc/meminfo"
 #define LINE_MAX 128
+#define MAX_NR_ZONES 6
 
 /* Android Logger event logtags (see event.logtags) */
 #define MEMINFO_LOG_TAG 10195355
@@ -162,6 +163,7 @@ static bool per_app_memcg;
 static bool enhance_batch_kill;
 static bool enable_adaptive_lmk;
 static bool enable_userspace_lmk;
+static bool enable_watermark_check;
 static int swap_free_low_percentage;
 static bool use_psi_monitors = false;
 static struct psi_threshold psi_thresholds[VMPRESS_LEVEL_COUNT] = {
@@ -318,6 +320,19 @@ enum field_match_result {
     NO_MATCH,
     PARSE_FAIL,
     PARSE_SUCCESS
+};
+
+struct watermark_info {
+    char name[LINE_MAX];
+    int free;
+    int high;
+    int cma;
+    int present;
+    int lowmem_reserve[MAX_NR_ZONES];
+    int inactive_anon;
+    int active_anon;
+    int inactive_file;
+    int active_file;
 };
 
 struct adjslot_list {
@@ -1223,6 +1238,141 @@ static void meminfo_log(union meminfo *mi) {
     android_log_reset(ctx);
 }
 
+/*
+ * no strtok_r since that modifies buffer and we want to use multiline sscanf
+ */
+static char *nextln(char *buf)
+{
+    char *x;
+
+    x = memchr(buf, '\n', strlen(buf));
+    if (!x)
+        return buf + strlen(buf);
+    return x + 1;
+}
+
+static int parse_one_zone_watermark(char *buf, struct watermark_info *w)
+{
+    char *start = buf;
+    int nargs;
+    int ret = 0;
+
+    while (*buf) {
+        nargs = sscanf(buf, "Node %*u, zone %" STRINGIFY(LINE_MAX) "s", w->name);
+        buf = nextln(buf);
+        if (nargs == 1) {
+            break;
+        }
+    }
+
+    while(*buf) {
+        nargs = sscanf(buf,
+                    " pages free %d"
+                    " min %*d"
+                    " low %*d"
+                    " high %d"
+                    " spanned %*d"
+                    " present %d"
+                    " managed %*d",
+                    &w->free, &w->high, &w->present);
+        buf = nextln(buf);
+        if (nargs == 3) {
+            break;
+        }
+    }
+
+    while(*buf) {
+        nargs = sscanf(buf,
+                    " protection: (%d, %d, %d, %d, %d, %d)",
+                    &w->lowmem_reserve[0], &w->lowmem_reserve[1],
+                    &w->lowmem_reserve[2], &w->lowmem_reserve[3],
+                    &w->lowmem_reserve[4], &w->lowmem_reserve[5]);
+        buf = nextln(buf);
+        if (nargs >= 1) {
+            break;
+        }
+    }
+
+    while(*buf) {
+        nargs = sscanf(buf,
+                    " nr_zone_inactive_anon %d"
+                    " nr_zone_active_anon %d"
+                    " nr_zone_inactive_file %d"
+                    " nr_zone_active_file %d",
+                    &w->inactive_anon, &w->active_anon,
+                    &w->inactive_file, &w->active_file);
+        buf = nextln(buf);
+        if (nargs == 4) {
+            break;
+        }
+    }
+
+    while (*buf) {
+        nargs = sscanf(buf, " nr_free_cma %u", &w->cma);
+        buf = nextln(buf);
+        if (nargs == 1) {
+            ret = buf - start;
+            break;
+        }
+    }
+
+    return ret;
+}
+
+/*
+ * Returns true on parsing error.
+ */
+static bool zone_watermarks_ok()
+{
+    static struct reread_data file_data = {
+        .filename = ZONEINFO_PATH,
+        .fd = -1,
+    };
+    char buf[2 * PAGE_SIZE];
+    char *offset;
+    struct watermark_info w;
+    int zone_id, i, nr;
+    bool lowmem_reserve_ok[MAX_NR_ZONES];
+
+    if (reread_file(&file_data, buf, sizeof(buf)) < 0) {
+        return true;
+    }
+
+    memset(&w, 0, sizeof(w));
+    memset(&lowmem_reserve_ok, 0, sizeof(lowmem_reserve_ok));
+    offset = buf;
+    for (zone_id = 0; zone_id < MAX_NR_ZONES; zone_id++) {
+        int margin;
+
+        nr = parse_one_zone_watermark(offset, &w);
+        if (!nr)
+            break;
+
+        offset += nr;
+        ALOGD("Zone %s: free:%d high:%d cma:%d reserve:(%d %d %d) anon:(%d %d) file:(%d %d)\n",
+                w.name, w.free, w.high, w.cma,
+                w.lowmem_reserve[0], w.lowmem_reserve[1], w.lowmem_reserve[2],
+                w.inactive_anon, w.active_anon, w.inactive_file, w.active_file);
+
+        /* Zone is empty */
+        if (!w.present)
+            continue;
+
+        margin = w.free - w.cma - w.high;
+        for (i = 0; i < MAX_NR_ZONES; i++)
+            if (w.lowmem_reserve[i] && (margin > w.lowmem_reserve[i]))
+                lowmem_reserve_ok[i] = true;
+
+        if (margin < 0 && !lowmem_reserve_ok[zone_id])
+            return false;
+    }
+
+    if (offset == buf)
+        ALOGE("Parsing watermarks failed in %s", file_data.filename);
+
+    return true;
+}
+
 static int proc_get_size(int pid) {
     char path[PATH_MAX];
     char line[LINE_MAX];
@@ -1713,14 +1863,21 @@ do_kill:
         static unsigned long report_skip_count = 0;
 
         if (!use_minfree_levels) {
-            /* Free up enough memory to downgrate the memory pressure to low level */
-            if (mi.field.nr_free_pages >= low_pressure_mem.max_nr_free_pages) {
-                if (debug_process_killing) {
-                    ALOGI("Ignoring pressure since more memory is "
-                        "available (%" PRId64 ") than watermark (%" PRId64 ")",
-                        mi.field.nr_free_pages, low_pressure_mem.max_nr_free_pages);
+            if (!enable_watermark_check) {
+                /* Free up enough memory to downgrate the memory pressure to low level */
+                if (mi.field.nr_free_pages >= low_pressure_mem.max_nr_free_pages) {
+                    if (debug_process_killing) {
+                        ALOGI("Ignoring pressure since more memory is "
+                            "available (%" PRId64 ") than watermark (%" PRId64 ")",
+                            mi.field.nr_free_pages, low_pressure_mem.max_nr_free_pages);
+                    }
+                    return;
                 }
-                return;
+            } else {
+                if (zone_watermarks_ok()) {
+                    ALOGI("Ignoring pressure since per-zone watermarks ok");
+                    return;
+                }
             }
             min_score_adj = level_oomadj[level];
         }
@@ -2068,6 +2225,8 @@ int main(int argc __unused, char **argv __unused) {
         property_get_bool("ro.config.per_app_memcg", low_ram_device);
     swap_free_low_percentage =
         property_get_int32("ro.lmk.swap_free_low_percentage", 10);
+    enable_watermark_check =
+        property_get_bool("ro.lmk.enable_watermark_check", false);
 
      /* Loading the vendor library at runtime to access property value */
      PropVal (*perf_wait_get_prop)(const char *, const char *) = NULL;
