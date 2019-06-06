@@ -831,3 +831,19 @@ on property:ro.build.type=userdebug
 on property:ro.build.type=user
     chmod 0771 /data/anr
     chmod 01771 /data/misc
+
+on post-fs
+    # Create new dir to store bootanimation specific data
+    mkdir /persist/bootanim 0770 graphics graphics
+
+on property:persist.carrier.carrierid=*
+    # Store carrierid info for correct display of boot animation
+    write /persist/bootanim/carrierid ${persist.carrier.carrierid}
+    chmod 0660 /persist/bootanim/carrierid
+    chown system system /persist/bootanim/carrierid
+
+on property:persist.sys.bootanim.play_sound=*
+    # Store value of play_sound prop to decide whether or not to play sound during boot
+    write /persist/bootanim/bootsound ${persist.sys.bootanim.play_sound}
+    chmod 0660 /persist/bootanim/bootsound
+    chown system system /persist/bootanim/bootsound
