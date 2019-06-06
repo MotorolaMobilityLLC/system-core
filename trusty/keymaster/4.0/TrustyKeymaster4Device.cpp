@@ -555,8 +555,8 @@ Return<void> TrustyKeymaster4Device::attestKey(const hidl_vec<uint8_t>& keyToAtt
 
     request.attest_params.GetTagValue(TAG_ATTESTATION_CHALLENGE, &attestation_challenge);
     if (attestation_challenge.data_length > kMaximumAttestationChallengeLength) {
-        ALOGE("%ld-byte attestation challenge; only %ld bytes allowed",
-              attestation_challenge.data_length, kMaximumAttestationChallengeLength);
+        ALOGE("%d-byte attestation challenge; only %d bytes allowed",
+              (int)attestation_challenge.data_length, (int)kMaximumAttestationChallengeLength);
         response.error =  KM_ERROR_INVALID_INPUT_LENGTH;
         goto fail_return;
     }
@@ -669,7 +669,7 @@ Return<void> TrustyKeymaster4Device::update(uint64_t operationHandle,
         if (left > 0)
             round++;
 
-        ALOGD("There have %dst rounds to send, left:%d, total:%ld", round, left, input.size());
+        ALOGD("There have %dst rounds to send, left:%d, total:%d", round, left, (int)input.size());
 
         if (round > 0) {
             tmp = reinterpret_cast<uint8_t*>(malloc(input.size()+ROUND_BUF_SIZE));
