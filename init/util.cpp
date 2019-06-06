@@ -445,38 +445,5 @@ bool IsRecoveryMode() {
     return access("/system/bin/recovery", F_OK) == 0;
 }
 
-/*
- * parse zoneinfo to get tatal present memory size,
- * return memory base M Bytes, PAGE_SIZE 4096 Byte
- */
-int get_present_memory_size(void)
-{
-    char line[1024];
-    FILE* fp;
-    int memsize = 0;
-
-    fp = fopen("/proc/zoneinfo", "r");
-    if (fp != NULL) {
-        while (!feof(fp)) {
-            if (fgets(line, sizeof(line), fp)) {
-                char *ptr = strstr(line, "present");
-                int present_size;
-
-                if (ptr && (sscanf(ptr, "present  %d", &present_size) == 1))
-                    memsize += present_size;
-            }
-        }
-        fclose(fp);
-        /* memory size base M bytes */
-        memsize >>= 8;
-        /* Up Align base 256M */
-        memsize = (((memsize + 255) >> 8) << 8);
-    } else {
-        memsize = 512;
-    }
-
-    return memsize;
-}
-
 }  // namespace init
 }  // namespace android
