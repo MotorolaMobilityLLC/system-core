@@ -298,6 +298,36 @@ static Result<Success> do_interface_stop(const BuiltinArguments& args) {
     return Success();
 }
 
+static Result<Success> is_dir_empty(const char *dirname, bool *is_empty, char *sub_dir, int size)
+{
+    int n = 0;
+    auto dirp = std::unique_ptr<DIR, int (*)(DIR*)>(opendir(dirname), closedir);
+    if (!dirp) {
+        return Error() << "Unable to read directory: " << dirname;
+    }
+    for (;;) {
+        errno = 0;
+        auto entry = readdir(dirp.get());
+        if (!entry) {
+            if (errno) {
+                return Error() << "Unable to read directory: " << dirname;
+            }
+            break;
+        }
+        if (strcmp(entry->d_name, "lost+found") != 0) { // Skip lost+found
+            ++n;
+            if (n > 2) {
+                *is_empty = false;
+                strncpy(sub_dir, entry->d_name, size - 1);
+                sub_dir[size - 1] = '\0';
+                return Success();
+            }
+        }
+    }
+    *is_empty = true;
+    return Success();
+}
+
 // mkdir <path> [mode] [owner] [group]
 static Result<Success> do_mkdir(const BuiltinArguments& args) {
     mode_t mode = 0755;
@@ -344,8 +374,17 @@ static Result<Success> do_mkdir(const BuiltinArguments& args) {
 
     if (fscrypt_is_native()) {
         if (fscrypt_set_directory_policy(args[1].c_str())) {
-            return reboot_into_recovery(
-                {"--prompt_and_wipe_data", "--reason=set_policy_failed:"s + args[1]});
+            bool is_empty;
+            char sub_dir[32];
+            auto is_empty_result = is_dir_empty(args[1].c_str(), &is_empty, sub_dir, sizeof(sub_dir));
+
+            if(is_empty_result && !is_empty) {
+                return reboot_into_recovery(
+                    {"--prompt_and_wipe_data", "--reason=set_policy_failed:"s + args[1] + " not empty with " + sub_dir});
+            } else {
+                return reboot_into_recovery(
+                    {"--prompt_and_wipe_data", "--reason=set_policy_failed:"s + args[1]});
+            }
         }
     }
     return Success();
