@@ -261,6 +261,28 @@ static void check_fs(const std::string& blk_device, const std::string& fs_type,
                 *fs_stat |= FS_STAT_E2FSCK_FS_FIXED;
             }
         }
+#ifndef RESERVED_SPACE_DISABLED
+        /* Set the reserve count for data after fs check */
+        if (!strcmp(target.c_str(), "/data")) {
+            const char *tune2fs_argv[] = {
+                TUNE2FS_BIN,
+                "-r 2560", // 10M reserved for data partition
+                blk_device.c_str()
+            };
+            LINFO << "Running " << TUNE2FS_BIN << " -r " << blk_device;
+            ret = android_fork_execvp_ext(ARRAY_SIZE(tune2fs_argv),
+                          const_cast<char **>(tune2fs_argv),
+                          &status, true, LOG_KLOG | LOG_FILE,
+                          true, const_cast<char *>(FSCK_LOG_FILE),
+                          NULL, 0);
+
+            if (ret < 0) {
+                /* No need to check for error in fork, we can't really handle it now */
+                LERROR << "Failed trying to run " << TUNE2FS_BIN;
+            }
+        }
+#endif
+
     } else if (is_f2fs(fs_type)) {
         const char* f2fs_fsck_argv[] = {F2FS_FSCK_BIN, "-a", blk_device.c_str()};
         LINFO << "Running " << F2FS_FSCK_BIN << " -a " << realpath(blk_device);
