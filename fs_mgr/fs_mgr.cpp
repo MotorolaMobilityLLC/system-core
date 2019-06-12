@@ -1268,6 +1268,11 @@ int fs_mgr_mount_all(Fstab* fstab, int mount_mode) {
             }
             encryptable = FS_MGR_MNTALL_DEV_MIGHT_BE_ENCRYPTED;
         } else if (mount_errno != EBUSY && mount_errno != EACCES &&
+            attempted_entry.fs_mgr_flags.file_encryption &&
+            (attempted_entry.file_contents_mode == "aes-256-xts")) {
+                LERROR << __FUNCTION__ << "(): EM_AES_256_XTS mode";
+                encryptable = FS_MGR_MNTALL_DEV_NEEDS_RECOVERY;
+        } else if (mret && mount_errno != EBUSY && mount_errno != EACCES &&
                    should_use_metadata_encryption(attempted_entry)) {
             if (!call_vdc({"cryptfs", "mountFstab", attempted_entry.mount_point})) {
                 ++error_count;
@@ -1299,6 +1304,7 @@ int fs_mgr_mount_all(Fstab* fstab, int mount_mode) {
     fs_mgr_overlayfs_mount_all(fstab);
 #endif
 
+	PERROR << android::base::StringPrintf("fs_mgr error_count and encryptable is %d %d\n",error_count,encryptable);
     if (error_count) {
         return FS_MGR_MNTALL_FAIL;
     } else {
