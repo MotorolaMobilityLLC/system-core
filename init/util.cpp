@@ -727,7 +727,7 @@ static int OpenTrace(int force) {
     if (marker_fd != -1 || !force)
         return marker_fd;
 
-    marker_fd = open(m_path, O_WRONLY);
+    marker_fd = open(m_path, O_WRONLY | O_CLOEXEC);
 
     return marker_fd;
 }
