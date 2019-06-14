@@ -71,6 +71,7 @@
 #define KEY_IN_FOOTER  "footer"
 
 #define E2FSCK_BIN      "/system/bin/e2fsck"
+#define RESIZE2FS_BIN   "/system/bin/resize2fs"
 #define F2FS_FSCK_BIN   "/system/bin/fsck.f2fs"
 #define MKSWAP_BIN      "/system/bin/mkswap"
 #define TUNE2FS_BIN     "/system/bin/tune2fs"
@@ -281,6 +282,21 @@ static void check_fs(const std::string& blk_device, const std::string& fs_type,
                 LERROR << "Failed trying to run " << TUNE2FS_BIN;
             }
         }
+#endif
+
+#ifndef FS_MGR_RESIZE_DISABLED
+    if (!strcmp(target.c_str(), "/data")) {
+	const char* resize2fs_argv[] = {RESIZE2FS_BIN, "-f", "-e 16384", blk_device.c_str()};
+        LINFO << "Running " << RESIZE2FS_BIN << " on " << blk_device;
+        ret = android_fork_execvp_ext(ARRAY_SIZE(resize2fs_argv), const_cast<char **>(resize2fs_argv),
+                                        &status, true, LOG_KLOG | LOG_FILE,
+                                        true, const_cast<char *>(FSCK_LOG_FILE), NULL, 0);
+
+        if (ret < 0) {
+            /* No need to check for error in fork, we can't really handle it now */
+            LERROR << "Failed trying to run " << RESIZE2FS_BIN;
+        }
+    }
 #endif
 
     } else if (is_f2fs(fs_type)) {
