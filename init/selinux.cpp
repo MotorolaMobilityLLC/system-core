@@ -254,7 +254,7 @@ bool GetVendorMappingVersion(std::string* plat_vers) {
 }
 
 #ifdef JOURNEY_FEATURE_ROOT_MODE
-constexpr const char plat_policy_journey_debug_mode_cil_file[] = "/system/etc/selinux/plat_sepolicy_journey_debug_mode.cil";
+constexpr const char plat_policy_journey_root_mode_cil_file[] = "/system/etc/selinux/plat_sepolicy_journey_root_mode.cil";
 #endif
 constexpr const char plat_policy_cil_file[] = "/system/etc/selinux/plat_sepolicy.cil";
 
@@ -338,8 +338,8 @@ bool LoadSplitPolicy() {
 #ifdef JOURNEY_FEATURE_ROOT_MODE
     std::string journey_plat_policy_cil_file = plat_policy_cil_file;
     if(journey_root_mode) {
-        if (access(plat_policy_journey_debug_mode_cil_file, R_OK) == 0) {
-            journey_plat_policy_cil_file = plat_policy_journey_debug_mode_cil_file;
+        if (access(plat_policy_journey_root_mode_cil_file, R_OK) == 0) {
+            journey_plat_policy_cil_file = plat_policy_journey_root_mode_cil_file;
             LOG(INFO) << "plat_policy_cil_file change to " << journey_plat_policy_cil_file;
         } else {
             LOG(INFO) << "NOT found " << journey_plat_policy_cil_file << " , ignore journey sepolicy";
@@ -351,6 +351,7 @@ bool LoadSplitPolicy() {
         "/system/bin/secilc",
 #ifdef JOURNEY_FEATURE_ROOT_MODE
         journey_plat_policy_cil_file.c_str(),
+#else
         plat_policy_cil_file,
 #endif
         "-m", "-M", "true", "-G", "-N",

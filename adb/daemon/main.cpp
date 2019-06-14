@@ -215,7 +215,7 @@ int adbd_main(int server_port) {
     }
 #endif
 
-#ifdef JOURNEY_FEATURE_DEBUG_MODE
+#ifdef JOURNEY_FEATURE_ROOT_MODE
     if(journey_root_mode){
         LOG(INFO) << "adbd running in journey root mode. disable usb auth";
         auth_required = false; // we disable the auth feature , be casue maybe there is boot up failed issue.
