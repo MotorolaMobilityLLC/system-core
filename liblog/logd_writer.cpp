@@ -84,6 +84,9 @@ static int logdOpen() {
     char threadnamebuf[1024];
     char* threadname = NULL;
     const char* key_configstore = "android.hardware.configstore";
+#if !defined(CONFIG_MT_ENG_BUILD)
+    const char* key_camera = "camerahalserver";
+#endif
     int sock = -1;
 
     snprintf(path, PATH_MAX, "/proc/%d/cmdline", getpid());
@@ -91,8 +94,14 @@ static int logdOpen() {
       threadname = fgets(threadnamebuf, sizeof(threadnamebuf), fp);
       fclose(fp);
     }
+#if !defined(CONFIG_MT_ENG_BUILD) // userdebug load
+    skip_thread = 1; // default skip block mode
+    if (threadname && strstr(threadname, key_camera))
+      skip_thread = 0; // use block mode
+#else // eng load
     if (threadname && strstr(threadname, key_configstore))
       skip_thread = 1; // set filter flag
+#endif
 
     if (skip_thread == 0) {  // no need filter, create BLOCK mode socket
       sock = TEMP_FAILURE_RETRY(
