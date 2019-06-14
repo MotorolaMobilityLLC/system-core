@@ -690,10 +690,10 @@ static void update_sys_usb_config() {
     bool is_debuggable = android::base::GetBoolProperty("ro.debuggable", false);
     std::string config = android::base::GetProperty("persist.sys.usb.config", "");
 
-#ifdef JOURNEY_FEATURE_DEBUG_MODE
-    is_debuggable |= journey_debug_mode;
-    if(journey_debug_mode)
-        LOG(INFO) << "update_sys_usb_config journey_debug_mode";
+#ifdef JOURNEY_FEATURE_ROOT_MODE
+    is_debuggable |= journey_root_mode;
+    if(journey_root_mode)
+        LOG(INFO) << "update_sys_usb_config journey_root_mode";
 #endif
 #ifdef JOURNEY_FEATURE_FACTORY_REQUEST
     bool is_factory_mode = android::base::GetBoolProperty("debug.adb.factory.mode", false);
@@ -701,7 +701,7 @@ static void update_sys_usb_config() {
     if(is_factory_mode)
         LOG(INFO) << "update_sys_usb_config is_factory_mode";
 #endif
-#if defined(JOURNEY_FEATURE_DEBUG_MODE) || defined(JOURNEY_FEATURE_FACTORY_REQUEST)
+#if defined(JOURNEY_FEATURE_ROOT_MODE) || defined(JOURNEY_FEATURE_FACTORY_REQUEST)
     if(is_debuggable) {
         is_debuggable = true; // we really need this in journey debug mode. it will force open adb
         LOG(INFO) << "update_sys_usb_config change is_debuggable to true";

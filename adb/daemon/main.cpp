@@ -50,8 +50,8 @@
 
 static const char* root_seclabel = nullptr;
 
-#ifdef JOURNEY_FEATURE_DEBUG_MODE
-bool journey_debug_mode = android::base::GetBoolProperty("ro.boot.journey.debug", false);
+#ifdef JOURNEY_FEATURE_ROOT_MODE
+static bool journey_root_mode = android::base::GetBoolProperty("ro.boot.journey.root", false);
 #endif
 #ifdef MOTO_FACTORY_SUPPORT
 bool moto_factory_mode = android::base::GetBoolProperty("ro.boot.moto.factory", false);
@@ -67,9 +67,9 @@ static bool should_drop_capabilities_bounding_set() {
 }
 
 static bool should_drop_privileges() {
-#ifdef JOURNEY_FEATURE_DEBUGG_MODE_ROOT
+#ifdef JOURNEY_FEATURE_ROOT_MODE
     std::string journey_bootmode = android::base::GetProperty("ro.bootmode", "");
-    if(journey_debug_mode && journey_bootmode != "recovery") { // recovery mode have not got the su policy , will cause adbd crashed
+    if(journey_root_mode && journey_bootmode != "recovery") { // recovery mode have not got the su policy , will cause adbd crashed
         LOG(INFO) << "reject drop privileges in journey debug mode.";
         return false; // dont drop anything if we are in debug mode
     }
@@ -216,8 +216,8 @@ int adbd_main(int server_port) {
 #endif
 
 #ifdef JOURNEY_FEATURE_DEBUG_MODE
-    if(journey_debug_mode){
-        LOG(INFO) << "adbd running in journey debug mode. disable usb auth";
+    if(journey_root_mode){
+        LOG(INFO) << "adbd running in journey root mode. disable usb auth";
         auth_required = false; // we disable the auth feature , be casue maybe there is boot up failed issue.
     }
 #endif

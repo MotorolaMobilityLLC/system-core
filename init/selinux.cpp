@@ -199,8 +199,8 @@ bool ReadFirstLine(const char* file, std::string* line) {
 }
 
 bool FindPrecompiledSplitPolicy(std::string* file) {
-#ifdef JOURNEY_FEATURE_DEBUG_MODE
-    if (journey_debug_mode) {
+#ifdef JOURNEY_FEATURE_ROOT_MODE
+    if (journey_root_mode) {
         LOG(INFO) << "Skip precompiled sepolicy because we are in journey dbeug mode";
         return false;
     }
@@ -253,7 +253,7 @@ bool GetVendorMappingVersion(std::string* plat_vers) {
     return true;
 }
 
-#ifdef JOURNEY_FEATURE_DEBUG_MODE
+#ifdef JOURNEY_FEATURE_ROOT_MODE
 constexpr const char plat_policy_journey_debug_mode_cil_file[] = "/system/etc/selinux/plat_sepolicy_journey_debug_mode.cil";
 #endif
 constexpr const char plat_policy_cil_file[] = "/system/etc/selinux/plat_sepolicy.cil";
@@ -335,9 +335,9 @@ bool LoadSplitPolicy() {
         odm_policy_cil_file.clear();
     }
     const std::string version_as_string = std::to_string(max_policy_version);
-#ifdef JOURNEY_FEATURE_DEBUG_MODE
+#ifdef JOURNEY_FEATURE_ROOT_MODE
     std::string journey_plat_policy_cil_file = plat_policy_cil_file;
-    if(journey_debug_mode) {
+    if(journey_root_mode) {
         if (access(plat_policy_journey_debug_mode_cil_file, R_OK) == 0) {
             journey_plat_policy_cil_file = plat_policy_journey_debug_mode_cil_file;
             LOG(INFO) << "plat_policy_cil_file change to " << journey_plat_policy_cil_file;
@@ -349,9 +349,8 @@ bool LoadSplitPolicy() {
     // clang-format off
     std::vector<const char*> compile_args {
         "/system/bin/secilc",
-#ifdef JOURNEY_FEATURE_DEBUG_MODE
+#ifdef JOURNEY_FEATURE_ROOT_MODE
         journey_plat_policy_cil_file.c_str(),
-#else
         plat_policy_cil_file,
 #endif
         "-m", "-M", "true", "-G", "-N",

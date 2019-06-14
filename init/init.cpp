@@ -408,7 +408,7 @@ static void export_kernel_boot_props() {
 #ifdef MOTO_GENERAL_FEATURE
         { "ro.boot.revision",   "ro.hw.hwrev",   "0", },
         { "ro.boot.bootloader", "ro.bootloader", "unknown", },
-        { "ro.boot.moto.factory", "ro.moto.factory", "0", },        
+        { "ro.boot.moto.factory", "ro.moto.factory", "0", },
 #endif
     };
     for (size_t i = 0; i < arraysize(prop_map); i++) {
@@ -584,18 +584,16 @@ void LoadRscRwProps() {
     load_properties_from_file (std::string("/system/" + rscpath + "rw.prop").c_str(), NULL);
     load_properties_from_file (std::string("/vendor/" + rscpath + "rw.prop").c_str(), NULL);
 }
-#ifdef JOURNEY_FEATURE_DEBUG_MODE
-bool journey_debug_mode = false;
-void initJourneyDebugeMode() {
+
+#ifdef JOURNEY_FEATURE_ROOT_MODE
+bool journey_root_mode = false;
+void initJourneyRootMode() {
     std::string cmdline;
     android::base::ReadFileToString("/proc/cmdline", &cmdline);
-
-    if(cmdline.find("androidboot.journey.debug=1") != std::string::npos) {
-        LOG(INFO) << "we are in journey_debug_mode now.";
-        journey_debug_mode = true;
-    } else if(cmdline.find("androidboot.journey.debug=0") != std::string::npos) {
-        LOG(INFO) << "we are support journey_debug_mode.";
-    }
+    if(cmdline.find("androidboot.journey.root=1") != std::string::npos) {
+        LOG(INFO) << "we are in journey_debug_root.";
+        journey_root_mode = true;
+    }    
 }
 #endif
 
@@ -663,8 +661,8 @@ int main(int argc, char** argv) {
         // Now that tmpfs is mounted on /dev and we have /dev/kmsg, we can actually
         // talk to the outside world...
         InitKernelLogging(argv);
-#ifdef JOURNEY_FEATURE_DEBUG_MODE
-        initJourneyDebugeMode();
+#ifdef JOURNEY_FEATURE_ROOT_MODE
+        initJourneyRootMode();
 #endif
 
         LOG(INFO) << "init first stage started!";
@@ -705,9 +703,10 @@ int main(int argc, char** argv) {
 
     // At this point we're in the second stage of init.
     InitKernelLogging(argv);
-#ifdef JOURNEY_FEATURE_DEBUG_MODE
-    initJourneyDebugeMode();
+#ifdef JOURNEY_FEATURE_ROOT_MODE
+    initJourneyRootMode();
 #endif
+
     LOG(INFO) << "init second stage started!";
 
     // Set up a session keyring that all processes will have access to. It
@@ -760,9 +759,9 @@ int main(int argc, char** argv) {
         // In that case, receiving SIGTERM will cause the system to shut down.
         InstallSigtermHandler();
     }
-#ifdef JOURNEY_FEATURE_DEBUG_MODE
+#ifdef JOURNEY_FEATURE_ROOT_MODE
     std::string journey_bootmode = GetProperty("ro.bootmode", "");
-    if(journey_debug_mode && journey_bootmode == "recovery") {
+    if(journey_root_mode && journey_bootmode == "recovery") {
         // force recovery use adb. just work like a userdebug version
         property_set("ro.adb.secure","0");
         property_set("ro.debuggable","1");

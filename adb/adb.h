@@ -230,8 +230,4 @@ void update_transport_status();
 // Wait until device scan has completed and every transport is ready, or a timeout elapses.
 void adb_wait_for_device_initialization();
 
-#ifdef JOURNEY_FEATURE_DEBUG_MODE
-extern bool journey_debug_mode;
-#endif
-
 #endif

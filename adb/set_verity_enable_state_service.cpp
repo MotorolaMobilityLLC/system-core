@@ -45,6 +45,12 @@ static const bool kAllowDisableVerity = true;
 static const bool kAllowDisableVerity = false;
 #endif
 
+#ifdef JOURNEY_FEATURE_ROOT_MODE
+static bool journey_root_mode = android::base::GetBoolProperty("ro.boot.journey.root", false);
+#else
+#error
+#endif
+
 /* Turn verity on/off */
 static bool set_verity_enabled_state(int fd, const char* block_device, const char* mount_point,
                                      bool enable) {
@@ -160,8 +166,8 @@ void set_verity_enabled_state_service(int fd, void* cookie) {
     // Should never be possible to disable dm-verity on a USER build
     // regardless of using AVB or VB1.0.
     if (!__android_log_is_debuggable()) {
-#ifdef JOURNEY_FEATURE_DEBUGG_MODE_ROOT
-        if (journey_debug_mode) {
+#ifdef JOURNEY_FEATURE_ROOT_MODE
+        if (journey_root_mode) {
             bool flash_locked = android::base::GetBoolProperty("ro.boot.flash.locked",true);
             if(flash_locked) {
                 WriteFdFmt(fd, "verity cannot be disabled/enabled - flash locked.\n");
@@ -171,7 +177,6 @@ void set_verity_enabled_state_service(int fd, void* cookie) {
                 WriteFdFmt(fd, "verity can be disabled/enabled with flash unlocked.\n");
             }
         }
-#else
         WriteFdFmt(fd, "verity cannot be disabled/enabled - USER build\n");
         return;
 #endif
