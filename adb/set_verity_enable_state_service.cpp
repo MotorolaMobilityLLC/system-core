@@ -47,8 +47,6 @@ static const bool kAllowDisableVerity = false;
 
 #ifdef JOURNEY_FEATURE_ROOT_MODE
 static bool journey_root_mode = android::base::GetBoolProperty("ro.boot.journey.root", false);
-#else
-#error
 #endif
 
 /* Turn verity on/off */
