@@ -363,6 +363,7 @@ static long page_k;
 
 /* FD for connecting duraSpeed */
 int duraspeed_fd = -1;
+int duraspeed_supported = -1;
 
 static bool parse_int64(const char* str, int64_t* ret) {
     char* endptr;
@@ -992,19 +993,18 @@ static void ctrl_connect_handler(int data __unused, uint32_t events __unused) {
  * to communicate with server side.
  */
 static int connect_socket() {
-    ALOGD("connect socket start");
     int fd = socket_local_client("duraspeed_memory",
                   ANDROID_SOCKET_NAMESPACE_ABSTRACT, SOCK_STREAM);
     if(fd < 0) {
         ALOGE("Fail to connect to socket duraSpeedMem. return code: %d", fd);
         return -1;
     }
-    ALOGI("connect_socket: fd = %d, end", fd);
     return fd;
 }
 
 /* Entry to trigger duraSpeed */
-static void trigger_duraSpeed(int level, int64_t mem_pressure) {
+static void trigger_duraSpeed(int min_score_adj, int minfree,
+        int level, int64_t mem_pressure) {
     if (duraspeed_fd < 0) {
         duraspeed_fd = connect_socket();
         if (duraspeed_fd < 0) {
@@ -1013,8 +1013,9 @@ static void trigger_duraSpeed(int level, int64_t mem_pressure) {
     }
 
     int pressure = (int)mem_pressure;
-    char buf[16];
-    int ret = snprintf(buf, sizeof(buf), "%d:%d\r\n", level, pressure);
+    char buf[256];
+    int ret = snprintf(buf, sizeof(buf), "%d:%d:%d:%d\r\n", min_score_adj,
+            minfree, level, pressure);
     if (ret >= (ssize_t)sizeof(buf)) {
         ALOGE ("trigger duraSpeed Error, out of size");
     }
@@ -1647,6 +1648,11 @@ static void mp_event_common(int data, uint32_t events __unused) {
         return;
     }
 
+    // Trigger duraSpeed if duraspeed is supported.
+    if (duraspeed_supported == -1) {
+        duraspeed_supported = property_get_int32("persist.vendor.duraspeed.support", 0);
+    }
+
     if (use_minfree_levels) {
         int i;
 
@@ -1675,6 +1681,9 @@ static void mp_event_common(int data, uint32_t events __unused) {
                       (long)lowmem_minfree[lowmem_targets_size - 1] * page_k);
             }
             return;
+        }
+        if (duraspeed_supported > 0) {
+            trigger_duraSpeed(min_score_adj, minfree, -1, -1);
         }
 
         goto do_kill;
@@ -1709,8 +1718,10 @@ static void mp_event_common(int data, uint32_t events __unused) {
         }
     }
     /// M: Add for duraSpeed @{
-    if (mem_pressure <= downgrade_pressure + 10) {
-        trigger_duraSpeed(level, mem_pressure);
+    if (duraspeed_supported > 0) {
+        if (mem_pressure <= downgrade_pressure + 10) {
+            trigger_duraSpeed(-1, -1, level, mem_pressure);
+        }
     }
     /// @}
 
