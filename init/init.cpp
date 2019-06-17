@@ -628,12 +628,11 @@ static void InstallSignalFdHandler() {
     register_epoll_handler(signal_fd, HandleSignalFd);
 }
 
-//BEGIN Lenovo lubm1 IKSAMP-8880 2019-05-16 Set DSDV at runtime.
+//BEGIN Lenovo lubm1 IKSAMP-8880/IKSAM-11258 2019-05-16 Set DSDV at runtime.
 void SetDsdv(){
-    std::string rodevice = GetProperty("ro.boot.device","");
     std::string rocarrier = GetProperty("ro.boot.carrier","");
-    //Only set dsdv for Troika retin.
-    if ((rodevice == "troika") && (rocarrier == "retin")){
+    //Only set dsdv for retin.
+    if (rocarrier == "retin"){
         property_set("persist.vendor.radio.dual.volte", "1");
         property_set("ro.telephony.default_network", "10,10");
     } else {
@@ -643,7 +642,7 @@ void SetDsdv(){
     LOG(INFO) << "After SetDsdv dual.volte is " << GetProperty("persist.vendor.radio.dual.volte","");
     LOG(INFO) << "After SetDsdv default_network is " << GetProperty("ro.telephony.default_network","");
 }
-//END IKSAMP-8880
+//END IKSAMP-8880/IKSAM-11258
 
 int main(int argc, char** argv) {
     if (!strcmp(basename(argv[0]), "ueventd")) {
