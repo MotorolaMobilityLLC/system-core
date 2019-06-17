@@ -63,17 +63,19 @@ bool is_android_dt_value_expected(const std::string& sub_path, const std::string
 
 bool IsLegalPropertyName(const std::string& name);
 
+void SetStdioToDevNull(char** argv);
+void InitKernelLogging(char** argv);
+bool IsRecoveryMode();
+
 #ifdef MTK_LOG
 int PropSetLogReap(int);
 void PropSetLogReset();
 
-void InitKernelLogging_split(char** argv, std::function<void(const char*)> abort_function);
+void InitKernelLogging_split(char** argv);
 
 int selinux_klog_split_callback(int level, const char* fmt, ...);
 int SelinuxSetupKernelLogging_split_check();
 #endif
-void InitKernelLogging(char** argv, std::function<void(const char*)> abort_function);
-bool IsRecoveryMode();
 
 #ifdef MTK_TRACE
 void StartWriteTrace(const char* tracemsg, int pid);
