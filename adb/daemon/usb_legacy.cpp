@@ -166,9 +166,10 @@ static int usb_ffs_read(usb_handle* h, void* data, int len, bool allow_partial) 
         count += n;
 
         // For fastbootd command such as "getvar all", len parameter is always set 64.
-        // But what we read is actually less than 64. For example, length 10 for "getvar all" command.
+        // But what we read is actually less than 64.
+        // For example, length 10 for "getvar all" command.
         // If we get less data than expected, this means there should be no more data.
-        if(allow_partial && n < read_len) {
+        if (allow_partial && n < read_len) {
             orig_len = count;
             break;
         }
