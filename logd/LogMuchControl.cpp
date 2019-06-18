@@ -103,21 +103,33 @@ int logd_adjust(const char* cmdStr) {
     strncpy(command, cmdStr, sizeof(command));
     command[sizeof(command) - 1] = '\0';
     ssize_t ret = TEMP_FAILURE_RETRY(write(sock, command, strlen(command) + 1));
-    if (ret < 0) return -errno;
+    if (ret < 0) {
+        close(sock);
+        sock = -1;
+        return -errno;
+    }
 
     struct pollfd p;
     memset(&p, 0, sizeof(p));
     p.fd = sock;
     p.events = POLLIN;
     ret = TEMP_FAILURE_RETRY(poll(&p, 1, 1000));
-    if (ret < 0) return -errno;
+    if (ret < 0) {
+        close(sock);
+        p.fd = sock = -1;
+        return -errno;
+    }
     if ((ret == 0) || !(p.revents & POLLIN)) return -ETIME;
 
     static const char success[] = "success";
     char buffer[sizeof(success) - 1];
     memset(buffer, 0, sizeof(buffer));
     ret = TEMP_FAILURE_RETRY(read(sock, buffer, sizeof(buffer)));
-    if (ret < 0) return -errno;
+    if (ret < 0) {
+        close(sock);
+        p.fd = sock = -1;
+        return -errno;
+    }
 
     return strncmp(buffer, success, sizeof(success) - 1) != 0;
 }
@@ -223,7 +235,6 @@ static void* logmuch_adjust_thread_start(void* /*obj*/) {
             log_detect_value = 0;
             continue;
         }
-
         value = property_get_bool("persist.vendor.logmuch", true);
         if (value == true) {
             property_get("ro.build.type", property, "");

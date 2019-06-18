@@ -17,7 +17,7 @@ func mtkLogdEnhanceDefaults(ctx android.LoadHookContext) {
 	p := &props{}
 
 	vars := ctx.Config().VendorConfig("mtkPlugin")
-	if vars.String("MSSI_HAVE_AEE_FEATURE") == "" {
+	if vars.Bool("MSSI_HAVE_AEE_FEATURE") {
 		p.Cflags = append(p.Cflags, "-DMSSI_HAVE_AEE_FEATURE")
 		p.Header_libs = append(p.Header_libs, "libaed_headers")
 		p.Shared_libs = append(p.Shared_libs, "libaed")
