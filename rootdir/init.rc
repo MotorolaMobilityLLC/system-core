@@ -345,6 +345,10 @@ on late-init
     trigger early-boot
     trigger boot
 
+on early-fs
+   # Start vod for restoreCheckpoint/needsCheckpoint in mount_all()
+   start vold
+
 on post-fs
     start vold
     exec - system system -- /system/bin/vdc checkpoint markBootAttempt
