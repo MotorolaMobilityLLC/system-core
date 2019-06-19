@@ -33,6 +33,8 @@ endif
 init_options += -DLOG_UEVENTS=0 \
     -DSEPOLICY_VERSION=$(POLICYVERS)
 
+init_options += -DMTK_LOG=1
+
 init_cflags += \
     $(init_options) \
     -Wall -Wextra \
