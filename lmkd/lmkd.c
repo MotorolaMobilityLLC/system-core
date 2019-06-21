@@ -2150,6 +2150,12 @@ int main(int argc __unused, char **argv __unused) {
     swap_free_low_percentage =
         property_get_int32("ro.lmk.swap_free_low_percentage", 10);
 
+    /* By default use medium/critical threshold */
+    psi_thresholds[VMPRESS_LEVEL_MEDIUM].threshold_ms =
+        property_get_int32("ro.lmk.medium_some_threshold", 100);
+    psi_thresholds[VMPRESS_LEVEL_CRITICAL].threshold_ms =
+        property_get_int32("ro.lmk.critical_full_threshold", 70);
+
     ctx = create_android_logger(MEMINFO_LOG_TAG);
 
 #ifdef LMKD_LOG_STATS
