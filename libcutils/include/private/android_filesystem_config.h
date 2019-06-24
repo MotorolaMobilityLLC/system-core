@@ -155,6 +155,9 @@
 #define AID_NET_ADMIN 3005    /* can configure interfaces and routing tables. */
 #define AID_NET_BW_STATS 3006 /* read bandwidth statistics */
 #define AID_NET_BW_ACCT 3007  /* change bandwidth statistics accounting */
+
+/* AID_READPROC & AID_WAKELOCK needed by system_server
+ * Please keep sync with ZygoteInit.java --setgroups */
 #define AID_READPROC 3009     /* Allow /proc read access */
 #define AID_WAKELOCK 3010     /* Allow system wakelock read/write access */
 #define AID_UHID 3011         /* Allow read/write to /dev/uhid node */
