@@ -62,6 +62,7 @@
 #include "selinux.h"
 #include "subcontext.h"
 #include "util.h"
+#include "cutils/log.h"
 
 using namespace std::literals;
 
@@ -148,11 +149,12 @@ static uint32_t PropertySet(const std::string& name, const std::string& value, s
     prop_info* pi = (prop_info*) __system_property_find(name.c_str());
     if (pi != nullptr) {
         // ro.* properties are actually "write-once".
-        if (StartsWith(name, "ro.")) {
+        /* modify by dongjunxia for add countrycode A5-P L18021 bug[0340365] .start */
+        if (StartsWith(name, "ro.") && (name != "ro.product.locale")) {
             *error = "Read-only property was already set";
             return PROP_ERROR_READ_ONLY_PROPERTY;
         }
-
+      /* modify by dongjunxia for add countrycode A5-P L18021 bug[0340365] .end */
         __system_property_update(pi, value.c_str(), valuelen);
     } else {
         int rc = __system_property_add(name.c_str(), name.size(), value.c_str(), valuelen);
@@ -732,8 +734,89 @@ void load_persist_props(void) {
         property_set(persistent_property_record.name(), persistent_property_record.value());
     }
     persistent_properties_loaded = true;
+    /* modify by dongjunxia for add countrycode A5-P L18021 bug[0340365] .start */
+    std::string product_name = android::base::GetProperty("ro.product.device", "");
+   if (product_name == "L18021") {
+        load_countrycode_from_factory();
+   }
+    /* modify by dongjunxia for add countrycode A5-P L18021 bug[0340365] .end */
     property_set("ro.persistent_properties.ready", "true");
 }
+/* modify by dongjunxia for add countrycode A5-P L18021 bug[0340365] .start */
+void load_countrycode_from_factory (){
+   SLOGD("load_countrycode_from_factory");
+   std::string country_code = read_countrycode_from_factory();
+   if("IN" == country_code){
+           set_property_countrycode("en-IN","en","IN");
+       } else if ("ID" == country_code) {
+           set_property_countrycode("in-ID","in","ID");
+       } else if ("HK" == country_code) {
+           set_property_countrycode("zh-Hant-HK","zh","HK");
+       } else if ("NP" == country_code) {
+           set_property_countrycode("en-US","en","US");
+       } else if ("PH" == country_code) {
+           set_property_countrycode("fil-PH","fil","PH");
+       } else if ("VN" == country_code) {
+           set_property_countrycode("vi-VN","vi","VN");
+       } else if ("MY" == country_code) {
+           set_property_countrycode("ms-MY","ms","MY");
+       } else if ("TW" == country_code) {
+           set_property_countrycode("zh-Hant-TW","zh","TW");
+       } else if ("TH" == country_code) {
+           set_property_countrycode("th-TH","th","TH");
+       } else if ("SG" == country_code) {
+           set_property_countrycode("en-SG","en","SG");
+       } else if ("SA" == country_code) {
+           set_property_countrycode("ar-SA","ar","SA");
+       } else if ("AE" == country_code) {
+           set_property_countrycode("ar-AE","ar","AE");
+       } else if ("RO" == country_code) {
+           set_property_countrycode("ro-RO","ro","RO");
+       } else if ("RS" == country_code) {
+           set_property_countrycode("sr-Latn-RS","sr","RS");
+       } else if ("TR" == country_code) {
+           set_property_countrycode("tr-TR","tr","TR");
+       } else if ("UA" == country_code) {
+           set_property_countrycode("uk-UA","uk","UA");
+       } else if ("RU" == country_code) {
+           set_property_countrycode("ru-RU","ru","RU");
+       }
+
+}
+
+void set_property_countrycode(const std::string& locale, const std::string& language,
+    const std::string& region ) {
+    property_set("ro.product.locale",locale);
+    property_set("ro.product.locale.language",language);
+    property_set("ro.product.locale.region",region);
+}
+
+// read form factory
+std::string  read_countrycode_from_factory() {
+    char buf[BUFSIZ];
+    int position = 744;
+    size_t len = 8;
+    int fd = open("/dev/block/platform/bootdevice/by-name/proinfo", O_RDONLY | O_CLOEXEC);
+    if (fd == -1) {
+        close(fd);
+        return "";
+    } else {
+        lseek(fd, position, SEEK_SET);
+        read(fd, &buf, len);
+        buf[len] = '\0';
+        if (strlen(buf) != 0) {
+             std::string code = buf;
+             close(fd);
+             return code;
+        } else {
+             close(fd);
+             return "";
+        }
+    }
+    close(fd);
+    return "";
+}
+/* modify by dongjunxia for add countrycode A5-P L18021 bug[0340365] .end */
 
 void load_recovery_id_prop() {
     std::unique_ptr<fstab, decltype(&fs_mgr_free_fstab)> fstab(fs_mgr_read_fstab_default(),
