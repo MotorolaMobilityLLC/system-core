@@ -37,6 +37,13 @@ void load_persist_props(void);
 void load_system_props(void);
 void start_property_service(void);
 bool load_properties_from_file(const char* filename, const char* filter);
+/* modify by dongjunxia for add countrycode A5-P L18021 bug[0340365] .start */
+void set_country_code(const std::string& countrycode);
+std::string  read_countrycode_from_factory();
+void load_countrycode_from_factory();
+void set_property_countrycode(const std::string& locale, const std::string& language,
+    const std::string& region );
+/* modify by dongjunxia for add countrycode A5-P L18021 bug[0340365] .end */
 
 }  // namespace init
 }  // namespace android
