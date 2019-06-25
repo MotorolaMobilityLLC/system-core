@@ -175,6 +175,7 @@ void set_verity_enabled_state_service(int fd, void* cookie) {
                 WriteFdFmt(fd, "verity can be disabled/enabled with flash unlocked.\n");
             }
         }
+#else
         WriteFdFmt(fd, "verity cannot be disabled/enabled - USER build\n");
         return;
 #endif
