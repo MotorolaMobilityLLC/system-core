@@ -1325,41 +1325,32 @@ static void mp_event_common(int data, uint32_t events __unused) {
         int file_ratio = file*100/max_file;
         long file_delta = (mi.field.nr_real_file_pages - last_file_pages) * page_k;
 
+        int free_ratio = file_ratio + swap_ratio;
+        int free_delta = file_delta + swap_delta;
         int target_pressure = 0;
+        int pressure_adjustment = 0;
         bool do_kill = false;
-        bool pressure_upgraded = false;
 
-        /*if (time_elapsed > 100 && recent_pressure > 5
-            && (file_delta + swap_delta) > 4096) {
-            recent_pressure += 4;
-            pressure_upgraded = true;
-        }*/
+        recent_pressure += pressure_adjustment;
 
-        // 100 ~ 51
-        if (file_ratio > 50) {
+        if (free_ratio > 100) {
             target_pressure = 20;
             level_oomadj[VMPRESS_LEVEL_MEDIUM] = level_oomadj[VMPRESS_LEVEL_CRITICAL] = 800;
-        // 50 ~ 31
-        } else if (file_ratio > 30) {
+        } else if (free_ratio > 60) {
             target_pressure = 15;
             level_oomadj[VMPRESS_LEVEL_MEDIUM] = level_oomadj[VMPRESS_LEVEL_CRITICAL] = 300;
-        // 30 ~ 21
-        } else if (file_ratio > 20) {
+        } else if (free_ratio > 40) {
             target_pressure = 10;
             level_oomadj[VMPRESS_LEVEL_MEDIUM] = level_oomadj[VMPRESS_LEVEL_CRITICAL] = 100;
-        // 20 ~ 16
-        } else if (file_ratio > 15) {
+        } else if (free_ratio > 30) {
             target_pressure = 6;
             level_oomadj[VMPRESS_LEVEL_MEDIUM] = level_oomadj[VMPRESS_LEVEL_CRITICAL] = 100;
-        // 15 ~ 11
-       } else if (file_ratio > 10) {
+       } else if (free_ratio > 20) {
             target_pressure = 4;
             level_oomadj[VMPRESS_LEVEL_MEDIUM] = level_oomadj[VMPRESS_LEVEL_CRITICAL] = 100;
-        // 10 ~ 6
-        } else if (file_ratio > 5) {
+        } else if (free_ratio > 10) {
             target_pressure = 2;
             level_oomadj[VMPRESS_LEVEL_MEDIUM] = level_oomadj[VMPRESS_LEVEL_CRITICAL] = 100;
-        // 5 ~ 0
         } else {
             target_pressure = 0;
             level_oomadj[VMPRESS_LEVEL_MEDIUM] = level_oomadj[VMPRESS_LEVEL_CRITICAL] = 0;
@@ -1371,7 +1362,8 @@ static void mp_event_common(int data, uint32_t events __unused) {
                 ALOGI("Ignoring %s pressure since file %ld/%ld/%ld(%d), swap %ld/%ld/%ld(%d), rpressure %d(%d) %s",
                     level == VMPRESS_LEVEL_CRITICAL ? "critical" : "medium",
                     file_delta, file, max_file, file_ratio, swap_delta, free_swap, max_swap, swap_ratio,
-                    recent_pressure, target_pressure, pressure_upgraded ? "upgraded" : "");
+                    recent_pressure, target_pressure,
+                    pressure_adjustment > 0 ? "upgraded" : pressure_adjustment < 0 ? "downgrade" : "");
             }
             return;
         }
