@@ -39,7 +39,11 @@
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
 #include <fs_avb/fs_avb.h>
+#include <fs_mgr.h>
+#include <fs_mgr_dm_linear.h>
+#include <fs_mgr_overlayfs.h>
 #include <fs_mgr_vendor_overlay.h>
+
 #include <keyutils.h>
 #include <libavb/libavb.h>
 #include <libgsi/libgsi.h>
@@ -78,9 +82,19 @@ using android::base::StringPrintf;
 using android::base::Timer;
 using android::base::Trim;
 using android::fs_mgr::AvbHandle;
+using android::fs_mgr::Fstab;
+using android::fs_mgr::ReadDefaultFstab;
 
 namespace android {
 namespace init {
+
+namespace {
+bool DeferOverlayfsMount() {
+    std::string cmdline;
+    android::base::ReadFileToString("/proc/cmdline", &cmdline);
+    return cmdline.find("androidboot.defer_overlayfs_mount=1") != std::string::npos;
+}
+}
 
 static int property_triggers_enabled = 0;
 
@@ -628,6 +642,20 @@ int SecondStageMain(int argc, char** argv) {
     SetStdioToDevNull(argv);
     InitKernelLogging(argv);
     LOG(INFO) << "init second stage started!";
+
+    if (DeferOverlayfsMount()) {
+        Fstab fstab;
+        if (ReadDefaultFstab(&fstab)) {
+            fstab.erase(std::remove_if(fstab.begin(), fstab.end(),
+                                       [](const auto& entry) {
+                                           return !entry.fs_mgr_flags.first_stage_mount;
+                                       }),
+                        fstab.end());
+            LOG(INFO) << "Running deferred mounting of overlayfs";
+            fs_mgr_overlayfs_mount_all(&fstab);
+        }
+
+    }
 
     // Set init and its forked children's oom_adj.
     if (auto result = WriteFile("/proc/1/oom_score_adj", "-1000"); !result) {
