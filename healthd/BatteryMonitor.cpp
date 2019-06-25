@@ -183,20 +183,21 @@ int BatteryMonitor::readFromFile(const String8& path, std::string* buf) {
 
 BatteryMonitor::PowerSupplyType BatteryMonitor::readPowerSupplyType(const String8& path) {
     static SysfsStringEnumMap<int> supplyTypeMap[] = {
-            {"Unknown", ANDROID_POWER_SUPPLY_TYPE_UNKNOWN},
-            {"Battery", ANDROID_POWER_SUPPLY_TYPE_BATTERY},
-            {"UPS", ANDROID_POWER_SUPPLY_TYPE_AC},
-            {"Mains", ANDROID_POWER_SUPPLY_TYPE_AC},
-            {"USB", ANDROID_POWER_SUPPLY_TYPE_USB},
-            {"USB_DCP", ANDROID_POWER_SUPPLY_TYPE_AC},
-            {"USB_HVDCP", ANDROID_POWER_SUPPLY_TYPE_AC},
-            {"USB_CDP", ANDROID_POWER_SUPPLY_TYPE_AC},
-            {"USB_ACA", ANDROID_POWER_SUPPLY_TYPE_AC},
-            {"USB_C", ANDROID_POWER_SUPPLY_TYPE_AC},
-            {"USB_PD", ANDROID_POWER_SUPPLY_TYPE_AC},
-            {"USB_PD_DRP", ANDROID_POWER_SUPPLY_TYPE_USB},
-            {"Wireless", ANDROID_POWER_SUPPLY_TYPE_WIRELESS},
-            {NULL, 0},
+            { "Unknown", ANDROID_POWER_SUPPLY_TYPE_UNKNOWN },
+            { "Battery", ANDROID_POWER_SUPPLY_TYPE_BATTERY },
+            { "UPS", ANDROID_POWER_SUPPLY_TYPE_AC },
+            { "Mains", ANDROID_POWER_SUPPLY_TYPE_AC },
+            { "USB", ANDROID_POWER_SUPPLY_TYPE_USB },
+            { "USB_DCP", ANDROID_POWER_SUPPLY_TYPE_AC },
+            { "USB_HVDCP", ANDROID_POWER_SUPPLY_TYPE_AC },
+            { "USB_CDP", ANDROID_POWER_SUPPLY_TYPE_AC },
+            { "USB_ACA", ANDROID_POWER_SUPPLY_TYPE_AC },
+            { "USB_C", ANDROID_POWER_SUPPLY_TYPE_AC },
+            { "USB_PD", ANDROID_POWER_SUPPLY_TYPE_AC },
+            { "USB_PD_DRP", ANDROID_POWER_SUPPLY_TYPE_USB },
+            { "Wireless", ANDROID_POWER_SUPPLY_TYPE_WIRELESS },
+            { "BMS", ANDROID_POWER_SUPPLY_TYPE_BMS }, //Motorola, drmn68, 05/16/2017, IKSWN-51081
+            { NULL, 0 },
     };
     std::string buf;
 
@@ -683,6 +684,18 @@ void BatteryMonitor::init(struct healthd_config *hc) {
 
                 break;
 
+            // Begin Motorola, drmn68, 05/16/2017, IKSWN-51081
+            case ANDROID_POWER_SUPPLY_TYPE_BMS:
+                if (mHealthdConfig->batteryFullChargePath.isEmpty()) {
+                    path.clear();
+                    path.appendFormat("%s/%s/charge_full",
+                                      POWER_SUPPLY_SYSFS_PATH, name);
+                    if (access(path, R_OK) == 0) {
+                        mHealthdConfig->batteryFullChargePath = path;
+                    }
+                }
+                break;
+            // End IKSWN-51081
             case ANDROID_POWER_SUPPLY_TYPE_UNKNOWN:
                 break;
             }
