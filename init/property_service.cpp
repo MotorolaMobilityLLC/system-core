@@ -36,6 +36,9 @@
 #include <unistd.h>
 #include <wchar.h>
 
+#include <android-base/properties.h>
+#include <cutils/android_reboot.h>
+
 #define _REALLY_INCLUDE_SYS__SYSTEM_PROPERTIES_H_
 #include <sys/_system_properties.h>
 
@@ -94,6 +97,8 @@ uint32_t InitPropertySet(const std::string& name, const std::string& value);
 uint32_t (*property_set)(const std::string& name, const std::string& value) = InitPropertySet;
 
 void CreateSerializedPropertyInfo();
+
+void verify_carrier_compatibility(void);
 
 struct PropertyAuditData {
     const ucred* cr;
@@ -904,6 +909,10 @@ void property_load_boot_defaults(bool load_debug_prop) {
     load_properties_from_file("/product_services/build.prop", nullptr, &properties);
     load_properties_from_file("/factory/factory.prop", "ro.*", &properties);
 
+    /* verify carrier compatibility immediately after */
+    /* build and oem properties get populated */
+    verify_carrier_compatibility();
+
     if (load_debug_prop) {
         LOG(INFO) << "Loading " << kDebugRamdiskProp;
         load_properties_from_file(kDebugRamdiskProp, nullptr, &properties);
@@ -1023,6 +1032,92 @@ void StartPropertyService(Epoll* epoll) {
     if (auto result = epoll->RegisterHandler(property_set_fd, handle_property_set_fd); !result) {
         PLOG(FATAL) << result.error();
     }
+}
+
+
+#define CARRIER_RO_PROP "ro.carrier"
+#define CARRIER_SUBSIDY_PROP "ro.carrier.subsidized"
+#define CARRIER_OEM_PROP "ro.carrier.oem"
+
+#define CARRIER_MSG_FILE "/system/etc/unauthorizedsw.txt"
+
+static const char *default_msg = "WE HAVE DETECTED AN ATTEMPT TO FLASH UNAUTHORIZED SW ON YOUR DEVICE. CONTACT CUSTOMER SERVICE FOR ASSISTANCE";
+static const char *command = "--show_text\n--show_notes=notes\n";
+
+static void hw_property_get(const char *prop_name, char *value)
+{
+       std::string prop_str = GetProperty(prop_name, "");
+       strncpy(value, prop_str.c_str(), prop_str.length());
+}
+
+static int create_notes_file(void)
+{
+        int fo = open("/cache/recovery/notes", O_WRONLY|O_CREAT|O_TRUNC|O_CLOEXEC, 0600);
+        if (fo == -1) {
+                LOG(ERROR) << "could not open /cache/recovery/notes";
+                return -1;
+        }
+        int fi = open(CARRIER_MSG_FILE, O_RDONLY|O_CLOEXEC);
+        if (fi != -1) {
+                char buffer[PATH_MAX];
+                ssize_t nbytes;
+                while ((nbytes = read(fi, buffer, sizeof(buffer))) != 0)
+                        write(fo, buffer, nbytes);
+                close(fi);
+        } else
+                write(fo, default_msg, strlen(default_msg));
+        close(fo);
+        return 0;
+}
+
+static int reboot_recovery(void)
+{
+        mkdir("/cache/recovery", 0700);
+        if (create_notes_file() == -1)
+                return -1;
+        int fd = open("/cache/recovery/command", O_RDWR|O_CREAT|O_TRUNC|O_CLOEXEC, 0600);
+        if (fd >= 0) {
+                write(fd, command, strlen(command) + 1);
+                close(fd);
+        } else {
+                LOG(ERROR) << "could not open /cache/recovery/command";
+                return -1;
+        }
+        android_reboot(ANDROID_RB_RESTART2, 0, "recovery");
+        while (1) { pause(); }  // never reached
+}
+
+void verify_carrier_compatibility(void)
+{
+        char carrier_ro[PROP_VALUE_MAX]={0};
+        char oem_carriers[PROP_VALUE_MAX]={0};
+        char subsidized_carriers[PROP_VALUE_MAX]={0};
+
+        hw_property_get(CARRIER_RO_PROP, carrier_ro);
+        if (carrier_ro[0] == 0) {
+                /* ro.carrier is empty - allow to boot */
+		LOG(INFO) << "Empty Property '" << CARRIER_RO_PROP << "'";
+                return;
+        }
+
+        hw_property_get(CARRIER_OEM_PROP, oem_carriers);
+        hw_property_get(CARRIER_SUBSIDY_PROP, subsidized_carriers);
+
+        if (subsidized_carriers[0] == 0 || !strstr(subsidized_carriers, carrier_ro)) {
+                /* ro.carrier is not blacklisted in ro.carrier.subsidized - allow to boot */
+		LOG(INFO) << "did not find '" << carrier_ro << " in '" << subsidized_carriers << "'";;
+                return;
+        }
+
+        /* ro.carrier is blacklisted - it must be whitelisted for boot to be allowed */
+        if (oem_carriers[0] && strstr(oem_carriers, carrier_ro)) {
+                /* ro.carrier is whitelisted in ro.carrier.oem - allow to boot */
+		LOG(INFO) << "found '" << carrier_ro << " in '" << oem_carriers << "'";;
+                return;
+        }
+
+        LOG(WARNING) << "[" << carrier_ro << "] compatibility check failed; rebooting to recovery...";
+        reboot_recovery();
 }
 
 }  // namespace init
