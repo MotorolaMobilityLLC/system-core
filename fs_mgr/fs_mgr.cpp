@@ -116,6 +116,8 @@ using namespace android::fs_mgr;
 
 using namespace std::literals;
 
+#define MAX_MOUNT_RETRIES 2
+
 // record fs stat
 enum FsStatFlags {
     FS_STAT_IS_EXT4 = 0x0001,
@@ -1459,6 +1461,7 @@ int fs_mgr_mount_all(Fstab* fstab, int mount_mode)
     int error_count = 0;
     CheckpointManager checkpoint_manager;
     AvbUniquePtr avb_handle(nullptr);
+    int retry = MAX_MOUNT_RETRIES;
 
     if (fstab->empty()) {
         return FS_MGR_MNTALL_FAIL;
@@ -1598,7 +1601,11 @@ int fs_mgr_mount_all(Fstab* fstab, int mount_mode)
                 }
             }
 
-            // Success!  Go get the next one.
+            /* Success!  Go get the next one */
+            PINFO << "Successfully mounted "
+                  << attempted_entry.mount_point << " with file system type '"
+                  << attempted_entry.fs_type << ".";
+            retry = MAX_MOUNT_RETRIES;
             continue;
         }
 
@@ -1630,7 +1637,8 @@ int fs_mgr_mount_all(Fstab* fstab, int mount_mode)
             }
             if (fs_mgr_do_format(current_entry, crypt_footer) == 0) {
                 // Let's replay the mount actions.
-                i = top_idx - 1;
+                if (top_idx > 0)
+                    i = top_idx - 1;
                 continue;
             } else {
                 LERROR << __FUNCTION__ << "(): Format failed. "
@@ -1661,6 +1669,12 @@ int fs_mgr_mount_all(Fstab* fstab, int mount_mode)
                     continue;
                 }
             } else {
+		if ((top_idx > 0) && (--retry > 0)) {
+                    LERROR << "Failed to mount "
+                           << attempted_entry.mount_point << "; retrying...";
+                    i = top_idx - 1;
+                    continue;
+                }
                 PERROR << "Failed to mount an encryptable partition on"
                        << attempted_entry.blk_device << " at "
                        << attempted_entry.mount_point << " options: "
@@ -1682,6 +1696,12 @@ int fs_mgr_mount_all(Fstab* fstab, int mount_mode)
         } else {
             // fs_options might be null so we cannot use PERROR << directly.
             // Use StringPrintf to output "(null)" instead.
+            if ((top_idx > 0) && (--retry > 0)) {
+                PERROR << "Failed to mount " << attempted_entry.mount_point
+                       << "; retrying...";
+                i = top_idx - 1;
+                continue;
+            }
             if (attempted_entry.fs_mgr_flags.no_fail) {
                 PERROR << android::base::StringPrintf(
                         "Ignoring failure to mount an un-encryptable or wiped "
