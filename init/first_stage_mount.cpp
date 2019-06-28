@@ -61,6 +61,16 @@ using namespace std::literals;
 namespace android {
 namespace init {
 
+namespace {
+
+bool DeferOverlayfsMount() {
+    std::string cmdline;
+    android::base::ReadFileToString("/proc/cmdline", &cmdline);
+    return cmdline.find("androidboot.defer_overlayfs_mount=1") != std::string::npos;
+}
+} // namespace
+
+
 // Class Declarations
 // ------------------
 class FirstStageMount {
@@ -581,7 +591,9 @@ bool FirstStageMount::MountPartitions() {
         }
     }
 
-    fs_mgr_overlayfs_mount_all(&fstab_);
+    if (!DeferOverlayfsMount()) {
+        fs_mgr_overlayfs_mount_all(&fstab_);
+    }
 
     return true;
 }
