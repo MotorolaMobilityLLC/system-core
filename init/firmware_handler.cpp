@@ -26,12 +26,15 @@
 #include <unistd.h>
 
 #include <thread>
+#include <string>
 
 #include <android-base/chrono_utils.h>
 #include <android-base/file.h>
 #include <android-base/logging.h>
 #include <android-base/strings.h>
 #include <android-base/unique_fd.h>
+#include <android-base/stringprintf.h>
+#include <android-base/strings.h>
 
 using android::base::ReadFdToString;
 using android::base::Socketpair;
@@ -40,6 +43,7 @@ using android::base::Timer;
 using android::base::Trim;
 using android::base::unique_fd;
 using android::base::WriteFully;
+using android::base::StringPrintf;
 
 namespace android {
 namespace init {
@@ -68,6 +72,96 @@ FirmwareHandler::FirmwareHandler(std::vector<std::string> firmware_directories,
                                  std::vector<ExternalFirmwareHandler> external_firmware_handlers)
     : firmware_directories_(std::move(firmware_directories)),
       external_firmware_handlers_(std::move(external_firmware_handlers)) {}
+
+ /*
+    Special firmware look-up functionality intended for non-system media firmware (ie.
+    downloaded firmware). The folders provided must be protected via SELinux policy.
+ */
+ struct extended_fw_path {
+    const char *fw_substring;
+    const char *fw_path;
+ };
+
+ const struct extended_fw_path extended_paths[] = {
+ #ifdef MOTO_AOV_WITH_XMCS
+     {
+         .fw_substring = "-aov-",
+         .fw_path = "/data/adspd",
+     },
+     {
+         .fw_substring = "-ultrasound",
+         .fw_path = "/data/adspd",
+     },
+ #endif
+ #ifdef MOTO_GREYBUS
+     {
+         .fw_substring = "upd-",
+         .fw_path = "/data/gbfirmware",
+     },
+ #endif
+ };
+
+ static int is_hard_link(const char *path)
+ {
+     int rv = 1;
+     struct stat sb;
+
+     if(stat(path, &sb) == 0) {
+         if((S_ISDIR(sb.st_mode)) || (sb.st_nlink == 1))
+             rv = 0;
+         else
+             LOG(ERROR) << "Invalid hard link (" << path << "), nlink=" << sb.st_nlink << " ignoring!";
+     } else if (errno == ENOENT)
+         rv = 0;
+     return(rv);
+ }
+
+ static int LoadOneExtended(const std::string& firmware, const std::string& root, int loading_fd, int data_fd, size_t index)
+ {
+     int ret = 0;
+    /* look for naming convention for the target firmware */
+     if (strstr(firmware.c_str(), extended_paths[index].fw_substring) == NULL) {
+         return 0;
+     }
+
+    std::string file = StringPrintf("%s/%s", extended_paths[index].fw_path, firmware.c_str());
+     if (is_hard_link(file.c_str())) {
+         return 0;
+     }
+
+     /* Do not consider the case /data folder is still encrypted. It is assumed
+        userspace apps needing these files are started only after data partition
+        is decrypted. */
+     unique_fd fw_fd(open(file.c_str(), O_RDONLY|O_NOFOLLOW));
+     struct stat sb;
+     if (fw_fd != -1 && fstat(fw_fd, &sb) != -1) {
+         LoadFirmware(firmware, root, fw_fd, sb.st_size, loading_fd, data_fd);
+         ret = -1;
+     } else {
+         return 0;
+     }
+     return ret;
+ }
+
+ #define ARRAY_SIZE(x) (sizeof(x)/sizeof(x[0]))
+
+ /*
+     -   The function returns the following values:
+     -   -1 - Firmware loading was either success or failure. No need to look for further folders.
+     -    0 - Firmware was not loaded. Further folders need to be looked up.
+ */
+ static int LoadFromExtended(const std::string& firmware, const std::string& root, int loading_fd, int data_fd)
+ {
+     size_t i;
+
+     /* Loop through all possible extended folders unless we find a firmware */
+     for (i = 0; i < ARRAY_SIZE(extended_paths); i++)
+         if (LoadOneExtended(firmware, root, loading_fd, data_fd, i) == -1)
+             return -1;
+
+     return 0;
+ }
+
 
 Result<std::string> FirmwareHandler::RunExternalHandler(const std::string& handler, uid_t uid,
                                                         const Uevent& uevent) const {
@@ -205,6 +299,10 @@ void FirmwareHandler::ProcessFirmwareEvent(const std::string& root,
     std::vector<std::string> attempted_paths_and_errors;
 
     int booting = IsBooting();
+
+    if (LoadFromExtended(firmware, root, loading_fd, data_fd) < 0) {
+         return;
+    }
 try_loading_again:
     attempted_paths_and_errors.clear();
     for (const auto& firmware_directory : firmware_directories_) {

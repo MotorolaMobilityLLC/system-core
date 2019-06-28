@@ -155,12 +155,19 @@ cc_defaults {
     visibility: [":__subpackages__"],
 }
 
+//IKSWP-4737: djc637,Add XMCS Audio for extended path firmware load
+xmcsaudio_defaults {
+    name: "xmcsaudio_defaults",
+}
+
 cc_library_static {
     name: "libinit",
     recovery_available: true,
     defaults: [
         "init_defaults",
         "selinux_policy_version",
+	//IKSWP-4737: djc637,Add XMCS Audio support
+	"xmcsaudio_defaults",
     ],
     srcs: init_common_sources + init_device_sources,
     whole_static_libs: [
