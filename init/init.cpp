@@ -758,6 +758,8 @@ int SecondStageMain(int argc, char** argv) {
         am.QueueEventTrigger("charger");
     }else if (bootmode == "cali"){
         am.QueueEventTrigger("cali");
+    } else if (bootmode == "factorytest"){
+        am.QueueEventTrigger("factorytest");
     } else {
         am.QueueEventTrigger("late-init");
     }
