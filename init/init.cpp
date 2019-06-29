@@ -597,6 +597,17 @@ void initJourneyRootMode() {
 }
 #endif
 
+#ifndef JOURNEY_FEATURE_DEBUG_MODE
+void CheckJourneyDebugMode() {
+    // debug ?
+    std::string value = GetProperty("ro.boot.journey.debug", "0");
+    if(value == "0") {
+        LOG(ERROR) << "this build not allow debug (without JOURNEY_FEATURE_DEBUG_MODE). force to safemode";
+        property_set("ro.sys.safemode", "1"); // keep it in safe mode.
+    }
+}
+#endif
+
 int main(int argc, char** argv) {
     if (!strcmp(basename(argv[0]), "ueventd")) {
         return ueventd_main(argc, argv);
@@ -706,7 +717,6 @@ int main(int argc, char** argv) {
 #ifdef JOURNEY_FEATURE_ROOT_MODE
     initJourneyRootMode();
 #endif
-
     LOG(INFO) << "init second stage started!";
 
     // Set up a session keyring that all processes will have access to. It
@@ -767,6 +777,10 @@ int main(int argc, char** argv) {
         property_set("ro.debuggable","1");
     }
 #endif
+#ifndef JOURNEY_FEATURE_DEBUG_MODE
+    CheckJourneyDebugMode();
+#endif
+
     LoadRscRoProps();
     property_load_boot_defaults();
     export_oem_lock_status();
