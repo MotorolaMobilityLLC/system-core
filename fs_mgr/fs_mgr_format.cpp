@@ -72,12 +72,31 @@ static int format_ext4(const std::string& fs_blkdev, const std::string& fs_mnt_p
     }
 
     std::string size_str = std::to_string(dev_sz / 4096);
-    const char* const mke2fs_args[] = {
-            "/system/bin/mke2fs", "-t",   "ext4", "-b", "4096", fs_blkdev.c_str(),
-            size_str.c_str(),     nullptr};
+    if (!strncmp(fs_mnt_point.c_str(), "/cache", 6)) {
+	/* Cache partition size is very less, using mke2fs.conf configurations
+	 * cause the inode ratio and journaling size to consume more memory
+	 */
+        const char* const mke2fs_args[] = {
+            "/system/bin/mke2fs",
+	    "-t", "ext4",
+	    "-b", "4096",
+	    "-i", "16384",
+	    "-I", "256",
+	    "-J", "size=4",
+	    fs_blkdev.c_str(),
+	    size_str.c_str(),
+	    nullptr};
 
-    rc = android_fork_execvp_ext(arraysize(mke2fs_args), const_cast<char**>(mke2fs_args), NULL,
-                                 true, LOG_KLOG, true, nullptr, nullptr, 0);
+        rc = android_fork_execvp_ext(arraysize(mke2fs_args), const_cast<char**>(mke2fs_args), NULL,
+                                     true, LOG_KLOG, true, nullptr, nullptr, 0);
+    } else {
+        const char* const mke2fs_args[] = {
+            "/system/bin/mke2fs", "-t", "ext4", "-b", "4096", fs_blkdev.c_str(), size_str.c_str(), nullptr};
+
+        rc = android_fork_execvp_ext(arraysize(mke2fs_args), const_cast<char**>(mke2fs_args), NULL,
+                                     true, LOG_KLOG, true, nullptr, nullptr, 0);
+    }
+
     if (rc) {
         LERROR << "mke2fs returned " << rc;
         return rc;
