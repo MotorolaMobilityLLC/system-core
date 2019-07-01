@@ -601,7 +601,7 @@ void initJourneyRootMode() {
 void CheckJourneyDebugMode() {
     // debug ?
     std::string value = GetProperty("ro.boot.journey.debug", "0");
-    if(value == "0") {
+    if(value != "0") {
         LOG(ERROR) << "this build not allow debug (without JOURNEY_FEATURE_DEBUG_MODE). force to safemode";
         property_set("ro.sys.safemode", "1"); // keep it in safe mode.
     }
