@@ -2265,6 +2265,9 @@ static void mainloop(void) {
                 handler_info->handler(handler_info->data, evt->events);
 
                 if (use_psi_monitors && handler_info->handler == mp_event_common) {
+                    if (polling && handler_info->data < poll_handler->data)
+                        continue;
+
                     /*
                      * Poll for the duration of PSI_WINDOW_SIZE_MS after the
                      * initial PSI event because psi events are rate-limited
