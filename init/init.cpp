@@ -600,10 +600,23 @@ void initJourneyRootMode() {
 #ifndef JOURNEY_FEATURE_DEBUG_MODE
 void CheckJourneyDebugMode() {
     // debug ?
-    std::string value = GetProperty("ro.boot.journey.debug", "0");
-    if(value != "0") {
+    bool isDebug = base::GetBoolProperty("ro.boot.journey.debug", false);
+    if(isDebug) {
         LOG(ERROR) << "this build not allow debug (without JOURNEY_FEATURE_DEBUG_MODE). force to safemode";
         property_set("ro.sys.safemode", "1"); // keep it in safe mode.
+        property_set("ro.sys.safemode.reason", "Illegal Version"); // tell the framework reason
+    }
+}
+#endif
+
+#ifdef MOTO_GENERAL_FEATURE_SECURE_LOCKED_BOOTLOADER
+void CheckSecureUnlockMode() {
+    // unlock ?
+    bool isLocked = base::GetBoolProperty("ro.boot.flash.locked", false);
+    if(!isLocked) {
+        LOG(ERROR) << "this build not allow unlock (without MOTO_GENERAL_FEATURE_SECURE_LOCKED_BOOTLOADER). force to safemode";
+        property_set("ro.sys.safemode", "1"); // keep it in safe mode.
+        property_set("ro.sys.safemode.reason", "Illegal Unlock"); // tell the framework reason
     }
 }
 #endif
@@ -786,7 +799,9 @@ int main(int argc, char** argv) {
     export_oem_lock_status();
     start_property_service();
     set_usb_controller();
-
+#ifdef MOTO_GENERAL_FEATURE_SECURE_LOCKED_BOOTLOADER
+    CheckSecureUnlockMode();
+#endif
     const BuiltinFunctionMap function_map;
     Action::set_function_map(&function_map);
 

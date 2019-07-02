@@ -81,6 +81,9 @@ cc_defaults {
         moto_latam_feature_4176: {
             cflags: ["-DMOTO_LATAM_FEATURE_4176"],
         },
+        moto_general_feature_secure_locked_bootloader: {
+            cflags: ["-DMOTO_GENERAL_FEATURE_SECURE_LOCKED_BOOTLOADER"],
+        },        
     },
     static_libs: [
         "libbootloader_message",
