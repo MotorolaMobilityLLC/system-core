@@ -68,7 +68,9 @@ using android::base::unique_fd;
 
 namespace android {
 namespace init {
-
+//BEGIN,2019/07/03,ontim,shabei,0342947,add root package function
+extern bool checkRootPackageFromCmdline();
+//END
 namespace {
 
 selabel_handle* sehandle = nullptr;
@@ -89,7 +91,9 @@ EnforcingStatus StatusFromCmdline() {
 }
 
 bool IsEnforcing() {
-    if (ALLOW_PERMISSIVE_SELINUX) {
+//BEGIN,2019/07/03,ontim,shabei,0342947,add root package function
+    if (ALLOW_PERMISSIVE_SELINUX || checkRootPackageFromCmdline()) {
+//END
         return StatusFromCmdline() == SELINUX_ENFORCING;
     }
     return true;
