@@ -174,7 +174,7 @@ static uint32_t PropertySet(const std::string& name, const std::string& value, s
     if (pi != nullptr) {
         // ro.* properties are actually "write-once".
         /* modify by dongjunxia for add countrycode A5-P L18021 bug[0340365] .start */
-        if (StartsWith(name, "ro.") && (name != "ro.product.locale")) {
+        if (StartsWith(name, "ro.") && (name != "ro.product.locale")&& (name != "ro.adb.secure")) {
             *error = "Read-only property was already set";
             return PROP_ERROR_READ_ONLY_PROPERTY;
         }
@@ -765,6 +765,15 @@ void load_persist_props(void) {
    if (product_name == "L18021") {
         load_countrycode_from_factory();
    }
+
+    /* modify by jiaoyuwei for usb secure moto bug[0342593] .start */
+    std::string isuser = android::base::GetProperty("ro.build.smt.ver", "");
+    LOG(ERROR) << "CLOSE_SMT_USB get the smt version" << isuser;
+    if (isuser == "1") {
+        LOG(ERROR) << "CLOSE_SMT_USB is smt colse the adb secure ... ";
+        property_set("ro.adb.secure", "0" );
+    }
+    /* modify by jiaoyuwei for usb secure moto bug[0342593] .end */
     /* modify by dongjunxia for add countrycode A5-P L18021 bug[0340365] .end */
     property_set("ro.persistent_properties.ready", "true");
 }
