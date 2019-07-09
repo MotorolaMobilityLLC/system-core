@@ -382,6 +382,8 @@ static void export_kernel_boot_props() {
         { "ro.boot.baseband",   "ro.baseband",   "unknown", },
         { "ro.boot.bootloader", "ro.bootloader", "unknown", },
         { "ro.boot.hardware",   "ro.hardware",   "unknown", },
+        { "ro.boot.carrier",    "ro.carrier",    "unknown", },
+        { "ro.boot.psn",        "ro.psn",        "unknown", },
         { "ro.boot.revision",   "ro.revision",   "0", },
     };
     for (size_t i = 0; i < arraysize(prop_map); i++) {
