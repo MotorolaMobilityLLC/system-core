@@ -3,7 +3,7 @@
 cc_library {
     name: "libsuspend",
     defaults: ["mtk_libsuspend_defaults"],
-
+    vendor_available: true,
     srcs: [
         "autosuspend.c",
         "autosuspend_wakeup_count.cpp",
