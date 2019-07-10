@@ -406,6 +406,7 @@ static void export_kernel_boot_props() {
         { "ro.boot.bootloader", "ro.bootloader", "unknown", },
         { "ro.boot.hardware",   "ro.hardware",   "unknown", },
         { "ro.boot.revision",   "ro.revision",   "0", },
+        { "ro.boot.carrier",    "ro.carrier",    UNSET, },
     };
     for (const auto& prop : prop_map) {
         std::string value = GetProperty(prop.src_prop, prop.default_value);
