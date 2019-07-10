@@ -603,7 +603,7 @@ void CheckJourneyDebugMode() {
     bool isDebug = base::GetBoolProperty("ro.boot.journey.debug", false);
     if(isDebug) {
         LOG(ERROR) << "this build not allow debug (without JOURNEY_FEATURE_DEBUG_MODE). force to safemode";
-        //property_set("ro.sys.safemode", "1"); // keep it in safe mode.
+        property_set("ro.sys.safemode", "1"); // keep it in safe mode.
         property_set("ro.sys.safemode.reason", "Illegal Version"); // tell the framework reason
     }
 }
@@ -615,7 +615,7 @@ void CheckSecureUnlockMode() {
     bool isLocked = base::GetBoolProperty("ro.boot.flash.locked", false);
     if(!isLocked) {
         LOG(ERROR) << "this build not allow unlock (without MOTO_GENERAL_FEATURE_SECURE_LOCKED_BOOTLOADER). force to safemode";
-        //property_set("ro.sys.safemode", "1"); // keep it in safe mode.
+        property_set("ro.sys.safemode", "1"); // keep it in safe mode.
         property_set("ro.sys.safemode.reason", "Illegal Unlock"); // tell the framework reason
     }
 }
