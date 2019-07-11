@@ -59,8 +59,8 @@ int set_cpuset_policy(int tid, SchedPolicy policy) {
                            : -1;
         case SP_AUDIO_APP:
         case SP_AUDIO_SYS:
-            return SetTaskProfiles(tid, {"HighPerformance", "ProcessCapacityHigh", "HighIoPriority",
-                                         "TimerSlackNormal", "BlkIOBackground"},
+            return SetTaskProfiles(tid, {"HighPerformance", "AudioAppCapacity", "HighIoPriority",
+                                         "TimerSlackNormal", "BlkIOForeground"},
                                          true)
                            ? 0
                            : -1;
