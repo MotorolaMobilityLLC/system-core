@@ -2380,6 +2380,8 @@ int main(int argc __unused, char **argv __unused) {
           enable_adaptive_lmk = (!strncmp(property,"false",PROPERTY_VALUE_MAX))? false : true;
           strlcpy(property, perf_wait_get_prop("ro.lmk.enable_userspace_lmk", "false").value, PROPERTY_VALUE_MAX);
           enable_userspace_lmk = (!strncmp(property,"false",PROPERTY_VALUE_MAX))? false : true;
+          strlcpy(property, perf_wait_get_prop("ro.lmk.enable_watermark_check", "false").value, PROPERTY_VALUE_MAX);
+          enable_watermark_check = (!strncmp(property,"false",PROPERTY_VALUE_MAX))? false : true;
     }
     ctx = create_android_logger(MEMINFO_LOG_TAG);
 
