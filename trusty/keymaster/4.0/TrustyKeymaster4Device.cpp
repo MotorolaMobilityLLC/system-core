@@ -698,11 +698,13 @@ Return<void> TrustyKeymaster4Device::update(uint64_t operationHandle,
             ALOGE("UpdateOperation done, line: %d, receive error:%d", __LINE__, response.error);
         }
 
+        _hidl_cb(legacy_enum_conversion(response.error), resultConsumed, resultParams, resultBlob);
+
         if (tmp)
             free(tmp);
         output.data = NULL;
         output.data_length = 0;
-        _hidl_cb(legacy_enum_conversion(response.error), resultConsumed, resultParams, resultBlob);
+
         return Void();
     }
 
@@ -716,12 +718,14 @@ Return<void> TrustyKeymaster4Device::update(uint64_t operationHandle,
         impl_->UpdateOperation(request, &response);
         if (response.error != KM_ERROR_OK) {
             ALOGE("UpdateOperation done, line: %d, receive error:%d", __LINE__, response.error);
+
+            _hidl_cb(legacy_enum_conversion(response.error), resultConsumed, resultParams, resultBlob);
+
             if (tmp)
                 free(tmp);
             output.data = NULL;
             output.data_length = 0;
 
-            _hidl_cb(legacy_enum_conversion(response.error), resultConsumed, resultParams, resultBlob);
             return Void();
         }
 
@@ -737,12 +741,13 @@ Return<void> TrustyKeymaster4Device::update(uint64_t operationHandle,
     resultParams = kmParamSet2Hidl(out_params);
     resultBlob = kmBlob2hidlVec(output);
 
+    _hidl_cb(legacy_enum_conversion(response.error), resultConsumed, resultParams, resultBlob);
+
     if (tmp)
         free(tmp);
     output.data = NULL;
     output.data_length = 0;
 
-    _hidl_cb(legacy_enum_conversion(response.error), resultConsumed, resultParams, resultBlob);
     return Void();
 }
 
