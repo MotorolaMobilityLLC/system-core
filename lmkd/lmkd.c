@@ -1334,13 +1334,13 @@ static void mp_event_common(int data, uint32_t events __unused) {
         recent_pressure += pressure_adjustment;
 
         if (free_ratio > 100) {
-            target_pressure = 20;
+            target_pressure = 24;
             level_oomadj[VMPRESS_LEVEL_MEDIUM] = level_oomadj[VMPRESS_LEVEL_CRITICAL] = 800;
         } else if (free_ratio > 60) {
-            target_pressure = 15;
+            target_pressure = 12;
             level_oomadj[VMPRESS_LEVEL_MEDIUM] = level_oomadj[VMPRESS_LEVEL_CRITICAL] = 300;
         } else if (free_ratio > 40) {
-            target_pressure = 10;
+            target_pressure = 8;
             level_oomadj[VMPRESS_LEVEL_MEDIUM] = level_oomadj[VMPRESS_LEVEL_CRITICAL] = 100;
         } else if (free_ratio > 30) {
             target_pressure = 6;
