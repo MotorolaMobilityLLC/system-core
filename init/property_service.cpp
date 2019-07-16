@@ -865,6 +865,27 @@ std::string  read_countrycode_from_factory() {
 }
 /* modify by dongjunxia for add countrycode A5-P L18021 bug[0340365] .end */
 
+// add properties from proinfo by daiqingchen
+void set_properties_from_proinfo() {
+    // ontim factory check.
+    uint8_t ontim_factory_buffer = 0;
+    int position = 3022;
+    size_t ontim_factory_buffer_len = 1;
+
+    int fd = open("/dev/block/platform/bootdevice/by-name/proinfo", O_RDONLY | O_CLOEXEC);
+    if (fd == -1) {
+        close(fd);
+    } else {
+        // ontim factory check.
+        lseek(fd, position, SEEK_SET);
+        read(fd, &ontim_factory_buffer, ontim_factory_buffer_len);
+        if (ontim_factory_buffer == 1) {
+            property_set("ro.vendor.ontim_factory", "1");
+        }
+    }
+    close(fd);
+}
+
 void load_recovery_id_prop() {
     std::unique_ptr<fstab, decltype(&fs_mgr_free_fstab)> fstab(fs_mgr_read_fstab_default(),
                                                                fs_mgr_free_fstab);
@@ -902,6 +923,7 @@ void load_system_props() {
     load_properties_from_file("/vendor/build.prop", NULL);
     load_properties_from_file("/factory/factory.prop", "ro.*");
     load_recovery_id_prop();
+    set_properties_from_proinfo();
 }
 
 static int SelinuxAuditCallback(void* data, security_class_t /*cls*/, char* buf, size_t len) {

@@ -44,6 +44,8 @@ void load_countrycode_from_factory();
 void set_property_countrycode(const std::string& locale, const std::string& language,
     const std::string& region );
 /* modify by dongjunxia for add countrycode A5-P L18021 bug[0340365] .end */
+// add properties from proinfo by daiqingchen
+void set_properties_from_proinfo();
 
 }  // namespace init
 }  // namespace android
