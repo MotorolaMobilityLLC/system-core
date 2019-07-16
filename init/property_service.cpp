@@ -776,17 +776,6 @@ void load_persist_props(void) {
     /* modify by jiaoyuwei for usb secure moto bug[0342593] .end */
     /* modify by dongjunxia for add countrycode A5-P L18021 bug[0340365] .end */
 
-    /* modify by xulanqing for single_sim or dual_sim start*/
-    std::string str_sim;
-    android::base::ReadFileToString("/sys/hwinfo/dual_sim ", &str_sim);
-    property_set("ro.product.simnum", str_sim);
-    if("sig" == str_sim){
-        property_set("product.hardware.sku", "ss");
-    }
-    else if("dual" == str_sim){
-        property_set("product.hardware.sku", "dsds");
-    }
-    /* modify by xulanqing for single_sim or dual_sim end*/
     property_set("ro.persistent_properties.ready", "true");
 }
 /* modify by dongjunxia for add countrycode A5-P L18021 bug[0340365] .start */
