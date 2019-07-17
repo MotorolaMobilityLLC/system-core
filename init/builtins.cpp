@@ -503,6 +503,10 @@ static Result<int> handle_fstab(const std::string& fstabfile, std::function<int(
     } else if (pid == 0) {
         /* child, call fs_mgr_[u]mount_all() */
 
+#ifdef MTK_LOG
+        PropSetLogReset();
+#endif
+
         // So we can always see what fs_mgr_[u]mount_all() does.
         // Only needed if someone explicitly changes the default log level in their init.rc.
         android::base::ScopedLogSeverity info(android::base::INFO);
