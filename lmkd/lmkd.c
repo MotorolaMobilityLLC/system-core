@@ -1319,10 +1319,27 @@ static int parse_one_zone_watermark(char *buf, struct watermark_info *w)
     return ret;
 }
 
+static int file_cache_to_adj(int nr_file)
+{
+    int min_score_adj = OOM_SCORE_ADJ_MAX + 1;
+    int minfree;
+    int i;
+
+    for (i = 0; i < lowmem_targets_size; i++) {
+        minfree = lowmem_minfree[i];
+        if (nr_file < minfree) {
+            min_score_adj = lowmem_adj[i];
+            break;
+        }
+    }
+    ALOGE("adj: %d file_cache: %d\n", min_score_adj, nr_file);
+    return min_score_adj;
+}
+
 /*
- * Returns true on parsing error.
+ * Returns OOM_XCORE_ADJ_MAX + 1  on parsing error.
  */
-static bool zone_watermarks_ok()
+static int zone_watermarks_ok()
 {
     static struct reread_data file_data = {
         .filename = ZONEINFO_PATH,
@@ -1333,9 +1350,11 @@ static bool zone_watermarks_ok()
     struct watermark_info w;
     int zone_id, i, nr;
     bool lowmem_reserve_ok[MAX_NR_ZONES];
+    int nr_file = 0;
+    int min_score_adj = OOM_SCORE_ADJ_MAX + 1;
 
     if (reread_file(&file_data, buf, sizeof(buf)) < 0) {
-        return true;
+        return min_score_adj;
     }
 
     memset(&w, 0, sizeof(w));
@@ -1358,19 +1377,23 @@ static bool zone_watermarks_ok()
         if (!w.present)
             continue;
 
+        nr_file += w.inactive_file + w.active_file;
+
         margin = w.free - w.cma - w.high;
         for (i = 0; i < MAX_NR_ZONES; i++)
             if (w.lowmem_reserve[i] && (margin > w.lowmem_reserve[i]))
                 lowmem_reserve_ok[i] = true;
 
-        if (margin < 0 && !lowmem_reserve_ok[zone_id])
-            return false;
+        if (margin >= 0 || lowmem_reserve_ok[zone_id])
+            continue;
+
+        return file_cache_to_adj(nr_file);
     }
 
     if (offset == buf)
         ALOGE("Parsing watermarks failed in %s", file_data.filename);
 
-    return true;
+    return min_score_adj;
 }
 
 static int proc_get_size(int pid) {
@@ -1959,13 +1982,15 @@ do_kill:
                     }
                     return;
                 }
+                min_score_adj = level_oomadj[level];
             } else {
-                if (zone_watermarks_ok()) {
+                min_score_adj = zone_watermarks_ok();
+                if (min_score_adj == OOM_SCORE_ADJ_MAX + 1)
+		        {
                     ALOGI("Ignoring pressure since per-zone watermarks ok");
                     return;
                 }
             }
-            min_score_adj = level_oomadj[level];
         }
 
         pages_freed = find_and_kill_process(min_score_adj);
@@ -2355,6 +2380,8 @@ int main(int argc __unused, char **argv __unused) {
           enable_adaptive_lmk = (!strncmp(property,"false",PROPERTY_VALUE_MAX))? false : true;
           strlcpy(property, perf_wait_get_prop("ro.lmk.enable_userspace_lmk", "false").value, PROPERTY_VALUE_MAX);
           enable_userspace_lmk = (!strncmp(property,"false",PROPERTY_VALUE_MAX))? false : true;
+          strlcpy(property, perf_wait_get_prop("ro.lmk.enable_watermark_check", "false").value, PROPERTY_VALUE_MAX);
+          enable_watermark_check = (!strncmp(property,"false",PROPERTY_VALUE_MAX))? false : true;
     }
     ctx = create_android_logger(MEMINFO_LOG_TAG);
 
