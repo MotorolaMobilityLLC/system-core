@@ -1587,6 +1587,7 @@ static void mp_event_common(int data, uint32_t events __unused) {
     union zoneinfo zi;
     struct timespec curr_tm;
     static struct timespec last_kill_tm;
+    static struct timespec last_noprogress_tm;
     static unsigned long kill_skip_count = 0;
     enum vmpressure_level level = (enum vmpressure_level)data;
     long other_free = 0, other_file = 0;
@@ -1635,6 +1636,12 @@ static void mp_event_common(int data, uint32_t events __unused) {
             kill_skip_count++;
             return;
         }
+
+        // If lmkd kills no processes, let it take a break.
+        if (get_time_diff_ms(&last_noprogress_tm, &curr_tm) < kill_timeout_ms) {
+            kill_skip_count++;
+            return;
+        }
     }
 
     if (kill_skip_count > 0) {
@@ -1680,6 +1687,9 @@ static void mp_event_common(int data, uint32_t events __unused) {
                       level_name[level], other_free * page_k, other_file * page_k,
                       (long)lowmem_minfree[lowmem_targets_size - 1] * page_k);
             }
+
+            // No progress when trying to kill process, so let it take a break.
+            last_noprogress_tm = curr_tm;
             return;
         }
         if (duraspeed_supported > 0) {
@@ -1776,6 +1786,9 @@ do_kill:
         pages_freed = find_and_kill_process(min_score_adj);
 
         if (pages_freed == 0) {
+            // No progress when trying to kill process, so let it take a break.
+            last_noprogress_tm = curr_tm;
+
             /* Rate limit kill reports when nothing was reclaimed */
             if (get_time_diff_ms(&last_report_tm, &curr_tm) < FAIL_REPORT_RLIMIT_MS) {
                 report_skip_count++;
