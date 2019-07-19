@@ -765,7 +765,6 @@ void load_persist_props(void) {
    if (product_name == "L18021") {
         load_countrycode_from_factory();
    }
-
     /* modify by jiaoyuwei for usb secure moto bug[0342593] .start */
     std::string isuser = android::base::GetProperty("ro.build.smt.ver", "");
     LOG(ERROR) << "CLOSE_SMT_USB get the smt version" << isuser;
@@ -875,6 +874,23 @@ void set_properties_from_proinfo() {
     close(fd);
 }
 
+// modify by dongjunxia for sku prop .start
+void set_properties_from_hwinfo() {
+    std::string cmdline_path = "/sys/hwinfo/band_id";
+    std::string file_content;
+    std::string file_band;
+    int len = strlen("band_id=");
+    if (ReadFileToString(cmdline_path, &file_content)) {
+        file_band = file_content.substr(len,8);
+        property_set("ro.boot.hardware.sku",file_band);
+    } else {
+        PLOG(ERROR) << "Could not read properties from '" << cmdline_path << "'";
+    }
+
+}
+// modify by dongjunxia for sku prop .end
+
+
 void load_recovery_id_prop() {
     std::unique_ptr<fstab, decltype(&fs_mgr_free_fstab)> fstab(fs_mgr_read_fstab_default(),
                                                                fs_mgr_free_fstab);
@@ -906,6 +922,7 @@ void load_recovery_id_prop() {
     close(fd);
 }
 
+// modify by dongjunxia for sku prop .start
 void load_system_props() {
     load_properties_from_file("/system/build.prop", NULL);
     load_properties_from_file("/odm/build.prop", NULL);
@@ -913,7 +930,9 @@ void load_system_props() {
     load_properties_from_file("/factory/factory.prop", "ro.*");
     load_recovery_id_prop();
     set_properties_from_proinfo();
+    set_properties_from_hwinfo();
 }
+// modify by dongjunxia for sku prop .end
 
 static int SelinuxAuditCallback(void* data, security_class_t /*cls*/, char* buf, size_t len) {
     auto* d = reinterpret_cast<PropertyAuditData*>(data);
