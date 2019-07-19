@@ -49,6 +49,65 @@
 
 #define CRYPTO_TMPFS_OPTIONS "size=512m,mode=0771,uid=1000,gid=1000"
 
+#ifdef MTK_FSTAB_FLAGS
+#define MAX_PATH_LEN        64
+#define MAX_VOLUME_NAME     512
+#define F2FS_MAX_EXTENSION  64  /* # of extension entries */
+#define VERSION_LEN         256
+#define MAX_DEVICES         8
+#define F2FS_MAX_QUOTAS     3
+
+struct f2fs_dev_info {
+    __u8 path[MAX_PATH_LEN];
+    __le32 total_segments;
+};
+
+struct f2fs_super_block {
+    __le32 magic;
+    __le16 major_ver;
+    __le16 minor_ver;
+    __le32 log_sectorsize;
+    __le32 log_sectors_per_block;
+    __le32 log_blocksize;
+    __le32 log_blocks_per_seg;
+    __le32 segs_per_sec;
+    __le32 secs_per_zone;
+    __le32 checksum_offset;
+    __le64 block_count;
+    __le32 section_count;
+    __le32 segment_count;
+    __le32 segment_count_ckpt;
+    __le32 segment_count_sit;
+    __le32 segment_count_nat;
+    __le32 segment_count_ssa;
+    __le32 segment_count_main;
+    __le32 segment0_blkaddr;
+    __le32 cp_blkaddr;
+    __le32 sit_blkaddr;
+    __le32 nat_blkaddr;
+    __le32 ssa_blkaddr;
+    __le32 main_blkaddr;
+    __le32 root_ino;
+    __le32 node_ino;
+    __le32 meta_ino;
+    __u8 uuid[16];
+    __le16 volume_name[MAX_VOLUME_NAME];
+    __le32 extension_count;
+    __u8 extension_list[F2FS_MAX_EXTENSION][8];
+    __le32 cp_payload;
+    __u8 version[VERSION_LEN];
+    __u8 init_version[VERSION_LEN];
+    __le32 feature;
+    __u8 encryption_level;
+    __u8 encrypt_pw_salt[16];
+    struct f2fs_dev_info devs[MAX_DEVICES];
+    __le32 qf_ino[F2FS_MAX_QUOTAS];
+    __u8 hot_ext_count;
+    __u8 reserved[310];
+    __le32 crc;
+};
+#endif
+
 /* fstab has the following format:
  *
  * Any line starting with a # is a comment and ignored

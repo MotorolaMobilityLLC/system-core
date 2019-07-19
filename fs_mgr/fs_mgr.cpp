@@ -501,31 +501,32 @@ static void tune_verity(const std::string& blk_device, const FstabEntry& entry,
 // false.  If it's not an f2fs filesystem, also set FS_STAT_INVALID_MAGIC.
 #define F2FS_BLKSIZE 4096
 #define F2FS_SUPER_OFFSET 1024
-static bool read_f2fs_superblock(const std::string& blk_device, int* fs_stat) {
+static bool read_f2fs_superblock(const std::string& blk_device, struct f2fs_super_block* sb, int* fs_stat) {
     android::base::unique_fd fd(TEMP_FAILURE_RETRY(open(blk_device.c_str(), O_RDONLY | O_CLOEXEC)));
-    __le32 sb1, sb2;
 
     if (fd < 0) {
         PERROR << "Failed to open '" << blk_device << "'";
         return false;
     }
 
-    if (TEMP_FAILURE_RETRY(pread(fd, &sb1, sizeof(sb1), F2FS_SUPER_OFFSET)) != sizeof(sb1)) {
+    if (TEMP_FAILURE_RETRY(pread(fd, sb, sizeof(*sb), F2FS_SUPER_OFFSET)) != sizeof(*sb)) {
         PERROR << "Can't read '" << blk_device << "' superblock1";
         return false;
     }
-    if (TEMP_FAILURE_RETRY(pread(fd, &sb2, sizeof(sb2), F2FS_BLKSIZE + F2FS_SUPER_OFFSET)) !=
-        sizeof(sb2)) {
+    if (sb->magic == cpu_to_le32(F2FS_SUPER_MAGIC))
+        return true;
+
+    if (TEMP_FAILURE_RETRY(pread(fd, sb, sizeof(*sb), F2FS_BLKSIZE + F2FS_SUPER_OFFSET)) !=
+        sizeof(*sb)) {
         PERROR << "Can't read '" << blk_device << "' superblock2";
         return false;
     }
+    if (sb->magic == cpu_to_le32(F2FS_SUPER_MAGIC))
+        return true;
 
-    if (sb1 != cpu_to_le32(F2FS_SUPER_MAGIC) && sb2 != cpu_to_le32(F2FS_SUPER_MAGIC)) {
-        LINFO << "Invalid f2fs superblock on '" << blk_device << "'";
-        *fs_stat |= FS_STAT_INVALID_MAGIC;
-        return false;
-    }
-    return true;
+    LINFO << "Invalid f2fs superblock on '" << blk_device << "'";
+    *fs_stat |= FS_STAT_INVALID_MAGIC;
+    return false;
 }
 
 #ifdef MTK_FSTAB_FLAGS
@@ -533,7 +534,7 @@ static bool fs_match(const std::string& in1, const std::string& in2);
 static void resize_fs(const std::string& blk_device, const std::string& fs_type,
                      const std::string& key_loc) {
     uint64_t device_sz;
-    uint64_t device_ss;
+    uint32_t device_ss;
     uint64_t device_sn;
     int status = 0;
     int ret = 0;
@@ -615,6 +616,38 @@ static void resize_fs(const std::string& blk_device, const std::string& fs_type,
         }
     }
 }
+
+static bool is_need_resize(const std::string& blk_device, const FstabEntry& entry, const void *sb) {
+    uint64_t device_sz;
+    uint64_t device_bc;
+    struct ext4_super_block *ext4_sb;
+    struct f2fs_super_block *f2fs_sb;
+
+    /* Get block device size */
+    android::base::unique_fd fd(TEMP_FAILURE_RETRY(open(blk_device.c_str(), O_RDONLY | O_CLOEXEC)));
+
+    if (fd < 0) {
+        PERROR << "Failed to open '" << blk_device << "' in is_need_resize";
+        return false;
+    }
+    if ((ioctl(fd, BLKGETSIZE64, &device_sz)) == -1) {
+        PERROR << "(BLKGETSIZE64) Can't get '" << blk_device << "' size in is_need_resize";
+        return false;
+    }
+    /* we suppose ext4/f2fs block size is 4KB */
+    device_bc = device_sz/4096;
+
+    /* ext4/f2fs's total size compare with block device size */
+    if (is_extfs(entry.fs_type)) {
+        ext4_sb = (struct ext4_super_block *)sb;
+        return ((device_bc - (uint64_t)ext4_sb->s_blocks_count_lo) > cpu_to_le32(1024)) ?
+            1 : 0;
+    } else if (is_f2fs(entry.fs_type)) {
+        f2fs_sb = (struct f2fs_super_block *)sb;
+        return (device_bc == (uint64_t)f2fs_sb->block_count) ? 0 : 1;
+    }
+    return false;
+}
 #endif
 
 // exported silent version of the above that just answer the question is_f2fs
@@ -645,26 +678,26 @@ bool fs_mgr_is_f2fs(const std::string& blk_device) {
 //
 static int prepare_fs_for_mount(const std::string& blk_device, const FstabEntry& entry) {
     int fs_stat = 0;
+    struct ext4_super_block ext4_sb;
+    struct f2fs_super_block f2fs_sb;
 
     if (is_extfs(entry.fs_type)) {
-        struct ext4_super_block sb;
-
-        if (read_ext4_superblock(blk_device, &sb, &fs_stat)) {
-            if ((sb.s_feature_incompat & EXT4_FEATURE_INCOMPAT_RECOVER) != 0 ||
-                (sb.s_state & EXT4_VALID_FS) == 0) {
+        if (read_ext4_superblock(blk_device, &ext4_sb, &fs_stat)) {
+            if ((ext4_sb.s_feature_incompat & EXT4_FEATURE_INCOMPAT_RECOVER) != 0 ||
+                (ext4_sb.s_state & EXT4_VALID_FS) == 0) {
                 LINFO << "Filesystem on " << blk_device << " was not cleanly shutdown; "
-                      << "state flags: 0x" << std::hex << sb.s_state << ", "
-                      << "incompat feature flags: 0x" << std::hex << sb.s_feature_incompat;
+                      << "state flags: 0x" << std::hex << ext4_sb.s_state << ", "
+                      << "incompat feature flags: 0x" << std::hex << ext4_sb.s_feature_incompat;
                 fs_stat |= FS_STAT_UNCLEAN_SHUTDOWN;
             }
 
             // Note: quotas should be enabled before running fsck.
-            tune_quota(blk_device, entry, &sb, &fs_stat);
+            tune_quota(blk_device, entry, &ext4_sb, &fs_stat);
         } else {
             return fs_stat;
         }
     } else if (is_f2fs(entry.fs_type)) {
-        if (!read_f2fs_superblock(blk_device, &fs_stat)) {
+        if (!read_f2fs_superblock(blk_device, &f2fs_sb, &fs_stat)) {
             return fs_stat;
         }
     }
@@ -675,10 +708,24 @@ static int prepare_fs_for_mount(const std::string& blk_device, const FstabEntry&
     }
 
 #ifdef MTK_FSTAB_FLAGS
-    if (entry.fs_mgr_flags.resize && fs_match(blk_device, entry.blk_device)) {
+    if (entry.fs_mgr_flags.resize) {
+        if (fs_match(blk_device, entry.blk_device)) {
+            if (is_extfs(entry.fs_type) && is_need_resize(blk_device, entry, (void *)&ext4_sb)) {
+                LINFO << "ext4 do resize!!!!";
+                goto resize;
+            } else if (is_f2fs(entry.fs_type) && is_need_resize(blk_device, entry, (void *)&f2fs_sb)) {
+                LINFO << "f2fs do resize!!!!";
+                goto resize;
+            }
+        }
+        LINFO << "do not resize!!!!";
+        goto no_resize;
+
+resize:
         resize_fs(blk_device, entry.fs_type, entry.key_loc);
         check_fs(blk_device, entry.fs_type, entry.mount_point, &fs_stat);
-    }
+     }
+no_resize:
 #endif
 
     if (is_extfs(entry.fs_type) &&
