@@ -174,7 +174,7 @@ static uint32_t PropertySet(const std::string& name, const std::string& value, s
     if (pi != nullptr) {
         // ro.* properties are actually "write-once".
         /* modify by dongjunxia for add countrycode A5-P L18021 bug[0340365] .start */
-        if (StartsWith(name, "ro.") && (name != "ro.product.locale")&& (name != "ro.adb.secure")) {
+        if (StartsWith(name, "ro.") && (name != "ro.product.locale")&& (name != "ro.adb.secure")&& (name != "ro.setupwizard.skip")) {
             *error = "Read-only property was already set";
             return PROP_ERROR_READ_ONLY_PROPERTY;
         }
@@ -774,9 +774,47 @@ void load_persist_props(void) {
     }
     /* modify by jiaoyuwei for usb secure moto bug[0342593] .end */
     /* modify by dongjunxia for add countrycode A5-P L18021 bug[0340365] .end */
-
+    load_properties_from_factory_cus();
     property_set("ro.persistent_properties.ready", "true");
 }
+
+void load_properties_from_factory_cus() {
+    SLOGE("load_persist_props.load_properties_from_factory_cus");
+    std::string buildtype = android::base::GetProperty("ro.build.type", "");
+    std::string usbtype = android::base::GetProperty("persist.sys.usb.config", "");
+    SLOGE("user_diag pu.load_properties_from_factory_cus.start ");
+    LOG(ERROR) << "check data ...buildtype:" << buildtype;
+    LOG(ERROR) << "check data ...usbtype:" << usbtype;
+
+    if (read_from_factory() == 1) {
+        SLOGE("user_diag pu.load_properties_from_factory_cus is user and P skip.setupwizard");
+        property_set("ro.setupwizard.skip", "1");
+    } else {
+        SLOGE("user_diag pu.load_properties_from_factory_cus is user and not P open.setupwizard");
+        property_set("ro.setupwizard.skip", "no");
+    }
+    if (buildtype != "user"){
+        SLOGE("user_diag pu.load_properties_from_factory_cus not user open.adb");
+        property_set("persist.sys.usb.config", "adb");
+    }
+    return;
+}
+
+// read form factory
+unsigned char read_from_factory() {
+    unsigned char buf = 0;
+    int fd = open("/dev/block/platform/bootdevice/by-name/proinfo", O_RDONLY);
+    if (fd == -1) {
+        close(fd);
+    } else {
+        lseek(fd, 210, SEEK_SET);
+        read(fd, &buf, 1);
+        close(fd);
+    }
+    return buf;
+}
+
+
 /* modify by dongjunxia for add countrycode A5-P L18021 bug[0340365] .start */
 void load_countrycode_from_factory (){
    SLOGD("load_countrycode_from_factory");
