@@ -227,13 +227,23 @@ static void check_fs(const char *blk_device, char *fs_type, char *target, int *f
                     "-a",
                     blk_device
             };
-        LINFO << "Running " << F2FS_FSCK_BIN << " -a " << blk_device;
+        const char* f2fs_fsck_forced_argv[] = {F2FS_FSCK_BIN, "-f", blk_device};
 
-        ret = android_fork_execvp_ext(ARRAY_SIZE(f2fs_fsck_argv),
-                                      const_cast<char **>(f2fs_fsck_argv),
-                                      &status, true, LOG_KLOG | LOG_FILE,
-                                      true, const_cast<char *>(FSCK_LOG_FILE),
-                                      NULL, 0);
+        if (should_force_check(*fs_stat)) {
+            LINFO << "Running " << F2FS_FSCK_BIN << " -f " << blk_device;
+            ret = android_fork_execvp_ext(ARRAY_SIZE(f2fs_fsck_forced_argv),
+				          const_cast<char **>(f2fs_fsck_forced_argv),
+				          &status, true, LOG_KLOG | LOG_FILE,
+				          true, const_cast<char *>(FSCK_LOG_FILE),
+				          NULL, 0);
+	} else {
+            LINFO << "Running " << F2FS_FSCK_BIN << " -a " << blk_device;
+            ret = android_fork_execvp_ext(ARRAY_SIZE(f2fs_fsck_argv),
+                                          const_cast<char **>(f2fs_fsck_argv),
+                                          &status, true, LOG_KLOG | LOG_FILE,
+                                          true, const_cast<char *>(FSCK_LOG_FILE),
+                                          NULL, 0);
+	}
         if (ret < 0) {
             /* No need to check for error in fork, we can't really handle it now */
             LERROR << "Failed trying to run " << F2FS_FSCK_BIN;
