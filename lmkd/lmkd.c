@@ -195,6 +195,10 @@ enum meminfo_field {
     MI_NR_FREE_PAGES,
     MI_CACHED,
     MI_SWAP_CACHED,
+    MI_ACTIVE_ANON,
+    MI_INACTIVE_ANON,
+    MI_ACTIVE_FILE,
+    MI_INACTIVE_FILE,
     MI_BUFFERS,
     MI_SHMEM,
     MI_UNEVICTABLE,
@@ -210,6 +214,10 @@ static const char* const meminfo_field_names[MI_FIELD_COUNT] = {
     "MemFree:",
     "Cached:",
     "SwapCached:",
+    "Active(anon):",
+    "Inactive(anon):",
+    "Active(file):",
+    "Inactive(file):",
     "Buffers:",
     "Shmem:",
     "Unevictable:",
@@ -225,6 +233,10 @@ union meminfo {
         int64_t nr_free_pages;
         int64_t cached;
         int64_t swap_cached;
+        int64_t active_anon;
+        int64_t inactive_anon;
+        int64_t active_file;
+        int64_t inactive_file;
         int64_t buffers;
         int64_t shmem;
         int64_t unevictable;
@@ -234,7 +246,8 @@ union meminfo {
         int64_t cma_free_pages;
         /* fields below are calculated rather than read from the file */
         int64_t nr_file_pages;
-        int64_t nr_real_file_pages;
+        int64_t nr_reclaimable_file_pages;
+        int64_t nr_reclaimable_anon_pages;
         int64_t nr_real_free_pages;
     } field;
     int64_t arr[MI_FIELD_COUNT];
@@ -895,8 +908,10 @@ static int meminfo_parse(union meminfo *mi) {
 
     mi->field.nr_file_pages = mi->field.cached + mi->field.swap_cached +
         mi->field.buffers;
-    mi->field.nr_real_file_pages = MAX((mi->field.nr_file_pages - mi->field.shmem -
-                          mi->field.unevictable - mi->field.swap_cached), 0);
+    mi->field.nr_reclaimable_file_pages = MAX((mi->field.nr_file_pages - mi->field.shmem -
+                            mi->field.unevictable - mi->field.swap_cached), 0);
+    mi->field.nr_reclaimable_anon_pages = MIN(mi->field.free_swap,
+                            mi->field.active_anon + mi->field.inactive_anon);
 
     // Count 1/2 cma free as real free becuase cma pages can only be used
     // for specific page requests.
@@ -1140,12 +1155,14 @@ static int get_swappiness() {
     return (int)swappiness;
 }
 
-static void set_swappiness(int swappiness) {
-    char val[20];
-    snprintf(val, sizeof(val), "%d", swappiness);
-    writefilestring(MEMCG_SWAPPINESS, val);
-    writefilestring(MEMCG_SYSTEM_SWAPPINESS, val);
-    writefilestring(MEMCG_APPS_SWAPPINESS, val);
+static void set_swappiness(int swappiness_app, int swappiness_system) {
+    char app[20];
+    char system[20];
+    snprintf(app, sizeof(app), "%d", swappiness_app);
+    snprintf(system, sizeof(system), "%d", swappiness_system);
+    writefilestring(MEMCG_SWAPPINESS, app);
+    writefilestring(MEMCG_SYSTEM_SWAPPINESS, system);
+    writefilestring(MEMCG_APPS_SWAPPINESS, app);
 }
 
 void record_low_pressure_levels(union meminfo *mi) {
@@ -1202,8 +1219,6 @@ static void mp_event_common(int data, uint32_t events __unused) {
     struct timeval curr_tm;
     static struct timeval last_pressure_checkpoint_tm;
     static int recent_pressure = 0;
-    static int last_file_pages = 0;
-    static int last_free_swap_pages = 0;
     long time_elapsed = 0;
     static struct timeval last_report_tm;
     static unsigned long skip_count = 0;
@@ -1245,8 +1260,6 @@ static void mp_event_common(int data, uint32_t events __unused) {
     if (time_elapsed > 200) {
         // reset the window.
         recent_pressure = 0;
-        last_file_pages = mi.field.nr_real_file_pages;
-        last_free_swap_pages = mi.field.free_swap;
         last_pressure_checkpoint_tm.tv_sec = curr_tm.tv_sec;
         last_pressure_checkpoint_tm.tv_usec = curr_tm.tv_usec;
     }
@@ -1315,41 +1328,48 @@ static void mp_event_common(int data, uint32_t events __unused) {
             return;
         }
 
-        long max_swap = mi.field.total_swap * page_k;
-        long free_swap = mi.field.free_swap * page_k;
-        int swap_ratio = free_swap*100/max_swap;
-        long swap_delta = (mi.field.free_swap - last_free_swap_pages) * page_k;
+        // reclaimable anon pages.
+        long max_anon = MIN(mi.field.total_swap - mi.field.free_swap
+                    + mi.field.active_anon + mi.field.inactive_anon, mi.field.total_swap) * page_k;
+        long active_anon = mi.field.active_anon * page_k;
+        long inactive_anon = mi.field.inactive_anon * page_k;
+        long reclaimable_anon = mi.field.nr_reclaimable_anon_pages * page_k;
+        int anon_ratio = reclaimable_anon*100/max_anon;
 
+        // reclaimable file pages.
         long max_file = (mi.field.total_memory/2) * page_k;
-        long file = mi.field.nr_real_file_pages * page_k;
-        int file_ratio = file*100/max_file;
-        long file_delta = (mi.field.nr_real_file_pages - last_file_pages) * page_k;
+        long active_file = mi.field.active_file * page_k;
+        long inactive_file = mi.field.inactive_file * page_k;
+        long reclaimable_file = mi.field.nr_reclaimable_file_pages * page_k;
+        int file_ratio = reclaimable_file*100/max_file;
 
-        int free_ratio = file_ratio + swap_ratio;
-        int free_delta = file_delta + swap_delta;
+        int free_ratio = (file_ratio + anon_ratio)/2;
         int target_pressure = 0;
         int pressure_adjustment = 0;
         bool do_kill = false;
 
         recent_pressure += pressure_adjustment;
 
-        if (free_ratio > 100) {
-            target_pressure = 24;
-            level_oomadj[VMPRESS_LEVEL_MEDIUM] = level_oomadj[VMPRESS_LEVEL_CRITICAL] = 800;
-        } else if (free_ratio > 60) {
-            target_pressure = 12;
-            level_oomadj[VMPRESS_LEVEL_MEDIUM] = level_oomadj[VMPRESS_LEVEL_CRITICAL] = 300;
+        if (free_ratio > 50) {
+            target_pressure = 30;
+            level_oomadj[VMPRESS_LEVEL_MEDIUM] = level_oomadj[VMPRESS_LEVEL_CRITICAL] = 900;
         } else if (free_ratio > 40) {
+            target_pressure = 25;
+            level_oomadj[VMPRESS_LEVEL_MEDIUM] = level_oomadj[VMPRESS_LEVEL_CRITICAL] = 800;
+        } else if (free_ratio > 30) {
+            target_pressure = 20;
+            level_oomadj[VMPRESS_LEVEL_MEDIUM] = level_oomadj[VMPRESS_LEVEL_CRITICAL] = 300;
+        } else if (free_ratio > 20) {
+            target_pressure = 15;
+            level_oomadj[VMPRESS_LEVEL_MEDIUM] = level_oomadj[VMPRESS_LEVEL_CRITICAL] = 100;
+        } else if (free_ratio > 15) {
+            target_pressure = 12;
+            level_oomadj[VMPRESS_LEVEL_MEDIUM] = level_oomadj[VMPRESS_LEVEL_CRITICAL] = 100;
+       } else if (free_ratio > 10) {
             target_pressure = 8;
             level_oomadj[VMPRESS_LEVEL_MEDIUM] = level_oomadj[VMPRESS_LEVEL_CRITICAL] = 100;
-        } else if (free_ratio > 30) {
-            target_pressure = 6;
-            level_oomadj[VMPRESS_LEVEL_MEDIUM] = level_oomadj[VMPRESS_LEVEL_CRITICAL] = 100;
-       } else if (free_ratio > 20) {
+        } else if (free_ratio > 5) {
             target_pressure = 4;
-            level_oomadj[VMPRESS_LEVEL_MEDIUM] = level_oomadj[VMPRESS_LEVEL_CRITICAL] = 100;
-        } else if (free_ratio > 10) {
-            target_pressure = 2;
             level_oomadj[VMPRESS_LEVEL_MEDIUM] = level_oomadj[VMPRESS_LEVEL_CRITICAL] = 100;
         } else {
             target_pressure = 0;
@@ -1359,9 +1379,10 @@ static void mp_event_common(int data, uint32_t events __unused) {
         do_kill = recent_pressure >= target_pressure;
         if (!do_kill) {
             if (debug_process_killing) {
-                ALOGI("Ignoring %s pressure since file %ld/%ld/%ld(%d), swap %ld/%ld/%ld(%d), rpressure %d(%d) %s",
+                ALOGI("Ignoring %s pressure since file %ld/%ld(%d), anon %ld/%ld(%d), rpressure %d(%d) %s",
                     level == VMPRESS_LEVEL_CRITICAL ? "critical" : "medium",
-                    file_delta, file, max_file, file_ratio, swap_delta, free_swap, max_swap, swap_ratio,
+                    active_file, inactive_file, file_ratio,
+                    active_anon, inactive_anon, anon_ratio,
                     recent_pressure, target_pressure,
                     pressure_adjustment > 0 ? "upgraded" : pressure_adjustment < 0 ? "downgrade" : "");
             }
@@ -1382,8 +1403,10 @@ static void mp_event_common(int data, uint32_t events __unused) {
         }
         min_score_adj = level_oomadj[level];
 
-        ALOGI("Killing process above adj %d, file %ld/%ld/%ld(%d), swap %ld/%ld/%ld(%d), rpressure %d(%d)",
-            min_score_adj, file_delta, file, max_file, file_ratio, swap_delta, free_swap, max_swap, swap_ratio,
+        ALOGI("Killing process above adj %d, file %ld/%ld(%d), anon %ld/%ld(%d), rpressure %d(%d)",
+            min_score_adj,
+            active_file, inactive_file, file_ratio,
+            active_anon, inactive_anon, anon_ratio,
             recent_pressure, target_pressure);
     }
 
@@ -1535,7 +1558,7 @@ static int init(void) {
     if (use_inkernel_interface) {
         ALOGI("Using in-kernel low memory killer interface");
     } else {
-        set_swappiness(100);
+        set_swappiness(100, 100);
         if (!init_mp_common(VMPRESS_LEVEL_LOW) ||
             !init_mp_common(VMPRESS_LEVEL_MEDIUM) ||
             !init_mp_common(VMPRESS_LEVEL_CRITICAL)) {
