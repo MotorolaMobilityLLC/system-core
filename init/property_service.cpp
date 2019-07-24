@@ -63,6 +63,7 @@
 #include "subcontext.h"
 #include "util.h"
 #include "cutils/log.h"
+#include "property_info.h"
 
 using namespace std::literals;
 
@@ -174,7 +175,8 @@ static uint32_t PropertySet(const std::string& name, const std::string& value, s
     if (pi != nullptr) {
         // ro.* properties are actually "write-once".
         /* modify by dongjunxia for add countrycode A5-P L18021 bug[0340365] .start */
-        if (StartsWith(name, "ro.") && (name != "ro.product.locale")&& (name != "ro.adb.secure")&& (name != "ro.setupwizard.skip")) {
+        if (StartsWith(name, "ro.") && (name != "ro.product.locale") && (name != "ro.adb.secure")
+             && (name != "ro.setupwizard.skip") && !changeSystemProperty(name)) {
             *error = "Read-only property was already set";
             return PROP_ERROR_READ_ONLY_PROPERTY;
         }
@@ -969,6 +971,7 @@ void load_system_props() {
     load_recovery_id_prop();
     set_properties_from_proinfo();
     set_properties_from_hwinfo();
+    set_system_properties();
 }
 // modify by dongjunxia for sku prop .end
 

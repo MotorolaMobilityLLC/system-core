@@ -142,6 +142,7 @@ cc_library_static {
         "ueventd_parser.cpp",
         "util.cpp",
         "watchdogd.cpp",
+        "property_info.cpp",
     ],
     whole_static_libs: ["libcap"],
     header_libs: ["bootimg_headers"],
