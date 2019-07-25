@@ -72,11 +72,11 @@ void set_system_properties(){
         property_set(prop_amclient,prop_clientcountry_value);
         property_set(prop_msclient,prop_clientrevc_value);
     } else if (carrier_value == "attmx") {
-        property_set(prop_amclient," ");
+       // property_set(prop_amclient," ");
         property_set(prop_msclient,prop_clientmx_value);
     } else if (carrier_value == "eegb") {
         prop_product_value = "bali_reteu";
-        property_set(prop_amclient," ");
+        //property_set(prop_amclient," ");
         property_set(prop_msclient,prop_clientuk_value);
         property_set(prop_product,prop_product_value);
         property_set(prop_build_fingerprint,get_fingerprint_property(prop_product_value));
