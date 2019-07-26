@@ -111,6 +111,7 @@ struct {
 
 static int level_oomadj[VMPRESS_LEVEL_COUNT];
 static int mpevfd[VMPRESS_LEVEL_COUNT] = { -1, -1, -1 };
+static int min_pressure[8] = {0, 4, 8, 12, 15, 20, 25, 30};
 static bool debug_process_killing;
 static bool enable_pressure_upgrade;
 static int64_t upgrade_pressure;
@@ -287,7 +288,20 @@ static struct proc *pidhash[PIDHASH_SZ];
 #define pid_hashfn(x) ((((x) >> 8) ^ (x)) & (PIDHASH_SZ - 1))
 
 #define ADJTOSLOT(adj) ((adj) + -OOM_SCORE_ADJ_MIN)
-static struct adjslot_list procadjslot_list[ADJTOSLOT(OOM_SCORE_ADJ_MAX) + 1];
+#define ADJTOSLOT_COUNT (ADJTOSLOT(OOM_SCORE_ADJ_MAX) + 1)
+static struct adjslot_list procadjslot_list[ADJTOSLOT_COUNT];
+
+#define MAX_DISTINCT_OOM_ADJ 32
+#define KILLCNT_INVALID_IDX 0xFF
+/*
+ * Because killcnt array is sparse a two-level indirection is used
+ * to keep the size small. killcnt_idx stores index of the element in
+ * killcnt array. Index KILLCNT_INVALID_IDX indicates an unused slot.
+ */
+static uint8_t killcnt_idx[ADJTOSLOT_COUNT];
+static uint16_t killcnt[MAX_DISTINCT_OOM_ADJ];
+static int killcnt_free_idx = 0;
+static uint32_t killcnt_total = 0;
 
 /* PAGE_SIZE / 1024 */
 static long page_k;
@@ -446,6 +460,74 @@ static int pid_remove(int pid) {
     proc_unslot(procp);
     free(procp);
     return 0;
+}
+
+static inline unsigned long get_time_diff_ms(struct timeval *from,
+                                             struct timeval *to) {
+    return (to->tv_sec - from->tv_sec) * 1000 +
+           (to->tv_usec - from->tv_usec) / 1000;
+}
+
+static void save_killcnt_to_prop() {
+    int i;
+    int slot;
+    uint8_t idx;
+    char killcnt_str[PROPERTY_VALUE_MAX];
+    char *pstr = killcnt_str;
+    char *pend = killcnt_str + sizeof(killcnt_str);
+    static struct timeval last_req_tm;
+    struct timeval curr_tm;
+
+    gettimeofday(&curr_tm, NULL);
+    if (get_time_diff_ms(&last_req_tm, &curr_tm) < 1000) {
+        return;
+    }
+    last_req_tm = curr_tm;
+
+    // don't care killcnt below adj 0.
+    for (i = OOM_SCORE_ADJ_MAX; i >= 0; i--) {
+        slot = ADJTOSLOT(i);
+        idx = killcnt_idx[slot];
+        if (idx != KILLCNT_INVALID_IDX) {
+            pstr += snprintf(pstr, pend - pstr, "%d:%d,", i, killcnt[idx]);
+            if (pstr >= pend) {
+                /* if no more space in the buffer then terminate the loop */
+                pstr = pend;
+                break;
+            }
+        }
+    }
+
+    /* Override the last extra comma */
+    pstr[-1] = '\0';
+    property_set("sys.lmk.killcnt", killcnt_str);
+}
+
+static void inc_killcnt(int oomadj) {
+    int slot = ADJTOSLOT(oomadj);
+    uint8_t idx = killcnt_idx[slot];
+
+    if (idx == KILLCNT_INVALID_IDX) {
+        /* index is not assigned for this oomadj */
+        if (killcnt_free_idx < MAX_DISTINCT_OOM_ADJ) {
+            killcnt_idx[slot] = killcnt_free_idx;
+            killcnt[killcnt_free_idx] = 1;
+            killcnt_free_idx++;
+        } else {
+            ALOGW("Number of distinct oomadj levels exceeds %d",
+                MAX_DISTINCT_OOM_ADJ);
+        }
+    } else {
+        /*
+         * wraparound is highly unlikely and is detectable using total
+         * counter because it has to be equal to the sum of all counters
+         */
+        killcnt[idx]++;
+    }
+    /* increment total kill counter */
+    killcnt_total++;
+
+    save_killcnt_to_prop();
 }
 
 static void writefilestring(const char *path, char *s) {
@@ -1031,6 +1113,7 @@ static int kill_one_process(struct proc* procp, int min_score_adj,
     TRACE_KILL_START(pid);
 
     r = kill(pid, SIGKILL);
+    inc_killcnt(procp->oomadj);
     ALOGI(
         "Killing '%s' (%d), uid %d, adj %d\n"
         "   to free %ldkB because system is under %s memory pressure oom_adj %d\n",
@@ -1202,12 +1285,6 @@ enum vmpressure_level downgrade_level(enum vmpressure_level level) {
         level - 1 : level);
 }
 
-static inline unsigned long get_time_diff_ms(struct timeval *from,
-                                             struct timeval *to) {
-    return (to->tv_sec - from->tv_sec) * 1000 +
-           (to->tv_usec - from->tv_usec) / 1000;
-}
-
 static void mp_event_common(int data, uint32_t events __unused) {
     int ret;
     unsigned long long evcount;
@@ -1260,8 +1337,7 @@ static void mp_event_common(int data, uint32_t events __unused) {
     if (time_elapsed > 200) {
         // reset the window.
         recent_pressure = 0;
-        last_pressure_checkpoint_tm.tv_sec = curr_tm.tv_sec;
-        last_pressure_checkpoint_tm.tv_usec = curr_tm.tv_usec;
+        last_pressure_checkpoint_tm = curr_tm;
     }
 
     if (level > VMPRESS_LEVEL_LOW) {
@@ -1351,28 +1427,28 @@ static void mp_event_common(int data, uint32_t events __unused) {
         recent_pressure += pressure_adjustment;
 
         if (free_ratio > 50) {
-            target_pressure = 30;
+            target_pressure = min_pressure[7];
             level_oomadj[VMPRESS_LEVEL_MEDIUM] = level_oomadj[VMPRESS_LEVEL_CRITICAL] = 900;
         } else if (free_ratio > 40) {
-            target_pressure = 25;
+            target_pressure = min_pressure[6];
             level_oomadj[VMPRESS_LEVEL_MEDIUM] = level_oomadj[VMPRESS_LEVEL_CRITICAL] = 800;
         } else if (free_ratio > 30) {
-            target_pressure = 20;
+            target_pressure = min_pressure[5];
             level_oomadj[VMPRESS_LEVEL_MEDIUM] = level_oomadj[VMPRESS_LEVEL_CRITICAL] = 300;
         } else if (free_ratio > 20) {
-            target_pressure = 15;
+            target_pressure = min_pressure[4];
             level_oomadj[VMPRESS_LEVEL_MEDIUM] = level_oomadj[VMPRESS_LEVEL_CRITICAL] = 100;
         } else if (free_ratio > 15) {
-            target_pressure = 12;
+            target_pressure = min_pressure[3];
             level_oomadj[VMPRESS_LEVEL_MEDIUM] = level_oomadj[VMPRESS_LEVEL_CRITICAL] = 100;
-       } else if (free_ratio > 10) {
-            target_pressure = 8;
+        } else if (free_ratio > 10) {
+            target_pressure = min_pressure[2];
             level_oomadj[VMPRESS_LEVEL_MEDIUM] = level_oomadj[VMPRESS_LEVEL_CRITICAL] = 100;
         } else if (free_ratio > 5) {
-            target_pressure = 4;
+            target_pressure = min_pressure[1];
             level_oomadj[VMPRESS_LEVEL_MEDIUM] = level_oomadj[VMPRESS_LEVEL_CRITICAL] = 100;
         } else {
-            target_pressure = 0;
+            target_pressure = min_pressure[0];
             level_oomadj[VMPRESS_LEVEL_MEDIUM] = level_oomadj[VMPRESS_LEVEL_CRITICAL] = 0;
         }
 
@@ -1438,8 +1514,7 @@ do_kill:
                   pages_to_free, pages_freed);
             gettimeofday(&last_report_tm, NULL);
             recent_pressure = 0;
-            last_pressure_checkpoint_tm.tv_sec = curr_tm.tv_sec;
-            last_pressure_checkpoint_tm.tv_usec = curr_tm.tv_usec;
+            last_pressure_checkpoint_tm = curr_tm;
         }
     }
 }
@@ -1572,6 +1647,8 @@ static int init(void) {
         procadjslot_list[i].prev = &procadjslot_list[i];
     }
 
+    memset(killcnt_idx, KILLCNT_INVALID_IDX, sizeof(killcnt_idx));
+
     return 0;
 }
 
@@ -1624,6 +1701,26 @@ static void mainloop(void) {
     }
 }
 
+void load_min_pressure_from_prop() {
+    const static char *SPLIT = ",";
+    char prop_value[PROPERTY_VALUE_MAX] = {0};
+    char *tok = NULL;
+    unsigned char i;
+    int MINPRESSURE_COUNT = sizeof(min_pressure)/sizeof(min_pressure[0]);
+
+    int ret = property_get("persist.sys.lmk.minpressure", prop_value, NULL);
+    if (ret <= 0) return;
+
+    ALOGI("min_pressure loaded from prop: %s", prop_value);
+
+    tok = strtok(prop_value, SPLIT);
+    for (i=0; tok != NULL && i<MINPRESSURE_COUNT; i++) {
+        min_pressure[i] = atoi(tok);
+        tok = strtok(NULL, SPLIT);
+        ALOGI("%d", min_pressure[i]);
+    }
+}
+
 int main(int argc __unused, char **argv __unused) {
     struct sched_param param = {
             .sched_priority = 1,
@@ -1636,7 +1733,10 @@ int main(int argc __unused, char **argv __unused) {
         property_get_int32("ro.lmk.medium", 800);
     level_oomadj[VMPRESS_LEVEL_CRITICAL] =
         property_get_int32("ro.lmk.critical", 0);
-    debug_process_killing = property_get_bool("ro.lmk.debug", false);
+    debug_process_killing = property_get_bool("ro.lmk.debug",
+                    property_get_bool("persist.sys.lmk.debug", false));
+
+    load_min_pressure_from_prop();
 
     /* By default disable upgrade/downgrade logic */
     enable_pressure_upgrade =
