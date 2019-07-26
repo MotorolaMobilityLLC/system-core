@@ -98,7 +98,7 @@ void set_system_properties(){
 
 bool changeSystemProperty(std::string key) {
     if (key == prop_product || key == prop_build_fingerprint
-      || key == prop_fingerprint || key == prop_vendor_fingerprint) {
+      || key == prop_fingerprint || key == prop_vendor_fingerprint || key == prop_carrier) {
         return true;
     }
     return false;
