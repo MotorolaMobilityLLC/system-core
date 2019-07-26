@@ -98,10 +98,11 @@ bool ReadDtFile(const std::string& file_name, std::string* dt_value) {
     return false;
 }
 
-const std::array<const char*, 3> kFileContentsEncryptionMode = {
+const std::array<const char*, 4> kFileContentsEncryptionMode = {
         "aes-256-xts",
         "adiantum",
         "ice",
+        "fmp",
 };
 
 const std::array<const char*, 3> kFileNamesEncryptionMode = {
