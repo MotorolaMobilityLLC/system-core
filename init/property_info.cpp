@@ -49,8 +49,8 @@ void set_system_properties(){
     size_t position = carrier_ontim.find("_");
     std::string  carrier_value = carrier_ontim.substr(0, position);
     property_set(prop_carrier,carrier_value);
-    if (carrier_value == "o2gb" || carrier_value == "retgb" || carrier_value == "tescogb" || carrier_value == "pluspl"
-         || carrier_value == "playpl" || carrier_value == "reteu2" || carrier_ontim == "reteu_reteu") {
+    if (carrier_value == "retgb" || carrier_value == "tescogb" || carrier_value == "pluspl"
+         || carrier_value == "playpl" || (carrier_value == "reteu" && carrier_ontim != "reteu_reteuse")) {
         prop_product_value = "bali_reteu";
         property_set(prop_amclient,prop_client_value);
         property_set(prop_msclient,prop_clientrev_value);
@@ -58,38 +58,12 @@ void set_system_properties(){
         property_set(prop_build_fingerprint,get_fingerprint_property(prop_product_value));
         property_set(prop_fingerprint,get_fingerprint_property(prop_product_value));
         property_set(prop_vendor_fingerprint,get_fingerprint_property(prop_product_value));
-    } else if (carrier_value == "retru") {
-        prop_product_value = "bali_retru";
-        property_set(prop_amclient,prop_client_value);
-        property_set(prop_msclient,prop_clientrev_value);
-        property_set(prop_product,prop_product_value);
-        property_set(prop_build_fingerprint,get_fingerprint_property(prop_product_value));
-        property_set(prop_fingerprint,get_fingerprint_property(prop_product_value));
-        property_set(prop_vendor_fingerprint,get_fingerprint_property(prop_product_value));
-
-    } else if (carrier_value == "amxbr" || carrier_value == "amxcl" || carrier_value == "amxmx"
-               || carrier_value == "amxpe" || carrier_value == "amxco") {
+    } else if (carrier_value == "amxbr" || carrier_value == "amxmx" || carrier_value == "amxco") {
         property_set(prop_amclient,prop_clientcountry_value);
         property_set(prop_msclient,prop_clientrevc_value);
     } else if (carrier_value == "attmx") {
-       // property_set(prop_amclient," ");
+        property_set(prop_amclient," ");
         property_set(prop_msclient,prop_clientmx_value);
-    } else if (carrier_value == "eegb") {
-        prop_product_value = "bali_reteu";
-        //property_set(prop_amclient," ");
-        property_set(prop_msclient,prop_clientuk_value);
-        property_set(prop_product,prop_product_value);
-        property_set(prop_build_fingerprint,get_fingerprint_property(prop_product_value));
-        property_set(prop_fingerprint,get_fingerprint_property(prop_product_value));
-        property_set(prop_vendor_fingerprint,get_fingerprint_property(prop_product_value));
-    } else if (carrier_value == "dteu") {
-        prop_product_value = "bali_reteu";
-        property_set(prop_amclient,prop_clienttmobile_value);
-        property_set(prop_msclient,prop_clientdt_value);
-        property_set(prop_product,prop_product_value);
-        property_set(prop_build_fingerprint,get_fingerprint_property(prop_product_value));
-        property_set(prop_fingerprint,get_fingerprint_property(prop_product_value));
-        property_set(prop_vendor_fingerprint,get_fingerprint_property(prop_product_value));
     } else {
         property_set(prop_amclient,prop_client_value);
         property_set(prop_msclient,prop_clientrev_value);
