@@ -1,0 +1,11 @@
+bootstrap_go_package {
+     name: "soong-adb_buildc",
+     pkgPath: "android/soong/system/core/adb",
+     deps: [
+         "soong-mmi",
+     ],
+     srcs: [
+         "mmibuildc.go",
+     ],
+     pluginFor: ["soong_build"],
+}
