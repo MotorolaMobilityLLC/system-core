@@ -62,7 +62,7 @@ void set_system_properties(){
         property_set(prop_amclient,prop_clientcountry_value);
         property_set(prop_msclient,prop_clientrevc_value);
     } else if (carrier_value == "attmx") {
-        property_set(prop_amclient," ");
+        //property_set(prop_amclient," ");
         property_set(prop_msclient,prop_clientmx_value);
     } else {
         property_set(prop_amclient,prop_client_value);
