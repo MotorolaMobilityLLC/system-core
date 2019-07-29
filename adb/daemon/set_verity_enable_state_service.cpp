@@ -193,19 +193,23 @@ void set_verity_enabled_state_service(unique_fd fd, bool enable) {
                        enable ? "enable" : "disable");
         }
 
+#ifndef MOTO_BLD_C
         if (!android::base::GetBoolProperty("ro.secure", false)) {
             overlayfs_setup(fd, enable);
             WriteFdExactly(fd.get(), "verity not enabled - ENG build\n");
             return;
         }
+#endif
     }
 
     // Should never be possible to disable dm-verity on a USER build
     // regardless of using AVB or VB1.0.
+#ifndef MOTO_BLD_C
     if (!__android_log_is_debuggable()) {
         WriteFdExactly(fd.get(), "verity cannot be disabled/enabled - USER build\n");
         return;
     }
+#endif
 
     if (using_avb) {
         // Yep, the system is using AVB.
