@@ -372,9 +372,16 @@ cc_library_static {
     },
 }
 
+mmi_adb_defaults {
+   name: "mmi_adb_defaults",
+}
+
 cc_library {
     name: "libadbd_services",
-    defaults: ["adbd_defaults", "host_adbd_supported"],
+    defaults: ["adbd_defaults",
+               "host_adbd_supported",
+               "mmi_adb_defaults",
+    ],
     recovery_available: true,
     compile_multilib: "both",
 
