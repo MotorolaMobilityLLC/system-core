@@ -409,7 +409,9 @@ AvbUniquePtr AvbHandle::Open() {
         }
         if (!avb_verifier->VerifyVbmetaImages(avb_handle->vbmeta_images_)) {
             LERROR << "VerifyVbmetaImages failed";
-            return nullptr;
+            if(!is_device_unlocked) {
+              return nullptr;
+            }
         }
 
         // Checks whether FLAGS_HASHTREE_DISABLED is set.
