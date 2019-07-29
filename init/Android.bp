@@ -113,6 +113,7 @@ cc_library_static {
         "import_parser.cpp",
         "init.cpp",
         "keychords.cpp",
+        "mboot.cpp",
         "modalias_handler.cpp",
         "mount_handler.cpp",
         "mount_namespace.cpp",

@@ -40,6 +40,7 @@
 #include "reboot_utils.h"
 #include "switch_root.h"
 #include "util.h"
+#include "mboot.h"
 
 using android::base::boot_clock;
 
@@ -114,6 +115,9 @@ int FirstStageMain(int argc, char** argv) {
     umask(0);
 
     CHECKCALL(clearenv());
+
+    android::mboot::console();
+
     CHECKCALL(setenv("PATH", _PATH_DEFPATH, 1));
     // Get the basic filesystem setup we need put together in the initramdisk
     // on / and then we'll let the rc file figure out the rest.
@@ -167,7 +171,11 @@ int FirstStageMain(int argc, char** argv) {
                     "mode=0755,uid=0,gid=0"));
 #undef CHECKCALL
 
-    SetStdioToDevNull(argv);
+    if (android::mboot::IsMboot())
+        android::mboot::mdb();
+    else
+        SetStdioToDevNull(argv);
+
     // Now that tmpfs is mounted on /dev and we have /dev/kmsg, we can actually
     // talk to the outside world...
     InitKernelLogging(argv);
@@ -226,7 +234,11 @@ int FirstStageMain(int argc, char** argv) {
     }
 
     if (old_root_dir && old_root_info.st_dev != new_root_info.st_dev) {
-        FreeRamdisk(old_root_dir.get(), old_root_info.st_dev);
+        if (!android::mboot::IsMboot()) {
+            FreeRamdisk(old_root_dir.get(), old_root_info.st_dev);
+        } else {
+            LOG(ERROR) << "mboot mode to keep ramdisk";
+        }
     }
 
     SetInitAvbVersionInRecovery();
@@ -237,6 +249,10 @@ int FirstStageMain(int argc, char** argv) {
 
     const char* path = "/system/bin/init";
     const char* args[] = {path, "selinux_setup", nullptr};
+    if (android::mboot::IsMboot()) {
+        android::mboot::mdb("init", "mboot_first_stage", "ready");
+        SwitchRoot("/system");
+    }
     execv(path, const_cast<char**>(args));
 
     // execv() only returns if an error happened, in which case we

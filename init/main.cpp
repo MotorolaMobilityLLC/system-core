@@ -20,6 +20,7 @@
 #include "selinux.h"
 #include "subcontext.h"
 #include "ueventd.h"
+#include "mboot.h"
 
 #include <android-base/logging.h>
 
@@ -66,6 +67,9 @@ int main(int argc, char** argv) {
         }
 
         if (!strcmp(argv[1], "selinux_setup")) {
+            printf("sleep 1...\n");
+            sleep(1);
+            android::mboot::mdb();
             return SetupSelinux(argv);
         }
 

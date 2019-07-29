@@ -50,6 +50,7 @@ LOCAL_SRC_FILES := \
     first_stage_init.cpp \
     first_stage_main.cpp \
     first_stage_mount.cpp \
+    mboot.cpp \
     mount_namespace.cpp \
     reboot_utils.cpp \
     selinux.cpp \
