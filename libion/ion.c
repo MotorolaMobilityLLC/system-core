@@ -34,10 +34,32 @@
 #include "ion_4.12.h"
 
 #include <log/log.h>
+#include <dlfcn.h>
 
 enum ion_version { ION_VERSION_UNKNOWN, ION_VERSION_MODERN, ION_VERSION_LEGACY };
 
 static atomic_int g_ion_version = ATOMIC_VAR_INIT(ION_VERSION_UNKNOWN);
+
+//defined in .bp, eng version only
+#ifdef MTK_ION_FD_DEBUG
+typedef void(*FD_Record_BT)(int);
+FD_Record_BT ion_fd_trace = NULL;
+void dl_load_dynamic_libs()
+{
+    static bool dlonce = false;
+    if (dlonce) {
+        return;
+    } else {
+        //clear error
+        dlerror();
+        ion_fd_trace = (FD_Record_BT)dlsym(RTLD_DEFAULT, "fdleak_record_backtrace_safe");
+        dlonce = true;
+        if (ion_fd_trace == NULL) {
+            ALOGE("cann't find fdleak_record_backtrace error:%s", dlerror());
+        }
+    }
+}
+#endif
 
 int ion_is_legacy(int fd) {
     int version = atomic_load_explicit(&g_ion_version, memory_order_acquire);
@@ -144,6 +166,14 @@ int ion_share(int fd, ion_user_handle_t handle, int* share_fd) {
         return -EINVAL;
     }
     *share_fd = data.fd;
+#ifdef MTK_ION_FD_DEBUG
+    if(!ion_fd_trace) {
+        dl_load_dynamic_libs();
+    }
+    if(ion_fd_trace && data.fd > 400) {
+        ion_fd_trace(*share_fd);
+    }
+#endif
     return ret;
 }
 
@@ -184,6 +214,14 @@ int ion_import(int fd, int share_fd, ion_user_handle_t* handle) {
     ret = ion_ioctl(fd, ION_IOC_IMPORT, &data);
     if (ret < 0) return ret;
     *handle = data.handle;
+#ifdef MTK_ION_FD_DEBUG
+    if(!ion_fd_trace) {
+        dl_load_dynamic_libs();
+    }
+    if(ion_fd_trace && share_fd > 400) {
+        ion_fd_trace(share_fd);
+    }
+#endif
     return ret;
 }
 

@@ -6,7 +6,10 @@ cc_library {
         support_system_process: true,
     },
     srcs: ["ion.c"],
-    shared_libs: ["liblog"],
+    shared_libs: [
+        "liblog",
+        "libdl",
+    ],
     local_include_dirs: [
         "include",
         "kernel-headers",
@@ -16,6 +19,13 @@ cc_library {
         "kernel-headers",
     ],
     cflags: ["-Werror"],
+    product_variables: {
+        eng: {
+            cflags: [
+                "-DMTK_ION_FD_DEBUG",
+            ],
+        }
+    }
 }
 
 cc_binary {
