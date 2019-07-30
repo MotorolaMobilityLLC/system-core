@@ -118,7 +118,11 @@ cc_library_static {
 
 cc_binary {
     name: "remount",
-    defaults: ["fs_mgr_defaults"],
+    defaults: [
+        "fs_mgr_defaults",
+        "mmi_fsmgr_defaults",
+    ],
+    recovery_available: true,
     static_libs: [
         "libavb_user",
     ],
