@@ -1294,9 +1294,10 @@ static void mp_event_common(int data, uint32_t events __unused) {
     union meminfo mi;
     union zoneinfo zi;
     struct timeval curr_tm;
-    static struct timeval last_pressure_checkpoint_tm;
-    static int recent_pressure = 0;
-    long time_elapsed = 0;
+    static struct timeval last_win_pressure_tm;
+    static struct timeval last_long_win_pressure_tm;
+    static int win_pressure = 0;
+    static int long_win_pressure = 0;
     static struct timeval last_report_tm;
     static unsigned long skip_count = 0;
     enum vmpressure_level level = (enum vmpressure_level)data;
@@ -1332,21 +1333,25 @@ static void mp_event_common(int data, uint32_t events __unused) {
         return;
     }
 
+    // reset the window.
     gettimeofday(&curr_tm, NULL);
-    time_elapsed = get_time_diff_ms(&last_pressure_checkpoint_tm, &curr_tm);
-    if (time_elapsed > 200) {
-        // reset the window.
-        recent_pressure = 0;
-        last_pressure_checkpoint_tm = curr_tm;
+    if (get_time_diff_ms(&last_win_pressure_tm, &curr_tm) > 200) {
+        win_pressure = 0;
+        last_win_pressure_tm = curr_tm;
+    }
+    if (get_time_diff_ms(&last_long_win_pressure_tm, &curr_tm) > 1000) {
+        long_win_pressure = 0;
+        last_long_win_pressure_tm = curr_tm;
     }
 
     if (level > VMPRESS_LEVEL_LOW) {
-        recent_pressure += level == VMPRESS_LEVEL_CRITICAL ? 4 : 1;
+        win_pressure += level == VMPRESS_LEVEL_CRITICAL ? 4 : 1;
+        long_win_pressure += level == VMPRESS_LEVEL_CRITICAL ? 4 : 1;
     }
 
     if (kill_timeout_ms) {
         if (get_time_diff_ms(&last_report_tm, &curr_tm) < kill_timeout_ms &&
-            recent_pressure < 15) {
+            win_pressure < 15) {
             skip_count++;
             return;
         }
@@ -1421,10 +1426,8 @@ static void mp_event_common(int data, uint32_t events __unused) {
 
         int free_ratio = (file_ratio + anon_ratio)/2;
         int target_pressure = 0;
-        int pressure_adjustment = 0;
+        int long_target_pressure = 0;
         bool do_kill = false;
-
-        recent_pressure += pressure_adjustment;
 
         if (free_ratio > 50) {
             target_pressure = min_pressure[7];
@@ -1452,15 +1455,20 @@ static void mp_event_common(int data, uint32_t events __unused) {
             level_oomadj[VMPRESS_LEVEL_MEDIUM] = level_oomadj[VMPRESS_LEVEL_CRITICAL] = 0;
         }
 
-        do_kill = recent_pressure >= target_pressure;
+        long_target_pressure = target_pressure*2;
+
+        do_kill = win_pressure >= target_pressure;
+        if (!do_kill && max_file < 1024*1024) {
+            do_kill = long_win_pressure >= long_target_pressure;
+        }
+
         if (!do_kill) {
             if (debug_process_killing) {
-                ALOGI("Ignoring %s pressure since file %ld/%ld(%d), anon %ld/%ld(%d), rpressure %d(%d) %s",
+                ALOGI("Ignoring %s pressure since file %ld/%ld(%d), anon %ld/%ld(%d), rpressure %d(%d)%d(%d)",
                     level == VMPRESS_LEVEL_CRITICAL ? "critical" : "medium",
                     active_file, inactive_file, file_ratio,
                     active_anon, inactive_anon, anon_ratio,
-                    recent_pressure, target_pressure,
-                    pressure_adjustment > 0 ? "upgraded" : pressure_adjustment < 0 ? "downgrade" : "");
+                    win_pressure, target_pressure, long_win_pressure, long_target_pressure);
             }
             return;
         }
@@ -1479,11 +1487,11 @@ static void mp_event_common(int data, uint32_t events __unused) {
         }
         min_score_adj = level_oomadj[level];
 
-        ALOGI("Killing process above adj %d, file %ld/%ld(%d), anon %ld/%ld(%d), rpressure %d(%d)",
+        ALOGI("Killing process above adj %d, file %ld/%ld(%d), anon %ld/%ld(%d), rpressure %d(%d)%d(%d)",
             min_score_adj,
             active_file, inactive_file, file_ratio,
             active_anon, inactive_anon, anon_ratio,
-            recent_pressure, target_pressure);
+            win_pressure, target_pressure, long_win_pressure, long_target_pressure);
     }
 
 do_kill:
@@ -1513,8 +1521,10 @@ do_kill:
             ALOGI("Reclaimed enough memory (pages to free=%d, pages freed=%d)",
                   pages_to_free, pages_freed);
             gettimeofday(&last_report_tm, NULL);
-            recent_pressure = 0;
-            last_pressure_checkpoint_tm = curr_tm;
+            win_pressure = 0;
+            long_win_pressure = 0;
+            last_win_pressure_tm = curr_tm;
+            last_long_win_pressure_tm = curr_tm;
         }
     }
 }
