@@ -112,6 +112,8 @@ struct {
 static int level_oomadj[VMPRESS_LEVEL_COUNT];
 static int mpevfd[VMPRESS_LEVEL_COUNT] = { -1, -1, -1 };
 static int min_pressure[8] = {0, 4, 8, 12, 15, 20, 25, 30};
+static int min_pressure_mult = 100;
+static int long_min_pressure_mult = 300;
 static bool debug_process_killing;
 static bool enable_pressure_upgrade;
 static int64_t upgrade_pressure;
@@ -1455,12 +1457,10 @@ static void mp_event_common(int data, uint32_t events __unused) {
             level_oomadj[VMPRESS_LEVEL_MEDIUM] = level_oomadj[VMPRESS_LEVEL_CRITICAL] = 0;
         }
 
-        long_target_pressure = target_pressure*2;
+        long_target_pressure = target_pressure * long_min_pressure_mult / 100;
+        target_pressure = target_pressure * min_pressure_mult / 100;
 
-        do_kill = win_pressure >= target_pressure;
-        if (!do_kill && max_file < 1024*1024) {
-            do_kill = long_win_pressure >= long_target_pressure;
-        }
+        do_kill = win_pressure >= target_pressure || long_win_pressure >= long_target_pressure;
 
         if (!do_kill) {
             if (debug_process_killing) {
@@ -1595,6 +1595,49 @@ err_open_mpfd:
     return false;
 }
 
+void load_min_pressure_from_prop() {
+    const static char *SPLIT = ",";
+    char prop_value[PROPERTY_VALUE_MAX] = {0};
+    char *tok = NULL;
+    unsigned char i;
+    int MINPRESSURE_COUNT = sizeof(min_pressure)/sizeof(min_pressure[0]);
+    union meminfo mi;
+    long totalmem = 0;
+
+    if (meminfo_parse(&mi) >= 0) {
+        totalmem = mi.field.total_memory * page_k;
+    }
+
+    ALOGI("total memory: %ld", totalmem);
+    if (totalmem < 2048*1024) {
+        min_pressure_mult = 100;
+        long_min_pressure_mult = 300;
+    } else {
+        min_pressure_mult = 100;
+        long_min_pressure_mult = 1000;
+    }
+
+    min_pressure_mult =
+        property_get_int32("persist.sys.lmk.minpressure_mult", min_pressure_mult);
+    long_min_pressure_mult =
+        property_get_int32("persist.sys.lmk.long_minpressure_mult", long_min_pressure_mult);
+
+    ALOGI("min_pressure mult: %d", min_pressure_mult);
+    ALOGI("long min_pressure mult: %d", long_min_pressure_mult);
+
+    int ret = property_get("persist.sys.lmk.minpressure", prop_value, NULL);
+    if (ret <= 0) return;
+
+    ALOGI("min_pressure loaded from prop: %s", prop_value);
+
+    tok = strtok(prop_value, SPLIT);
+    for (i=0; tok != NULL && i<MINPRESSURE_COUNT; i++) {
+        min_pressure[i] = atoi(tok);
+        tok = strtok(NULL, SPLIT);
+        ALOGI("%d", min_pressure[i]);
+    }
+}
+
 static int init(void) {
     struct epoll_event epev;
     int i;
@@ -1643,7 +1686,9 @@ static int init(void) {
     if (use_inkernel_interface) {
         ALOGI("Using in-kernel low memory killer interface");
     } else {
+        load_min_pressure_from_prop();
         set_swappiness(100, 100);
+
         if (!init_mp_common(VMPRESS_LEVEL_LOW) ||
             !init_mp_common(VMPRESS_LEVEL_MEDIUM) ||
             !init_mp_common(VMPRESS_LEVEL_CRITICAL)) {
@@ -1711,26 +1756,6 @@ static void mainloop(void) {
     }
 }
 
-void load_min_pressure_from_prop() {
-    const static char *SPLIT = ",";
-    char prop_value[PROPERTY_VALUE_MAX] = {0};
-    char *tok = NULL;
-    unsigned char i;
-    int MINPRESSURE_COUNT = sizeof(min_pressure)/sizeof(min_pressure[0]);
-
-    int ret = property_get("persist.sys.lmk.minpressure", prop_value, NULL);
-    if (ret <= 0) return;
-
-    ALOGI("min_pressure loaded from prop: %s", prop_value);
-
-    tok = strtok(prop_value, SPLIT);
-    for (i=0; tok != NULL && i<MINPRESSURE_COUNT; i++) {
-        min_pressure[i] = atoi(tok);
-        tok = strtok(NULL, SPLIT);
-        ALOGI("%d", min_pressure[i]);
-    }
-}
-
 int main(int argc __unused, char **argv __unused) {
     struct sched_param param = {
             .sched_priority = 1,
@@ -1745,8 +1770,6 @@ int main(int argc __unused, char **argv __unused) {
         property_get_int32("ro.lmk.critical", 0);
     debug_process_killing = property_get_bool("ro.lmk.debug",
                     property_get_bool("persist.sys.lmk.debug", false));
-
-    load_min_pressure_from_prop();
 
     /* By default disable upgrade/downgrade logic */
     enable_pressure_upgrade =
