@@ -1022,8 +1022,8 @@ static void trigger_duraSpeed(int min_score_adj, int minfree,
 
     ssize_t written;
     written = write(duraspeed_fd, buf, strlen(buf) + 1);
-    if (written < 0 && ((errno == EINTR) || (errno == EAGAIN))) {
-        ALOGE ("trigger duraSpeed written:%zu, errno:%d", written, errno);
+    if (written < 0) {
+        ALOGE ("trigger duraSpeed written:%zu", written);
         close(duraspeed_fd);
         duraspeed_fd = -1;
         return;
