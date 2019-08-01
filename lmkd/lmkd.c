@@ -2102,6 +2102,9 @@ int main(int argc __unused, char **argv __unused) {
             .sched_priority = 1,
     };
 
+    /* Ignore SIGPIPE */
+    signal(SIGPIPE, SIG_IGN);
+
     /* By default disable low level vmpressure events */
     level_oomadj[VMPRESS_LEVEL_LOW] =
         property_get_int32("ro.lmk.low", OOM_SCORE_ADJ_MAX + 1);
