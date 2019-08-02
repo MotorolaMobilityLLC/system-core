@@ -215,10 +215,13 @@ static void handle_lmfs_netlink_socket_action(){
 
     vec.iov_base=(void*)buff;
     vec.iov_len=sizeof(buff);
+    memset(&msg, 0, sizeof(struct msghdr));
     msg.msg_name=(void*)&addr;
     msg.msg_namelen=sizeof(addr);
     msg.msg_iov=&vec;
     msg.msg_iovlen=1;
+    msg.msg_control = 0;
+    msg.msg_controllen = 0;
 
     ret=recvmsg(lmfs_netlink_socket,&msg,0);
     if(ret < 0){
