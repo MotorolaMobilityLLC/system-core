@@ -29,6 +29,7 @@
 #include <fs_mgr_dm_linear.h>
 #include <liblp/builder.h>
 #include <liblp/liblp.h>
+#include <logwrap/logwrap.h>
 
 #include "fastboot_device.h"
 
@@ -80,9 +81,26 @@ bool OpenPartition(FastbootDevice* device, const std::string& name, PartitionHan
         return false;
     }
 
+    PLOG(ERROR) << "[OpenPartition]->open path:" << handle->path();
     unique_fd fd(TEMP_FAILURE_RETRY(open(handle->path().c_str(), O_WRONLY | O_EXCL)));
     if (fd < 0) {
         PLOG(ERROR) << "Failed to open block device: " << handle->path();
+
+        // DEBUG: execute lsof command to get info while open partition failed.
+        int status;
+        const char* lsof_argv[] = {"/system/bin/lsof", "-l"};
+        const char* lsof_argv2[] = {"/system/bin/lsof", "/dev/block/by-name/super"};
+
+        LOG(WARNING) << "[OpenPartition]lsof start";
+        android_fork_execvp_ext(arraysize(lsof_argv), (char**)lsof_argv, &status, true, LOG_KLOG,
+                                    true, nullptr, nullptr, 0);
+        LOG(WARNING) << "[OpenPartition]lsof end";
+
+        LOG(WARNING) << "[OpenPartition]lsof super start";
+        android_fork_execvp_ext(arraysize(lsof_argv2), (char**)lsof_argv2, &status, true, LOG_KLOG,
+                                    true, nullptr, nullptr, 0);
+        LOG(WARNING) << "[OpenPartition]lsof super end";
+
         return false;
     }
     handle->set_fd(std::move(fd));
