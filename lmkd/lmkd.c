@@ -125,6 +125,7 @@ static bool use_inkernel_interface = true;
 static int vmpressure_enhanced;
 static bool has_inkernel_module;
 static bool enhance_meminfo_enable;
+static bool is_support_memcg;
 
 /* memory pressure levels */
 enum vmpressure_level {
@@ -594,7 +595,7 @@ static void cmd_procprio(LMKD_CTRL_PACKET packet) {
         return;
     }
 
-    if (per_app_memcg) {
+    if (is_support_memcg && per_app_memcg) {
         if (params.oomadj >= 900) {
             soft_limit_mult = 0;
         } else if (params.oomadj >= 800) {
@@ -2011,6 +2012,7 @@ static int init(void) {
     enhance_meminfo_enable = !access(INKERNEL_EMEM_PATH, F_OK);
     has_inkernel_module = !access(INKERNEL_MINFREE_PATH, W_OK);
     use_inkernel_interface = has_inkernel_module;
+    is_support_memcg = !access(MEMCG_MEMORY_USAGE, F_OK);
 
     if (use_inkernel_interface) {
         ALOGI("Using in-kernel low memory killer interface");
