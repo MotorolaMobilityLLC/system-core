@@ -67,8 +67,6 @@ int main(int argc, char** argv) {
         }
 
         if (!strcmp(argv[1], "selinux_setup")) {
-            printf("sleep 1...\n");
-            sleep(1);
             android::mboot::mdb();
             return SetupSelinux(argv);
         }
