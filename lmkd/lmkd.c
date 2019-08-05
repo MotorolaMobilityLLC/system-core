@@ -1613,7 +1613,7 @@ void load_min_pressure_from_prop() {
         min_pressure_mult = 100;
         long_min_pressure_mult = 300;
     } else {
-        min_pressure_mult = 100;
+        min_pressure_mult = 200;
         long_min_pressure_mult = 1000;
     }
 
