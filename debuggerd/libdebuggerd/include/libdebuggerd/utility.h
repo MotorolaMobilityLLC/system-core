@@ -27,6 +27,8 @@
 
 #include <android-base/macros.h>
 
+#define SI_KERNEL_AVC 888
+
 struct log_t {
   // Tombstone file descriptor.
   int tfd;
@@ -91,4 +93,5 @@ void get_signal_sender(char* buf, size_t n, const siginfo_t*);
 const char* get_signame(const siginfo_t*);
 const char* get_sigcode(const siginfo_t*);
 
+extern int avc_signal_flag;
 #endif // _DEBUGGERD_UTILITY_H

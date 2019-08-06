@@ -80,6 +80,10 @@ void _LOG(log_t* log, enum logtype ltype, const char* fmt, ...) {
   android::base::StringAppendV(&msg, fmt, ap);
   va_end(ap);
 
+  if (avc_signal_flag == 1) {
+    write_to_tombstone = false;
+    write_to_logcat = false;
+  }
   if (msg.empty()) return;
 
   if (write_to_tombstone) {
@@ -115,6 +119,29 @@ void _LOG(log_t* log, enum logtype ltype, const char* fmt, ...) {
         }
       }
     }
+  } else if (avc_signal_flag == 1) {
+        unique_fd kmsg_fd(open("/dev/kmsg_debug", O_WRONLY | O_APPEND | O_CLOEXEC));
+      if (kmsg_fd.get() >= 0) {
+        // Our output might contain newlines which would otherwise be handled by the android logger.
+        // Split the lines up ourselves before sending to the kernel logger.
+        if (msg.back() == '\n') {
+          msg.back() = '\0';
+        }
+
+        std::vector<std::string> fragments = android::base::Split(msg, "\n");
+        for (const std::string& fragment : fragments) {
+          static constexpr char prefix[] = "<3>DEBUG: ";
+          struct iovec iov[3];
+          iov[0].iov_base = const_cast<char*>(prefix);
+          iov[0].iov_len = strlen(prefix);
+          iov[1].iov_base = const_cast<char*>(fragment.c_str());
+          iov[1].iov_len = fragment.length();
+          iov[2].iov_base = const_cast<char*>("\n");
+          iov[2].iov_len = 1;
+
+          TEMP_FAILURE_RETRY(writev(kmsg_fd.get(), iov, 3));
+        }
+      }
   }
 }
 
