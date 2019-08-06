@@ -114,6 +114,8 @@ static int mpevfd[VMPRESS_LEVEL_COUNT] = { -1, -1, -1 };
 static int min_pressure[8] = {0, 4, 8, 12, 15, 20, 25, 30};
 static int min_pressure_mult = 100;
 static int long_min_pressure_mult = 300;
+static int memcg_swappiness_app = 100;
+static int memcg_swappiness_system = 100;
 static bool debug_process_killing;
 static bool enable_pressure_upgrade;
 static int64_t upgrade_pressure;
@@ -1612,18 +1614,28 @@ void load_min_pressure_from_prop() {
     if (totalmem < 2048*1024) {
         min_pressure_mult = 100;
         long_min_pressure_mult = 300;
+        memcg_swappiness_app = 100;
+        memcg_swappiness_system = 100;
     } else {
         min_pressure_mult = 200;
         long_min_pressure_mult = 1000;
+        memcg_swappiness_app = 80;
+        memcg_swappiness_system = 80;
     }
 
     min_pressure_mult =
         property_get_int32("persist.sys.lmk.minpressure_mult", min_pressure_mult);
     long_min_pressure_mult =
         property_get_int32("persist.sys.lmk.long_minpressure_mult", long_min_pressure_mult);
+    memcg_swappiness_app =
+        property_get_int32("persist.sys.memcg.swappiness_app", memcg_swappiness_app);
+    memcg_swappiness_system =
+        property_get_int32("persist.sys.memcg.swappiness_system", memcg_swappiness_system);
 
     ALOGI("min_pressure mult: %d", min_pressure_mult);
     ALOGI("long min_pressure mult: %d", long_min_pressure_mult);
+    ALOGI("memcg swappiness app: %d", memcg_swappiness_app);
+    ALOGI("memcg swappiness system: %d", memcg_swappiness_system);
 
     int ret = property_get("persist.sys.lmk.minpressure", prop_value, NULL);
     if (ret <= 0) return;
@@ -1687,7 +1699,7 @@ static int init(void) {
         ALOGI("Using in-kernel low memory killer interface");
     } else {
         load_min_pressure_from_prop();
-        set_swappiness(100, 100);
+        set_swappiness(memcg_swappiness_app, memcg_swappiness_system);
 
         if (!init_mp_common(VMPRESS_LEVEL_LOW) ||
             !init_mp_common(VMPRESS_LEVEL_MEDIUM) ||
