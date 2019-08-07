@@ -49,6 +49,7 @@ void set_system_properties(){
     size_t position = carrier_ontim.find("_");
     std::string  carrier_value = carrier_ontim.substr(0, position);
     property_set(prop_carrier,carrier_value);
+    property_set("ro.oem.key1",carrier_value);
     if (carrier_value == "retgb" || carrier_value == "tescogb" || carrier_value == "pluspl"
          || carrier_value == "playpl" || (carrier_value == "reteu" && carrier_ontim != "reteu_reteuse")) {
         prop_product_value = "bali_reteu";
