@@ -64,10 +64,20 @@ int trusty_keymaster_call(uint32_t cmd, void* in, uint32_t in_size, uint8_t* out
     memcpy(msg->payload, in, in_size);
 
     ssize_t rc = write(handle_, msg, msg_size);
+    uint8_t* send_msg_buf = (uint8_t *)msg;
+    size_t send_msg_size = msg_size;
+    while ((rc < 0 && errno  == ENOMEM) || (rc > 0 && rc != send_msg_size )) {
+        if (rc > 0) {
+            send_msg_buf += rc;
+            send_msg_size -= rc;
+        }
+        rc = write(handle_, send_msg_buf, send_msg_size);
+    }
     free(msg);
 
     if (rc < 0) {
-        ALOGE("failed to send cmd (%d) to %s: %s\n", cmd, KEYMASTER_PORT, strerror(errno));
+        ALOGE("failed to send cmd (%d) to %s: %s with rc(%d) \n",
+                cmd, KEYMASTER_PORT, strerror(errno), (int)rc);
         return -errno;
     }
     size_t out_max_size = *out_size;
