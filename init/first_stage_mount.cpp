@@ -286,14 +286,12 @@ bool FirstStageMount::GetDmLinearMetadataDevice() {
 // required_devices_partition_names_. Found partitions will then be removed from it
 // for the subsequent member function to check which devices are NOT created.
 bool FirstStageMount::InitRequiredDevices() {
-    if (required_devices_partition_names_.empty()) {
-        return true;
+    if (!InitDeviceMapper()) {
+        return false;
     }
 
-    if (IsDmLinearEnabled() || need_dm_verity_) {
-        if (!InitDeviceMapper()) {
-            return false;
-        }
+    if (required_devices_partition_names_.empty()) {
+        return true;
     }
 
     auto uevent_callback = [this](const Uevent& uevent) { return UeventCallback(uevent); };
@@ -616,12 +614,6 @@ void FirstStageMount::UseGsiIfPresent() {
         return;
     }
 
-    // Device-mapper might not be ready if the device doesn't use DAP or verity
-    // (for example, hikey).
-    if (access("/dev/device-mapper", F_OK) && !InitDeviceMapper()) {
-        return;
-    }
-
     // Find the name of the super partition for the GSI. It will either be
     // "userdata", or a block device such as an sdcard. There are no by-name
     // partitions other than userdata that we support installing GSIs to.
@@ -656,7 +648,6 @@ void FirstStageMount::UseGsiIfPresent() {
 }
 
 bool FirstStageMountVBootV1::GetDmVerityDevices() {
-    std::string verity_loc_device;
     need_dm_verity_ = false;
 
     for (const auto& fstab_entry : fstab_) {
@@ -669,30 +660,14 @@ bool FirstStageMountVBootV1::GetDmVerityDevices() {
         if (fstab_entry.fs_mgr_flags.verify) {
             need_dm_verity_ = true;
         }
-        // Checks if verity metadata is on a separate partition. Note that it is
-        // not partition specific, so there must be only one additional partition
-        // that carries verity state.
-        if (!fstab_entry.verity_loc.empty()) {
-            if (verity_loc_device.empty()) {
-                verity_loc_device = fstab_entry.verity_loc;
-            } else if (verity_loc_device != fstab_entry.verity_loc) {
-                LOG(ERROR) << "More than one verity_loc found: " << verity_loc_device << ", "
-                           << fstab_entry.verity_loc;
-                return false;
-            }
-        }
     }
 
-    // Includes the partition names of fstab records and verity_loc_device (if any).
+    // Includes the partition names of fstab records.
     // Notes that fstab_rec->blk_device has A/B suffix updated by fs_mgr when A/B is used.
     for (const auto& fstab_entry : fstab_) {
         if (!fstab_entry.fs_mgr_flags.logical) {
             required_devices_partition_names_.emplace(basename(fstab_entry.blk_device.c_str()));
         }
-    }
-
-    if (!verity_loc_device.empty()) {
-        required_devices_partition_names_.emplace(basename(verity_loc_device.c_str()));
     }
 
     return true;

@@ -330,6 +330,12 @@ bool LoadSplitPolicy() {
     }
     std::string plat_mapping_file("/system/etc/selinux/mapping/" + vend_plat_vers + ".cil");
 
+    std::string plat_compat_cil_file("/system/etc/selinux/mapping/" + vend_plat_vers +
+                                     ".compat.cil");
+    if (access(plat_compat_cil_file.c_str(), F_OK) == -1) {
+        plat_compat_cil_file.clear();
+    }
+
     std::string product_policy_cil_file("/product/etc/selinux/product_sepolicy.cil");
     if (access(product_policy_cil_file.c_str(), F_OK) == -1) {
         product_policy_cil_file.clear();
@@ -375,6 +381,9 @@ bool LoadSplitPolicy() {
     };
     // clang-format on
 
+    if (!plat_compat_cil_file.empty()) {
+        compile_args.push_back(plat_compat_cil_file.c_str());
+    }
     if (!product_policy_cil_file.empty()) {
         compile_args.push_back(product_policy_cil_file.c_str());
     }
@@ -421,8 +430,6 @@ bool LoadPolicy() {
 }
 
 void SelinuxInitialize() {
-    Timer t;
-
     LOG(INFO) << "Loading SELinux policy";
     if (!LoadPolicy()) {
         LOG(FATAL) << "Unable to load SELinux policy";
@@ -439,9 +446,6 @@ void SelinuxInitialize() {
     if (auto result = WriteFile("/sys/fs/selinux/checkreqprot", "0"); !result) {
         LOG(FATAL) << "Unable to write to /sys/fs/selinux/checkreqprot: " << result.error();
     }
-
-    // init's first stage can't set properties, so pass the time to the second stage.
-    setenv("INIT_SELINUX_TOOK", std::to_string(t.duration().count()).c_str(), 1);
 }
 
 }  // namespace
@@ -523,6 +527,8 @@ int SetupSelinux(char** argv) {
         InstallRebootSignalHandlers();
     }
 
+    boot_clock::time_point start_time = boot_clock::now();
+
     // Set up SELinux, loading the SELinux policy.
     SelinuxSetupKernelLogging();
     SelinuxInitialize();
@@ -534,6 +540,8 @@ int SetupSelinux(char** argv) {
     if (selinux_android_restorecon("/system/bin/init", 0) == -1) {
         PLOG(FATAL) << "restorecon failed of /system/bin/init failed";
     }
+
+    setenv(kEnvSelinuxStartedAt, std::to_string(start_time.time_since_epoch().count()).c_str(), 1);
 
     const char* path = "/system/bin/init";
     const char* args[] = {path, "second_stage", nullptr};
