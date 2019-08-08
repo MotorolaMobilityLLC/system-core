@@ -39,6 +39,7 @@ std::string prop_clientcountry_value = "android-americamovil-{country}";
 std::string prop_clientrevc_value = "android-americamovil-{country}-revc";
 std::string prop_clientmx_value = "android-attmexico-mx-revc";
 std::string prop_clientuk_value = "android-ee-uk-revc";
+std::string prop_clientbr_value = "android-tim-br-revc";
 std::string prop_clienttmobile_value = "android-tmobile-{country}";
 std::string prop_clientdt_value = "android-dt-{country}-revc";
 std::string prop_product_value = "bali";
@@ -59,12 +60,13 @@ void set_system_properties(){
         property_set(prop_build_fingerprint,get_fingerprint_property(prop_product_value));
         property_set(prop_fingerprint,get_fingerprint_property(prop_product_value));
         property_set(prop_vendor_fingerprint,get_fingerprint_property(prop_product_value));
-    } else if (carrier_value == "amxbr" || carrier_value == "amxmx" || carrier_value == "amxco") {
+    } else if (carrier_value == "amxbr" || carrier_value == "amxmx" || carrier_value == "amxco"|| carrier_value == "openmx"|| carrier_value == "amxla") {
         property_set(prop_amclient,prop_clientcountry_value);
         property_set(prop_msclient,prop_clientrevc_value);
     } else if (carrier_value == "attmx") {
-        //property_set(prop_amclient," ");
         property_set(prop_msclient,prop_clientmx_value);
+    } else if (carrier_value == "timbr") {
+        property_set(prop_msclient,prop_clientbr_value);
     } else {
         property_set(prop_amclient,prop_client_value);
         property_set(prop_msclient,prop_clientrev_value);
