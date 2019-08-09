@@ -63,6 +63,7 @@ void set_system_properties(){
     property_set(prop_carrier,carrier_value);
     property_set("ro.oem.key1",carrier_value);
     property_set("ro.product.ontim.version",fileContent);
+    property_set("ro.vendor.product.ontim.version",fileContent);
 
     if (carrier_value == "retgb" || carrier_value == "tescogb" || carrier_value == "pluspl"
          || carrier_value == "playpl" || (carrier_value == "reteu" && carrier_ontim != "reteu_reteuse")) {
