@@ -20,6 +20,14 @@
 
 #include <android-base/properties.h>
 #include <android-base/strings.h>
+#include <string>
+#include <android-base/logging.h>
+#include <android-base/file.h>
+#include "cutils/log.h"
+#include <fstream>
+#include <sstream>
+#include <iostream>
+
 
 
 namespace android {
@@ -43,14 +51,20 @@ std::string prop_clientbr_value = "android-tim-br-revc";
 std::string prop_clienttmobile_value = "android-tmobile-{country}";
 std::string prop_clientdt_value = "android-dt-{country}-revc";
 std::string prop_product_value = "bali";
-
+std::string product_version_file = "/product/version.txt";
 
 void set_system_properties(){
+    std::ifstream stream(product_version_file);
+    std::stringstream fileStream;
+    fileStream << stream.rdbuf();
+    std::string fileContent = fileStream.str().substr(0,3);
     std::string  carrier_ontim = android::base::GetProperty(prop_carrier_ontim, "");
     size_t position = carrier_ontim.find("_");
     std::string  carrier_value = carrier_ontim.substr(0, position);
     property_set(prop_carrier,carrier_value);
     property_set("ro.oem.key1",carrier_value);
+    property_set("ro.product.ontim.version",fileContent);
+
     if (carrier_value == "retgb" || carrier_value == "tescogb" || carrier_value == "pluspl"
          || carrier_value == "playpl" || (carrier_value == "reteu" && carrier_ontim != "reteu_reteuse")) {
         prop_product_value = "bali_reteu";
