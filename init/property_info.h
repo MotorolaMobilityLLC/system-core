@@ -25,6 +25,7 @@ namespace init {
 void set_system_properties();
 bool changeSystemProperty(std::string key);
 std::string get_fingerprint_property(std::string value);
+std::string get_version_property(std::string value);
 }  // namespace init
 }  // namespace android
 
