@@ -33,6 +33,9 @@
 namespace android {
 namespace init {
 
+std::string prop_build_fullversion = "ro.build.version.full";
+std::string prop_product_locale = "ro.product.locale";
+std::string prop_build_id = "ro.build.id";
 std::string prop_carrier_ontim = "ro.carrier.ontim";
 std::string prop_carrier = "ro.carrier";
 std::string prop_amclient = "ro.com.google.clientidbase.am";
@@ -51,6 +54,8 @@ std::string prop_clientbr_value = "android-tim-br-revc";
 std::string prop_clienttmobile_value = "android-tmobile-{country}";
 std::string prop_clientdt_value = "android-dt-{country}-revc";
 std::string prop_product_value = "bali";
+std::string prop_carrier_value = "retail";
+std::string prop_version_value;
 std::string product_version_file = "/product/version.txt";
 
 void set_system_properties(){
@@ -69,6 +74,7 @@ void set_system_properties(){
     if (carrier_value == "retgb" || carrier_value == "tescogb" || carrier_value == "pluspl"
          || carrier_value == "playpl" || (carrier_value == "reteu" && carrier_ontim != "reteu_reteuse")) {
         prop_product_value = "bali_reteu";
+        prop_carrier_value = "reteu";
         property_set(prop_amclient,prop_client_value);
         property_set(prop_msclient,prop_clientrev_value);
         property_set(prop_product,prop_product_value);
@@ -86,6 +92,8 @@ void set_system_properties(){
         property_set(prop_amclient,prop_client_value);
         property_set(prop_msclient,prop_clientrev_value);
     }
+
+    property_set(prop_build_fullversion,get_version_property(prop_version_value));
 }
 
 bool changeSystemProperty(std::string key) {
@@ -101,6 +109,17 @@ std::string get_fingerprint_property(std::string value) {
     std::vector<std::string> fingerprint = android::base::Split(buildFingerprint, "/");
     fingerprint[1] = value;
     return android::base::Join(fingerprint, "/");
+}
+
+std::string get_version_property(std::string value) {
+    std::string  product_locale_value = android::base::GetProperty(prop_product_locale, "");
+    size_t  locale_position = product_locale_value.find("-");
+    std::string  locale_value = product_locale_value.replace(locale_position,1,".");
+    std::string  product_value = prop_product_value.append(1,'.');
+    std::string  build_value = android::base::GetProperty(prop_build_id, "");
+    std::string build_number_value = build_value.erase(0, 3).append(1,'.');
+    value = "Blur_Version." + build_number_value + product_value + prop_carrier_value + "." + locale_value;
+    return value;
 }
 
 }  // namespace init
