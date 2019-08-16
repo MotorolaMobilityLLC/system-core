@@ -54,6 +54,7 @@
 #include "capabilities.h"
 #include "init.h"
 #include "property_service.h"
+#include <cutils/properties.h>
 #include "service.h"
 #include "sigchld_handler.h"
 
@@ -332,6 +333,60 @@ static UmountStat TryUmountAndFsck(bool runFsck, std::chrono::milliseconds timeo
     }
     return stat;
 }
+//ontim,zhangxiang,store properities to proinfo partition
+#define FACTORY_PATH "/dev/block/platform/bootdevice/by-name/proinfo"
+#define BUILD_FINGERPRINT "ro.build.fingerprint"
+#define BUILD_FINGERPRINT_LEN 128
+#define BUILD_FINGERPRINT_OFFSET 3088
+
+#define BUILD_NUMBER "ro.build.version.incremental"
+#define BUILD_NUMBER_LEN 64
+#define BUILD_NUMBER_OFFSET 3216
+#define MULTISIM "persist.radio.multisim.config"
+#define MULTISIM_LEN 8
+#define MULTISIM_OFFSET 768
+void ontim_write_to_proinfo(void)
+{
+    char build_fingerprint_buf[PROPERTY_VALUE_MAX] = {'\0'};
+    char build_number_buf[PROPERTY_VALUE_MAX] = {'\0'};
+    char multisim_buf[PROPERTY_VALUE_MAX] = {0};
+    char bug[PROPERTY_VALUE_MAX] = {0};
+    int len = 0;
+    property_get(BUILD_FINGERPRINT, build_fingerprint_buf,"0");
+    property_get(BUILD_NUMBER, build_number_buf,"0");
+    property_get(MULTISIM, multisim_buf,"0");
+
+    FILE *factory = fopen(FACTORY_PATH, "rb+");
+    if (factory == NULL){
+        LOG(INFO) << "open factory failed ";
+        return;
+    }
+    LOG(INFO) << "PropGet "<<BUILD_FINGERPRINT <<"=["<<build_fingerprint_buf << "] Done ";
+    LOG(INFO) << "PropGet "<<BUILD_NUMBER <<"=["<<build_number_buf << "] Done ";
+    LOG(INFO) << "PropGet "<<MULTISIM <<"=["<<multisim_buf << "] Done ";
+    fseek(factory,BUILD_FINGERPRINT_OFFSET,SEEK_SET);
+    if ((len = fwrite(build_fingerprint_buf, sizeof(char), PROPERTY_VALUE_MAX, factory)) < 0) {
+        LOG(INFO) << "write factory failed " << BUILD_FINGERPRINT;
+    }
+
+    fseek(factory,BUILD_NUMBER_OFFSET,SEEK_SET);
+    if ((len = fwrite(build_number_buf, sizeof(char), BUILD_NUMBER_LEN, factory)) < 0) {
+        LOG(INFO) << "write factory failed " << BUILD_NUMBER;
+    }
+
+    fseek(factory,MULTISIM_OFFSET,SEEK_SET);
+    if ((len = fwrite(multisim_buf, sizeof(char), MULTISIM_LEN, factory)) < 0) {
+        LOG(INFO) << "write factory failed " << MULTISIM;
+    }
+    fseek(factory,MULTISIM_OFFSET,SEEK_SET);
+    if ((len = fread(bug, sizeof(char), MULTISIM_LEN, factory)) < 0) {
+        LOG(INFO) << "read factory failed " << BUILD_FINGERPRINT;
+    } else {
+LOG(INFO) << "read factory ok: " << MULTISIM_OFFSET<<" = "<< bug;
+}
+
+    fclose(factory);
+}
 
 #ifdef HAVE_AEE_FEATURE
 void hang_detect_set_reboot() {
@@ -357,6 +412,8 @@ void DoReboot(unsigned int cmd, const std::string& reason, const std::string& re
               bool runFsck) {
     Timer t;
     LOG(INFO) << "Reboot start, reason: " << reason << ", rebootTarget: " << rebootTarget;
+//ontim,zhangxiang,store properities to proinfo partition
+    ontim_write_to_proinfo();
 
     // Ensure last reboot reason is reduced to canonical
     // alias reported in bootloader or system boot reason.
