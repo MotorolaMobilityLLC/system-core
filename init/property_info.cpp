@@ -33,6 +33,7 @@
 namespace android {
 namespace init {
 
+std::string prop_build_customerid = "ro.mot.build.customerid";
 std::string prop_build_fullversion = "ro.build.version.full";
 std::string prop_product_locale = "ro.product.locale";
 std::string prop_build_id = "ro.build.id";
@@ -94,6 +95,7 @@ void set_system_properties(){
     }
 
     property_set(prop_build_fullversion,get_version_property(prop_version_value));
+    property_set(prop_build_customerid,prop_carrier_value);
 }
 
 bool changeSystemProperty(std::string key) {
