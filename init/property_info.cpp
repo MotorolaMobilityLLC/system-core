@@ -82,6 +82,7 @@ void set_system_properties(){
         property_set(prop_build_fingerprint,get_fingerprint_property(prop_product_value));
         property_set(prop_fingerprint,get_fingerprint_property(prop_product_value));
         property_set(prop_vendor_fingerprint,get_fingerprint_property(prop_product_value));
+        property_set("persist.vendor.normal","1");//表示正常版本，非 VTS 版本，prop 正常设置.
     } else if (carrier_value == "amxbr" || carrier_value == "amxmx" || carrier_value == "amxco"|| carrier_value == "openmx"|| carrier_value == "amxla") {
         property_set(prop_amclient,prop_clientcountry_value);
         property_set(prop_msclient,prop_clientrevc_value);
