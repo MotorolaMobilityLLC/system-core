@@ -28,6 +28,7 @@ cc_defaults {
         "toolbox.c",
         "getevent.c",
         "getprop.cpp",
+        "sendevent2.c",
     ],
     generated_headers: [
         "toolbox_input_labels",
