@@ -784,9 +784,13 @@ void load_properties_from_factory_cus() {
     SLOGE("load_persist_props.load_properties_from_factory_cus");
     std::string buildtype = android::base::GetProperty("ro.build.type", "");
     std::string usbtype = android::base::GetProperty("persist.sys.usb.config", "");
+    std::string fuse = android::base::GetProperty("ro.boot.securefuse", "");
     SLOGE("user_diag pu.load_properties_from_factory_cus.start ");
     LOG(ERROR) << "check data ...buildtype:" << buildtype;
     LOG(ERROR) << "check data ...usbtype:" << usbtype;
+    LOG(ERROR) << "check data ...fuse:" << fuse;
+
+    property_set("ro.vendor.securefuse", fuse.data());
 
     if (read_from_factory() == 1) {
         SLOGE("user_diag pu.load_properties_from_factory_cus is user and P skip.setupwizard");
@@ -799,6 +803,7 @@ void load_properties_from_factory_cus() {
         SLOGE("user_diag pu.load_properties_from_factory_cus not user open.adb");
         property_set("persist.sys.usb.config", "adb");
     }
+
     return;
 }
 
