@@ -129,22 +129,27 @@ static void LoadBootScripts(ActionManager& action_manager, ServiceList& service_
 
     std::string bootscript = GetProperty("ro.boot.init_rc", "");
     if (bootscript.empty()) {
-        parser.ParseConfig("/init.rc");
-        if (!parser.ParseConfig("/system/etc/init")) {
-            late_import_paths.emplace_back("/system/etc/init");
-        }
-        if (!parser.ParseConfig("/product/etc/init")) {
-            late_import_paths.emplace_back("/product/etc/init");
-        }
-        if (!parser.ParseConfig("/product_services/etc/init")) {
-            late_import_paths.emplace_back("/product_services/etc/init");
-        }
-        if (!parser.ParseConfig("/odm/etc/init")) {
-            late_import_paths.emplace_back("/odm/etc/init");
-        }
-        if (!parser.ParseConfig("/vendor/etc/init")) {
-            late_import_paths.emplace_back("/vendor/etc/init");
-        }
+	std::string bootmode = GetProperty("ro.bootmode", "");
+	if (bootmode == "charger") {
+		parser.ParseConfig("/vendor/etc/init/charge.rc");
+	} else {
+        	parser.ParseConfig("/init.rc");
+        	if (!parser.ParseConfig("/system/etc/init")) {
+            		late_import_paths.emplace_back("/system/etc/init");
+        	}
+        	if (!parser.ParseConfig("/product/etc/init")) {
+            		late_import_paths.emplace_back("/product/etc/init");
+        	}
+        	if (!parser.ParseConfig("/product_services/etc/init")) {
+            		late_import_paths.emplace_back("/product_services/etc/init");
+        	}
+        	if (!parser.ParseConfig("/odm/etc/init")) {
+            		late_import_paths.emplace_back("/odm/etc/init");
+        	}
+        	if (!parser.ParseConfig("/vendor/etc/init")) {
+            		late_import_paths.emplace_back("/vendor/etc/init");
+        	}
+	}
     } else {
         parser.ParseConfig(bootscript);
     }
