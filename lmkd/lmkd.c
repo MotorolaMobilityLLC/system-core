@@ -1756,7 +1756,8 @@ static void mp_event_common_locked(int data, uint32_t events __unused) {
 do_kill:
     if (low_ram_device) {
         /* For Go devices kill only one task */
-        if (find_and_kill_process(level_oomadj[level]) == 0) {
+	min_score_adj = use_minfree_levels ? min_score_adj:level_oomadj[level];
+        if (find_and_kill_process(min_score_adj) == 0) {
             if (debug_process_killing) {
                 ALOGI("Nothing to kill");
             }
