@@ -1097,6 +1097,8 @@ static void ExportKernelBootProps() {
         { "ro.boot.model", "ro.product.model", UNSET, },
         { "ro.boot.manufacturer", "ro.product.manufacturer", UNSET, },
         { "ro.boot.carrier",   "ro.carrier",   UNSET, },
+        { "ro.boot.uid", "ro.vendor.hw.uid", UNSET, },
+
             // clang-format on
     };
     for (const auto& prop : prop_map) {
