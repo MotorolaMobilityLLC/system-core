@@ -20,20 +20,15 @@
 
 #include <algorithm>
 
-#include <android-base/properties.h>
 #include <android-base/unique_fd.h>
 
 #include "liblp/liblp.h"
+#include "liblp/property_fetcher.h"
 #include "reader.h"
 #include "utility.h"
 
 namespace android {
 namespace fs_mgr {
-
-bool MetadataBuilder::sABOverrideSet;
-bool MetadataBuilder::sABOverrideValue;
-
-static const std::string kDefaultGroup = "default";
 
 bool LinearExtent::AddTo(LpMetadata* out) const {
     if (device_index_ >= out->block_devices.size()) {
@@ -145,7 +140,7 @@ std::unique_ptr<MetadataBuilder> MetadataBuilder::New(const LpMetadata& metadata
     }
     if (opener) {
         for (size_t i = 0; i < builder->block_devices_.size(); i++) {
-            std::string partition_name = GetBlockDevicePartitionName(builder->block_devices_[i]);
+            std::string partition_name = builder->GetBlockDevicePartitionName(i);
             BlockDeviceInfo device_info;
             if (opener->GetInfo(partition_name, &device_info)) {
                 builder->UpdateBlockDeviceInfo(i, device_info);
@@ -164,15 +159,34 @@ std::unique_ptr<MetadataBuilder> MetadataBuilder::NewForUpdate(const IPartitionO
         return nullptr;
     }
 
-    // On non-retrofit devices there is only one location for metadata: the
-    // super partition. update_engine will remove and resize partitions as
-    // needed. On the other hand, for retrofit devices, we'll need to
-    // translate block device and group names to update their slot suffixes.
+    // On retrofit DAP devices, modify the metadata so that it is suitable for being written
+    // to the target slot later. We detect retrofit DAP devices by checking the super partition
+    // name and system properties.
+    // See comments for UpdateMetadataForOtherSuper.
     auto super_device = GetMetadataSuperBlockDevice(*metadata.get());
-    if (GetBlockDevicePartitionName(*super_device) == "super") {
-        return New(*metadata.get(), &opener);
+    if (android::fs_mgr::GetBlockDevicePartitionName(*super_device) != "super" &&
+        IsRetrofitDynamicPartitionsDevice()) {
+        if (!UpdateMetadataForOtherSuper(metadata.get(), source_slot_number, target_slot_number)) {
+            return nullptr;
+        }
     }
 
+    if (IPropertyFetcher::GetInstance()->GetBoolProperty("ro.virtual_ab.enabled", false)) {
+        if (!UpdateMetadataForInPlaceSnapshot(metadata.get(), source_slot_number,
+                                              target_slot_number)) {
+            return nullptr;
+        }
+    }
+
+    return New(*metadata.get(), &opener);
+}
+
+// For retrofit DAP devices, there are (conceptually) two super partitions. We'll need to translate
+// block device and group names to update their slot suffixes.
+// (On the other hand, On non-retrofit DAP devices there is only one location for metadata: the
+// super partition. update_engine will remove and resize partitions as needed.)
+bool MetadataBuilder::UpdateMetadataForOtherSuper(LpMetadata* metadata, uint32_t source_slot_number,
+                                                  uint32_t target_slot_number) {
     // Clear partitions and extents, since they have no meaning on the target
     // slot. We also clear groups since they are re-added during OTA.
     metadata->partitions.clear();
@@ -185,14 +199,15 @@ std::unique_ptr<MetadataBuilder> MetadataBuilder::NewForUpdate(const IPartitionO
     // Translate block devices.
     auto source_block_devices = std::move(metadata->block_devices);
     for (const auto& source_block_device : source_block_devices) {
-        std::string partition_name = GetBlockDevicePartitionName(source_block_device);
+        std::string partition_name =
+                android::fs_mgr::GetBlockDevicePartitionName(source_block_device);
         std::string slot_suffix = GetPartitionSlotSuffix(partition_name);
         if (slot_suffix.empty() || slot_suffix != source_slot_suffix) {
             // This should never happen. It means that the source metadata
             // refers to a target or unknown block device.
             LERROR << "Invalid block device for slot " << source_slot_suffix << ": "
                    << partition_name;
-            return nullptr;
+            return false;
         }
         std::string new_name =
                 partition_name.substr(0, partition_name.size() - slot_suffix.size()) +
@@ -201,20 +216,15 @@ std::unique_ptr<MetadataBuilder> MetadataBuilder::NewForUpdate(const IPartitionO
         auto new_device = source_block_device;
         if (!UpdateBlockDevicePartitionName(&new_device, new_name)) {
             LERROR << "Partition name too long: " << new_name;
-            return nullptr;
+            return false;
         }
         metadata->block_devices.emplace_back(new_device);
     }
 
-    return New(*metadata.get(), &opener);
+    return true;
 }
 
-void MetadataBuilder::OverrideABForTesting(bool ab_device) {
-    sABOverrideSet = true;
-    sABOverrideValue = ab_device;
-}
-
-MetadataBuilder::MetadataBuilder() : auto_slot_suffixing_(false), ignore_slot_suffixing_(false) {
+MetadataBuilder::MetadataBuilder() : auto_slot_suffixing_(false) {
     memset(&geometry_, 0, sizeof(geometry_));
     geometry_.magic = LP_METADATA_GEOMETRY_MAGIC;
     geometry_.struct_size = sizeof(geometry_);
@@ -373,7 +383,7 @@ bool MetadataBuilder::Init(const std::vector<BlockDeviceInfo>& block_devices,
             block_devices_.emplace_back(out);
         }
     }
-    if (GetBlockDevicePartitionName(block_devices_[0]) != super_partition) {
+    if (GetBlockDevicePartitionName(0) != super_partition) {
         LERROR << "No super partition was specified.";
         return false;
     }
@@ -410,7 +420,7 @@ bool MetadataBuilder::Init(const std::vector<BlockDeviceInfo>& block_devices,
     geometry_.metadata_slot_count = metadata_slot_count;
     geometry_.logical_block_size = logical_block_size;
 
-    if (!AddGroup(kDefaultGroup, 0)) {
+    if (!AddGroup(std::string(kDefaultGroup), 0)) {
         return false;
     }
     return true;
@@ -426,7 +436,7 @@ bool MetadataBuilder::AddGroup(const std::string& group_name, uint64_t maximum_s
 }
 
 Partition* MetadataBuilder::AddPartition(const std::string& name, uint32_t attributes) {
-    return AddPartition(name, kDefaultGroup, attributes);
+    return AddPartition(name, std::string(kDefaultGroup), attributes);
 }
 
 Partition* MetadataBuilder::AddPartition(const std::string& name, const std::string& group_name,
@@ -443,11 +453,6 @@ Partition* MetadataBuilder::AddPartition(const std::string& name, const std::str
         LERROR << "Could not find partition group: " << group_name;
         return nullptr;
     }
-    if (IsABDevice() && !auto_slot_suffixing_ && name != "scratch" && !ignore_slot_suffixing_ &&
-        GetPartitionSlotSuffix(name).empty()) {
-        LERROR << "Unsuffixed partition not allowed on A/B device: " << name;
-        return nullptr;
-    }
     partitions_.push_back(std::make_unique<Partition>(name, group_name, attributes));
     return partitions_.back().get();
 }
@@ -461,7 +466,7 @@ Partition* MetadataBuilder::FindPartition(const std::string& name) {
     return nullptr;
 }
 
-PartitionGroup* MetadataBuilder::FindGroup(const std::string& group_name) {
+PartitionGroup* MetadataBuilder::FindGroup(std::string_view group_name) {
     for (const auto& group : groups_) {
         if (group->name() == group_name) {
             return group.get();
@@ -585,7 +590,7 @@ bool MetadataBuilder::GrowPartition(Partition* partition, uint64_t aligned_size)
     CHECK_NE(sectors_per_block, 0);
     CHECK(sectors_needed % sectors_per_block == 0);
 
-    if (IsABDevice() && !IsRetrofitDevice() && GetPartitionSlotSuffix(partition->name()) == "_b") {
+    if (IsABDevice() && ShouldHalveSuper() && GetPartitionSlotSuffix(partition->name()) == "_b") {
         // Allocate "a" partitions top-down and "b" partitions bottom-up, to
         // minimize fragmentation during OTA.
         free_regions = PrioritizeSecondHalfOfSuper(free_regions);
@@ -851,7 +856,7 @@ uint64_t MetadataBuilder::AlignSector(const LpMetadataBlockDevice& block_device,
 bool MetadataBuilder::FindBlockDeviceByName(const std::string& partition_name,
                                             uint32_t* index) const {
     for (size_t i = 0; i < block_devices_.size(); i++) {
-        if (GetBlockDevicePartitionName(block_devices_[i]) == partition_name) {
+        if (GetBlockDevicePartitionName(i) == partition_name) {
             *index = i;
             return true;
         }
@@ -976,7 +981,8 @@ static bool CompareBlockDevices(const LpMetadataBlockDevice& first,
     // Note: we don't compare alignment, since it's a performance thing and
     // won't affect whether old extents continue to work.
     return first.first_logical_sector == second.first_logical_sector && first.size == second.size &&
-           GetBlockDevicePartitionName(first) == GetBlockDevicePartitionName(second);
+           android::fs_mgr::GetBlockDevicePartitionName(first) ==
+                   android::fs_mgr::GetBlockDevicePartitionName(second);
 }
 
 bool MetadataBuilder::ImportPartitions(const LpMetadata& metadata,
@@ -1049,19 +1055,18 @@ void MetadataBuilder::SetAutoSlotSuffixing() {
     auto_slot_suffixing_ = true;
 }
 
-void MetadataBuilder::IgnoreSlotSuffixing() {
-    ignore_slot_suffixing_ = true;
+bool MetadataBuilder::IsABDevice() {
+    return !IPropertyFetcher::GetInstance()->GetProperty("ro.boot.slot_suffix", "").empty();
 }
 
-bool MetadataBuilder::IsABDevice() const {
-    if (sABOverrideSet) {
-        return sABOverrideValue;
-    }
-    return !android::base::GetProperty("ro.boot.slot_suffix", "").empty();
+bool MetadataBuilder::IsRetrofitDynamicPartitionsDevice() {
+    return IPropertyFetcher::GetInstance()->GetBoolProperty("ro.boot.dynamic_partitions_retrofit",
+                                                            false);
 }
 
-bool MetadataBuilder::IsRetrofitDevice() const {
-    return GetBlockDevicePartitionName(block_devices_[0]) != LP_METADATA_DEFAULT_PARTITION_NAME;
+bool MetadataBuilder::ShouldHalveSuper() const {
+    return GetBlockDevicePartitionName(0) == LP_METADATA_DEFAULT_PARTITION_NAME &&
+           !IPropertyFetcher::GetInstance()->GetBoolProperty("ro.virtual_ab.enabled", false);
 }
 
 bool MetadataBuilder::AddLinearExtent(Partition* partition, const std::string& block_device,
@@ -1087,7 +1092,7 @@ std::vector<Partition*> MetadataBuilder::ListPartitionsInGroup(const std::string
     return partitions;
 }
 
-bool MetadataBuilder::ChangePartitionGroup(Partition* partition, const std::string& group_name) {
+bool MetadataBuilder::ChangePartitionGroup(Partition* partition, std::string_view group_name) {
     if (!FindGroup(group_name)) {
         LERROR << "Partition cannot change to unknown group: " << group_name;
         return false;
@@ -1123,6 +1128,12 @@ bool MetadataBuilder::ChangeGroupSize(const std::string& group_name, uint64_t ma
     }
     group->set_maximum_size(maximum_size);
     return true;
+}
+
+std::string MetadataBuilder::GetBlockDevicePartitionName(uint64_t index) const {
+    return index < block_devices_.size()
+                   ? android::fs_mgr::GetBlockDevicePartitionName(block_devices_[index])
+                   : "";
 }
 
 }  // namespace fs_mgr
