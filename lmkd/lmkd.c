@@ -1620,9 +1620,9 @@ void load_tunable_parameters() {
         swappiness_app = 100;
         swappiness_system = 100;
     } else {
-        min_pressure_mult = 200;
+        min_pressure_mult = 150;
         long_min_pressure_mult = 1000;
-        reclaim_size_mult = 20;
+        reclaim_size_mult = 25;
         swappiness_app = 80;
         swappiness_system = 80;
     }
