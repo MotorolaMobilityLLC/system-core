@@ -76,7 +76,7 @@ bool fs_mgr_overlayfs_filesystem_available(const std::string& filesystem) {
 
 }  // namespace
 
-#if ALLOW_ADBD_DISABLE_VERITY == 0  // If we are a user build, provide stubs
+#if (ALLOW_ADBD_DISABLE_VERITY == 0) && (!defined MOTO_BLD_C)  // If we are a user build, provide stubs
 
 Fstab fs_mgr_overlayfs_candidate_list(const Fstab&) {
     return {};
