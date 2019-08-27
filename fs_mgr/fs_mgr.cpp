@@ -1438,7 +1438,8 @@ int fs_mgr_mount_all(Fstab* fstab, int mount_mode)
             }
             if (fs_mgr_do_format(current_entry, crypt_footer) == 0) {
                 // Let's replay the mount actions.
-                i = top_idx - 1;
+                if (top_idx > 0)
+                    i = top_idx - 1;
                 continue;
             } else {
                 LERROR << __FUNCTION__ << "(): Format failed. "
@@ -1469,7 +1470,7 @@ int fs_mgr_mount_all(Fstab* fstab, int mount_mode)
                     continue;
                 }
             } else {
-		if (--retry > 0) {
+                if ((top_idx > 0) && (--retry > 0)) {
                     LERROR << "Failed to mount "
                            << attempted_entry.mount_point << "; retrying...";
                     i = top_idx - 1;
@@ -1495,7 +1496,7 @@ int fs_mgr_mount_all(Fstab* fstab, int mount_mode)
         } else {
             // fs_options might be null so we cannot use PERROR << directly.
             // Use StringPrintf to output "(null)" instead.
-            if (--retry > 0) {
+            if ((top_idx > 0) && (--retry > 0)) {
                 PERROR << "Failed to mount " << attempted_entry.mount_point
                        << "; retrying...";
                 i = top_idx - 1;
