@@ -813,6 +813,11 @@ std::string GetVerityDeviceName(const FstabEntry& entry) {
     } else {
         base_device = android::base::Basename(entry.mount_point);
     }
+
+    // IKSWQ-8931 - support non-avb2 products with repurposed field check
+    if (entry.avb_keys == "use_base_device_name")
+        return base_device;
+
     return base_device + "-verity";
 }
 
