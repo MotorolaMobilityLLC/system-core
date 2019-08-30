@@ -824,7 +824,12 @@ static Result<Success> do_verity_update_state(const BuiltinArguments& args) {
 
     for (const auto& entry : fstab) {
         if (!fs_mgr_is_verity_enabled(entry)) {
-            continue;
+
+            // IKSWQ-8931 - support non-avb2 products by repurposing avb_keys field
+            auto workaround_check = entry;
+            workaround_check.avb_keys = "use_base_device_name";
+            if (!fs_mgr_is_verity_enabled(workaround_check))
+                continue;
         }
 
         // To be consistent in vboot 1.0 and vboot 2.0 (AVB), use "system" for the partition even
