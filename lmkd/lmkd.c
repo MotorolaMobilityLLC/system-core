@@ -480,7 +480,7 @@ static long page_k;
 
 /* FD for connecting duraSpeed */
 int duraspeed_fd = -1;
-int duraspeed_supported = -1;
+static int duraspeed_supported = 0;
 
 static int clamp(int low, int high, int value) {
     return max(min(value, high), low);
@@ -2024,7 +2024,10 @@ static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_
         in_reclaim = false;
         goto no_kill;
     }
-
+    /* just notify duraspeed */
+    if (duraspeed_supported > 0) {
+        trigger_duraSpeed(-1, -1, -1, -1);
+    }
     if (meminfo_parse(&mi) < 0) {
         ALOGE("Failed to parse meminfo!");
         return;
@@ -2212,11 +2215,6 @@ static void mp_event_common(int data, uint32_t events, struct polling_params *po
     if (meminfo_parse(&mi) < 0 || zoneinfo_parse(&zi) < 0) {
         ALOGE("Failed to get free memory!");
         return;
-    }
-
-    // Trigger duraSpeed if duraspeed is supported.
-    if (duraspeed_supported == -1) {
-        duraspeed_supported = property_get_int32("persist.vendor.duraspeed.support", 0);
     }
 
     if (use_minfree_levels) {
@@ -2765,6 +2763,7 @@ int main(int argc __unused, char **argv __unused) {
         property_get_int32("ro.lmk.thrashing_limit", low_ram_device ? 50 : 100));
     thrashing_limit_decay_pct = clamp(0, 100,
         property_get_int32("ro.lmk.thrashing_limit_decay", low_ram_device ? 50 : 10));
+    duraspeed_supported = property_get_int32("persist.vendor.duraspeed.support", 0);
 
     ctx = create_android_logger(MEMINFO_LOG_TAG);
 
