@@ -41,6 +41,7 @@ cc_defaults {
     symlinks: [
         "getevent",
         "getprop",
+        "sendevent2",
     ],
 }
 
