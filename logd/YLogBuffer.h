@@ -74,5 +74,6 @@ class YLogBuffer {
 
     static void *BufferSender(void *obj) ;
     static int sendDataLockedv(struct iovec *iov, int iovcnt);
+    static void printLog(char* msg,int len);
 };
 #endif

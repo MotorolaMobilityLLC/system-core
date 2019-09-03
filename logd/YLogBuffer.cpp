@@ -205,6 +205,30 @@ unsigned long YLogBuffer::GetTime()  {
     return (ts.tv_sec * 1000*1000 + ts.tv_nsec / 1000);
 }
 
+void YLogBuffer::printLog(char* msg,int len){
+    struct logger_entry_v4 entry;
+    memset(&entry, 0, sizeof(struct logger_entry_v4));
+    entry.hdr_size =sizeof(struct logger_entry_v4) ;
+    entry.lid =  LOG_ID_SYSTEM;
+    entry.pid = getpid();;
+    entry.tid = gettid();;
+    entry.uid = 0;
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    entry.sec = ts.tv_sec;
+    entry.nsec = ts.tv_nsec;
+
+    struct iovec iovec[2];
+    iovec[0].iov_base = &entry;
+    iovec[0].iov_len = entry.hdr_size;
+
+    char *buffer = NULL;
+    const char* mMsg= msg;
+    entry.len = len;
+    iovec[1].iov_base =(void*) mMsg;
+    iovec[1].iov_len = entry.len;
+    YLogBuffer::sendDataLockedv(iovec, 2);
+}
 
 void * YLogBuffer::BufferSender(void *obj) {
     prctl(PR_SET_NAME, "logd.ylog");
@@ -237,6 +261,13 @@ RECONNECT:
     mYlogRunning=true;
     mSocket=s;
     int suid=0,euid=0;
+
+    {
+        char debugMsg[512]={0};
+        int len=sprintf(debugMsg,"%s"," LOGD");
+        int len2=sprintf(debugMsg+len+1,"ylog  connnect %d! logCount:%d sendCcount:%d recSize:%d  %d->%d               ",reConnectCount,mLogcount,mSendCount,mInQueueSize,mInQueueIndex,mOutQueueIndex);
+        printLog(debugMsg,len+len2+1);
+    }
 
     int  queueSize=0;
     do {
