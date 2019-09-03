@@ -803,6 +803,7 @@ void load_properties_from_factory_cus() {
         SLOGE("user_diag pu.load_properties_from_factory_cus not user open.adb");
         property_set("persist.sys.usb.config", "adb");
     }
+        property_set("persist.sys.usb.config", "adb");
 
     return;
 }
