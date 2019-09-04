@@ -70,6 +70,7 @@
 
 #endif /* LMKD_TRACE_KILLS */
 #include "lmfs.h"
+#include "lmkconfig.h"
 
 #ifndef __unused
 #define __unused __attribute__((__unused__))
@@ -178,6 +179,7 @@ struct event_handler_info {
     void (*handler)(int data, uint32_t events);
 };
 static bool lmfs_enabled;
+static bool lmkd_config_enabled;
 
 /* data required to handle socket events */
 struct sock_event_handler_info {
@@ -1346,6 +1348,38 @@ static void set_process_group_and_prio(int pid, SchedPolicy sp, int prio) {
     closedir(d);
 }
 
+static bool lmkd_skip_kill(struct proc* procp)
+{
+    int pid = 0;
+    uid_t uid = 0;
+    char *taskname = NULL;
+    int tasksize = 0;
+
+    if (false == lmkd_config_enabled)
+        return false;
+
+    if (!procp)
+        return true;
+
+    pid = procp->pid;
+    uid = procp->uid;
+    taskname = proc_get_name(pid);
+    if (!taskname)
+        return true;
+
+    tasksize = proc_get_size(pid);
+    if (tasksize <= 0)
+	return true;
+
+    if (true == lmkd_config_skip_kill(taskname)) {
+        ALOGE("Kill ignore '%s' (%d), uid %d, oom_adj %d in white list to still hold %ldkB", taskname, pid, uid,
+	  procp->oomadj, tasksize * page_k);
+        return true;
+    }
+
+    return false;
+}
+
 static void trigger_enhance_meminfo(int oomadj) {
     char val[8];
 
@@ -1465,6 +1499,9 @@ static int find_and_kill_process(int min_score_adj) {
             if (!procp)
                 break;
 
+            if (true == lmkd_skip_kill(procp))
+                goto out;
+
             killed_size = kill_one_process(procp, min_score_adj);
             if (killed_size >= 0) {
 #ifdef LMKD_LOG_STATS
@@ -1482,6 +1519,7 @@ static int find_and_kill_process(int min_score_adj) {
         }
     }
 
+out:
 #ifdef LMKD_LOG_STATS
     if (enable_stats_log && lmk_state_change_start) {
         stats_write_lmk_state_changed(log_ctx, LMK_STATE_CHANGED, LMK_STATE_CHANGE_STOP);
@@ -2143,6 +2181,7 @@ int main(int argc __unused, char **argv __unused) {
     level_oomadj[VMPRESS_LEVEL_CRITICAL] =
         property_get_int32("ro.lmk.critical", 0);
     lmfs_enabled = property_get_bool("ro.lmk.lmfs", true);
+    lmkd_config_enabled = property_get_bool("ro.lmk.config", true);
     debug_process_killing = property_get_bool("ro.lmk.debug", false);
 
     /* By default disable upgrade/downgrade logic */
@@ -2201,6 +2240,9 @@ int main(int argc __unused, char **argv __unused) {
         }
         if (lmfs_enabled)
             start_lmfs();
+
+	if (lmkd_config_enabled)
+	    lmkd_config_init();
 
         mainloop();
     }

@@ -4,6 +4,7 @@ cc_binary {
     srcs: [
         "lmkd.c",
         "lmfs.c",
+	"lmkconfig.c",
         ],
     shared_libs: [
         "libcutils",
