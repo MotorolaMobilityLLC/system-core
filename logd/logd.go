@@ -38,6 +38,14 @@ func mtkLogdEnhanceDefaults(ctx android.LoadHookContext) {
 		p.Cflags = append(p.Cflags, "-DMTK_LOGD_DEBUG")
 	}
 
+	if (vars.String("TARGET_BUILD_VARIANT") == "eng") {
+		p.Cflags = append(p.Cflags, "-DCONFIG_MT_DEBUG_BUILD")
+		p.Cflags = append(p.Cflags, "-DLOGD_FORCE_DIRECTCOREDUMP")
+	} else if (vars.String("TARGET_BUILD_VARIANT") == "userdebug") {
+		p.Cflags = append(p.Cflags, "-DCONFIG_MT_DEBUG_BUILD")
+		p.Cflags = append(p.Cflags, "-DLOGD_FORCE_DIRECTCOREDUMP")
+	}
+
 	if (vars.String("MTK_LOGD_ENHANCE_DISABLE") == "") ||
 		(vars.String("MTK_LOGD_ENHANCE_DISABLE") != "yes") {
 		p.Cflags = append(p.Cflags, "-DMTK_LOGD_ENHANCE")
