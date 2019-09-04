@@ -313,7 +313,7 @@ void directcoredump_init() {
 
     // eng&userdebug load direct-coredump default enable
     // user load direct-coredump default disable due to libdirect-coredump.so will not be preloaded
-    property_get("persist.vendor.aee.core.direct", value, "default");
+    property_get("persist.vendor.aeev.core.direct", value, "default");
     if (strncmp(value, "disable", sizeof("disable"))) {
         int loop;
         for (loop = 0; loop < SIGNUM; loop++) {
