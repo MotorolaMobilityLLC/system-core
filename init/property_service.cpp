@@ -785,6 +785,7 @@ void load_properties_from_factory_cus() {
     std::string buildtype = android::base::GetProperty("ro.build.type", "");
     std::string usbtype = android::base::GetProperty("persist.sys.usb.config", "");
     std::string fuse = android::base::GetProperty("ro.boot.securefuse", "");
+    std::string fcreseted = android::base::GetProperty("persist.sys.usb.fc.reseted", "");
     SLOGE("user_diag pu.load_properties_from_factory_cus.start ");
     LOG(ERROR) << "check data ...buildtype:" << buildtype;
     LOG(ERROR) << "check data ...usbtype:" << usbtype;
@@ -796,15 +797,47 @@ void load_properties_from_factory_cus() {
         SLOGE("user_diag pu.load_properties_from_factory_cus is user and P skip.setupwizard");
         property_set("ro.setupwizard.skip", "1");
     } else {
-        SLOGE("user_diag pu.load_properties_from_factory_cus is user and not P open.setupwizard");
+        SLOGE("user_diag pu.load_properties_from_factory_cus is user and not P open.setupwizard ... ");
         property_set("ro.setupwizard.skip", "no");
     }
-    if (buildtype != "user"){
-        SLOGE("user_diag pu.load_properties_from_factory_cus not user open.adb");
-        property_set("persist.sys.usb.config", "adb");
-    }
 
+
+
+    LOG(ERROR) << "user_diag pu.load_properties_from_factory_cus adb logic start ... fcreseted :" << fcreseted ;
+    if (buildtype != "user"){
+        LOG(ERROR) << "user_diag pu.load_properties_from_factory_cus not user open.adb ... " ;
+        property_set("persist.sys.usb.config", "adb");
+    } else {
+        LOG(ERROR) << "user_diag pu.load_properties_from_factory_cus is USER start to judge the FC ... " ;
+
+        if(is_cache_file_exists()){
+            LOG(ERROR) << "user_diag pu.load_properties_from_factory_cus is_cache_file_exists open adb ... " ;
+
+            property_set("persist.sys.usb.fc.reseted", "1");
+            property_set("persist.sys.usb.config", "adb");
+            property_set("ro.adb.secure", "0" );
+        } else if (!is_cache_file_exists() && fcreseted == ""){
+            LOG(ERROR) << "dd we close the adb ... " ;
+
+            property_set("persist.sys.usb.fc.reseted", "2");
+            property_set("persist.sys.usb.config", "none");
+        }
+    }
     return;
+}
+
+// read form factory
+bool is_cache_file_exists() {
+    int fd = access("/cache/adb_enable", F_OK);
+    if (fd == -1) {
+	    LOG(ERROR) << "xiangzhang open /cache/enable_adb failed";
+        close(fd);
+        return false;
+    } else {
+	    LOG(ERROR) << "xiangzhang open /cache/enable_adb success";
+        close(fd);
+        return true;
+    }
 }
 
 // read form factory
