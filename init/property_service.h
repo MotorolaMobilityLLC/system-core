@@ -50,7 +50,6 @@ void load_properties_from_factory_cus();
 unsigned char read_from_factory();
 /* modify by dongjunxia for add sku prop .start */
 void set_properties_from_hwinfo();
-bool is_cache_file_exists();
 /* modify by dongjunxia for add sku prop .end */
 }  // namespace init
 }  // namespace android
