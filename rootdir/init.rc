@@ -767,3 +767,10 @@ on property:ro.debuggable=1
 service flash_recovery /system/bin/install-recovery.sh
     class main
     oneshot
+#ontim,zhangxiang,open adb root in SMT version
+service adb-remount /system/bin/adb-remount.sh
+    class main
+    oneshot
+
+on property:ro.build.smt.ver=1&&property:ro.adb.secure=0&&property:ro.secure=0
+    start adb-remount
