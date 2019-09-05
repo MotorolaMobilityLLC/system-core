@@ -700,8 +700,6 @@ Return<void> TrustyKeymaster4Device::update(uint64_t operationHandle,
 
         _hidl_cb(legacy_enum_conversion(response.error), resultConsumed, resultParams, resultBlob);
 
-        if (tmp)
-            free(tmp);
         output.data = NULL;
         output.data_length = 0;
 
