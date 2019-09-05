@@ -131,8 +131,8 @@ struct TrustyImportWrappedKeyRequest : public KeymasterMessage {
     KeymasterKeyBlob wrapping_key;
     KeymasterKeyBlob masking_key;
     AuthorizationSet additional_params;
-    uint64_t password_sid;
-    uint64_t biometric_sid;
+    uint64_t password_sid{};
+    uint64_t biometric_sid{};
 };
 
 struct TrustyImportWrappedKeyResponse : public KeymasterResponse {
