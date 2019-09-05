@@ -16,6 +16,7 @@
 
 #define LOG_TAG "lowmemorykiller"
 #define PERFD_LIB  "libqti-perfd-client_system.so"
+#define IOPD_LIB  "libqti-iopd-client_system.so"
 
 #include <dlfcn.h>
 #include <dirent.h>
@@ -48,6 +49,7 @@
 #include <log/log_time.h>
 #include <psi/psi.h>
 #include <system/thread_defs.h>
+#include <dlfcn.h>
 
 #ifdef LMKD_LOG_STATS
 #include "statslog.h"
@@ -166,6 +168,8 @@ static bool enable_userspace_lmk;
 static bool enable_watermark_check;
 static int swap_free_low_percentage;
 static bool use_psi_monitors = false;
+static bool enable_preferred_apps =  false;
+static unsigned long pa_update_timeout_ms = 60000; /* 1 min */
 static struct psi_threshold psi_thresholds[VMPRESS_LEVEL_COUNT] = {
     { PSI_SOME, 70 },    /* 70ms out of 1sec for partial stall */
     { PSI_SOME, 100 },   /* 100ms out of 1sec for partial stall */
@@ -356,6 +360,13 @@ struct reread_data {
 typedef struct {
      char value[PROPERTY_VALUE_MAX];
 } PropVal;
+
+
+#define PREFERRED_OUT_LENGTH 12288
+#define PAPP_OPCODE 10
+
+char *preferred_apps;
+void (*perf_ux_engine_trigger)(int, char *) = NULL;
 
 #ifdef LMKD_LOG_STATS
 static bool enable_stats_log;
@@ -1455,6 +1466,12 @@ static struct proc *proc_get_heaviest(int oomadj) {
     struct adjslot_list *curr = head->next;
     struct proc *maxprocp = NULL;
     int maxsize = 0;
+
+    /* Filter out PApps */
+    struct proc *maxprocp_pa = NULL;
+    int maxsize_pa = 0;
+    char *tmp_taskname;
+
     while (curr != head) {
         int pid = ((struct proc *)curr)->pid;
         int tasksize = proc_get_size(pid);
@@ -1463,14 +1480,26 @@ static struct proc *proc_get_heaviest(int oomadj) {
             pid_remove(pid);
             curr = next;
         } else {
-            if (tasksize > maxsize) {
-                maxsize = tasksize;
-                maxprocp = (struct proc *)curr;
+            tmp_taskname = proc_get_name(pid);
+            if (enable_preferred_apps && strstr(preferred_apps, tmp_taskname)) {
+                if (tasksize > maxsize_pa) {
+                    maxsize_pa = tasksize;
+                    maxprocp_pa = (struct proc *)curr;
+                }
+            } else {
+                if (tasksize > maxsize) {
+                    maxsize = tasksize;
+                    maxprocp = (struct proc *)curr;
+                }
             }
             curr = curr->next;
         }
     }
-    return maxprocp;
+    if (maxsize > 0) {
+        return maxprocp;
+    } else {
+        return maxprocp_pa;
+    }
 }
 
 static void set_process_group_and_prio(int pid, SchedPolicy sp, int prio) {
@@ -1808,6 +1837,7 @@ static void mp_event_common(int data, uint32_t events __unused) {
     union zoneinfo zi;
     struct timespec curr_tm;
     static struct timespec last_kill_tm;
+    static struct timespec last_pa_update_tm;
     static unsigned long kill_skip_count = 0;
     enum vmpressure_level level = (enum vmpressure_level)data;
     long other_free = 0, other_file = 0;
@@ -1909,6 +1939,12 @@ static void mp_event_common(int data, uint32_t events __unused) {
 
     if (level == VMPRESS_LEVEL_LOW) {
         record_low_pressure_levels(&mi);
+        if (enable_preferred_apps) {
+            if (get_time_diff_ms(&last_pa_update_tm, &curr_tm) >= pa_update_timeout_ms) {
+                perf_ux_engine_trigger(PAPP_OPCODE, preferred_apps);
+                last_pa_update_tm = curr_tm;
+            }
+        }
     }
 
     if (level_oomadj[level] > OOM_SCORE_ADJ_MAX) {
@@ -2341,6 +2377,8 @@ int main(int argc __unused, char **argv __unused) {
         property_get_int32("ro.lmk.swap_free_low_percentage", 10);
     enable_watermark_check =
         property_get_bool("ro.lmk.enable_watermark_check", false);
+    enable_preferred_apps =
+        property_get_bool("ro.lmk.enable_preferred_apps", false);
 
      /* Loading the vendor library at runtime to access property value */
      PropVal (*perf_wait_get_prop)(const char *, const char *) = NULL;
@@ -2382,7 +2420,33 @@ int main(int argc __unused, char **argv __unused) {
           enable_userspace_lmk = (!strncmp(property,"false",PROPERTY_VALUE_MAX))? false : true;
           strlcpy(property, perf_wait_get_prop("ro.lmk.enable_watermark_check", "false").value, PROPERTY_VALUE_MAX);
           enable_watermark_check = (!strncmp(property,"false",PROPERTY_VALUE_MAX))? false : true;
+          strlcpy(property, perf_wait_get_prop("ro.lmk.enable_preferred_apps", "false").value, PROPERTY_VALUE_MAX);
+          enable_preferred_apps = (!strncmp(property,"false",PROPERTY_VALUE_MAX))? false : true;
     }
+
+    /* Load IOP library for PApps */
+    if (enable_preferred_apps) {
+        void *handle = NULL;
+        handle = dlopen(IOPD_LIB, RTLD_NOW);
+        if (handle != NULL) {
+            perf_ux_engine_trigger = (void (*)(int, char *))dlsym(handle, "perf_ux_engine_trigger");
+        }
+
+        if (!perf_ux_engine_trigger) {
+            ALOGE("Couldn't obtain perf_ux_engine_trigger");
+            enable_preferred_apps = false;
+        } else {
+            // Initialize preferred_apps
+            preferred_apps = (char *) malloc ( PREFERRED_OUT_LENGTH * sizeof(char));
+            if (preferred_apps == NULL) {
+                enable_preferred_apps = false;
+            } else {
+                memset(preferred_apps, 0, PREFERRED_OUT_LENGTH);
+                preferred_apps[0] = '\0';
+            }
+        }
+    }
+
     ctx = create_android_logger(MEMINFO_LOG_TAG);
 
 #ifdef LMKD_LOG_STATS
