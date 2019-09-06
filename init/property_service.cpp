@@ -928,6 +928,7 @@ void set_properties_from_hwinfo() {
     if (ReadFileToString(cmdline_path, &file_content)) {
         file_band = file_content.substr(len,8);
         property_set("ro.boot.hardware.sku",file_band);
+        property_set("ro.vendor.hardware.sku",file_band);
     } else {
         PLOG(ERROR) << "Could not read properties from '" << cmdline_path << "'";
     }
