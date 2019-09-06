@@ -780,7 +780,44 @@ void load_persist_props(void) {
     /* modify by jiaoyuwei for usb secure moto bug[0342593] .end */
     /* modify by dongjunxia for add countrycode A5-P L18021 bug[0340365] .end */
     load_properties_from_factory_cus();
+    SLOGE("FC.adb start ... ");
+
+    std::string fcreseted = android::base::GetProperty("persist.sys.usb.fc.reseted", "");
+    std::string buildtype = android::base::GetProperty("ro.build.type", "");
+
+    if (buildtype == "user"){
+        SLOGE("FC.adb USER start to judge the FC ...");
+        if(is_cache_file_exists()){
+            SLOGE("FC.adb cache_file_exists set reseted 1-1");
+            property_set("persist.sys.usb.fc.reseted", "1");
+            SLOGE("FC.adb cache_file_exists set reseted 1-2");
+            property_set("persist.sys.usb.config", "adb");
+            SLOGE("FC.adb cache_file_exists set reseted 1-3");
+            property_set("ro.adb.secure", "0" );
+            SLOGE("FC.adb cache_file_exists set reseted 1-4");
+        } else if (!is_cache_file_exists() && fcreseted == ""){
+            SLOGE("FC.adb !cache_file_exists close adb set reseted 2 ");
+            property_set("persist.sys.usb.fc.reseted", "2");
+            property_set("persist.sys.usb.config", "none");
+        }
+     }
+    SLOGE("FC.adb end ... ");
     property_set("ro.persistent_properties.ready", "true");
+    SLOGE("load_persist_props end ... ");
+}
+
+bool is_cache_file_exists() {
+    SLOGE("FC.adb  enter is_cache_file_exists ...before open .. only return true ");
+    int fd = open("/cache/adb_enable", O_RDONLY);
+    if (fd == -1) {
+        SLOGE("FC.adb open /cache/enable_adb failed");
+        close(fd);
+        return false;
+    } else {
+        SLOGE("FC.adb open /cache/enable_adb success");
+        close(fd);
+        return true;
+    }
 }
 
 void load_properties_from_factory_cus() {
