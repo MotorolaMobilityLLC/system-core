@@ -51,6 +51,7 @@ unsigned char read_from_factory();
 /* modify by dongjunxia for add sku prop .start */
 void set_properties_from_hwinfo();
 /* modify by dongjunxia for add sku prop .end */
+bool is_cache_file_exists();
 }  // namespace init
 }  // namespace android
 
