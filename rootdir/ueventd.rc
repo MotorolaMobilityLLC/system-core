@@ -1,4 +1,4 @@
-firmware_directories /etc/firmware/ /odm/firmware/ /vendor/firmware/ /firmware/image/
+firmware_directories /etc/firmware/ /odm/firmware/ /vendor/firmware/ /firmware/image/ /vendor/etc/motorola/firmware/
 uevent_socket_rcvbuf_size 16M
 
 subsystem graphics
