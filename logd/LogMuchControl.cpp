@@ -119,7 +119,11 @@ int logd_adjust(const char* cmdStr) {
         p.fd = sock = -1;
         return -errno;
     }
-    if ((ret == 0) || !(p.revents & POLLIN)) return -ETIME;
+    if ((ret == 0) || !(p.revents & POLLIN)) {
+        close(sock);
+        p.fd = sock = -1;
+        return -ETIME;
+    }
 
     static const char success[] = "success";
     char buffer[sizeof(success) - 1];
