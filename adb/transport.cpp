@@ -646,7 +646,9 @@ static int transport_write_action(int fd, struct tmsg* m) {
     }
     return 0;
 }
-
+#if !ADB_HOST
+int Normal_terminated = 0;
+#endif
 static void transport_registration_func(int _fd, unsigned ev, void*) {
     tmsg m;
     atransport* t;
@@ -697,6 +699,9 @@ static void transport_registration_func(int _fd, unsigned ev, void*) {
         t->connection()->SetErrorCallback([t](Connection*, const std::string& error) {
             LOG(INFO) << t->serial_name() << ": connection terminated: " << error;
             fdevent_run_on_main_thread([t]() {
+#if !ADB_HOST
+		Normal_terminated = 1;
+#endif
                 handle_offline(t);
                 transport_unref(t);
             });

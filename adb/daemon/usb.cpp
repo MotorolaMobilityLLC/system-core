@@ -65,7 +65,7 @@ static constexpr size_t kUsbReadSize = 4 * PAGE_SIZE;
 
 static constexpr size_t kUsbWriteQueueDepth = 8;
 static constexpr size_t kUsbWriteSize = 4 * PAGE_SIZE;
-
+bool functions_disabled = false;
 static const char* to_string(enum usb_functionfs_event_type type) {
     switch (type) {
         case FUNCTIONFS_BIND:
@@ -167,7 +167,7 @@ struct ScopedAioContext {
   private:
     aio_context_t context_ = 0;
 };
-
+extern int Normal_terminated;
 struct UsbFfsConnection : public Connection {
     UsbFfsConnection(unique_fd control, unique_fd read, unique_fd write,
                      std::promise<void> destruction_notifier)
@@ -229,7 +229,10 @@ struct UsbFfsConnection : public Connection {
                 offset += write_size;
             }
         }
-        SubmitWrites();
+	if(android::base::GetProperty("sys.adb.functions_disable", "") == "enable" || Normal_terminated == 1)
+		LOG(INFO) << "Tianyuan FUNCTIONS_DISABLED or USB plug out,Do not submit the write request";	
+	else
+		SubmitWrites();
         return true;
     }
 
@@ -324,7 +327,7 @@ struct UsbFfsConnection : public Connection {
                             running = false;
                             break;
                         }
-
+			Normal_terminated = 0;
                         bound = true;
                         break;
 
@@ -342,6 +345,7 @@ struct UsbFfsConnection : public Connection {
                         }
 
                         enabled = true;
+			functions_disabled = android::base::SetProperty("sys.adb.functions_disable", "disable");
                         StartWorker();
                         break;
 
@@ -356,6 +360,7 @@ struct UsbFfsConnection : public Connection {
 
                         enabled = false;
                         running = false;
+			functions_disabled = android::base::SetProperty("sys.adb.functions_disable", "enable");
                         break;
 
                     case FUNCTIONFS_UNBIND:

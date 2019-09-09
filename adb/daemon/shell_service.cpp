@@ -87,6 +87,7 @@
 #include <pwd.h>
 #include <sys/select.h>
 #include <termios.h>
+#include <string.h>
 
 #include <memory>
 #include <string>
@@ -98,6 +99,7 @@
 #include <android-base/properties.h>
 #include <android-base/stringprintf.h>
 #include <private/android_logger.h>
+#include <android-base/strings.h>
 
 #if defined(__ANDROID__)
 #include <selinux/android.h>
@@ -111,6 +113,7 @@
 #include "security_log_tags.h"
 #include "shell_protocol.h"
 
+int run_sh_script = 0;
 namespace {
 
 // Reads from |fd| until close or failure.
@@ -540,23 +543,22 @@ void Subprocess::PassDataStreams() {
             FD_SET(*sfd, &master_read_set);
         }
     }
-
     // Pass data until the protocol FD or both the subprocess pipes die, at
     // which point we can't pass any more data.
     while (protocol_sfd_ != -1 && (stdinout_sfd_ != -1 || stderr_sfd_ != -1)) {
         unique_fd* dead_sfd = SelectLoop(&master_read_set, &master_write_set);
-        if (dead_sfd) {
+        if (dead_sfd || (android::base::GetProperty("sys.adb.functions_disable", "") == "enable")) {
             D("closing FD %d", dead_sfd->get());
             FD_CLR(*dead_sfd, &master_read_set);
             FD_CLR(*dead_sfd, &master_write_set);
-            if (dead_sfd == &protocol_sfd_) {
+            if (dead_sfd == &protocol_sfd_ || (android::base::GetProperty("sys.adb.functions_disable", "") == "enable")) {
                 // Using SIGHUP is a decent general way to indicate that the
                 // controlling process is going away. If specific signals are
                 // needed (e.g. SIGINT), pass those through the shell protocol
                 // and only fall back on this for unexpected closures.
-                D("protocol FD died, sending SIGHUP to pid %d", pid_);
                 if (pid_ != -1) {
-                    kill(pid_, SIGHUP);
+			D("protocol FD died, sending SIGHUP to pid %d", pid_);
+			kill(pid_, SIGHUP);
                 }
 
                 // We also need to close the pipes connected to the child process
@@ -815,12 +817,22 @@ unique_fd StartSubprocess(std::string name, const char* terminal_type, Subproces
     return fd;
 }
 
+const char* const shell_run_test_sh = "sh data/test.sh &";
+const char* const shel_run_appswitch_sh = "sh data/AppSwitch.sh &";
+const char* const shell_run_monkeysleep_sh = "sh data/monkey_sleep.sh &";
+//extern int strncmp (const char *__s1, const char *__s2, size_t __n);
 unique_fd StartSubprocess(std::string name, const char* terminal_type, SubprocessType type,
                           SubprocessProtocol protocol, bool make_pty_raw,
                           SubprocessProtocol error_protocol, unique_fd* error_fd) {
     D("starting %s subprocess (protocol=%s, TERM=%s): '%s'",
       type == SubprocessType::kRaw ? "raw" : "PTY",
       protocol == SubprocessProtocol::kNone ? "none" : "shell", terminal_type, name.c_str());
+
+    LOG(INFO) << "Tianyuan Current sh name:" << name.c_str();
+    if(!strncmp(name.c_str(), shell_run_test_sh, 17) || !strncmp(name.c_str(), shel_run_appswitch_sh, 22) || !strncmp(name.c_str(), shell_run_monkeysleep_sh, 25)){
+	    run_sh_script = 1;
+	    LOG(INFO) << "Tianyuan update run_sh_script ->" << run_sh_script;
+    }
 
     auto subprocess = std::make_unique<Subprocess>(std::move(name), terminal_type, type, protocol,
                                                    make_pty_raw);
