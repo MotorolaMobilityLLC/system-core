@@ -1339,8 +1339,8 @@ int fs_mgr_mount_all(Fstab* fstab, int mount_mode) {
             encryptable = FS_MGR_MNTALL_DEV_MIGHT_BE_ENCRYPTED;
         } else if (mount_errno != EBUSY && mount_errno != EACCES &&
             attempted_entry.fs_mgr_flags.file_encryption &&
-            (attempted_entry.file_contents_mode == "aes-256-xts")) {
-                LERROR << __FUNCTION__ << "(): EM_AES_256_XTS mode";
+            ((attempted_entry.file_contents_mode == "aes-256-xts") || (attempted_entry.file_contents_mode == "adiantum"))) {
+                LERROR << __FUNCTION__ << "(): EM_AES_256_XTS mode or ADIANTUM mode";
                 encryptable = FS_MGR_MNTALL_DEV_NEEDS_RECOVERY;
         } else if (mret && mount_errno != EBUSY && mount_errno != EACCES &&
                    should_use_metadata_encryption(attempted_entry)) {
