@@ -1421,6 +1421,30 @@ static int proc_get_size(int pid) {
     return rss;
 }
 
+static long proc_get_vm(int pid) {
+    char path[PATH_MAX];
+    char line[LINE_MAX];
+    int fd;
+    long total;
+    ssize_t ret;
+
+    /* gid containing AID_READPROC required */
+    snprintf(path, PATH_MAX, "/proc/%d/statm", pid);
+    fd = open(path, O_RDONLY | O_CLOEXEC);
+    if (fd == -1)
+        return -1;
+
+    ret = read_all(fd, line, sizeof(line) - 1);
+    if (ret < 0) {
+        close(fd);
+        return -1;
+    }
+
+    sscanf(line, "%ld", &total);
+    close(fd);
+    return total;
+}
+
 static char *proc_get_name(int pid) {
     char path[PATH_MAX];
     static char line[LINE_MAX];
@@ -1524,7 +1548,7 @@ static void proc_get_script(void)
     int fd, oomadj = OOM_SCORE_ADJ_MIN;
     uint32_t pid;
     struct proc *procp;
-    int rss;
+    long total_vm;
     static bool retry_eligible = false;
 
 repeat:
@@ -1541,9 +1565,11 @@ repeat:
         if (pid == 1)
             continue;
 
-        /* Don't attempt to kill kthreads */
-        rss = proc_get_size(pid);
-        if (rss <= 0)
+        /*
+	 * Don't attempt to kill kthreads. Rely on total_vm for this.
+	 */
+        total_vm = proc_get_vm(pid);
+        if (total_vm <= 0)
             continue;
 
         snprintf(path, sizeof(path), "/proc/%u/oom_score_adj", pid);
