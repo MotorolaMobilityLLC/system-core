@@ -1516,7 +1516,7 @@ static void set_process_group_and_prio(int pid, SchedPolicy sp, int prio) {
  */
 static void proc_get_script(void)
 {
-    DIR* d;
+    static DIR* d = NULL;
     struct dirent* de;
     char path[PATH_MAX];
     static char line[LINE_MAX];
@@ -1525,9 +1525,10 @@ static void proc_get_script(void)
     uint32_t pid;
     struct proc *procp;
     int rss;
-    int count = 0;
+    static bool retry_eligible = false;
 
-    if (!(d = opendir("/proc"))) {
+repeat:
+    if (!d && !(d = opendir("/proc"))) {
         ALOGE("Failed to open /proc");
         return;
     }
@@ -1576,14 +1577,20 @@ static void proc_get_script(void)
             procp->uid = 0;
             procp->oomadj = oomadj;
             proc_insert(procp);
-            count++;
+	    retry_eligible = true;
+	    ALOGI("proc_get_script: Added a task to kill list");
+	    return;
         } else {
             ALOGD("Entry already exists %d: %s\n", procp->pid, proc_get_name(pid));
         }
     }
     closedir(d);
-
-    ALOGI("proc_get_script: Added %d tasks to kill list", count);
+    d = NULL;
+    if (retry_eligible) {
+	    retry_eligible = false;
+	    goto repeat;
+    }
+    ALOGI("proc_get_script: None tasks are added to kill list");
 }
 
 static int last_killed_pid = -1;
