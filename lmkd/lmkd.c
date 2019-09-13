@@ -1739,16 +1739,6 @@ static void mp_event_common_locked(int data, uint32_t events __unused) {
             return;
         }
 
-        if (min_score_adj <= 200 && level == VMPRESS_LEVEL_LOW) {
-            if (debug_process_killing) {
-                ALOGI(" %s mem pressure event, min_score_adj %d"
-                      "(free memory=%ldkB, cache=%ldkB, swapfree=%ldkB, limit=%ldkB)",
-                      level_name[level], min_score_adj, other_free * page_k, other_file * page_k,
-                      (long) (mi.field.free_swap), (long)minfree * page_k);
-            }
-            return;
-        }
-
         goto do_kill;
     }
 
