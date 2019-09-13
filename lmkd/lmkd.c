@@ -374,6 +374,10 @@ static uint32_t killcnt_total = 0;
 /* PAGE_SIZE / 1024 */
 static long page_k;
 
+static char *proc_get_name(int pid);
+static int proc_get_size(int pid);
+static bool lmkd_skip_kill(struct proc* procp);
+
 static bool parse_int64(const char* str, int64_t* ret) {
     char* endptr;
     long long val = strtoll(str, &endptr, 10);
@@ -490,6 +494,28 @@ static struct adjslot_list *adjslot_tail(struct adjslot_list *head) {
     return asl == head ? NULL : asl;
 }
 
+static struct adjslot_list *adjslot_skip(struct adjslot_list *head)
+{
+    struct adjslot_list *asl = head->prev;
+    struct proc *procp = NULL;
+    char *taskname = NULL;
+
+    if (asl == head)
+        return NULL;
+
+    for(;asl != head; asl=asl->prev) {
+        procp = (struct proc *)asl;
+        taskname = proc_get_name(procp->pid);
+        if (!taskname)
+            return asl;
+        if (true == lmkd_skip_kill(procp))
+            continue;
+        return asl;
+    }
+
+    return NULL;
+}
+
 static void proc_slot(struct proc *procp) {
     int adjslot = ADJTOSLOT(procp->oomadj);
 
@@ -506,6 +532,28 @@ static void proc_insert(struct proc *procp) {
     procp->pidhash_next = pidhash[hval];
     pidhash[hval] = procp;
     proc_slot(procp);
+}
+
+static void proc_dump() {
+    struct adjslot_list *asl = NULL;
+    struct adjslot_list *temp_head = NULL;
+    struct proc *procp = NULL;
+    char *taskname = NULL;
+    int size = 0;
+    int count = 0;
+    int hval = 0;
+
+    for(count=0; count <ADJTOSLOT_COUNT; count ++) {
+        temp_head = &procadjslot_list[count];
+        for (asl=temp_head->prev; asl != temp_head; asl = asl->prev) {
+            procp = (struct proc *)asl;
+            taskname = proc_get_name(procp->pid);
+            size = proc_get_size(procp->pid);
+            hval = pid_hashfn(procp->pid);
+            ALOGI("count: %d proc_dump task name:%s,%d , pid:%d, hval:%d, 0x%p:0x%p",
+                count, taskname, size, procp->pid, hval, procp, pidhash[hval]);
+        }
+    }
 }
 
 static int pid_remove(int pid) {
@@ -1290,6 +1338,10 @@ static struct proc *proc_adj_lru(int oomadj) {
     return (struct proc *)adjslot_tail(&procadjslot_list[ADJTOSLOT(oomadj)]);
 }
 
+static struct proc *proc_adj_lru_skip(int oomadj) {
+    return (struct proc *)adjslot_skip(&procadjslot_list[ADJTOSLOT(oomadj)]);
+}
+
 static struct proc *proc_get_heaviest(int oomadj) {
     struct adjslot_list *head = &procadjslot_list[ADJTOSLOT(oomadj)];
     struct adjslot_list *curr = head->next;
@@ -1359,17 +1411,17 @@ static bool lmkd_skip_kill(struct proc* procp)
         return false;
 
     if (!procp)
-        return true;
+        return false;
 
     pid = procp->pid;
     uid = procp->uid;
     taskname = proc_get_name(pid);
     if (!taskname)
-        return true;
+        return false;
 
     tasksize = proc_get_size(pid);
     if (tasksize <= 0)
-	return true;
+	return false;
 
     if (true == lmkd_config_skip_kill(taskname)) {
         ALOGE("Kill ignore '%s' (%d), uid %d, oom_adj %d in white list to still hold %ldkB", taskname, pid, uid,
@@ -1494,13 +1546,10 @@ static int find_and_kill_process(int min_score_adj) {
 
         while (true) {
             procp = kill_heaviest_task ?
-                proc_get_heaviest(i) : proc_adj_lru(i);
+                proc_get_heaviest(i) : proc_adj_lru_skip(i);
 
             if (!procp)
                 break;
-
-            if (true == lmkd_skip_kill(procp))
-                goto out;
 
             killed_size = kill_one_process(procp, min_score_adj);
             if (killed_size >= 0) {
