@@ -39,8 +39,10 @@ SharedBuffer* SharedBuffer::alloc(size_t size)
         // Should be std::atomic_init(&sb->mRefs, 1);
         // But that generates a warning with some compilers.
         // The following is OK on Android-supported platforms.
+        memset(sb, 0, (sizeof(SharedBuffer) + size));
         sb->mRefs.store(1, std::memory_order_relaxed);
         sb->mSize = size;
+        sb->mHasFree = 0;
     }
     return sb;
 }
@@ -48,7 +50,13 @@ SharedBuffer* SharedBuffer::alloc(size_t size)
 
 void SharedBuffer::dealloc(const SharedBuffer* released)
 {
-    free(const_cast<SharedBuffer*>(released));
+    SharedBuffer* buf = const_cast<SharedBuffer*>(released);
+    if (buf && buf->mHasFree == 0 && buf->mSize != 0) {
+        buf->mHasFree = 1;
+        free(buf);
+    } else {
+        ALOGE("sharebuffer obj has free, ignore this operation");
+    }
 }
 
 SharedBuffer* SharedBuffer::edit() const

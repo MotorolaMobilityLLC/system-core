@@ -102,7 +102,8 @@ private:
         // Must be sized to preserve correct alignment.
         mutable std::atomic<int32_t>        mRefs;
                 size_t                      mSize;
-                uint32_t                    mReserved[2];
+                volatile uint32_t           mHasFree;
+                uint32_t                    mReserved[1];
 };
 
 static_assert(sizeof(SharedBuffer) % 8 == 0

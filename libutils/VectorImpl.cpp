@@ -188,6 +188,7 @@ status_t VectorImpl::sort(VectorImpl::compar_r_t cmp, void* state)
                     if (!array) return NO_MEMORY;
                     temp = malloc(mItemSize);
                     if (!temp) return NO_MEMORY;
+                    memset(temp, 0, mItemSize);
                     item = reinterpret_cast<char*>(array) + mItemSize*(i);
                     curr = reinterpret_cast<char*>(array) + mItemSize*(i-1);
                 } else {
