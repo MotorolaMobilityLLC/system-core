@@ -52,6 +52,32 @@ on early-init
     # the libraries are available to the processes started after this statement.
     exec_start apexd-bootstrap
 
+    # These must already exist by the time boringssl_self_test32 / boringssl_self_test64 run.
+    mkdir /dev/boringssl 0755 root root
+    mkdir /dev/boringssl/selftest 0755 root root
+
+# Run boringssl self test for each ABI so that later processes can skip it. http://b/139348610
+on early-init && property:ro.product.cpu.abilist32=*
+    exec_start boringssl_self_test32
+on early-init && property:ro.product.cpu.abilist64=*
+    exec_start boringssl_self_test64
+on property:apexd.status=ready && property:ro.product.cpu.abilist32=*
+    exec_start boringssl_self_test_apex32
+on property:apexd.status=ready && property:ro.product.cpu.abilist64=*
+    exec_start boringssl_self_test_apex64
+
+service boringssl_self_test32 /system/bin/boringssl_self_test32
+    reboot_on_failure reboot,bootloader,boringssl-self-check-failed
+
+service boringssl_self_test64 /system/bin/boringssl_self_test64
+    reboot_on_failure reboot,bootloader,boringssl-self-check-failed
+
+service boringssl_self_test_apex32 /apex/com.android.conscrypt/bin/boringssl_self_test32
+    reboot_on_failure reboot,bootloader,boringssl-self-check-failed
+
+service boringssl_self_test_apex64 /apex/com.android.conscrypt/bin/boringssl_self_test64
+    reboot_on_failure reboot,bootloader,boringssl-self-check-failed
+
 on init
     sysclktz 0
 
@@ -121,6 +147,9 @@ on init
     mkdir /mnt/media_rw 0750 root media_rw
     mkdir /mnt/user 0755 root root
     mkdir /mnt/user/0 0755 root root
+    mkdir /mnt/user/0/self 0755 root root
+    mkdir /mnt/user/0/emulated 0755 root root
+    mkdir /mnt/user/0/emulated/0 0755 root root
     mkdir /mnt/expand 0771 system system
     mkdir /mnt/appfuse 0711 root root
 
@@ -367,9 +396,6 @@ on post-fs
     # Once everything is setup, no need to modify /.
     # The bind+remount combination allows this to work in containers.
     mount rootfs rootfs / remount bind ro nodev
-    # Mount default storage into root namespace
-    mount none /mnt/runtime/default /storage bind rec
-    mount none none /storage slave rec
 
     # Make sure /sys/kernel/debug (if present) is labeled properly
     # Note that tracefs may be mounted under debug, so we need to cross filesystems
@@ -431,7 +457,6 @@ on post-fs-data
     mark_post_data
 
     # Start checkpoint before we touch data
-    start vold
     exec - system system -- /system/bin/vdc checkpoint prepareCheckpoint
 
     # We chown/chmod /data again so because mount is run as root + defaults
@@ -528,6 +553,7 @@ on post-fs-data
     mkdir /data/misc/profiles/ref 0771 system system
     mkdir /data/misc/profman 0770 system shell
     mkdir /data/misc/gcov 0770 root root
+    mkdir /data/misc/installd 0700 root root
 
     mkdir /data/preloads 0775 system system
 
@@ -610,6 +636,9 @@ on post-fs-data
     mkdir /data/cache/backup_stage 0700 system system
     mkdir /data/cache/backup 0700 system system
 
+    mkdir /data/rollback 0700 system system
+    mkdir /data/rollback-observer 0700 system system
+
     # Wait for apexd to finish activating APEXes before starting more processes.
     wait_for_prop apexd.status ready
     parse_apex_configs
@@ -637,6 +666,22 @@ on post-fs-data
     # Set fscklog permission
     chown root system /dev/fscklogs/log
     chmod 0770 /dev/fscklogs/log
+
+# Switch between sdcardfs and FUSE depending on persist property
+# TODO: Move this to ro property before launch because FDE devices
+# interact with persistent properties differently during boot
+on zygote-start && property:persist.sys.fuse=true
+  # Mount default storage into root namespace
+  mount none /mnt/user/0 /storage bind rec
+  mount none none /storage slave rec
+on zygote-start && property:persist.sys.fuse=false
+  # Mount default storage into root namespace
+  mount none /mnt/runtime/default /storage bind rec
+  mount none none /storage slave rec
+on zygote-start && property:persist.sys.fuse=""
+  # Mount default storage into root namespace
+  mount none /mnt/runtime/default /storage bind rec
+  mount none none /storage slave rec
 
 # It is recommended to put unnecessary data/ initialization from post-fs-data
 # to start-zygote in device's init.rc to unblock zygote start.
@@ -855,6 +900,8 @@ on property:ro.debuggable=1
     chmod 0773 /data/misc/trace
     # Give reads to anyone for the window trace folder on debug builds.
     chmod 0775 /data/misc/wmtrace
+
+on init && property:ro.debuggable=1
     start console
 
 service flash_recovery /system/bin/install-recovery.sh

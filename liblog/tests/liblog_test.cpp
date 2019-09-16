@@ -1062,6 +1062,7 @@ for trouble being gone, comfort should remain, but\n\
 when you depart from me, sorrow abides and happiness\n\
 takes his leave.";
 
+#ifdef USING_LOGGER_DEFAULT
 TEST(liblog, max_payload) {
 #ifdef TEST_PREFIX
   TEST_PREFIX
@@ -1130,6 +1131,7 @@ TEST(liblog, max_payload) {
   GTEST_LOG_(INFO) << "This test does nothing.\n";
 #endif
 }
+#endif
 
 TEST(liblog, __android_log_buf_print__maxtag) {
 #ifdef TEST_PREFIX
@@ -1271,6 +1273,7 @@ TEST(liblog, too_big_payload) {
 #endif
 }
 
+#ifdef USING_LOGGER_DEFAULT
 TEST(liblog, dual_reader) {
 #ifdef TEST_PREFIX
   TEST_PREFIX
@@ -1334,6 +1337,7 @@ TEST(liblog, dual_reader) {
   GTEST_LOG_(INFO) << "This test does nothing.\n";
 #endif
 }
+#endif
 
 #ifdef USING_LOGGER_DEFAULT  // Do not retest logprint
 static bool checkPriForTag(AndroidLogFormat* p_format, const char* tag,
@@ -1743,22 +1747,21 @@ static int count_matching_ts(log_time ts) {
 
   return count;
 }
-
-// meant to be handed to ASSERT_TRUE / EXPECT_TRUE only to expand the message
-static testing::AssertionResult IsOk(bool ok, std::string& message) {
-  return ok ? testing::AssertionSuccess()
-            : (testing::AssertionFailure() << message);
-}
 #endif  // TEST_PREFIX
 
 TEST(liblog, enoent) {
 #ifdef TEST_PREFIX
+  if (getuid() != 0) {
+    GTEST_SKIP() << "Skipping test, must be run as root.";
+    return;
+  }
+
   TEST_PREFIX
   log_time ts(CLOCK_MONOTONIC);
   EXPECT_LT(0, __android_log_btwrite(0, EVENT_TYPE_LONG, &ts, sizeof(ts)));
   EXPECT_EQ(SUPPORTS_END_TO_END, count_matching_ts(ts));
 
-  // This call will fail if we are setuid(AID_SYSTEM), beware of any
+  // This call will fail unless we are root, beware of any
   // test prior to this one playing with setuid and causing interference.
   // We need to run before these tests so that they do not interfere with
   // this test.
@@ -1770,20 +1773,7 @@ TEST(liblog, enoent) {
   // liblog.android_logger_get_ is one of those tests that has no recourse
   // and that would be adversely affected by emptying the log if it was run
   // right after this test.
-  if (getuid() != AID_ROOT) {
-    fprintf(
-        stderr,
-        "WARNING: test conditions request being run as root and not AID=%d\n",
-        getuid());
-    if (!__android_log_is_debuggable()) {
-      fprintf(
-          stderr,
-          "WARNING: can not run test on a \"user\" build, bypassing test\n");
-      return;
-    }
-  }
-
-  system((getuid() == AID_ROOT) ? "stop logd" : "su 0 stop logd");
+  system("stop logd");
   usleep(1000000);
 
   // A clean stop like we are testing returns -ENOENT, but in the _real_
@@ -1795,19 +1785,15 @@ TEST(liblog, enoent) {
   std::string content = android::base::StringPrintf(
       "__android_log_btwrite(0, EVENT_TYPE_LONG, &ts, sizeof(ts)) = %d %s\n",
       ret, (ret <= 0) ? strerror(-ret) : "(content sent)");
-  EXPECT_TRUE(
-      IsOk((ret == -ENOENT) || (ret == -ENOTCONN) || (ret == -ECONNREFUSED),
-           content));
+  EXPECT_TRUE(ret == -ENOENT || ret == -ENOTCONN || ret == -ECONNREFUSED) << content;
   ret = __android_log_btwrite(0, EVENT_TYPE_LONG, &ts, sizeof(ts));
   content = android::base::StringPrintf(
       "__android_log_btwrite(0, EVENT_TYPE_LONG, &ts, sizeof(ts)) = %d %s\n",
       ret, (ret <= 0) ? strerror(-ret) : "(content sent)");
-  EXPECT_TRUE(
-      IsOk((ret == -ENOENT) || (ret == -ENOTCONN) || (ret == -ECONNREFUSED),
-           content));
+  EXPECT_TRUE(ret == -ENOENT || ret == -ENOTCONN || ret == -ECONNREFUSED) << content;
   EXPECT_EQ(0, count_matching_ts(ts));
 
-  system((getuid() == AID_ROOT) ? "start logd" : "su 0 start logd");
+  system("start logd");
   usleep(1000000);
 
   EXPECT_EQ(0, count_matching_ts(ts));
@@ -3003,21 +2989,6 @@ TEST(liblog, create_android_logger_overflow) {
   EXPECT_GT(0, android_log_write_list_begin(ctx));
   EXPECT_LE(0, android_log_destroy(&ctx));
   ASSERT_TRUE(NULL == ctx);
-}
-
-TEST(liblog, android_log_write_list_buffer) {
-  __android_log_event_list ctx(1005);
-  ctx << 1005 << "tag_def"
-      << "(tag|1),(name|3),(format|3)";
-  std::string buffer(ctx);
-  ctx.close();
-
-  char msgBuf[1024];
-  memset(msgBuf, 0, sizeof(msgBuf));
-  EXPECT_EQ(android_log_buffer_to_string(buffer.data(), buffer.length(), msgBuf,
-                                         sizeof(msgBuf)),
-            0);
-  EXPECT_STREQ(msgBuf, "[1005,tag_def,(tag|1),(name|3),(format|3)]");
 }
 #endif  // USING_LOGGER_DEFAULT
 

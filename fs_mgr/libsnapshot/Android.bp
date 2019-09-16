@@ -25,14 +25,24 @@ cc_defaults {
     shared_libs: [
         "libbase",
         "liblog",
+        "liblp",
     ],
     static_libs: [
         "libdm",
+        "libfs_mgr",
+        "libfstab",
+        "liblp",
     ],
     whole_static_libs: [
         "libext2_uuid",
         "libext4_utils",
-        "libfiemap",
+        "libfstab",
+    ],
+    header_libs: [
+        "libfiemap_headers",
+    ],
+    export_header_lib_headers: [
+        "libfiemap_headers",
     ],
     export_include_dirs: ["include"],
 }
@@ -41,14 +51,22 @@ filegroup {
     name: "libsnapshot_sources",
     srcs: [
         "snapshot.cpp",
+        "partition_cow_creator.cpp",
+        "utility.cpp",
     ],
+}
+
+cc_library_headers {
+    name: "libsnapshot_headers",
+    recovery_available: true,
+    defaults: ["libsnapshot_defaults"],
 }
 
 cc_library_static {
     name: "libsnapshot",
     defaults: ["libsnapshot_defaults"],
     srcs: [":libsnapshot_sources"],
-    static_libs: [
+    whole_static_libs: [
         "libfiemap_binder",
     ],
 }
@@ -58,6 +76,9 @@ cc_library_static {
     defaults: ["libsnapshot_defaults"],
     srcs: [":libsnapshot_sources"],
     recovery_available: true,
+    whole_static_libs: [
+        "libfiemap_passthrough",
+    ],
 }
 
 cc_test {
@@ -65,6 +86,8 @@ cc_test {
     defaults: ["libsnapshot_defaults"],
     srcs: [
         "snapshot_test.cpp",
+        "partition_cow_creator_test.cpp",
+        "test_helpers.cpp",
     ],
     shared_libs: [
         "libbinder",
@@ -74,7 +97,13 @@ cc_test {
         "libcutils",
         "libcrypto",
         "libfs_mgr",
+        "libgmock",
         "liblp",
         "libsnapshot",
+        "libsparse",
+        "libz",
+    ],
+    header_libs: [
+        "libstorage_literals_headers",
     ],
 }

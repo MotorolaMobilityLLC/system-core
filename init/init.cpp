@@ -28,6 +28,9 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#define _REALLY_INCLUDE_SYS__SYSTEM_PROPERTIES_H_
+#include <sys/_system_properties.h>
+
 #include <functional>
 #include <map>
 #include <memory>
@@ -51,7 +54,6 @@
 #include <selinux/android.h>
 
 #include "action_parser.h"
-#include "boringssl_self_test.h"
 #include "builtins.h"
 #include "epoll.h"
 #include "first_stage_init.h"
@@ -61,6 +63,7 @@
 #include "mount_handler.h"
 #include "mount_namespace.h"
 #include "property_service.h"
+#include "proto_utils.h"
 #include "reboot.h"
 #include "reboot_utils.h"
 #include "security.h"
@@ -69,6 +72,7 @@
 #include "service.h"
 #include "service_parser.h"
 #include "sigchld_handler.h"
+#include "system/core/init/property_service.pb.h"
 #include "util.h"
 
 using namespace std::chrono_literals;
@@ -90,6 +94,7 @@ static int property_triggers_enabled = 0;
 static char qemu[32];
 
 static int signal_fd = -1;
+static int property_fd = -1;
 
 static std::unique_ptr<Timer> waiting_for_prop(nullptr);
 static std::string wait_prop_name;
@@ -175,6 +180,16 @@ void ResetWaitForProp() {
     waiting_for_prop.reset();
 }
 
+void EnterShutdown(const std::string& command) {
+    // We can't call HandlePowerctlMessage() directly in this function,
+    // because it modifies the contents of the action queue, which can cause the action queue
+    // to get into a bad state if this function is called from a command being executed by the
+    // action queue.  Instead we set this flag and ensure that shutdown happens before the next
+    // command is run in the main init loop.
+    shutdown_command = command;
+    do_shutdown = true;
+}
+
 void property_changed(const std::string& name, const std::string& value) {
     // If the property is sys.powerctl, we bypass the event queue and immediately handle it.
     // This is to ensure that init will always and immediately shutdown/reboot, regardless of
@@ -183,16 +198,7 @@ void property_changed(const std::string& name, const std::string& value) {
     // In non-thermal-shutdown case, 'shutdown' trigger will be fired to let device specific
     // commands to be executed.
     if (name == "sys.powerctl") {
-        // Despite the above comment, we can't call HandlePowerctlMessage() in this function,
-        // because it modifies the contents of the action queue, which can cause the action queue
-        // to get into a bad state if this function is called from a command being executed by the
-        // action queue.  Instead we set this flag and ensure that shutdown happens before the next
-        // command is run in the main init loop.
-        // TODO: once property service is removed from init, this will never happen from a builtin,
-        // but rather from a callback from the property service socket, in which case this hack can
-        // go away.
-        shutdown_command = value;
-        do_shutdown = true;
+        EnterShutdown(value);
     }
 
     if (property_triggers_enabled) ActionManager::GetInstance().QueuePropertyChange(name, value);
@@ -305,9 +311,6 @@ bool HandleControlMessage(const std::string& msg, const std::string& name, pid_t
         process_cmdline = "unknown process";
     }
 
-    LOG(INFO) << "Received control message '" << msg << "' for '" << name << "' from pid: " << pid
-              << " (" << process_cmdline << ")";
-
     const ControlMessageFunction& function = it->second;
 
     Service* svc = nullptr;
@@ -320,20 +323,25 @@ bool HandleControlMessage(const std::string& msg, const std::string& name, pid_t
             svc = ServiceList::GetInstance().FindInterface(name);
             break;
         default:
-            LOG(ERROR) << "Invalid function target from static map key '" << msg << "': "
+            LOG(ERROR) << "Invalid function target from static map key ctl." << msg << ": "
                        << static_cast<std::underlying_type<ControlTarget>::type>(function.target);
             return false;
     }
 
     if (svc == nullptr) {
-        LOG(ERROR) << "Could not find '" << name << "' for ctl." << msg;
+        LOG(ERROR) << "Control message: Could not find '" << name << "' for ctl." << msg
+                   << " from pid: " << pid << " (" << process_cmdline << ")";
         return false;
     }
 
     if (auto result = function.action(svc); !result) {
-        LOG(ERROR) << "Could not ctl." << msg << " for '" << name << "': " << result.error();
+        LOG(ERROR) << "Control message: Could not ctl." << msg << " for '" << name
+                   << "' from pid: " << pid << " (" << process_cmdline << "): " << result.error();
         return false;
     }
+
+    LOG(INFO) << "Control message: Processed ctl." << msg << " for '" << name
+              << "' from pid: " << pid << " (" << process_cmdline << ")";
     return true;
 }
 
@@ -613,6 +621,60 @@ static void RecordStageBoottimes(const boot_clock::time_point& second_stage_star
                                 selinux_start_time_ns));
 }
 
+void SendLoadPersistentPropertiesMessage() {
+    auto init_message = InitMessage{};
+    init_message.set_load_persistent_properties(true);
+    if (auto result = SendMessage(property_fd, init_message); !result) {
+        LOG(ERROR) << "Failed to send load persistent properties message: " << result.error();
+    }
+}
+
+void SendStopSendingMessagesMessage() {
+    auto init_message = InitMessage{};
+    init_message.set_stop_sending_messages(true);
+    if (auto result = SendMessage(property_fd, init_message); !result) {
+        LOG(ERROR) << "Failed to send load persistent properties message: " << result.error();
+    }
+}
+
+static void HandlePropertyFd() {
+    auto message = ReadMessage(property_fd);
+    if (!message) {
+        LOG(ERROR) << "Could not read message from property service: " << message.error();
+        return;
+    }
+
+    auto property_message = PropertyMessage{};
+    if (!property_message.ParseFromString(*message)) {
+        LOG(ERROR) << "Could not parse message from property service";
+        return;
+    }
+
+    switch (property_message.msg_case()) {
+        case PropertyMessage::kControlMessage: {
+            auto& control_message = property_message.control_message();
+            bool success = HandleControlMessage(control_message.msg(), control_message.name(),
+                                                control_message.pid());
+
+            uint32_t response = success ? PROP_SUCCESS : PROP_ERROR_HANDLE_CONTROL_MESSAGE;
+            if (control_message.has_fd()) {
+                int fd = control_message.fd();
+                TEMP_FAILURE_RETRY(send(fd, &response, sizeof(response), 0));
+                close(fd);
+            }
+            break;
+        }
+        case PropertyMessage::kChangedMessage: {
+            auto& changed_message = property_message.changed_message();
+            property_changed(changed_message.name(), changed_message.value());
+            break;
+        }
+        default:
+            LOG(ERROR) << "Unknown message type from property service: "
+                       << property_message.msg_case();
+    }
+}
+
 int SecondStageMain(int argc, char** argv) {
     if (REBOOT_BOOTLOADER_ON_PANIC) {
         InstallRebootSignalHandlers();
@@ -684,7 +746,12 @@ int SecondStageMain(int argc, char** argv) {
     UmountDebugRamdisk();
     fs_mgr_vendor_overlay_mount_all();
     export_oem_lock_status();
-    StartPropertyService(&epoll);
+
+    StartPropertyService(&property_fd);
+    if (auto result = epoll.RegisterHandler(property_fd, HandlePropertyFd); !result) {
+        LOG(FATAL) << "Could not register epoll handler for property fd: " << result.error();
+    }
+
     MountHandler mount_handler(&epoll);
     set_usb_controller();
 
@@ -715,6 +782,7 @@ int SecondStageMain(int argc, char** argv) {
 
     am.QueueBuiltinAction(SetupCgroupsAction, "SetupCgroups");
 
+    am.QueueBuiltinAction(SetKptrRestrictAction, "SetKptrRestrict");
     am.QueueEventTrigger("early-init");
 
     // Queue an action that waits for coldboot done so we know ueventd has set up all of /dev...
@@ -722,7 +790,6 @@ int SecondStageMain(int argc, char** argv) {
     // ... so that we can start queuing up actions that require stuff from /dev.
     am.QueueBuiltinAction(MixHwrngIntoLinuxRngAction, "MixHwrngIntoLinuxRng");
     am.QueueBuiltinAction(SetMmapRndBitsAction, "SetMmapRndBits");
-    am.QueueBuiltinAction(SetKptrRestrictAction, "SetKptrRestrict");
     Keychords keychords;
     am.QueueBuiltinAction(
             [&epoll, &keychords](const BuiltinArguments& args) -> Result<void> {
@@ -736,9 +803,6 @@ int SecondStageMain(int argc, char** argv) {
 
     // Trigger all the boot actions to get us started.
     am.QueueEventTrigger("init");
-
-    // Starting the BoringSSL self test, for NIAP certification compliance.
-    am.QueueBuiltinAction(StartBoringSslSelfTest, "StartBoringSslSelfTest");
 
     // Repeat mix_hwrng_into_linux_rng in case /dev/hw_random or /dev/random
     // wasn't ready immediately after wait_for_coldboot_done
@@ -785,8 +849,17 @@ int SecondStageMain(int argc, char** argv) {
             if (am.HasMoreCommands()) epoll_timeout = 0ms;
         }
 
-        if (auto result = epoll.Wait(epoll_timeout); !result) {
-            LOG(ERROR) << result.error();
+        auto pending_functions = epoll.Wait(epoll_timeout);
+        if (!pending_functions) {
+            LOG(ERROR) << pending_functions.error();
+        } else if (!pending_functions->empty()) {
+            // We always reap children before responding to the other pending functions. This is to
+            // prevent a race where other daemons see that a service has exited and ask init to
+            // start it again via ctl.start before init has reaped it.
+            ReapAnyOutstandingChildren();
+            for (const auto& function : *pending_functions) {
+                (*function)();
+            }
         }
     }
 
