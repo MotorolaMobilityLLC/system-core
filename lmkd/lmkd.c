@@ -481,6 +481,9 @@ static long page_k;
 /* FD for connecting duraSpeed */
 int duraspeed_fd = -1;
 static int duraspeed_supported = 0;
+static int duraspeed_mem_threshold = 0;
+static int duraspeed_vm_pressure_threshold = 65;
+static int duraspeed_thrashing_threshold = 15;
 
 static int clamp(int low, int high, int value) {
     return max(min(value, high), low);
@@ -944,6 +947,7 @@ static void cmd_target(int ntargets, LMKD_CTRL_PACKET packet) {
     }
 
     lowmem_targets_size = ntargets;
+    duraspeed_mem_threshold = lowmem_minfree[lowmem_targets_size - 1] * 7 / 4;
 
     /* Override the last extra comma */
     pstr[-1] = '\0';
@@ -1986,6 +1990,7 @@ static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_
     enum reclaim_state reclaim = NO_RECLAIM;
     enum zone_watermark wmark = WMARK_NONE;
     char kill_desc[LINE_MAX];
+    long other_free = 0, other_file = 0;
 
     /* Skip while still killing a process */
     if (is_kill_pending()) {
@@ -2042,10 +2047,6 @@ static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_
         in_reclaim = false;
         goto no_kill;
     }
-    /* just notify duraspeed */
-    if (duraspeed_supported > 0) {
-        trigger_duraSpeed(-1, -1, -1, -1);
-    }
     if (!in_reclaim) {
         /* Record file-backed pagecache size when entering reclaim cycle */
         base_file_lru = vs.field.nr_inactive_file + vs.field.nr_active_file;
@@ -2056,6 +2057,12 @@ static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_
         thrashing = (vs.field.workingset_refault - init_ws_refault) * 100 / base_file_lru;
     }
     in_reclaim = true;
+
+    if (duraspeed_supported > 0) {
+        if (thrashing > duraspeed_thrashing_threshold) {
+            trigger_duraSpeed(-1, -1, -1, -1);
+        }
+    }
 
     /* Refresh thresholds once per min in case user updated one of the margins */
     if (thresholds.high_wmark == 0 || get_time_diff_ms(&threshold_update_tm, &curr_tm) > 60000) {
@@ -2250,6 +2257,12 @@ static void mp_event_common(int data, uint32_t events, struct polling_params *po
             }
         }
 
+        if (duraspeed_supported > 0) {
+            if (other_free < duraspeed_mem_threshold && other_file < duraspeed_mem_threshold) {
+                trigger_duraSpeed(min_score_adj, minfree, -1, -1);
+            }
+        }
+
         if (min_score_adj == OOM_SCORE_ADJ_MAX + 1) {
             if (debug_process_killing) {
                 ALOGI("Ignore %s memory pressure event "
@@ -2262,10 +2275,6 @@ static void mp_event_common(int data, uint32_t events, struct polling_params *po
             last_noprogress_tm = curr_tm;
             return;
         }
-        if (duraspeed_supported > 0) {
-            trigger_duraSpeed(min_score_adj, minfree, -1, -1);
-        }
-
         goto do_kill;
     }
 
@@ -2297,13 +2306,16 @@ static void mp_event_common(int data, uint32_t events, struct polling_params *po
             }
         }
     }
-    /// M: Add for duraSpeed @{
+
     if (duraspeed_supported > 0) {
-        if (mem_pressure <= downgrade_pressure + 10) {
+        other_free = mi.field.nr_free_pages - zi.totalreserve_pages;
+        other_file = (mi.field.nr_file_pages - mi.field.shmem -
+                mi.field.unevictable - mi.field.swap_cached);
+        if (mem_pressure <= duraspeed_vm_pressure_threshold
+            || (other_free < duraspeed_mem_threshold && other_file < duraspeed_mem_threshold)) {
             trigger_duraSpeed(-1, -1, level, mem_pressure);
         }
     }
-    /// @}
 
     // If we still have enough swap space available, check if we want to
     // ignore/downgrade pressure events.
