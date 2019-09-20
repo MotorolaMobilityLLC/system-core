@@ -2018,9 +2018,9 @@ void load_tunable_parameters() {
     } else {
         min_pressure_mult = 100;
         long_min_pressure_mult = 300;
-        reclaim_size_mult = 10;
-        swappiness_app = 100;
-        swappiness_system = 100;
+        reclaim_size_mult = 8;
+        swappiness_app = 80;
+        swappiness_system = 80;
     }
 
     min_pressure_mult =
