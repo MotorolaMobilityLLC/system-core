@@ -1481,7 +1481,7 @@ static struct proc *proc_get_heaviest(int oomadj) {
             curr = next;
         } else {
             tmp_taskname = proc_get_name(pid);
-            if (enable_preferred_apps && strstr(preferred_apps, tmp_taskname)) {
+            if (enable_preferred_apps && tmp_taskname != NULL && strstr(preferred_apps, tmp_taskname)) {
                 if (tasksize > maxsize_pa) {
                     maxsize_pa = tasksize;
                     maxprocp_pa = (struct proc *)curr;
