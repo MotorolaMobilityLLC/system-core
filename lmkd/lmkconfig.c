@@ -14,17 +14,18 @@
 #include <cutils/properties.h>
 #include <cutils/log.h>
 
-#define LMKD_PARAMETER_NAME 		"/vendor/etc/lmkd_param.conf"
+#define LMKD_PARAMETER_NAME             "/vendor/etc/lmkd_param.conf"
 
-#define TITLE_KEY_WORDS			"####TITLE_"
-#define MAX_LMKD_PARAM_COUNT 		8
-#define MAX_TITLE_LEN 			64
-#define MAX_PROC_PARAM_COUNT 		32
-#define MAX_PROC_NAME_LEN 		128
+#define TITLE_KEY_WORDS                 "####TITLE_"
+#define NOTE_KEY_WORDS                  "##"
+#define MAX_LMKD_PARAM_COUNT            8
+#define MAX_TITLE_LEN                   64
+#define MAX_PROC_PARAM_COUNT            32
+#define MAX_PROC_NAME_LEN               128
 
 /* different config will be add as ####TITLE_****** */
-#define CONFIG_LMKD_SKILL_PROCESS_LIST          "LMKD_SKILL_PROCESS_LIST"
-#define CONFIG_OTHER				"OTHER"
+#define CONFIG_LMKD_SKIP_PROCESS_LIST   "LMKD_SKIP_PROCESS_LIST"
+#define CONFIG_OTHER                    "OTHER"
 
 typedef struct procinfo {
 	int proc_count;
@@ -114,6 +115,28 @@ static bool lmkd_config_is_title(char *line, char *title)
 	return false;
 }
 
+static bool lmkd_config_is_note(char *line, char *note)
+{
+       char *ret = line;
+       int linelen = 0;
+       int reallen = 0;
+
+       if (!ret || !note)
+               return false;
+
+       ret = strstr(line, NOTE_KEY_WORDS);
+       if (ret) {
+               ALOGE("new note is %s, %zu, %zu, %s",
+                        ret, strlen(ret), strlen(NOTE_KEY_WORDS),ret+strlen(NOTE_KEY_WORDS));
+               linelen = strlen(ret)-strlen(NOTE_KEY_WORDS);
+               reallen =  (MAX_TITLE_LEN-1)>linelen?linelen:MAX_TITLE_LEN-1;
+               memcpy(note, ret+strlen(NOTE_KEY_WORDS), reallen);
+               note[reallen] = '\0';
+               return true;
+       }
+       return false;
+}
+
 static void lmkd_config_parse_line(char *line, CFG_INFO *cfg_info, int line_number)
 {
     char *string = line;
@@ -122,9 +145,11 @@ static void lmkd_config_parse_line(char *line, CFG_INFO *cfg_info, int line_numb
     int reallen = 0;
     char *temp_ptr;
     char title_name[MAX_TITLE_LEN];
+    char note_info[MAX_TITLE_LEN];
     char *proc_name;
 
     memset(title_name, 0, sizeof(title_name));
+    memset(note_info, 0, sizeof(note_info));
 
     if (lmkd_config_is_title(line, title_name)) {
 	/* it is item */
@@ -137,6 +162,12 @@ static void lmkd_config_parse_line(char *line, CFG_INFO *cfg_info, int line_numb
 	cfg_info->param_info[count].para_number = count;
 	cfg_info->cfg_count++;
 	ALOGD("num %d tilte is:%s",  cfg_info->cfg_count, title_name);
+    } else if (lmkd_config_is_note(line, note_info)) {
+        if (!cfg_info) {
+               ALOGE("note is %s but there is no buffer", note_info);
+               return;
+        }
+        ALOGE("line(%d) is note_info: %s", line_number, line);
     } else {
 	/*it is string */
 	if (!cfg_info) {
@@ -155,8 +186,8 @@ static void lmkd_config_parse_line(char *line, CFG_INFO *cfg_info, int line_numb
 	memcpy(proc_name, line, reallen);
 	count ++;
 	cfg_info->param_info[cfg_info->cfg_count -1].proc_count = count;
-	return;
     }
+    return;
 }
 
 static int lmkd_config_load(CFG_INFO *cfg_info)
@@ -195,7 +226,7 @@ static int lmkd_config_load(CFG_INFO *cfg_info)
     return 0;
 }
 
-/* For CONFIG_LMKD_SKILL_PROCESS_LIST */
+/* For CONFIG_LMKD_SKIP_PROCESS_LIST */
 bool lmkd_config_skip_kill(char *task_name)
 {
 	PARAM_INFO param_info;
@@ -203,7 +234,7 @@ bool lmkd_config_skip_kill(char *task_name)
 	int number = 0;
 
 	memset(&param_info, 0, sizeof(param_info));
-	if (get_param_info(&param_info, CONFIG_LMKD_SKILL_PROCESS_LIST) == true) {
+	if (get_param_info(&param_info, CONFIG_LMKD_SKIP_PROCESS_LIST) == true) {
 		count = param_info.proc_count;
 		while(count) {
 			number = count - 1;
