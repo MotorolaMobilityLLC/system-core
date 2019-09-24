@@ -69,10 +69,7 @@ cc_library_static {
     name: "libdebuggerd_handler_core",
     defaults: ["debuggerd_defaults"],
     recovery_available: true,
-    srcs: [
-        "handler/debuggerd_handler.cpp",
-        "handler/sprd_utils.cpp",
-    ],
+    srcs: ["handler/debuggerd_handler.cpp"],
 
     header_libs: [
         "libbase_headers",

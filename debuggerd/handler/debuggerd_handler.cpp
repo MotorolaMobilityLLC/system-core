@@ -27,7 +27,6 @@
  */
 
 #include "debuggerd/handler.h"
-#include "debuggerd/sprd_utils.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -469,16 +468,6 @@ static void debuggerd_signal_handler(int signal_number, siginfo_t* info, void* c
     info = nullptr;
   }
 
-  int limited = check_corefile_limit();
-  if(limited != 0){
-    async_safe_format_log(ANDROID_LOG_WARN, "libc", "check core file limit, limited=%d",limited);
-    if (prctl(PR_SET_DUMPABLE, 0, 0, 0, 0) != 0) {
-      async_safe_format_log(ANDROID_LOG_WARN, "libc", "Set DUMPABLE ERROR");
-    } else {
-      async_safe_format_log(ANDROID_LOG_INFO, "libc", "Set DISDUMPABLE SUCCESS");
-    }
-  }
-
   struct siginfo dummy_info = {};
   if (!info) {
     memset(&dummy_info, 0, sizeof(dummy_info));
@@ -577,6 +566,18 @@ static void debuggerd_signal_handler(int signal_number, siginfo_t* info, void* c
   // and then wait for it to terminate.
   futex_wait(&thread_info.pseudothread_tid, child_pid);
 
+  // For sprd, don't restore PR_SET_DUMPABLE to 0 when the property "persist.zygote.core_dump" equaled 1,
+  // so that some processes can coredump, for example zygote and surfaceflinger.
+  char debuggable[PROPERTY_VALUE_MAX];
+  property_get("persist.zygote.core_dump", debuggable, "0");
+  if (strcmp(debuggable,"1") == 0) {
+    async_safe_format_log(ANDROID_LOG_INFO, "DEBUG","Crash thread dumpable");
+    orig_dumpable = 1;
+  } else {
+    async_safe_format_log(ANDROID_LOG_INFO, "DEBUG","Crash thread undumpable");
+    orig_dumpable = 0;
+  }
+
   // Restore PR_SET_DUMPABLE to its original value.
   if (prctl(PR_SET_DUMPABLE, orig_dumpable) != 0) {
     fatal_errno("failed to restore dumpable");
@@ -585,16 +586,6 @@ static void debuggerd_signal_handler(int signal_number, siginfo_t* info, void* c
   // Restore PR_SET_PTRACER to its original value.
   if (restore_orig_ptracer && prctl(PR_SET_PTRACER, 0) != 0) {
     fatal_errno("failed to restore traceable");
-  }
-
-  // In userdebug version, set crash process dumpable
-  char debuggable[PROPERTY_VALUE_MAX];
-  property_get("ro.debuggable", debuggable, "0");
-  if((strcmp(debuggable,"1")==0) && (orig_dumpable==0) && (limited == 0)) {
-    async_safe_format_log(ANDROID_LOG_INFO, "DEBUG","Crash thread undumpable ");
-    if (prctl(PR_SET_DUMPABLE, 1) != 0) {
-      fatal_errno("FAILED to set dumpable");
-    }
   }
 
   if (info->si_signo == DEBUGGER_SIGNAL) {
