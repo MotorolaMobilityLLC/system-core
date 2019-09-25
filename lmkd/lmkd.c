@@ -1407,12 +1407,12 @@ static int zone_watermarks_ok()
     return min_score_adj;
 }
 
-static int proc_get_size(int pid) {
+static long proc_get_rss(int pid) {
     char path[PATH_MAX];
     char line[LINE_MAX];
     int fd;
-    int rss = 0;
-    int total;
+    long rss = 0;
+    long total;
     ssize_t ret;
 
     /* gid containing AID_READPROC required */
@@ -1427,9 +1427,59 @@ static int proc_get_size(int pid) {
         return -1;
     }
 
-    sscanf(line, "%d %d ", &total, &rss);
+    sscanf(line, "%ld %ld ", &total, &rss);
     close(fd);
     return rss;
+}
+
+static bool parse_vmswap(char *buf, long *data) {
+
+	if(sscanf(buf, "VmSwap: %ld", data) == 1)
+		return 1;
+
+	return 0;
+}
+
+static long proc_get_swap(int pid) {
+	char buf[PAGE_SIZE] = {0, };
+	char path[PATH_MAX] = {0, };
+	char line[LINE_MAX] = {0, };
+	ssize_t ret;
+	char *c, *save_ptr;
+	int fd;
+	long data;
+
+	snprintf(path, PATH_MAX, "/proc/%d/status", pid);
+	fd = open(path,  O_RDONLY | O_CLOEXEC);
+	if (fd < 0)
+		return 0;
+
+	ret = read_all(fd, buf, sizeof(buf) - 1);
+	if (ret < 0) {
+		ALOGE("unable to read Vm status");
+		data = 0;
+		goto out;
+	}
+
+	for(c = strtok_r(buf, "\n", &save_ptr); c;
+		c = strtok_r(NULL, "\n", &save_ptr)) {
+		if (parse_vmswap(c, &data))
+			goto out;
+	}
+
+	ALOGE("Couldn't get Swap info. Is it kthread?");
+	data = 0;
+out:
+	close(fd);
+	/* Vmswap is in Kb. Convert to page size. */
+	return (data >> 2);
+}
+
+static long proc_get_size(int pid)
+{
+	long size;
+
+	return (size = proc_get_rss(pid)) ? size : proc_get_swap(pid);
 }
 
 static long proc_get_vm(int pid) {
@@ -1498,7 +1548,7 @@ static struct proc *proc_get_heaviest(int oomadj) {
 
     while (curr != head) {
         int pid = ((struct proc *)curr)->pid;
-        int tasksize = proc_get_size(pid);
+        long tasksize = proc_get_size(pid);
         if (tasksize <= 0) {
             struct adjslot_list *next = curr->next;
             pid_remove(pid);
@@ -1655,7 +1705,7 @@ static int kill_one_process(struct proc* procp, int min_oom_score) {
     int pid = procp->pid;
     uid_t uid = procp->uid;
     char *taskname;
-    int tasksize;
+    long tasksize;
     int r;
     int result = -1;
 
