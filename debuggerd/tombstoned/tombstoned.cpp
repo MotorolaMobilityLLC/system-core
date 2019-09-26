@@ -383,6 +383,10 @@ static void crash_completed_cb(evutil_socket_t sockfd, short ev, void* arg) {
         // tombstone associated with a given native crash was written. Any changes
         // to this message must be carefully considered.
         LOG(ERROR) << "Tombstone written to: " << tombstone_path;
+        // Sprd add
+        if (TEMP_FAILURE_RETRY(chmod(tombstone_path.c_str(), 0775)) == -1) {
+          LOG(ERROR) << "Failed to chmod(" << tombstone_path << ",775) errno:"  << strerror(errno);
+        }
       }
     }
 
