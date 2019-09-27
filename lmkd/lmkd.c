@@ -1432,6 +1432,30 @@ static int proc_get_size(int pid) {
     return rss;
 }
 
+static long proc_get_vm(int pid) {
+    char path[PATH_MAX];
+    char line[LINE_MAX];
+    int fd;
+    long total;
+    ssize_t ret;
+
+    /* gid containing AID_READPROC required */
+    snprintf(path, PATH_MAX, "/proc/%d/statm", pid);
+    fd = open(path, O_RDONLY | O_CLOEXEC);
+    if (fd == -1)
+        return -1;
+
+    ret = read_all(fd, line, sizeof(line) - 1);
+    if (ret < 0) {
+        close(fd);
+        return -1;
+    }
+
+    sscanf(line, "%ld", &total);
+    close(fd);
+    return total;
+}
+
 static char *proc_get_name(int pid) {
     char path[PATH_MAX];
     static char line[LINE_MAX];
@@ -1545,7 +1569,7 @@ static void set_process_group_and_prio(int pid, SchedPolicy sp, int prio) {
  */
 static void proc_get_script(void)
 {
-    DIR* d;
+    static DIR* d = NULL;
     struct dirent* de;
     char path[PATH_MAX];
     static char line[LINE_MAX];
@@ -1553,10 +1577,11 @@ static void proc_get_script(void)
     int fd, oomadj = OOM_SCORE_ADJ_MIN;
     uint32_t pid;
     struct proc *procp;
-    int rss;
-    int count = 0;
+    long total_vm;
+    static bool retry_eligible = false;
 
-    if (!(d = opendir("/proc"))) {
+repeat:
+    if (!d && !(d = opendir("/proc"))) {
         ALOGE("Failed to open /proc");
         return;
     }
@@ -1569,9 +1594,11 @@ static void proc_get_script(void)
         if (pid == 1)
             continue;
 
-        /* Don't attempt to kill kthreads */
-        rss = proc_get_size(pid);
-        if (rss <= 0)
+        /*
+	 * Don't attempt to kill kthreads. Rely on total_vm for this.
+	 */
+        total_vm = proc_get_vm(pid);
+        if (total_vm <= 0)
             continue;
 
         snprintf(path, sizeof(path), "/proc/%u/oom_score_adj", pid);
@@ -1605,14 +1632,20 @@ static void proc_get_script(void)
             procp->uid = 0;
             procp->oomadj = oomadj;
             proc_insert(procp);
-            count++;
+	    retry_eligible = true;
+	    ALOGI("proc_get_script: Added a task to kill list");
+	    return;
         } else {
             ALOGD("Entry already exists %d: %s\n", procp->pid, proc_get_name(pid));
         }
     }
     closedir(d);
-
-    ALOGI("proc_get_script: Added %d tasks to kill list", count);
+    d = NULL;
+    if (retry_eligible) {
+	    retry_eligible = false;
+	    goto repeat;
+    }
+    ALOGI("proc_get_script: None tasks are added to kill list");
 }
 
 static int last_killed_pid = -1;
