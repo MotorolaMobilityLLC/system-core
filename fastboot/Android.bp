@@ -134,8 +134,6 @@ cc_binary {
         "libfs_mgr",
         "libgsi",
         "libhidlbase",
-        "libhidltransport",
-        "libhwbinder",
         "liblog",
         "liblp",
         "libsparse",
@@ -145,6 +143,10 @@ cc_binary {
     static_libs: [
         "libhealthhalutils",
     ],
+
+    header_libs: [
+        "libsnapshot_headers",
+    ]
 }
 
 cc_defaults {

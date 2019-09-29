@@ -52,6 +52,36 @@ on early-init
     # the libraries are available to the processes started after this statement.
     exec_start apexd-bootstrap
 
+    # These must already exist by the time boringssl_self_test32 / boringssl_self_test64 run.
+    mkdir /dev/boringssl 0755 root root
+    mkdir /dev/boringssl/selftest 0755 root root
+
+# Run boringssl self test for each ABI so that later processes can skip it. http://b/139348610
+on early-init && property:ro.product.cpu.abilist32=*
+    exec_start boringssl_self_test32
+on early-init && property:ro.product.cpu.abilist64=*
+    exec_start boringssl_self_test64
+on property:apexd.status=ready && property:ro.product.cpu.abilist32=*
+    exec_start boringssl_self_test_apex32
+on property:apexd.status=ready && property:ro.product.cpu.abilist64=*
+    exec_start boringssl_self_test_apex64
+
+service boringssl_self_test32 /system/bin/boringssl_self_test32
+    setenv BORINGSSL_SELF_TEST_CREATE_FLAG true # Any nonempty value counts as true
+    reboot_on_failure reboot,boringssl-self-check-failed
+
+service boringssl_self_test64 /system/bin/boringssl_self_test64
+    setenv BORINGSSL_SELF_TEST_CREATE_FLAG true # Any nonempty value counts as true
+    reboot_on_failure reboot,boringssl-self-check-failed
+
+service boringssl_self_test_apex32 /apex/com.android.conscrypt/bin/boringssl_self_test32
+    setenv BORINGSSL_SELF_TEST_CREATE_FLAG true # Any nonempty value counts as true
+    reboot_on_failure reboot,boringssl-self-check-failed
+
+service boringssl_self_test_apex64 /apex/com.android.conscrypt/bin/boringssl_self_test64
+    setenv BORINGSSL_SELF_TEST_CREATE_FLAG true # Any nonempty value counts as true
+    reboot_on_failure reboot,boringssl-self-check-failed
+
 on init
     sysclktz 0
 
@@ -444,7 +474,6 @@ on post-fs-data
     mark_post_data
 
     # Start checkpoint before we touch data
-    start vold
     exec - system system -- /system/bin/vdc checkpoint prepareCheckpoint
 
     # We chown/chmod /data again so because mount is run as root + defaults
@@ -541,6 +570,7 @@ on post-fs-data
     mkdir /data/misc/profiles/ref 0771 system system
     mkdir /data/misc/profman 0770 system shell
     mkdir /data/misc/gcov 0770 root root
+    mkdir /data/misc/installd 0700 root root
 
     mkdir /data/preloads 0775 system system
 
@@ -622,6 +652,9 @@ on post-fs-data
     mkdir /data/cache/recovery 0770 system cache
     mkdir /data/cache/backup_stage 0700 system system
     mkdir /data/cache/backup 0700 system system
+
+    mkdir /data/rollback 0700 system system
+    mkdir /data/rollback-observer 0700 system system
 
     # Wait for apexd to finish activating APEXes before starting more processes.
     wait_for_prop apexd.status ready
@@ -842,6 +875,9 @@ on property:vold.decrypt=trigger_shutdown_framework
 
 on property:sys.boot_completed=1
     bootchart stop
+    # Setup per_boot directory so other .rc could start to use it on boot_completed
+    exec - system system -- /bin/rm -rf /data/per_boot
+    mkdir /data/per_boot 0700 system system
 
 # system server cannot write to /proc/sys files,
 # and chown/chmod does not work for /proc/sys/ entries.
@@ -889,6 +925,8 @@ on property:ro.debuggable=1
     chmod 0773 /data/misc/trace
     # Give reads to anyone for the window trace folder on debug builds.
     chmod 0775 /data/misc/wmtrace
+
+on init && property:ro.debuggable=1
     start console
 
 service flash_recovery /system/bin/install-recovery.sh
