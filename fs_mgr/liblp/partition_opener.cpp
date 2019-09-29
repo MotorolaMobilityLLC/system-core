@@ -64,6 +64,12 @@ bool GetBlockDeviceInfo(const std::string& block_device, BlockDeviceInfo* device
         PERROR << __PRETTY_FUNCTION__ << "BLKALIGNOFF failed on " << block_device;
         return false;
     }
+    // The kernel can return -1 here when misaligned devices are stacked (i.e.
+    // device-mapper).
+    if (alignment_offset == -1) {
+        alignment_offset = 0;
+    }
+
     int logical_block_size;
     if (ioctl(fd, BLKSSZGET, &logical_block_size) < 0) {
         PERROR << __PRETTY_FUNCTION__ << "BLKSSZGET failed on " << block_device;
@@ -92,6 +98,10 @@ unique_fd PartitionOpener::Open(const std::string& partition_name, int flags) co
 bool PartitionOpener::GetInfo(const std::string& partition_name, BlockDeviceInfo* info) const {
     std::string path = GetPartitionAbsolutePath(partition_name);
     return GetBlockDeviceInfo(path, info);
+}
+
+std::string PartitionOpener::GetDeviceString(const std::string& partition_name) const {
+    return GetPartitionAbsolutePath(partition_name);
 }
 
 }  // namespace fs_mgr

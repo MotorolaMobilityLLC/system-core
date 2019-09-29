@@ -28,9 +28,11 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include <functional>
 #include <map>
 #include <memory>
 #include <optional>
+#include <vector>
 
 #include <android-base/chrono_utils.h>
 #include <android-base/file.h>
@@ -53,12 +55,9 @@
 #include <processgroup/setup.h>
 #include <selinux/android.h>
 
-#ifndef RECOVERY
-#include <binder/ProcessState.h>
-#endif
-
 #include "action_parser.h"
 #include "boringssl_self_test.h"
+#include "builtins.h"
 #include "epoll.h"
 #include "first_stage_init.h"
 #include "first_stage_mount.h"
@@ -70,7 +69,10 @@
 #include "reboot.h"
 #include "reboot_utils.h"
 #include "security.h"
+#include "selabel.h"
 #include "selinux.h"
+#include "service.h"
+#include "service_parser.h"
 #include "sigchld_handler.h"
 #include "util.h"
 
@@ -102,8 +104,6 @@ static int property_triggers_enabled = 0;
 
 static char qemu[32];
 
-std::string default_console = "/dev/console";
-
 static int signal_fd = -1;
 
 static std::unique_ptr<Timer> waiting_for_prop(nullptr);
@@ -113,8 +113,6 @@ static bool shutting_down;
 static std::string shutdown_command;
 static bool do_shutdown = false;
 static bool load_debug_prop = false;
-
-std::vector<std::string> late_import_paths;
 
 static std::vector<Subcontext>* subcontexts;
 
@@ -126,7 +124,8 @@ void DumpState() {
 Parser CreateParser(ActionManager& action_manager, ServiceList& service_list) {
     Parser parser;
 
-    parser.AddSectionParser("service", std::make_unique<ServiceParser>(&service_list, subcontexts));
+    parser.AddSectionParser(
+            "service", std::make_unique<ServiceParser>(&service_list, subcontexts, std::nullopt));
     parser.AddSectionParser("on", std::make_unique<ActionParser>(&action_manager, subcontexts));
     parser.AddSectionParser("import", std::make_unique<ImportParser>(&parser));
 
@@ -137,7 +136,8 @@ Parser CreateParser(ActionManager& action_manager, ServiceList& service_list) {
 Parser CreateServiceOnlyParser(ServiceList& service_list) {
     Parser parser;
 
-    parser.AddSectionParser("service", std::make_unique<ServiceParser>(&service_list, subcontexts));
+    parser.AddSectionParser(
+            "service", std::make_unique<ServiceParser>(&service_list, subcontexts, std::nullopt));
     return parser;
 }
 
@@ -150,11 +150,11 @@ static void LoadBootScripts(ActionManager& action_manager, ServiceList& service_
         if (!parser.ParseConfig("/system/etc/init")) {
             late_import_paths.emplace_back("/system/etc/init");
         }
+        // late_import is available only in Q and earlier release. As we don't
+        // have system_ext in those versions, skip late_import for system_ext.
+        parser.ParseConfig("/system_ext/etc/init");
         if (!parser.ParseConfig("/product/etc/init")) {
             late_import_paths.emplace_back("/product/etc/init");
-        }
-        if (!parser.ParseConfig("/product_services/etc/init")) {
-            late_import_paths.emplace_back("/product_services/etc/init");
         }
         if (!parser.ParseConfig("/odm/etc/init")) {
             late_import_paths.emplace_back("/odm/etc/init");
@@ -212,6 +212,14 @@ void property_changed(const std::string& name, const std::string& value) {
 
     if (property_triggers_enabled) ActionManager::GetInstance().QueuePropertyChange(name, value);
 
+    // We always record how long init waited for ueventd to tell us cold boot finished.
+    // If we aren't waiting on this property, it means that ueventd finished before we even started
+    // to wait.
+    if (name == kColdBootDoneProp) {
+        auto time_waited = waiting_for_prop ? waiting_for_prop->duration().count() : 0;
+        property_set("ro.boottime.init.cold_boot_wait", std::to_string(time_waited));
+    }
+
     if (waiting_for_prop) {
         if (wait_prop_name == name && wait_prop_value == value) {
             LOG(INFO) << "Wait for property '" << wait_prop_name << "=" << wait_prop_value
@@ -251,18 +259,18 @@ static std::optional<boot_clock::time_point> HandleProcessActions() {
     return next_process_action_time;
 }
 
-static Result<Success> DoControlStart(Service* service) {
+static Result<void> DoControlStart(Service* service) {
     return service->Start();
 }
 
-static Result<Success> DoControlStop(Service* service) {
+static Result<void> DoControlStop(Service* service) {
     service->Stop();
-    return Success();
+    return {};
 }
 
-static Result<Success> DoControlRestart(Service* service) {
+static Result<void> DoControlRestart(Service* service) {
     service->Restart();
-    return Success();
+    return {};
 }
 
 enum class ControlTarget {
@@ -272,16 +280,16 @@ enum class ControlTarget {
 
 struct ControlMessageFunction {
     ControlTarget target;
-    std::function<Result<Success>(Service*)> action;
+    std::function<Result<void>(Service*)> action;
 };
 
 static const std::map<std::string, ControlMessageFunction>& get_control_message_map() {
     // clang-format off
     static const std::map<std::string, ControlMessageFunction> control_message_functions = {
         {"sigstop_on",        {ControlTarget::SERVICE,
-                               [](auto* service) { service->set_sigstop(true); return Success(); }}},
+                               [](auto* service) { service->set_sigstop(true); return Result<void>{}; }}},
         {"sigstop_off",       {ControlTarget::SERVICE,
-                               [](auto* service) { service->set_sigstop(false); return Success(); }}},
+                               [](auto* service) { service->set_sigstop(false); return Result<void>{}; }}},
         {"start",             {ControlTarget::SERVICE,   DoControlStart}},
         {"stop",              {ControlTarget::SERVICE,   DoControlStop}},
         {"restart",           {ControlTarget::SERVICE,   DoControlRestart}},
@@ -344,40 +352,15 @@ bool HandleControlMessage(const std::string& msg, const std::string& name, pid_t
     return true;
 }
 
-static Result<Success> wait_for_coldboot_done_action(const BuiltinArguments& args) {
-    Timer t;
-    std::chrono::nanoseconds timeout = 60s;
-#ifdef SLOW_BOARD
-    timeout = 6000s;
-#endif
-
-    LOG(VERBOSE) << "Waiting for " COLDBOOT_DONE "...";
-
-    // Historically we had a 1s timeout here because we weren't otherwise
-    // tracking boot time, and many OEMs made their sepolicy regular
-    // expressions too expensive (http://b/19899875).
-
-    // Now we're tracking boot time, just log the time taken to a system
-    // property. We still panic if it takes more than a minute though,
-    // because any build that slow isn't likely to boot at all, and we'd
-    // rather any test lab devices fail back to the bootloader.
-    if (wait_for_file(COLDBOOT_DONE, timeout) < 0) {
-        LOG(FATAL) << "Timed out waiting for " COLDBOOT_DONE;
+static Result<void> wait_for_coldboot_done_action(const BuiltinArguments& args) {
+    if (!start_waiting_for_property(kColdBootDoneProp, "true")) {
+        LOG(FATAL) << "Could not wait for '" << kColdBootDoneProp << "'";
     }
 
-    property_set("ro.boottime.init.cold_boot_wait", std::to_string(t.duration().count()));
-    return Success();
+    return {};
 }
 
-static Result<Success> console_init_action(const BuiltinArguments& args) {
-    std::string console = GetProperty("ro.boot.console", "");
-    if (!console.empty()) {
-        default_console = "/dev/" + console;
-    }
-    return Success();
-}
-
-static Result<Success> SetupCgroupsAction(const BuiltinArguments&) {
+static Result<void> SetupCgroupsAction(const BuiltinArguments&) {
     // Have to create <CGROUPS_RC_DIR> using make_dir function
     // for appropriate sepolicy to be set for it
     make_dir(android::base::Dirname(CGROUPS_RC_PATH), 0711);
@@ -385,7 +368,7 @@ static Result<Success> SetupCgroupsAction(const BuiltinArguments&) {
         return ErrnoError() << "Failed to setup cgroups";
     }
 
-    return Success();
+    return {};
 }
 
 static void import_kernel_nv(const std::string& key, const std::string& value, bool for_emulator) {
@@ -469,34 +452,16 @@ static void process_kernel_cmdline() {
     if (qemu[0]) import_kernel_cmdline(true, import_kernel_nv);
 }
 
-static Result<Success> property_enable_triggers_action(const BuiltinArguments& args) {
+static Result<void> property_enable_triggers_action(const BuiltinArguments& args) {
     /* Enable property triggers. */
     property_triggers_enabled = 1;
-    return Success();
+    return {};
 }
 
-static Result<Success> queue_property_triggers_action(const BuiltinArguments& args) {
+static Result<void> queue_property_triggers_action(const BuiltinArguments& args) {
     ActionManager::GetInstance().QueueBuiltinAction(property_enable_triggers_action, "enable_property_trigger");
     ActionManager::GetInstance().QueueAllPropertyActions();
-    return Success();
-}
-
-static Result<Success> InitBinder(const BuiltinArguments& args) {
-    // init's use of binder is very limited. init cannot:
-    //   - have any binder threads
-    //   - receive incoming binder calls
-    //   - pass local binder services to remote processes
-    //   - use death recipients
-    // The main supported usecases are:
-    //   - notifying other daemons (oneway calls only)
-    //   - retrieving data that is necessary to boot
-    // Also, binder can't be used by recovery.
-#ifndef RECOVERY
-    android::ProcessState::self()->setThreadPoolMaxThreadCount(0);
-    android::ProcessState::self()->setCallRestriction(
-            ProcessState::CallRestriction::ERROR_IF_NOT_ONEWAY);
-#endif
-    return Success();
+    return {};
 }
 
 // Set the UDC controller for the ConfigFS USB Gadgets.
@@ -766,7 +731,7 @@ int SecondStageMain(int argc, char** argv) {
     MountHandler mount_handler(&epoll);
     set_usb_controller();
 
-    const BuiltinFunctionMap function_map;
+    const BuiltinFunctionMap& function_map = GetBuiltinFunctionMap();
     Action::set_function_map(&function_map);
 
     if (!SetupMountNamespaces()) {
@@ -803,15 +768,14 @@ int SecondStageMain(int argc, char** argv) {
     am.QueueBuiltinAction(SetMmapRndBitsAction, "SetMmapRndBits");
     Keychords keychords;
     am.QueueBuiltinAction(
-        [&epoll, &keychords](const BuiltinArguments& args) -> Result<Success> {
-            for (const auto& svc : ServiceList::GetInstance()) {
-                keychords.Register(svc->keycodes());
-            }
-            keychords.Start(&epoll, HandleKeychord);
-            return Success();
-        },
-        "KeychordInit");
-    am.QueueBuiltinAction(console_init_action, "console_init");
+            [&epoll, &keychords](const BuiltinArguments& args) -> Result<void> {
+                for (const auto& svc : ServiceList::GetInstance()) {
+                    keychords.Register(svc->keycodes());
+                }
+                keychords.Start(&epoll, HandleKeychord);
+                return {};
+            },
+            "KeychordInit");
 
     // Trigger all the boot actions to get us started.
     am.QueueEventTrigger("init");
@@ -822,9 +786,6 @@ int SecondStageMain(int argc, char** argv) {
     // Repeat mix_hwrng_into_linux_rng in case /dev/hw_random or /dev/random
     // wasn't ready immediately after wait_for_coldboot_done
     am.QueueBuiltinAction(MixHwrngIntoLinuxRngAction, "MixHwrngIntoLinuxRng");
-
-    // Initialize binder before bringing up other system services
-    am.QueueBuiltinAction(InitBinder, "InitBinder");
 
     // Don't mount filesystems or start core system services in charger mode.
     std::string bootmode = GetProperty("ro.bootmode", "");

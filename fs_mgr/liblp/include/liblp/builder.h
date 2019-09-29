@@ -24,6 +24,7 @@
 #include <memory>
 #include <optional>
 #include <set>
+#include <string_view>
 
 #include "liblp.h"
 #include "partition_opener.h"
@@ -36,6 +37,9 @@ class LinearExtent;
 // By default, partitions are aligned on a 1MiB boundary.
 static const uint32_t kDefaultPartitionAlignment = 1024 * 1024;
 static const uint32_t kDefaultBlockSize = 4096;
+
+// Name of the default group in a metadata.
+static constexpr std::string_view kDefaultGroup = "default";
 
 // Abstraction around dm-targets that can be encoded into logical partition tables.
 class Extent {
@@ -124,7 +128,7 @@ class Partition final {
 
   private:
     void ShrinkTo(uint64_t aligned_size);
-    void set_group_name(const std::string& group_name) { group_name_ = group_name; }
+    void set_group_name(std::string_view group_name) { group_name_ = group_name; }
 
     std::string name_;
     std::string group_name_;
@@ -196,9 +200,6 @@ class MetadataBuilder {
         return New(device_info, metadata_max_size, metadata_slot_count);
     }
 
-    // Used by the test harness to override whether the device is "A/B".
-    static void OverrideABForTesting(bool ab_device);
-
     // Define a new partition group. By default there is one group called
     // "default", with an unrestricted size. A non-zero size will restrict the
     // total space used by all partitions in the group.
@@ -226,7 +227,7 @@ class MetadataBuilder {
     Partition* FindPartition(const std::string& name);
 
     // Find a group by name. If no group is found, nullptr is returned.
-    PartitionGroup* FindGroup(const std::string& name);
+    PartitionGroup* FindGroup(std::string_view name);
 
     // Add a predetermined extent to a partition.
     bool AddLinearExtent(Partition* partition, const std::string& block_device,
@@ -251,7 +252,7 @@ class MetadataBuilder {
     // the metadata is exported, to avoid errors during potential group and
     // size shuffling operations. This will return false if the new group does
     // not exist.
-    bool ChangePartitionGroup(Partition* partition, const std::string& group_name);
+    bool ChangePartitionGroup(Partition* partition, std::string_view group_name);
 
     // Changes the size of a partition group. Size constraints will not be
     // checked until metadata is exported, to avoid errors during group
@@ -286,6 +287,9 @@ class MetadataBuilder {
     // Return true if a block device is found, else false.
     bool HasBlockDevice(const std::string& partition_name) const;
 
+    // Return the name of the block device at |index|.
+    std::string GetBlockDevicePartitionName(uint64_t index) const;
+
   private:
     MetadataBuilder();
     MetadataBuilder(const MetadataBuilder&) = delete;
@@ -306,8 +310,16 @@ class MetadataBuilder {
     void ImportExtents(Partition* dest, const LpMetadata& metadata,
                        const LpMetadataPartition& source);
     bool ImportPartition(const LpMetadata& metadata, const LpMetadataPartition& source);
-    bool IsABDevice() const;
-    bool IsRetrofitDevice() const;
+
+    // Return true if the device is an AB device.
+    static bool IsABDevice();
+
+    // Return true if the device is retrofitting dynamic partitions.
+    static bool IsRetrofitDynamicPartitionsDevice();
+
+    // Return true if _b partitions should be prioritized at the second half of the device.
+    bool ShouldHalveSuper() const;
+
     bool ValidatePartitionGroups() const;
 
     struct Interval {
@@ -336,8 +348,8 @@ class MetadataBuilder {
                                                     const std::vector<Interval>& free_list,
                                                     uint64_t sectors_needed) const;
 
-    static bool sABOverrideValue;
-    static bool sABOverrideSet;
+    static bool UpdateMetadataForOtherSuper(LpMetadata* metadata, uint32_t source_slot_number,
+                                            uint32_t target_slot_number);
 
     LpMetadataGeometry geometry_;
     LpMetadataHeader header_;
@@ -345,7 +357,6 @@ class MetadataBuilder {
     std::vector<std::unique_ptr<PartitionGroup>> groups_;
     std::vector<LpMetadataBlockDevice> block_devices_;
     bool auto_slot_suffixing_;
-    bool ignore_slot_suffixing_;
 };
 
 // Read BlockDeviceInfo for a given block device. This always returns false
