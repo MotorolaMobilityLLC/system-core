@@ -124,6 +124,7 @@
 
 #define FAIL_REPORT_RLIMIT_MS 1000
 
+#define PSI_PROC_TRAVERSE_DELAY_MS 200
 /* default to old in-kernel interface if no memory pressure events */
 static bool use_inkernel_interface = true;
 static bool has_inkernel_module;
@@ -1682,7 +1683,16 @@ static void proc_get_script(void)
     struct proc *procp;
     long total_vm;
     static bool retry_eligible = false;
+    struct timespec curr_tm;
+    static struct timespec last_traverse_time;
+    static bool check_time = false;
 
+    if(check_time) {
+	    clock_gettime(CLOCK_MONOTONIC_COARSE, &curr_tm);
+	    if (get_time_diff_ms(&last_traverse_time, &curr_tm) <
+			    PSI_PROC_TRAVERSE_DELAY_MS)
+		    return;
+    }
 repeat:
     if (!d && !(d = opendir("/proc"))) {
         ALOGE("Failed to open /proc");
@@ -1736,6 +1746,7 @@ repeat:
             procp->oomadj = oomadj;
             proc_insert(procp);
 	    retry_eligible = true;
+	    check_time = false;
 	    ALOGI("proc_get_script: Added a task to kill list");
 	    return;
         } else {
@@ -1748,6 +1759,8 @@ repeat:
 	    retry_eligible = false;
 	    goto repeat;
     }
+    check_time = true;
+    clock_gettime(CLOCK_MONOTONIC_COARSE, &last_traverse_time);
     ALOGI("proc_get_script: None tasks are added to kill list");
 }
 
