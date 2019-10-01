@@ -777,6 +777,8 @@ on property:vold.decrypt=trigger_post_fs_data
 on property:vold.decrypt=trigger_restart_min_framework
     # A/B update verifier that marks a successful boot.
     exec_start update_verifier
+    class_start_post_data hal
+    class_start_post_data core
     class_start main
 
 on property:vold.decrypt=trigger_restart_framework
