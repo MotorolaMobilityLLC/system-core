@@ -120,6 +120,12 @@
 
 #define FAIL_REPORT_RLIMIT_MS 1000
 
+/* ro.lmk.psi_partial_stall_ms property defaults */
+#define DEF_PARTIAL_STALL_LOWRAM 200
+#define DEF_PARTIAL_STALL 70
+/* ro.lmk.psi_complete_stall_ms property defaults */
+#define DEF_COMPLETE_STALL 700
+
 /* default to old in-kernel interface if no memory pressure events */
 static bool use_inkernel_interface = true;
 static bool has_inkernel_module;
@@ -2412,7 +2418,7 @@ do_kill:
     }
 }
 
-static bool init_mp_psi(enum vmpressure_level level) {
+static bool init_mp_psi(enum vmpressure_level level, bool use_new_strategy) {
     int fd;
 
     /* Do not register a handler if threshold_ms is not set */
@@ -2432,7 +2438,7 @@ static bool init_mp_psi(enum vmpressure_level level) {
      * When PSI is used without memfree levels use kill strategy of default PSI mode
      * based on zone watermarks, free swap and thrashing stats (mp_event_psi)
      */
-    vmpressure_hinfo[level].handler = use_minfree_levels ? mp_event_common : mp_event_psi;
+    vmpressure_hinfo[level].handler = use_new_strategy ? mp_event_psi : mp_event_common;
     vmpressure_hinfo[level].data = level;
     if (register_psi_monitor(epollfd, fd, &vmpressure_hinfo[level]) < 0) {
         destroy_psi_monitor(fd);
@@ -2456,22 +2462,29 @@ static void destroy_mp_psi(enum vmpressure_level level) {
 }
 
 static bool init_psi_monitors() {
+    /*
+     * When PSI is used on low-ram devices or on high-end devices without memfree levels
+     * use new kill strategy based on zone watermarks, free swap and thrashing stats
+     */
+    bool use_new_strategy =
+        property_get_bool("ro.lmk.use_new_strategy", low_ram_device || !use_minfree_levels);
+
     /* In default PSI mode override stall amounts using system properties */
-    if (!use_minfree_levels) {
+    if (use_new_strategy) {
         /* Do not use low pressure level */
         psi_thresholds[VMPRESS_LEVEL_LOW].threshold_ms = 0;
         psi_thresholds[VMPRESS_LEVEL_MEDIUM].threshold_ms = psi_partial_stall_ms;
         psi_thresholds[VMPRESS_LEVEL_CRITICAL].threshold_ms = psi_complete_stall_ms;
     }
 
-    if (!init_mp_psi(VMPRESS_LEVEL_LOW)) {
+    if (!init_mp_psi(VMPRESS_LEVEL_LOW, use_new_strategy)) {
         return false;
     }
-    if (!init_mp_psi(VMPRESS_LEVEL_MEDIUM)) {
+    if (!init_mp_psi(VMPRESS_LEVEL_MEDIUM, use_new_strategy)) {
         destroy_mp_psi(VMPRESS_LEVEL_LOW);
         return false;
     }
-    if (!init_mp_psi(VMPRESS_LEVEL_CRITICAL)) {
+    if (!init_mp_psi(VMPRESS_LEVEL_CRITICAL, use_new_strategy)) {
         destroy_mp_psi(VMPRESS_LEVEL_MEDIUM);
         destroy_mp_psi(VMPRESS_LEVEL_LOW);
         return false;
@@ -2787,10 +2800,10 @@ int main(int argc __unused, char **argv __unused) {
         property_get_bool("ro.config.per_app_memcg", low_ram_device);
     swap_free_low_percentage = clamp(0, 100,
         property_get_int32("ro.lmk.swap_free_low_percentage", low_ram_device ? 10 : 20));
-    psi_partial_stall_ms =
-        property_get_int32("ro.lmk.psi_partial_stall_ms", low_ram_device ? 200 : 70);
-    psi_complete_stall_ms =
-        property_get_int32("ro.lmk.psi_complete_stall_ms", 700);
+    psi_partial_stall_ms = property_get_int32("ro.lmk.psi_partial_stall_ms",
+        low_ram_device ? DEF_PARTIAL_STALL_LOWRAM : DEF_PARTIAL_STALL);
+    psi_complete_stall_ms = property_get_int32("ro.lmk.psi_complete_stall_ms",
+        DEF_COMPLETE_STALL);
     thrashing_limit_pct = max(0,
         property_get_int32("ro.lmk.thrashing_limit", low_ram_device ? 30 : 100));
     thrashing_limit_decay_pct = clamp(0, 100,

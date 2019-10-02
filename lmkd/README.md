@@ -63,3 +63,11 @@ properties:
                              kill will be done, Default = 0 (disabled)
 
   ro.lmk.debug:              enable lmkd debug logs, Default = false
+
+  ro.lmk.psi_partial_stall_ms: partial PSI stall threshold in milliseconds for
+                             triggering low memory notification. Default for
+                             low-RAM devices = 200, for high-end devices = 70
+
+  ro.lmk.psi_complete_stall_ms: complete PSI stall threshold in milliseconds for
+                             triggering critical memory notification. Default =
+                             700
