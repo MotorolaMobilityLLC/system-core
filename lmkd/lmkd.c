@@ -518,7 +518,7 @@ static uint32_t killcnt_total = 0;
 /* PAGE_SIZE / 1024 */
 static long page_k;
 
-static char* proc_get_name(int pid);
+static char *proc_get_name(int pid, char *buf, size_t buf_size);
 static void poll_kernel();
 static int proc_get_size(int pid);
 static bool lmkd_skip_kill(struct proc* procp);
@@ -675,13 +675,14 @@ static struct adjslot_list *adjslot_skip(struct adjslot_list *head)
     struct adjslot_list *asl = head->prev;
     struct proc *procp = NULL;
     char *taskname = NULL;
+    char buf[LINE_MAX];
 
     if (asl == head)
         return NULL;
 
     for(;asl != head; asl=asl->prev) {
         procp = (struct proc *)asl;
-        taskname = proc_get_name(procp->pid);
+        taskname = proc_get_name(procp->pid, buf, sizeof(buf));
         if (!taskname)
             return asl;
         if (true == lmkd_skip_kill(procp))
@@ -718,12 +719,13 @@ static void proc_dump() {
     int size = 0;
     int count = 0;
     int hval = 0;
+    char buf[LINE_MAX];
 
     for(count=0; count <ADJTOSLOT_COUNT; count ++) {
         temp_head = &procadjslot_list[count];
         for (asl=temp_head->prev; asl != temp_head; asl = asl->prev) {
             procp = (struct proc *)asl;
-            taskname = proc_get_name(procp->pid);
+            taskname = proc_get_name(procp->pid, buf, sizeof(buf));
             size = proc_get_size(procp->pid);
             hval = pid_hashfn(procp->pid);
             ALOGI("count: %d proc_dump task name:%s,%d , pid:%d, hval:%d, 0x%p:0x%p",
@@ -831,9 +833,62 @@ out:
     return (int)tgid;
 }
 
+static int proc_get_size(int pid) {
+    char path[PATH_MAX];
+    char line[LINE_MAX];
+    int fd;
+    int rss = 0;
+    int total;
+    ssize_t ret;
+
+    /* gid containing AID_READPROC required */
+    snprintf(path, PATH_MAX, "/proc/%d/statm", pid);
+    fd = open(path, O_RDONLY | O_CLOEXEC);
+    if (fd == -1)
+        return -1;
+
+    ret = read_all(fd, line, sizeof(line) - 1);
+    if (ret < 0) {
+        close(fd);
+        return -1;
+    }
+    line[ret] = '\0';
+
+    sscanf(line, "%d %d ", &total, &rss);
+    close(fd);
+    return rss;
+}
+
+static char *proc_get_name(int pid, char *buf, size_t buf_size) {
+    char path[PATH_MAX];
+    int fd;
+    char *cp;
+    ssize_t ret;
+
+    /* gid containing AID_READPROC required */
+    snprintf(path, PATH_MAX, "/proc/%d/cmdline", pid);
+    fd = open(path, O_RDONLY | O_CLOEXEC);
+    if (fd == -1) {
+        return NULL;
+    }
+    ret = read_all(fd, buf, buf_size - 1);
+    close(fd);
+    if (ret < 0) {
+        return NULL;
+    }
+    buf[ret] = '\0';
+
+    cp = strchr(buf, ' ');
+    if (cp) {
+        *cp = '\0';
+    }
+
+    return buf;
+}
+
 static void cmd_procprio(LMKD_CTRL_PACKET packet) {
     struct proc *procp;
-    char path[80];
+    char path[LINE_MAX];
     char val[20];
     int soft_limit_mult;
     struct lmk_procprio params;
@@ -1694,60 +1749,6 @@ static void meminfo_log(union meminfo *mi) {
     android_log_reset(ctx);
 }
 
-static int proc_get_size(int pid) {
-    char path[PATH_MAX];
-    char line[LINE_MAX];
-    int fd;
-    int rss = 0;
-    int total;
-    ssize_t ret;
-
-    /* gid containing AID_READPROC required */
-    snprintf(path, PATH_MAX, "/proc/%d/statm", pid);
-    fd = open(path, O_RDONLY | O_CLOEXEC);
-    if (fd == -1)
-        return -1;
-
-    ret = read_all(fd, line, sizeof(line) - 1);
-    if (ret < 0) {
-        close(fd);
-        return -1;
-    }
-
-    sscanf(line, "%d %d ", &total, &rss);
-    close(fd);
-    return rss;
-}
-
-static char *proc_get_name(int pid) {
-    char path[PATH_MAX];
-    static char line[LINE_MAX];
-    int fd;
-    char *cp;
-    ssize_t ret;
-
-    /* gid containing AID_READPROC required */
-    snprintf(path, PATH_MAX, "/proc/%d/cmdline", pid);
-    fd = open(path, O_RDONLY | O_CLOEXEC);
-    if (fd == -1) {
-        return NULL;
-    }
-    ret = read_all(fd, line, sizeof(line) - 1);
-    close(fd);
-    if (ret < 0) {
-        return NULL;
-    }
-
-    cp = strchr(line, ' ');
-    if (cp) {
-        *cp = '\0';
-    } else {
-        line[ret] = '\0';
-    }
-
-    return line;
-}
-
 static struct proc *proc_adj_lru(int oomadj) {
     return (struct proc *)adjslot_tail(&procadjslot_list[ADJTOSLOT(oomadj)]);
 }
@@ -1820,6 +1821,7 @@ static bool lmkd_skip_kill(struct proc* procp)
     uid_t uid = 0;
     char *taskname = NULL;
     int tasksize = 0;
+    char buf[LINE_MAX];
 
     if (false == lmkd_config_enabled)
         return false;
@@ -1829,7 +1831,7 @@ static bool lmkd_skip_kill(struct proc* procp)
 
     pid = procp->pid;
     uid = procp->uid;
-    taskname = proc_get_name(pid);
+    taskname = proc_get_name(pid, buf, sizeof(buf));
     if (!taskname)
         return false;
 
@@ -1864,7 +1866,6 @@ static int kill_one_process(struct proc* procp, int min_oom_score, const char *r
     int tasksize;
     int r;
     int result = -1;
-
 #ifdef LMKD_LOG_STATS
     struct memory_stat mem_st = {};
     int memory_stat_parse_result = -1;
@@ -1872,6 +1873,7 @@ static int kill_one_process(struct proc* procp, int min_oom_score, const char *r
     /* To prevent unused parameter warning */
     (void)(min_oom_score);
 #endif
+    char buf[LINE_MAX];
 
     tgid = proc_get_tgid(pid);
     if (tgid >= 0 && tgid != pid) {
@@ -1879,7 +1881,7 @@ static int kill_one_process(struct proc* procp, int min_oom_score, const char *r
         goto out;
     }
 
-    taskname = proc_get_name(pid);
+    taskname = proc_get_name(pid, buf, sizeof(buf));
     if (!taskname) {
         goto out;
     }
