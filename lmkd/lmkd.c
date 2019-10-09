@@ -171,6 +171,7 @@ static int psi_complete_stall_ms;
 static int thrashing_limit_pct;
 static int thrashing_limit_decay_pct;
 static bool use_psi_monitors = false;
+static int thrashing_min_score_adj;
 static struct psi_threshold psi_thresholds[VMPRESS_LEVEL_COUNT] = {
     { PSI_SOME, 70 },    /* 70ms out of 1sec for partial stall */
     { PSI_SOME, 100 },   /* 100ms out of 1sec for partial stall */
@@ -2119,14 +2120,14 @@ static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_
          */
         thrashing_limit = (thrashing_limit * (100 - thrashing_limit_decay_pct)) / 100;
         kill_reason = LOW_MEM_AND_THRASHING;
-        min_score_adj = 200;
+        min_score_adj = thrashing_min_score_adj;
         sprintf(kill_desc, "%s watermark is breached and thrashing (%" PRId64 "%%)",
             wmark > WMARK_LOW ? "min" : "low", thrashing);
     } else if (reclaim == DIRECT_RECLAIM && thrashing > thrashing_limit) {
         /* Page cache is thrashing while in direct reclaim (mostly happens on lowram devices) */
         thrashing_limit = (thrashing_limit * (100 - thrashing_limit_decay_pct)) / 100;
         kill_reason = DIRECT_RECL_AND_THRASHING;
-        min_score_adj = 200;
+        min_score_adj = thrashing_min_score_adj;
         snprintf(kill_desc, sizeof(kill_desc), "device is in direct reclaim and thrashing (%"
             PRId64 "%%)", thrashing);
     }
@@ -2809,7 +2810,7 @@ int main(int argc __unused, char **argv __unused) {
     thrashing_limit_decay_pct = clamp(0, 100,
         property_get_int32("ro.lmk.thrashing_limit_decay", low_ram_device ? 50 : 10));
     duraspeed_supported = property_get_int32("persist.vendor.duraspeed.support", 0);
-
+    thrashing_min_score_adj = property_get_int32("ro.lmk.thrashing_min_score_adj", 200);
     ctx = create_android_logger(MEMINFO_LOG_TAG);
 
 #ifdef LMKD_LOG_STATS
