@@ -1644,21 +1644,16 @@ static struct proc *proc_get_heaviest(int oomadj) {
     struct adjslot_list *head = &procadjslot_list[ADJTOSLOT(oomadj)];
     struct adjslot_list *curr = head->next;
     struct proc *maxprocp = NULL;
-    int maxsize = 0;
+    int maxsize = -1;
     while (curr != head) {
         int pid = ((struct proc *)curr)->pid;
         int tasksize = proc_get_size(pid);
-        if (tasksize <= 0) {
-            struct adjslot_list *next = curr->next;
-            pid_remove(pid);
-            curr = next;
-        } else {
-            if (tasksize > maxsize) {
-                maxsize = tasksize;
-                maxprocp = (struct proc *)curr;
-            }
-            curr = curr->next;
+
+        if (tasksize > maxsize) {
+            maxsize = tasksize;
+            maxprocp = (struct proc *)curr;
         }
+        curr = curr->next;
     }
     return maxprocp;
 }
@@ -1722,10 +1717,8 @@ static int kill_one_process(struct proc* procp, int min_oom_score, const char *r
         goto out;
     }
 
+    /* rss may be 0 */
     tasksize = proc_get_size(pid);
-    if (tasksize <= 0) {
-        goto out;
-    }
 
 #ifdef LMKD_LOG_STATS
     if (enable_stats_log) {
@@ -1819,7 +1812,18 @@ static int find_and_kill_process(int min_score_adj, const char *reason) {
                 break;
             }
         }
+
         if (killed_size) {
+            break;
+        } else if (procp) {
+            /*
+             * When lots of processes with size 0 have been found,
+             * it hints that the system may be under severe memory
+             * pressure. If one victim has been found in this case,
+             * just changing the killed_size to be non-zero as we
+             * really killed one process at least.
+             */
+            killed_size = 1;
             break;
         }
     }
