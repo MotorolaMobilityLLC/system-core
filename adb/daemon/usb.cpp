@@ -543,7 +543,10 @@ struct UsbFfsConnection : public Connection {
             if (current_block->pending) {
                 break;
             }
-            ProcessRead(current_block);
+            if(!ProcessRead(current_block)){
+		LOG(INFO) << "Check amessage abnormal,do not need add the read flag";
+		return false;
+	    }
             ++needed_read_id_;
         }
 
