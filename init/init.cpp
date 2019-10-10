@@ -691,6 +691,16 @@ int main(int argc, char** argv) {
        chown("/dev/memcg/apps/",AID_SYSTEM,AID_SYSTEM);
        mkdir("/dev/memcg/system",0550);
        chown("/dev/memcg/system",AID_SYSTEM,AID_SYSTEM);
+       if (auto result = WriteFile("/dev/memcg/memory.swappiness", "100"); !result) {
+           LOG(ERROR) << "Unable to write 100 to /dev/memcg/memory.swappiness" << result.error();
+       }
+       if (auto result = WriteFile("/dev/memcg/apps/memory.swappiness", "100"); !result) {
+           LOG(ERROR) << "Unable to write 100 to /dev/memcg/memory.swappiness" << result.error();
+       }
+       if (auto result = WriteFile("/dev/memcg/system/memory.swappiness", "100"); !result) {
+           LOG(ERROR) << "Unable to write 100 to /dev/memcg/memory.swappiness" << result.error();
+       }
+
     }
 
     // Clean up our environment.
