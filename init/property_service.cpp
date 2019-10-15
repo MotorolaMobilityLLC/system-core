@@ -814,11 +814,12 @@ bool is_cache_file_exists() {
         SLOGE("FC.adb open /cache/adb_enable failed");
         close(fd);
         fd = open("/data/adb_enable", O_RDONLY);
-        if (fd == -1) {
-            SLOGE("FC.adb open /cache/adb_enable failed");
+        if (fd != -1) {
+            SLOGE("FC.adb open /data/adb_enable success");
             close(fd);
             return true;
         }
+        close(fd);
         return false;
     } else {
         SLOGE("FC.adb open /cache/adb_enable success");
