@@ -65,6 +65,7 @@ class CommandListener : public FrameworkListener {
     LogBufferCmd(GetPruneList);
     LogBufferCmd(SetPruneList);
     LogBufferCmd(GetEventTag);
+    LogBufferCmd(GetLastlog);
 
 #define LogCmd(name)                                            \
     class name##Cmd : public LogCommand {                       \

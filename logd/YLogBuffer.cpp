@@ -348,10 +348,6 @@ REWRITE:
 
         mSocketWorking=5;
         lockQueue();
-        mSocketWorking=6;
-
-        mSocketWorking=7;
-
         int tmpIndex=mInQueueIndex;
         mInQueueIndex=mOutQueueIndex;
         mOutQueueIndex=tmpIndex;
@@ -444,4 +440,72 @@ int YLogBuffer::sendDataLockedv(struct iovec *iov, int iovcnt) {
         errno = e;
     }
     return ret;
+}
+
+void *runCMD(const char *cmd_para,SocketClient* cli){
+    #define BUF_SIZE 4096
+
+    char *cmd =(char*)cmd_para;
+    char buf[BUF_SIZE];
+    FILE *file;
+
+    file = popen(cmd, "r");
+    if(file != NULL){
+        do{
+            memset(buf, '\0', sizeof(buf));
+            int len=0;
+            if((len=fread(buf, sizeof(char), sizeof(buf) - 1, file)) <= 0){
+                break;
+            }
+            cli->sendData(buf,len);
+        }
+        while(!feof(file));
+        pclose(file);
+    }
+    return NULL;
+}
+
+long readFileToMem(const char* file, char* result, long len) {
+    FILE *fp = fopen(file, "r");
+    long fileSize=-1;
+    if (fp != NULL) {
+        fseek(fp, 0L, SEEK_END);
+        fileSize = ftell(fp);
+        if(fileSize<0)fileSize=0;
+        if (fileSize >= len)fileSize = len - 1;
+        fseek(fp, -1 * fileSize, SEEK_CUR);
+        fread(result, fileSize, 1, fp);
+        fclose(fp);
+    }else{
+        sprintf(result,"open %s err %d",file,errno);
+    }
+    return fileSize;
+}
+
+int getLastLog(SocketClient* cli, int argc,char** argv){
+    const int LOGDATA_SIZE=1024*200;
+    char *buff=(char*)calloc(LOGDATA_SIZE,1);
+    char logfile[256]="NULL";
+    argc;
+
+    switch(atoi(argv[1])){
+        case 0:
+            strcpy(logfile,"/sys/fs/pstore/console-ramoops-0");
+            break;
+        case 1:
+            strcpy(logfile,"/sys/fs/pstore/dmesg-ramoops-0");
+            break;
+        default:
+            break;
+    }
+
+    if (atoi(argv[1])==2){
+        runCMD("logcat -L",cli);
+    }else{
+        long  len=readFileToMem(logfile,buff,LOGDATA_SIZE-1);
+        cli->sendData(buff,len);
+    }
+
+    free(buff);
+    return 0;
 }

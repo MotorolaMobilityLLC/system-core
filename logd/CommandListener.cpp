@@ -51,6 +51,7 @@ CommandListener::CommandListener(LogBuffer* buf, LogReader* /*reader*/,
     registerCmd(new GetEventTagCmd(buf));
     registerCmd(new ReinitCmd());
     registerCmd(new ExitCmd(this));
+    registerCmd(new GetLastlogCmd(buf));
 }
 
 CommandListener::ShutdownCmd::ShutdownCmd(LogReader* reader, LogListener* swl)
@@ -365,3 +366,19 @@ int CommandListener::getLogSocket() {
 
     return sock;
 }
+
+CommandListener::GetLastlogCmd::GetLastlogCmd(LogBuffer* buf)
+    : LogCommand("getLastlog"), mBuf(*buf) {
+}
+
+int CommandListener::GetLastlogCmd::runCommand(SocketClient* cli, int argc,
+                                                  char** argv) {
+    setname();
+    argc;
+    extern int getLastLog(SocketClient* cli, int argc,char** argv);
+    getLastLog(cli, argc,argv);
+
+    return 0;
+}
+
+
