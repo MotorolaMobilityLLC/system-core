@@ -805,16 +805,23 @@ void load_persist_props(void) {
     property_set("ro.persistent_properties.ready", "true");
     SLOGE("load_persist_props end ... ");
 }
-
+//If /cache/adb_enable exist in non-ab partitions,open adb in user version;
+//If /data/adb_enable exist in ab partitions,open adb in user version;
 bool is_cache_file_exists() {
     SLOGE("FC.adb  enter is_cache_file_exists ...before open .. only return true ");
     int fd = open("/cache/adb_enable", O_RDONLY);
     if (fd == -1) {
-        SLOGE("FC.adb open /cache/enable_adb failed");
+        SLOGE("FC.adb open /cache/adb_enable failed");
         close(fd);
+        fd = open("/data/adb_enable", O_RDONLY);
+        if (fd == -1) {
+            SLOGE("FC.adb open /cache/adb_enable failed");
+            close(fd);
+            return true;
+        }
         return false;
     } else {
-        SLOGE("FC.adb open /cache/enable_adb success");
+        SLOGE("FC.adb open /cache/adb_enable success");
         close(fd);
         return true;
     }
