@@ -62,6 +62,8 @@
 
 #define PROC_SYSRQ "/proc/sysrq-trigger"
 
+using namespace std::literals;
+
 using android::base::GetBoolProperty;
 using android::base::Split;
 using android::base::Timer;
@@ -172,9 +174,23 @@ static void LogShutdownTime(UmountStat stat, Timer* t) {
                  << stat;
 }
 
-/* Find all read+write block devices and emulated devices in /proc/mounts
- * and add them to correpsponding list.
- */
+static bool IsDataMounted() {
+    std::unique_ptr<std::FILE, int (*)(std::FILE*)> fp(setmntent("/proc/mounts", "re"), endmntent);
+    if (fp == nullptr) {
+        PLOG(ERROR) << "Failed to open /proc/mounts";
+        return false;
+    }
+    mntent* mentry;
+    while ((mentry = getmntent(fp.get())) != nullptr) {
+        if (mentry->mnt_dir == "/data"s) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Find all read+write block devices and emulated devices in /proc/mounts and add them to
+// the correpsponding list.
 static bool FindPartitionsToUmount(std::vector<MountEntry>* blockDevPartitions,
                                    std::vector<MountEntry>* emulatedPartitions, bool dump) {
     std::unique_ptr<std::FILE, int (*)(std::FILE*)> fp(setmntent("/proc/mounts", "re"), endmntent);
@@ -297,12 +313,15 @@ void RebootMonitorThread(unsigned int cmd, const std::string& rebootTarget, sem_
             LOG(ERROR) << "Reboot thread timed out";
 
             if (android::base::GetBoolProperty("ro.debuggable", false) == true) {
-                LOG(INFO) << "Try to dump init process call trace:";
-                const char* vdc_argv[] = {"/system/bin/debuggerd", "-b", "1"};
-                int status;
-                android_fork_execvp_ext(arraysize(vdc_argv), (char**)vdc_argv, &status, true,
-                                        LOG_KLOG, true, nullptr, nullptr, 0);
-
+                if (false) {
+                    // SEPolicy will block debuggerd from running and this is intentional.
+                    // But these lines are left to be enabled during debugging.
+                    LOG(INFO) << "Try to dump init process call trace:";
+                    const char* vdc_argv[] = {"/system/bin/debuggerd", "-b", "1"};
+                    int status;
+                    android_fork_execvp_ext(arraysize(vdc_argv), (char**)vdc_argv, &status, true,
+                                            LOG_KLOG, true, nullptr, nullptr, 0);
+                }
                 LOG(INFO) << "Show stack for all active CPU:";
                 WriteStringToFile("l", PROC_SYSRQ);
 
@@ -443,6 +462,14 @@ static void DoReboot(unsigned int cmd, const std::string& reason, const std::str
                      bool runFsck) {
     Timer t;
     LOG(INFO) << "Reboot start, reason: " << reason << ", rebootTarget: " << rebootTarget;
+
+    // If /data isn't mounted then we can skip the extra reboot steps below, since we don't need to
+    // worry about unmounting it.
+    if (!IsDataMounted()) {
+        sync();
+        RebootSystem(cmd, rebootTarget);
+        abort();
+    }
 
     // Ensure last reboot reason is reduced to canonical
     // alias reported in bootloader or system boot reason.
@@ -737,6 +764,12 @@ bool HandlePowerctlMessage(const std::string& command) {
     for (const auto& s : ServiceList::GetInstance()) {
         s->UnSetExec();
     }
+
+    // We no longer process messages about properties changing coming from property service, so we
+    // need to tell property service to stop sending us these messages, otherwise it'll fill the
+    // buffers and block indefinitely, causing future property sets, including those that init makes
+    // during shutdown in Service::NotifyStateChange() to also block indefinitely.
+    SendStopSendingMessagesMessage();
 
     return true;
 }
