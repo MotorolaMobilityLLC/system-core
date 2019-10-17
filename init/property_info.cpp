@@ -74,7 +74,7 @@ void set_system_properties(){
 
     if (carrier_value == "retgb" || carrier_value == "tescogb" || carrier_value == "pluspl"
          || carrier_value == "playpl" || (carrier_value == "reteu" && (carrier_ontim != "reteu_reteuse"
-         || carrier_ontim != "reteu_reteuuae" || carrier_ontim != "reteu_reteusa"))) {
+         && carrier_ontim != "reteu_reteuuae" && carrier_ontim != "reteu_reteusa"))) {
         prop_product_value = "bali_reteu";
         prop_carrier_value = "reteu";
         property_set(prop_amclient,prop_client_value);
