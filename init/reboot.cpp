@@ -342,9 +342,7 @@ static UmountStat TryUmountAndFsck(bool runFsck, std::chrono::milliseconds timeo
 #define BUILD_NUMBER "ro.build.version.incremental"
 #define BUILD_NUMBER_LEN 64
 #define BUILD_NUMBER_OFFSET 3216
-#define MULTISIM "persist.radio.multisim.config"
-#define MULTISIM_LEN 8
-#define MULTISIM_OFFSET 768
+
 void ontim_write_to_proinfo(void)
 {
     char build_fingerprint_buf[PROPERTY_VALUE_MAX] = {'\0'};
@@ -374,15 +372,11 @@ void ontim_write_to_proinfo(void)
         LOG(INFO) << "write factory failed " << BUILD_NUMBER;
     }
 
-    fseek(factory,MULTISIM_OFFSET,SEEK_SET);
-    if ((len = fwrite(multisim_buf, sizeof(char), MULTISIM_LEN, factory)) < 0) {
-        LOG(INFO) << "write factory failed " << MULTISIM;
-    }
-    fseek(factory,MULTISIM_OFFSET,SEEK_SET);
-    if ((len = fread(bug, sizeof(char), MULTISIM_LEN, factory)) < 0) {
+    fseek(factory,BUILD_NUMBER_OFFSET,SEEK_SET);
+    if ((len = fread(bug, sizeof(char), BUILD_NUMBER_LEN, factory)) < 0) {
         LOG(INFO) << "read factory failed " << BUILD_FINGERPRINT;
     } else {
-LOG(INFO) << "read factory ok: " << MULTISIM_OFFSET<<" = "<< bug;
+        LOG(INFO) << "read factory ok: " << BUILD_FINGERPRINT<<" = "<< bug;
 }
 
     fclose(factory);
