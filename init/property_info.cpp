@@ -54,7 +54,7 @@ std::string prop_clientuk_value = "android-ee-uk-revc";
 std::string prop_clientbr_value = "android-tim-br-revc";
 std::string prop_clienttmobile_value = "android-tmobile-{country}";
 std::string prop_clientdt_value = "android-dt-{country}-revc";
-std::string prop_product_value = "bali";
+std::string prop_product_value = "fiji";
 std::string prop_carrier_value = "retail";
 std::string prop_version_value;
 std::string product_version_file = "/product/version.txt";
@@ -72,10 +72,9 @@ void set_system_properties(){
     property_set("ro.product.ontim.version",fileContent);
     property_set("ro.vendor.product.version",fileContent);
 
-    if (carrier_value == "retgb" || carrier_value == "tescogb" || carrier_value == "pluspl"
-         || carrier_value == "playpl" || (carrier_value == "reteu" && (carrier_ontim != "reteu_reteuse"
-         || carrier_ontim != "reteu_reteuuae" || carrier_ontim != "reteu_reteusa"))) {
-        prop_product_value = "bali_reteu";
+    if (carrier_value == "retgb" || carrier_value == "o2gb" || carrier_value == "tescogb" || carrier_value == "pluspl"
+         || carrier_value == "playpl" || (carrier_value == "reteu" && carrier_ontim != "reteu_reteuse") || carrier_value == "windit") {
+        prop_product_value = "fiji_reteu";
         prop_carrier_value = "reteu";
         property_set(prop_amclient,prop_client_value);
         property_set(prop_msclient,prop_clientrev_value);
@@ -84,13 +83,16 @@ void set_system_properties(){
         property_set(prop_fingerprint,get_fingerprint_property(prop_product_value));
         property_set(prop_vendor_fingerprint,get_fingerprint_property(prop_product_value));
         property_set("persist.vendor.normal","1");//表示正常版本，非 VTS 版本，prop 正常设置.
-    } else if (carrier_value == "amxbr" || carrier_value == "amxmx" || carrier_value == "amxco"|| carrier_value == "openmx"|| carrier_value == "amxla") {
+    } else if (carrier_value == "amxbr" || carrier_value == "amxmx" || carrier_value == "amxco"|| carrier_value == "openmx"
+                 || carrier_value == "amxpe" || carrier_value == "amxcl" || carrier_value == "amxar") {
         property_set(prop_amclient,prop_clientcountry_value);
         property_set(prop_msclient,prop_clientrevc_value);
     } else if (carrier_value == "attmx") {
         property_set(prop_msclient,prop_clientmx_value);
     } else if (carrier_value == "timbr") {
         property_set(prop_msclient,prop_clientbr_value);
+    } else if (carrier_value == "eegb") {
+        property_set(prop_msclient,prop_clientuk_value);
     } else {
         property_set(prop_amclient,prop_client_value);
         property_set(prop_msclient,prop_clientrev_value);
