@@ -58,6 +58,7 @@ std::string prop_product_value = "bali";
 std::string prop_carrier_value = "retail";
 std::string prop_version_value;
 std::string product_version_file = "/product/version.txt";
+std::string prop_amazon_partnerid = "ro.csc.amazon.partnerid";
 
 void set_system_properties(){
     std::ifstream stream(product_version_file);
@@ -89,6 +90,7 @@ void set_system_properties(){
         property_set(prop_msclient,prop_clientrevc_value);
     } else if (carrier_value == "attmx") {
         property_set(prop_msclient,prop_clientmx_value);
+        property_set(prop_amazon_partnerid,carrier_value);
     } else if (carrier_value == "timbr") {
         property_set(prop_msclient,prop_clientbr_value);
     } else {
