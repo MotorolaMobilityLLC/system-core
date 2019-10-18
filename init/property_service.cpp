@@ -942,19 +942,30 @@ std::string  read_countrycode_from_factory() {
 void set_properties_from_proinfo() {
     // ontim factory check.
     uint8_t ontim_factory_buffer = 0;
-    int position = 3022;
+    uint8_t factory_flag_value_buffer = 0;
+    int ontim_factory_position = 3022;
+    int factory_flag_position = 209;
     size_t ontim_factory_buffer_len = 1;
+    size_t factory_flag_buffer_len = 1;
 
     int fd = open("/dev/block/platform/bootdevice/by-name/proinfo", O_RDONLY | O_CLOEXEC);
     if (fd == -1) {
         close(fd);
-    } else {
-        // ontim factory check.
-        lseek(fd, position, SEEK_SET);
-        read(fd, &ontim_factory_buffer, ontim_factory_buffer_len);
-        if (ontim_factory_buffer == 1) {
-            property_set("ro.vendor.ontim_factory", "1");
-        }
+        return;
+    }
+
+    // factory reset flag value
+    lseek(fd, factory_flag_position, SEEK_SET);
+    read(fd, &factory_flag_value_buffer, factory_flag_buffer_len);
+    if (factory_flag_value_buffer == 0x62) {
+        property_set("ro.vendor.factory_reset", "b");
+    }
+
+    // ontim factory check.
+    lseek(fd, ontim_factory_position, SEEK_SET);
+    read(fd, &ontim_factory_buffer, ontim_factory_buffer_len);
+    if (ontim_factory_buffer == 1) {
+        property_set("ro.vendor.ontim_factory", "1");
     }
     close(fd);
 }
