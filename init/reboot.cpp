@@ -347,12 +347,10 @@ void ontim_write_to_proinfo(void)
 {
     char build_fingerprint_buf[PROPERTY_VALUE_MAX] = {'\0'};
     char build_number_buf[PROPERTY_VALUE_MAX] = {'\0'};
-    char multisim_buf[PROPERTY_VALUE_MAX] = {0};
     char bug[PROPERTY_VALUE_MAX] = {0};
     int len = 0;
     property_get(BUILD_FINGERPRINT, build_fingerprint_buf,"0");
     property_get(BUILD_NUMBER, build_number_buf,"0");
-    property_get(MULTISIM, multisim_buf,"0");
 
     FILE *factory = fopen(FACTORY_PATH, "rb+");
     if (factory == NULL){
@@ -361,7 +359,6 @@ void ontim_write_to_proinfo(void)
     }
     LOG(INFO) << "PropGet "<<BUILD_FINGERPRINT <<"=["<<build_fingerprint_buf << "] Done ";
     LOG(INFO) << "PropGet "<<BUILD_NUMBER <<"=["<<build_number_buf << "] Done ";
-    LOG(INFO) << "PropGet "<<MULTISIM <<"=["<<multisim_buf << "] Done ";
     fseek(factory,BUILD_FINGERPRINT_OFFSET,SEEK_SET);
     if ((len = fwrite(build_fingerprint_buf, sizeof(char), PROPERTY_VALUE_MAX, factory)) < 0) {
         LOG(INFO) << "write factory failed " << BUILD_FINGERPRINT;
