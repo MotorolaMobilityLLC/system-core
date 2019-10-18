@@ -55,6 +55,21 @@
 #include "LogReader.h"
 #include "YLogBuffer.h"
 
+#include <fcntl.h>
+#include <linux/fb.h>
+#include <sys/mman.h>
+#include <sys/ioctl.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <log/log.h>
+#include <log/log_read.h>
+#include <log/log.h>
+#include <log/logprint.h>
+#include <log/event_tag_map.h>
+#include <sys/sysinfo.h>
+
+
+
 #ifdef DEBUG_
 #define YPRINTF(...)  {char buff[1024]={0};snprintf(buff,sizeof(buff)-1,__VA_ARGS__);android::prdebug("logd: %s ",buff);}
 
@@ -118,6 +133,193 @@ int YLogBuffer::logFromLogd(log_id_t log_id, log_time realtime,
 
 }
 
+//////////////////////////////////////////////////////////////////////////////////////
+//feature switch
+#define DO_LOG_LASTANDROID
+
+#define PRINT2LOGCAT(...)
+
+#define LASTANDROID_DEVICE "/dev/ylog_buffer"
+#define LASTANDROID_BUF_SIZE (1 * 1024 * 1024)
+
+#define DEBUG_CHAR ' '
+
+unsigned char* getDeviceBuff(const char* path,long size){
+    int fd;
+    unsigned char *pMap;
+
+    fd = open(path,O_RDWR);
+    int er=errno;
+    if(fd < 0)  {
+        //android::prdebug("logd open %s  error:%s",path,strerror(er));
+        PRINT2LOGCAT("logd open %s  error:%s",path,strerror(er));
+        return NULL;
+    }
+
+    pMap = (unsigned char *)mmap(0, size, PROT_READ | PROT_WRITE, MAP_SHARED,fd, 0);
+    if(pMap == MAP_FAILED)  {
+        android::prdebug("logd  mmap %s  error ",path);
+        PRINT2LOGCAT("logd  mmap %s  error ",path);
+        return NULL;
+    }
+
+    android::prdebug("logd  getDeviceBuff %s  =%p ok ",path,(void*)pMap);
+    PRINT2LOGCAT("logd  getDeviceBuff %s  =%p ok ",path,(void*)pMap);
+    return pMap;
+}
+
+
+void write2LastAndroidRingBuffer(char* logmsg){
+    const long THRESHOLD=LASTANDROID_BUF_SIZE- LOGGER_ENTRY_MAX_LEN*10;
+    const long STEP=LASTANDROID_BUF_SIZE*0.2;
+
+
+    int len=strlen(logmsg);
+    static unsigned char* pMem=NULL;
+    if(NULL==pMem){
+        pMem=getDeviceBuff(LASTANDROID_DEVICE,LASTANDROID_BUF_SIZE);
+        if (NULL!=pMem){
+            memset(pMem,DEBUG_CHAR,LASTANDROID_BUF_SIZE);
+        }
+    }
+    static long dataLength=0;
+    if (pMem!=NULL){
+        if ((dataLength+len)>=THRESHOLD){
+            dataLength-=STEP;
+            memmove(pMem,pMem+STEP,dataLength);
+            memset(pMem+dataLength,DEBUG_CHAR,LASTANDROID_BUF_SIZE - dataLength);
+        }
+        memcpy(pMem+dataLength,logmsg,len);
+        dataLength+=len;
+    }
+}
+
+
+
+
+int LogMsg2LogEntry(struct log_msg *msg, AndroidLogEntry *pEntry) {
+    int err;
+
+    static char binaryMsgBuf[1024];
+
+    struct logger_entry_v4 *logEntry = (struct logger_entry_v4 *) msg;
+    if (LOG_ID_EVENTS == logEntry->lid) {
+        static bool hasOpenedEventTagMap = false;
+        static EventTagMap *eventTagMap = NULL;
+        if (!eventTagMap && !hasOpenedEventTagMap) {
+            eventTagMap = android_openEventTagMap(EVENT_TAG_MAP_FILE);
+            hasOpenedEventTagMap = true;
+        }
+
+        err = android_log_processBinaryLogBuffer
+                (
+                &msg->entry_v1,
+                pEntry,
+                eventTagMap,
+                binaryMsgBuf,
+                sizeof (binaryMsgBuf)
+                );
+
+
+    } else {
+        err = android_log_processLogBuffer(&msg->entry_v1, pEntry);
+    }
+
+    if (err < 0) {
+        if (LOG_ID_EVENTS == logEntry->lid) {
+            android::prdebug("logd  pid:%d tid:%d android_log_processBinaryLogBuffer error\n", logEntry->pid, logEntry->tid);
+        } else {
+            android::prdebug("logd  pid:%d tid:%d android_log_processLogBuffer error\n", logEntry->pid, logEntry->tid);
+        }
+
+        return 0;
+    }
+
+    return 1;
+}
+
+
+int outputLogEntry(AndroidLogEntry *pEntry) {
+    char defaultBuffer[512] = {0};
+    char *outBuffer = NULL;
+    char buf[10240] = {0};
+    size_t totalLen;
+
+    static AndroidLogFormat *androidLogFormat = NULL;
+    if (NULL == androidLogFormat) {
+        androidLogFormat = android_log_format_new();
+
+        AndroidLogPrintFormat format = android_log_formatFromString("threadtime");
+        android_log_setPrintFormat(androidLogFormat, format);
+    }
+
+    outBuffer = android_log_formatLogLine
+            (
+            androidLogFormat,
+            defaultBuffer,
+            sizeof (defaultBuffer),
+            pEntry,
+            &totalLen
+            );
+    if (totalLen > 10000) {
+        if ((outBuffer != NULL)&&(outBuffer != defaultBuffer)) {
+            free(outBuffer);
+        }
+        return -1;
+    }
+
+
+    static int uid = 0;
+    if (outBuffer != NULL) {
+        int len=snprintf(buf,sizeof(buf)-1,"G%06X ",uid++);
+        memcpy((void *) (buf + len ), (void *) outBuffer, totalLen);
+    } else {
+        return 0;
+    }
+
+
+    //android::prdebug("%s ",buf);
+
+    #ifdef DO_LOG_LASTANDROID
+        write2LastAndroidRingBuffer(buf);
+    #endif
+
+    if (outBuffer != defaultBuffer) {
+        free(outBuffer);
+    }
+
+    return 0;
+}
+
+
+
+
+void  YLogBuffer::writeAndroidLog2Device(LogBufferElement* element){
+    static unsigned char logData[LOGGER_ENTRY_MAX_LEN];
+
+    struct logger_entry_v4* pLoggerEntry=(struct logger_entry_v4*)logData;
+    memset(pLoggerEntry, 0, sizeof(logData));
+
+    pLoggerEntry->hdr_size =sizeof(struct logger_entry_v4) ;
+    pLoggerEntry->lid = element->mLogId;
+    pLoggerEntry->pid = element->mPid;
+    pLoggerEntry->tid = element->mTid;
+    pLoggerEntry->uid = element->mUid;
+    pLoggerEntry->sec = element->mRealTime.tv_sec;
+    pLoggerEntry->nsec = element->mRealTime.tv_nsec;
+    pLoggerEntry->len = element->mMsgLen;
+    memcpy((char*)pLoggerEntry+pLoggerEntry->hdr_size,element->mMsg,element->mMsgLen);
+
+    AndroidLogEntry androidLogEntry;
+    int ret = LogMsg2LogEntry((struct log_msg *)pLoggerEntry, &androidLogEntry);
+    if (1 == ret) {
+        outputLogEntry(&androidLogEntry);
+    }
+
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////
 int YLogBuffer::log(    LogBuffer* logbuf,log_id_t log_id, log_time realtime,
                     uid_t uid, pid_t pid, pid_t tid,
                     const char *msg, unsigned short len) {
@@ -126,11 +328,18 @@ int YLogBuffer::log(    LogBuffer* logbuf,log_id_t log_id, log_time realtime,
     mLogWorking=1;
     static int ofe_count=0;
 
+    LogBufferElement *element=new LogBufferElement(log_id, realtime,mLogUID++, pid, tid, msg, len);
+
+    #if defined(DO_LOG_LASTANDROID)
+        writeAndroidLog2Device(element);
+    #endif
+
     if (!mYlogRunning) {
+         delete element;
         return 0;
     }
 
-    LogBufferElement *element=new LogBufferElement(log_id, realtime,mLogUID++, pid, tid, msg, len);
+
     mMallocCount++;
     if (mLogUID>=MAX_LOGUID) {
         mLogUID=0;

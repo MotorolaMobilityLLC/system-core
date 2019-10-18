@@ -5,6 +5,8 @@ service logd /system/bin/logd
     socket logdylog seqpacket 0666 logd logd
     file /proc/kmsg r
     file /dev/kmsg w
+    file /dev/ylog_buffer w
+    file /dev/ylog_buffer r    
     user logd
     group logd system package_info readproc
     capabilities SYSLOG AUDIT_CONTROL SETGID
@@ -30,6 +32,8 @@ on fs
 "
     chown logd logd /dev/event-log-tags
     chmod 0644 /dev/event-log-tags
+    chown system system /dev/ylog_buffer
+    chmod 0666 /dev/ylog_buffer
 
 on property:sys.boot_completed=1 && property:ro.debuggable=0
     start logd-auditctl

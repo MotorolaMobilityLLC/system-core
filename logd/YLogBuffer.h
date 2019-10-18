@@ -73,6 +73,7 @@ class YLogBuffer {
                    const char *msg, unsigned short len);
 
     static void *BufferSender(void *obj) ;
+    static void  writeAndroidLog2Device(LogBufferElement* element);
     static int sendDataLockedv(struct iovec *iov, int iovcnt);
     static void printLog(char* msg,int len);
 };
