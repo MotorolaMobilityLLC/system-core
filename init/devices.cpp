@@ -136,6 +136,24 @@ static bool FindDmDevicePartition(const std::string& path, std::string* result) 
     return true;
 }
 
+static bool FindMdiskDevicePartition(const std::string& path, std::string* result) {
+    result->clear();
+
+    if (!StartsWith(path, "/devices/virtual/block/memdisk")) return false;
+
+    std::string::size_type start = 23;
+
+    auto end = path.find('/', start);
+    if (end == std::string::npos) return false;
+
+    auto length = end - start;
+    if (length == 0) return false;
+
+    *result = path.substr(start, length);
+
+    return true;
+}
+
 Permissions::Permissions(const std::string& name, mode_t perm, uid_t uid, gid_t gid)
     : name_(name), perm_(perm), uid_(uid), gid_(gid), prefix_(false), wildcard_(false) {
     // Set 'prefix_' or 'wildcard_' based on the below cases:
@@ -352,6 +370,8 @@ std::vector<std::string> DeviceHandler::GetBlockDeviceSymlinks(const Uevent& uev
         type = "vbd";
     } else if (FindDmDevicePartition(uevent.path, &partition)) {
         return {"/dev/block/mapper/" + partition};
+    } else if (FindMdiskDevicePartition(uevent.path, &device)) {
+        type = "vmd";
     } else {
         return {};
     }
