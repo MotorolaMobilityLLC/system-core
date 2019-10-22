@@ -25,6 +25,7 @@
 #include <unistd.h>
 
 #include <private/android_logger.h>
+#include <utils/FastStrcmp.h>
 
 #include "log_portability.h"
 
@@ -264,10 +265,27 @@ static int __android_log_level(const char* tag, size_t len, int default_prio) {
   return default_prio;
 }
 
+// needle should reference a string longer than 1 character
+static inline const char* strnstr(const char* s, ssize_t len,
+                                  const char* needle) {
+    if (len <= 0) return nullptr;
+
+    const char c = *needle++;
+    const size_t needleLen = strlen(needle);
+    do {
+        do {
+            if (len <= (ssize_t)needleLen) return nullptr;
+            --len;
+        } while (*s++ != c);
+    } while (fastcmp<memcmp>(s, needle, needleLen));
+    s--;
+    return s;
+}
+
 int __android_log_is_loggable_len(int prio, const char* tag, size_t len, int default_prio) {
 #if defined(MTK_LOGD_ENHANCE) && defined(ANDROID_LOG_MUCH_COUNT)
   if (tag != NULL) {
-      const char* ptr = strstr(tag, "-0x");
+      const char* ptr = strnstr(tag, len, "-0x");
       if (ptr != NULL) {
           tag = ptr + 3;
           len = strlen(tag);
