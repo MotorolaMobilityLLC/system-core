@@ -351,7 +351,12 @@ static Result<Success> wait_for_coldboot_done_action(const BuiltinArguments& arg
     // property. We still panic if it takes more than a minute though,
     // because any build that slow isn't likely to boot at all, and we'd
     // rather any test lab devices fail back to the bootloader.
-    if (wait_for_file(COLDBOOT_DONE, 60s) < 0) {
+    std::string tinyFlag = GetProperty("ro.tiny", "");
+    std::chrono::nanoseconds wait_time = 60s;
+    if (tinyFlag != "")
+	wait_time = 600s;
+
+    if (wait_for_file(COLDBOOT_DONE, wait_time) < 0) {
         LOG(FATAL) << "Timed out waiting for " COLDBOOT_DONE;
     }
 

@@ -25,6 +25,7 @@
 #include <unistd.h>
 
 #include <cutils/sockets.h>
+#include <cutils/properties.h>
 #include <private/android_filesystem_config.h>
 #include <private/android_logger.h>
 
@@ -135,10 +136,13 @@ bool LogListener::onDataAvailable(SocketClient* cli) {
 
    {
         static uint32_t last_log_time=0;
+	char value[PROPERTY_VALUE_MAX];
+	property_get("ro.tiny", value, "");
         int elps=last_log_time - header->realtime.tv_sec;
         if ((last_log_time!=0)&&(elps>60)){
             android::prdebug("logd will reinit by reboot:systemtime changed %d",elps);
-            exit(0);
+	    if (!strcmp(value, ""))
+                exit(0);
         }
         last_log_time=header->realtime.tv_sec;
     }
