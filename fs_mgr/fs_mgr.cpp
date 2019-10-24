@@ -1276,7 +1276,6 @@ int fs_mgr_mount_all(Fstab* fstab, int mount_mode) {
                    should_use_metadata_encryption(attempted_entry)) {
             if (!call_vdc({"cryptfs", "mountFstab", attempted_entry.blk_device,
                            attempted_entry.mount_point})) {
-                ++error_count;
                 PERROR << android::base::StringPrintf(
                     "Failure while mounting metadata, setting flag to needing recovery "
                     "partition on %s at %s options: %s",
