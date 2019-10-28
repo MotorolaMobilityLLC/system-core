@@ -306,6 +306,21 @@ bool FirstStageMount::InitRequiredDevices() {
         return false;
     }
 
+// BEGIN motorola, IKSWQ-6171
+#ifdef MOTO_INIT_HWVARIANT
+    // Need to mount hw to process hw_mappings early, but we don't want to fail if
+    // it doesn't exist, some products will not need to mount it here or may not even
+    // have it.
+    required_devices_partition_names_.emplace("hw");
+    uevent_listener_.RegenerateUevents(uevent_callback);
+    if (!required_devices_partition_names_.empty()) {
+        LOG(INFO) << "partition(s) not found: "
+              << android::base::Join(required_devices_partition_names_, ", ");
+        required_devices_partition_names_.erase("hw");
+    }
+#endif /* MOTO_INIT_HWVARIANT */
+// END IKSWQ-6171
+
     return true;
 }
 

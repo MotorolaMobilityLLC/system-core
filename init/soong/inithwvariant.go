@@ -19,8 +19,8 @@ import (
 )
 
 func init() {
-	cflags := []string{"-DMOTO_AOV_WITH_XMCS"}
-		shared_libs := []string{}
-			mmi.InitFeatureDefaultsConfigurator("xmcsaudio_defaults", "XMCSAudio", cflags, shared_libs)
+	cflags := []string{"-DMOTO_INIT_HWVARIANT"}
+	shared_libs := []string{}
+	mmi.InitFeatureDefaultsConfigurator("inithwvariant_defaults", "InitHwVariant", cflags, shared_libs)
 }
 
