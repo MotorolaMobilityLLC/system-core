@@ -48,6 +48,10 @@ ifeq ($(BOARD_HAS_GREYBUS_INTERFACE),true)
 init_options += -DMOTO_GREYBUS_FIRMWARE
 endif
 
+ifeq ($(PRODUCT_INIT_HWVARIANT),true)
+init_options += -DMOTO_INIT_HWVARIANT
+endif
+
 init_cflags += \
     $(init_options) \
     -Wall -Wextra \
@@ -65,12 +69,16 @@ LOCAL_SRC_FILES := \
     first_stage_init.cpp \
     first_stage_main.cpp \
     first_stage_mount.cpp \
+    hw_mappings.cpp \
     mount_namespace.cpp \
     reboot_utils.cpp \
     selinux.cpp \
     switch_root.cpp \
     uevent_listener.cpp \
     util.cpp \
+
+LOCAL_C_INCLUDES += \
+    external/expat/lib
 
 LOCAL_MODULE := init_first_stage
 LOCAL_MODULE_STEM := init
@@ -124,6 +132,7 @@ LOCAL_STATIC_LIBRARIES := \
     libdexfile_support \
     libunwindstack \
     libbacktrace \
+    libexpat \
 
 LOCAL_SANITIZE := signed-integer-overflow
 # First stage init is weird: it may start without stdout/stderr, and no /proc.

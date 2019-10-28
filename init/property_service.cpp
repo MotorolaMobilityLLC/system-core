@@ -100,6 +100,12 @@ void CreateSerializedPropertyInfo();
 
 void verify_carrier_compatibility(void);
 
+// Begin motorola, IKSWQ-6171
+#ifdef MOTO_INIT_HWVARIANT
+int process_hw_mappings(const char *xml_name, std::map<std::string, std::string> &properties_map);
+#endif
+// End motorola, IKSWQ-6171
+
 struct PropertyAuditData {
     const ucred* cr;
     const char* name;
@@ -907,6 +913,13 @@ void property_load_boot_defaults(bool load_debug_prop) {
         LOG(INFO) << "Loading " << kDebugRamdiskProp;
         load_properties_from_file(kDebugRamdiskProp, nullptr, &properties);
     }
+
+// BEGIN motorola, IKSWQ-6171
+#ifdef MOTO_INIT_HWVARIANT
+    // Set/modify properties based on utags
+    process_hw_mappings("/vendor/etc/vhw.xml", properties);
+#endif
+// END IKSWQ-6171
 
     for (const auto& [name, value] : properties) {
         std::string error;

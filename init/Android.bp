@@ -69,6 +69,7 @@ cc_defaults {
         "libavb",
         "libc++fs",
         "libcgrouprc_format",
+        "libexpat",
         "libprotobuf-cpp-lite",
         "libpropertyinfoserializer",
         "libpropertyinfoparser",
@@ -96,11 +97,16 @@ cc_defaults {
         "libutils",
     ],
     bootstrap: true,
+    include_dirs: [ "external/expat/lib" ],
 }
 
 //IKSWP-4737: djc637,Add XMCS Audio for extended path firmware load
 xmcsaudio_defaults {
     name: "xmcsaudio_defaults",
+}
+
+inithwvariant_defaults {
+    name: "inithwvariant_defaults",
 }
 
 cc_library_static {
@@ -109,6 +115,7 @@ cc_library_static {
     defaults: ["init_defaults", "selinux_policy_version",
                //IKSWP-4737: djc637,Add XMCS Audio support
                "xmcsaudio_defaults",
+               "inithwvariant_defaults",
                "greybus_defaults",
     ],
     srcs: [
@@ -125,6 +132,7 @@ cc_library_static {
         "firmware_handler.cpp",
         "first_stage_init.cpp",
         "first_stage_mount.cpp",
+        "hw_mappings.cpp",
         "import_parser.cpp",
         "init.cpp",
         "keychords.cpp",
