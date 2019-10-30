@@ -28,6 +28,7 @@
 
 #include <android-base/file.h>
 #include <android-base/logging.h>
+#include <android-base/parseint.h>
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
 #include <cutils/properties.h>
@@ -38,7 +39,7 @@
 
 #define TAG "fscrypt"
 
-static int set_system_de_policy_on(const std::string& dir);
+static int set_policy_on(const std::string& ref_basename, const std::string& dir);
 
 int fscrypt_install_keyring() {
     key_serial_t device_keyring = add_key("keyring", "fscrypt", 0, 0, KEY_SPEC_SESSION_KEYRING);
@@ -104,7 +105,7 @@ int fscrypt_set_directory_policy(const std::string& dir) {
     // Special-case /data/media/obb per b/64566063
     if (dir == "/data/media/obb") {
         // Try to set policy on this directory, but if it is non-empty this may fail.
-        set_system_de_policy_on(dir);
+        set_policy_on(fscrypt_key_ref, dir);
         return 0;
     }
 
@@ -135,7 +136,16 @@ int fscrypt_set_directory_policy(const std::string& dir) {
             return 0;
         }
     }
-    int err = set_system_de_policy_on(dir);
+    std::vector<std::string> per_boot_directories = {
+            "per_boot",
+    };
+    for (const auto& d : per_boot_directories) {
+        if ((prefix + d) == dir) {
+            LOG(INFO) << "Setting per_boot key on " << dir;
+            return set_policy_on(fscrypt_key_per_boot_ref, dir);
+        }
+    }
+    int err = set_policy_on(fscrypt_key_ref, dir);
     if (err == 0) {
         return 0;
     }
@@ -147,40 +157,66 @@ int fscrypt_set_directory_policy(const std::string& dir) {
         if ((prefix + d) == dir) {
             LOG(ERROR) << "Setting policy failed, deleting: " << dir;
             delete_dir_contents(dir);
-            err = set_system_de_policy_on(dir);
+            err = set_policy_on(fscrypt_key_ref, dir);
             break;
         }
     }
     return err;
 }
 
-static int set_system_de_policy_on(const std::string& dir) {
-    std::string ref_filename = std::string("/data") + fscrypt_key_ref;
-    std::string policy;
-    if (!android::base::ReadFileToString(ref_filename, &policy)) {
+static int parse_encryption_options_string(const std::string& options_string,
+                                           std::string* contents_mode_ret,
+                                           std::string* filenames_mode_ret,
+                                           int* policy_version_ret) {
+    auto parts = android::base::Split(options_string, ":");
+
+    if (parts.size() != 3) {
+        return -1;
+    }
+
+    *contents_mode_ret = parts[0];
+    *filenames_mode_ret = parts[1];
+    if (!android::base::StartsWith(parts[2], 'v') ||
+        !android::base::ParseInt(&parts[2][1], policy_version_ret)) {
+        return -1;
+    }
+
+    return 0;
+}
+
+// Set an encryption policy on the given directory.  The policy (key reference
+// and encryption options) to use is read from files that were written by vold.
+static int set_policy_on(const std::string& ref_basename, const std::string& dir) {
+    std::string ref_filename = std::string("/data") + ref_basename;
+    std::string key_ref;
+    if (!android::base::ReadFileToString(ref_filename, &key_ref)) {
         LOG(ERROR) << "Unable to read system policy to set on " << dir;
         return -1;
     }
 
-    auto type_filename = std::string("/data") + fscrypt_key_mode;
-    std::string modestring;
-    if (!android::base::ReadFileToString(type_filename, &modestring)) {
-        LOG(ERROR) << "Cannot read mode";
+    auto options_filename = std::string("/data") + fscrypt_key_mode;
+    std::string options_string;
+    if (!android::base::ReadFileToString(options_filename, &options_string)) {
+        LOG(ERROR) << "Cannot read encryption options string";
+        return -1;
     }
 
-    std::vector<std::string> modes = android::base::Split(modestring, ":");
+    std::string contents_mode;
+    std::string filenames_mode;
+    int policy_version = 0;
 
-    if (modes.size() < 1 || modes.size() > 2) {
-        LOG(ERROR) << "Invalid encryption mode string: " << modestring;
+    if (parse_encryption_options_string(options_string, &contents_mode, &filenames_mode,
+                                        &policy_version)) {
+        LOG(ERROR) << "Invalid encryption options string: " << options_string;
         return -1;
     }
 
     int result =
-            fscrypt_policy_ensure(dir.c_str(), policy.c_str(), policy.length(), modes[0].c_str(),
-                                  modes.size() >= 2 ? modes[1].c_str() : "aes-256-cts");
+            fscrypt_policy_ensure(dir.c_str(), key_ref.c_str(), key_ref.length(),
+                                  contents_mode.c_str(), filenames_mode.c_str(), policy_version);
     if (result) {
         LOG(ERROR) << android::base::StringPrintf("Setting %02x%02x%02x%02x policy on %s failed!",
-                                                  policy[0], policy[1], policy[2], policy[3],
+                                                  key_ref[0], key_ref[1], key_ref[2], key_ref[3],
                                                   dir.c_str());
         return -1;
     }

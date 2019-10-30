@@ -67,16 +67,24 @@ on property:apexd.status=ready && property:ro.product.cpu.abilist64=*
     exec_start boringssl_self_test_apex64
 
 service boringssl_self_test32 /system/bin/boringssl_self_test32
-    reboot_on_failure reboot,bootloader,boringssl-self-check-failed
+    setenv BORINGSSL_SELF_TEST_CREATE_FLAG true # Any nonempty value counts as true
+    reboot_on_failure reboot,boringssl-self-check-failed
+    stdio_to_kmsg
 
 service boringssl_self_test64 /system/bin/boringssl_self_test64
-    reboot_on_failure reboot,bootloader,boringssl-self-check-failed
+    setenv BORINGSSL_SELF_TEST_CREATE_FLAG true # Any nonempty value counts as true
+    reboot_on_failure reboot,boringssl-self-check-failed
+    stdio_to_kmsg
 
 service boringssl_self_test_apex32 /apex/com.android.conscrypt/bin/boringssl_self_test32
-    reboot_on_failure reboot,bootloader,boringssl-self-check-failed
+    setenv BORINGSSL_SELF_TEST_CREATE_FLAG true # Any nonempty value counts as true
+    reboot_on_failure reboot,boringssl-self-check-failed
+    stdio_to_kmsg
 
 service boringssl_self_test_apex64 /apex/com.android.conscrypt/bin/boringssl_self_test64
-    reboot_on_failure reboot,bootloader,boringssl-self-check-failed
+    setenv BORINGSSL_SELF_TEST_CREATE_FLAG true # Any nonempty value counts as true
+    reboot_on_failure reboot,boringssl-self-check-failed
+    stdio_to_kmsg
 
 on init
     sysclktz 0
@@ -150,6 +158,14 @@ on init
     mkdir /mnt/user/0/self 0755 root root
     mkdir /mnt/user/0/emulated 0755 root root
     mkdir /mnt/user/0/emulated/0 0755 root root
+
+    # Prepare directories for pass through processes
+    mkdir /mnt/pass_through 0755 root root
+    mkdir /mnt/pass_through/0 0755 root root
+    mkdir /mnt/pass_through/0/self 0755 root root
+    mkdir /mnt/pass_through/0/emulated 0755 root root
+    mkdir /mnt/pass_through/0/emulated/0 0755 root root
+
     mkdir /mnt/expand 0771 system system
     mkdir /mnt/appfuse 0711 root root
 
@@ -473,10 +489,6 @@ on post-fs-data
     mkdir /data/bootchart 0755 shell shell
     bootchart start
 
-    # Load fsverity keys. This needs to happen before apexd, as post-install of
-    # APEXes may rely on keys.
-    exec -- /system/bin/fsverity_init
-
     # Make sure that apexd is started in the default namespace
     enter_default_mount_ns
 
@@ -674,6 +686,8 @@ on zygote-start && property:persist.sys.fuse=true
   # Mount default storage into root namespace
   mount none /mnt/user/0 /storage bind rec
   mount none none /storage slave rec
+  # Bootstrap the emulated volume for the pass_through directory for user 0
+  mount none /data/media /mnt/pass_through/0/emulated bind rec
 on zygote-start && property:persist.sys.fuse=false
   # Mount default storage into root namespace
   mount none /mnt/runtime/default /storage bind rec
@@ -743,11 +757,6 @@ on boot
     write /sys/fs/f2fs/${dev.mnt.blk.data}/gc_urgent_sleep_time 50
 
     # Permissions for System Server and daemons.
-    chown radio system /sys/android_power/state
-    chown radio system /sys/android_power/request_state
-    chown radio system /sys/android_power/acquire_full_wake_lock
-    chown radio system /sys/android_power/acquire_partial_wake_lock
-    chown radio system /sys/android_power/release_wake_lock
     chown system system /sys/power/autosleep
 
     chown system system /sys/devices/system/cpu/cpufreq/interactive/timer_rate
@@ -811,6 +820,9 @@ on boot
 
     class_start core
 
+    # Requires keystore (currently a core service) to be ready first.
+    exec -- /system/bin/fsverity_init
+
 on nonencrypted
     class_start main
     class_start late_start
@@ -853,6 +865,9 @@ on property:vold.decrypt=trigger_shutdown_framework
 
 on property:sys.boot_completed=1
     bootchart stop
+    # Setup per_boot directory so other .rc could start to use it on boot_completed
+    exec - system system -- /bin/rm -rf /data/per_boot
+    mkdir /data/per_boot 0700 system system
 
 # system server cannot write to /proc/sys files,
 # and chown/chmod does not work for /proc/sys/ entries.
@@ -904,6 +919,17 @@ on property:ro.debuggable=1
 on init && property:ro.debuggable=1
     start console
 
-service flash_recovery /system/bin/install-recovery.sh
-    class main
-    oneshot
+on userspace-reboot
+  # TODO(b/135984674): reset all necessary properties here.
+  setprop sys.init.userspace_reboot_in_progress 1
+  setprop sys.boot_completed 0
+  setprop sys.init.updatable_crashing 0
+  setprop apexd.status 0
+
+on userspace-reboot-resume
+  # TODO(b/135984674): remount userdata and reset checkpointing
+  trigger nonencrypted
+  trigger post-fs-data
+  trigger zygote-start
+  trigger early-boot
+  trigger boot

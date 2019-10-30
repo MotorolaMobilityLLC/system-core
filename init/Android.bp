@@ -62,7 +62,6 @@ cc_defaults {
         },
     },
     static_libs: [
-        "libseccomp_policy",
         "libavb",
         "libc++fs",
         "libcgrouprc_format",
@@ -77,7 +76,6 @@ cc_defaults {
         "libbase",
         "libbootloader_message",
         "libcutils",
-        "libcrypto",
         "libdl",
         "libext4_utils",
         "libfs_mgr",

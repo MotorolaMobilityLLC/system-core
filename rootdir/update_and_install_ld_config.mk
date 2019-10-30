@@ -38,8 +38,8 @@ endif
 
 llndk_libraries_file := $(library_lists_dir)/llndk.libraries.$(vndk_version).txt
 vndksp_libraries_file := $(library_lists_dir)/vndksp.libraries.$(vndk_version).txt
-vndkcore_libraries_file := $(library_lists_dir)/vndkcore.libraries.txt
-vndkprivate_libraries_file := $(library_lists_dir)/vndkprivate.libraries.txt
+vndkcore_libraries_file := $(library_lists_dir)/vndkcore.libraries.$(vndk_version).txt
+vndkprivate_libraries_file := $(library_lists_dir)/vndkprivate.libraries.$(vndk_version).txt
 llndk_moved_to_apex_libraries_file := $(library_lists_dir)/llndkinapex.libraries.txt
 ifeq ($(my_vndk_use_core_variant),true)
 vndk_using_core_variant_libraries_file := $(library_lists_dir)/vndk_using_core_variant.libraries.$(vndk_version).txt
@@ -128,7 +128,7 @@ $(LOCAL_BUILT_MODULE): PRIVATE_LLNDK_LIBRARIES_MOVED_TO_APEX_LIST := $(llndk_lib
 deps := $(llndk_libraries_file) $(vndksp_libraries_file) $(vndkcore_libraries_file) \
   $(vndkprivate_libraries_file)
 ifeq ($(check_backward_compatibility),true)
-deps += $(compatibility_check_script)
+deps += $(compatibility_check_script) $(wildcard prebuilts/vndk/*/*/configs/ld.config.*.txt)
 endif
 ifeq ($(my_vndk_use_core_variant),true)
 $(LOCAL_BUILT_MODULE): PRIVATE_VNDK_USING_CORE_VARIANT_LIBRARIES_FILE := $(vndk_using_core_variant_libraries_file)

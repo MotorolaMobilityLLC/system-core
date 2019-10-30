@@ -19,6 +19,7 @@
 #include <chrono>
 #include <map>
 #include <memory>
+#include <ostream>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -29,6 +30,7 @@
 #include <libfiemap/image_manager.h>
 #include <liblp/builder.h>
 #include <liblp/liblp.h>
+#include <update_engine/update_metadata.pb.h>
 
 #ifndef FRIEND_TEST
 #define FRIEND_TEST(test_set_name, individual_test) \
@@ -51,8 +53,9 @@ namespace snapshot {
 
 struct AutoDeleteCowImage;
 struct AutoDeleteSnapshot;
-struct PartitionCowCreator;
 struct AutoDeviceList;
+struct PartitionCowCreator;
+class SnapshotStatus;
 
 static constexpr const std::string_view kCowGroupName = "cow";
 
@@ -83,12 +86,14 @@ enum class UpdateState : unsigned int {
     // operation via fastboot. This state can only be returned by WaitForMerge.
     Cancelled
 };
+std::ostream& operator<<(std::ostream& os, UpdateState state);
 
 class SnapshotManager final {
     using CreateLogicalPartitionParams = android::fs_mgr::CreateLogicalPartitionParams;
     using IPartitionOpener = android::fs_mgr::IPartitionOpener;
     using LpMetadata = android::fs_mgr::LpMetadata;
     using MetadataBuilder = android::fs_mgr::MetadataBuilder;
+    using DeltaArchiveManifest = chromeos_update_engine::DeltaArchiveManifest;
 
   public:
     // Dependency injection for testing.
@@ -98,6 +103,7 @@ class SnapshotManager final {
         virtual std::string GetGsidDir() const = 0;
         virtual std::string GetMetadataDir() const = 0;
         virtual std::string GetSlotSuffix() const = 0;
+        virtual std::string GetOtherSlotSuffix() const = 0;
         virtual std::string GetSuperDevice(uint32_t slot) const = 0;
         virtual const IPartitionOpener& GetPartitionOpener() const = 0;
         virtual bool IsOverlayfsSetup() const = 0;
@@ -122,8 +128,9 @@ class SnapshotManager final {
     // will fail if GetUpdateState() != None.
     bool BeginUpdate();
 
-    // Cancel an update; any snapshots will be deleted. This will fail if the
-    // state != Initiated or None.
+    // Cancel an update; any snapshots will be deleted. This is allowed if the
+    // state == Initiated, None, or Unverified (before rebooting to the new
+    // slot).
     bool CancelUpdate();
 
     // Mark snapshot writes as having completed. After this, new snapshots cannot
@@ -169,9 +176,7 @@ class SnapshotManager final {
     // Create necessary COW device / files for OTA clients. New logical partitions will be added to
     // group "cow" in target_metadata. Regions of partitions of current_metadata will be
     // "write-protected" and snapshotted.
-    bool CreateUpdateSnapshots(MetadataBuilder* target_metadata, const std::string& target_suffix,
-                               MetadataBuilder* current_metadata, const std::string& current_suffix,
-                               const std::map<std::string, uint64_t>& cow_sizes);
+    bool CreateUpdateSnapshots(const DeltaArchiveManifest& manifest);
 
     // Map a snapshotted partition for OTA clients to write to. Write-protected regions are
     // determined previously in CreateSnapshots.
@@ -187,6 +192,9 @@ class SnapshotManager final {
     // Perform first-stage mapping of snapshot targets. This replaces init's
     // call to CreateLogicalPartitions when snapshots are present.
     bool CreateLogicalAndSnapshotPartitions(const std::string& super_device);
+
+    // Dump debug information.
+    bool Dump(std::ostream& os);
 
   private:
     FRIEND_TEST(SnapshotTest, CleanFirstStageMount);
@@ -243,22 +251,6 @@ class SnapshotManager final {
     std::unique_ptr<LockedFile> OpenFile(const std::string& file, int open_flags, int lock_flags);
     bool Truncate(LockedFile* file);
 
-    enum class SnapshotState : int { None, Created, Merging, MergeCompleted };
-    static std::string to_string(SnapshotState state);
-
-    // This state is persisted per-snapshot in /metadata/ota/snapshots/.
-    struct SnapshotStatus {
-        SnapshotState state = SnapshotState::None;
-        uint64_t device_size = 0;
-        uint64_t snapshot_size = 0;
-        uint64_t cow_partition_size = 0;
-        uint64_t cow_file_size = 0;
-
-        // These are non-zero when merging.
-        uint64_t sectors_allocated = 0;
-        uint64_t metadata_sectors = 0;
-    };
-
     // Create a new snapshot record. This creates the backing COW store and
     // persists information needed to map the device. The device can be mapped
     // with MapSnapshot().
@@ -275,7 +267,7 @@ class SnapshotManager final {
     //
     // All sizes are specified in bytes, and the device, snapshot, COW partition and COW file sizes
     // must be a multiple of the sector size (512 bytes).
-    bool CreateSnapshot(LockedFile* lock, const std::string& name, SnapshotStatus status);
+    bool CreateSnapshot(LockedFile* lock, SnapshotStatus* status);
 
     // |name| should be the base partition name (e.g. "system_a"). Create the
     // backing COW image using the size previously passed to CreateSnapshot().
@@ -356,8 +348,7 @@ class SnapshotManager final {
     UpdateState CheckTargetMergeState(LockedFile* lock, const std::string& name);
 
     // Interact with status files under /metadata/ota/snapshots.
-    bool WriteSnapshotStatus(LockedFile* lock, const std::string& name,
-                             const SnapshotStatus& status);
+    bool WriteSnapshotStatus(LockedFile* lock, const SnapshotStatus& status);
     bool ReadSnapshotStatus(LockedFile* lock, const std::string& name, SnapshotStatus* status);
     std::string GetSnapshotStatusFilePath(const std::string& name);
 
@@ -391,6 +382,27 @@ class SnapshotManager final {
 
     // The reverse of MapPartitionWithSnapshot.
     bool UnmapPartitionWithSnapshot(LockedFile* lock, const std::string& target_partition_name);
+
+    // If there isn't a previous update, return true. |needs_merge| is set to false.
+    // If there is a previous update but the device has not boot into it, tries to cancel the
+    //   update and delete any snapshots. Return true if successful. |needs_merge| is set to false.
+    // If there is a previous update and the device has boot into it, do nothing and return true.
+    //   |needs_merge| is set to true.
+    bool TryCancelUpdate(bool* needs_merge);
+
+    // Helper for CreateUpdateSnapshots.
+    // Creates all underlying images, COW partitions and snapshot files. Does not initialize them.
+    bool CreateUpdateSnapshotsInternal(LockedFile* lock, const DeltaArchiveManifest& manifest,
+                                       PartitionCowCreator* cow_creator,
+                                       AutoDeviceList* created_devices,
+                                       std::map<std::string, SnapshotStatus>* all_snapshot_status);
+
+    // Initialize snapshots so that they can be mapped later.
+    // Map the COW partition and zero-initialize the header.
+    bool InitializeUpdateSnapshots(
+            LockedFile* lock, MetadataBuilder* target_metadata,
+            const LpMetadata* exported_target_metadata, const std::string& target_suffix,
+            const std::map<std::string, SnapshotStatus>& all_snapshot_status);
 
     std::string gsid_dir_;
     std::string metadata_dir_;

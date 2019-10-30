@@ -504,7 +504,7 @@ uint64_t MetadataBuilder::TotalSizeOfGroup(PartitionGroup* group) const {
     return total;
 }
 
-void MetadataBuilder::RemovePartition(const std::string& name) {
+void MetadataBuilder::RemovePartition(std::string_view name) {
     for (auto iter = partitions_.begin(); iter != partitions_.end(); iter++) {
         if ((*iter)->name() == name) {
             partitions_.erase(iter);
@@ -1136,7 +1136,7 @@ bool MetadataBuilder::AddLinearExtent(Partition* partition, const std::string& b
     return true;
 }
 
-std::vector<Partition*> MetadataBuilder::ListPartitionsInGroup(const std::string& group_name) {
+std::vector<Partition*> MetadataBuilder::ListPartitionsInGroup(std::string_view group_name) {
     std::vector<Partition*> partitions;
     for (const auto& partition : partitions_) {
         if (partition->group_name() == group_name) {

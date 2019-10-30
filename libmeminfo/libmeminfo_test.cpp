@@ -31,6 +31,7 @@
 #include <android-base/file.h>
 #include <android-base/logging.h>
 #include <android-base/stringprintf.h>
+#include <android-base/strings.h>
 
 using namespace std;
 using namespace android::meminfo;
@@ -97,6 +98,33 @@ TEST(ProcMemInfo, MapsUsageEmpty) {
         ASSERT_EQ(0, map.usage.private_dirty);
         ASSERT_EQ(0, map.usage.shared_clean);
         ASSERT_EQ(0, map.usage.shared_dirty);
+    }
+}
+
+TEST(ProcMemInfo, MapsUsageFillInLater) {
+    ProcMemInfo proc_mem(pid);
+    const std::vector<Vma>& maps = proc_mem.MapsWithoutUsageStats();
+    EXPECT_FALSE(maps.empty());
+    for (auto& map : maps) {
+        Vma update_map(map);
+        ASSERT_EQ(map.start, update_map.start);
+        ASSERT_EQ(map.end, update_map.end);
+        ASSERT_EQ(map.offset, update_map.offset);
+        ASSERT_EQ(map.flags, update_map.flags);
+        ASSERT_EQ(map.name, update_map.name);
+        ASSERT_EQ(0, update_map.usage.vss);
+        ASSERT_EQ(0, update_map.usage.rss);
+        ASSERT_EQ(0, update_map.usage.pss);
+        ASSERT_EQ(0, update_map.usage.uss);
+        ASSERT_EQ(0, update_map.usage.swap);
+        ASSERT_EQ(0, update_map.usage.swap_pss);
+        ASSERT_EQ(0, update_map.usage.private_clean);
+        ASSERT_EQ(0, update_map.usage.private_dirty);
+        ASSERT_EQ(0, update_map.usage.shared_clean);
+        ASSERT_EQ(0, update_map.usage.shared_dirty);
+        ASSERT_TRUE(proc_mem.FillInVmaStats(update_map));
+        // Check that at least one usage stat was updated.
+        ASSERT_NE(0, update_map.usage.vss);
     }
 }
 
@@ -334,7 +362,9 @@ TEST(ProcMemInfo, ForEachVmaFromFileTest) {
     // Check for names
     EXPECT_EQ(vmas[0].name, "[anon:dalvik-zygote-jit-code-cache]");
     EXPECT_EQ(vmas[1].name, "/system/framework/x86_64/boot-framework.art");
-    EXPECT_EQ(vmas[2].name, "[anon:libc_malloc]");
+    EXPECT_TRUE(vmas[2].name == "[anon:libc_malloc]" ||
+                android::base::StartsWith(vmas[2].name, "[anon:scudo:"))
+            << "Unknown map name " << vmas[2].name;
     EXPECT_EQ(vmas[3].name, "/system/priv-app/SettingsProvider/oat/x86_64/SettingsProvider.odex");
     EXPECT_EQ(vmas[4].name, "/system/lib64/libhwui.so");
     EXPECT_EQ(vmas[5].name, "[vsyscall]");
@@ -432,7 +462,9 @@ TEST(ProcMemInfo, SmapsTest) {
     // Check for names
     EXPECT_EQ(vmas[0].name, "[anon:dalvik-zygote-jit-code-cache]");
     EXPECT_EQ(vmas[1].name, "/system/framework/x86_64/boot-framework.art");
-    EXPECT_EQ(vmas[2].name, "[anon:libc_malloc]");
+    EXPECT_TRUE(vmas[2].name == "[anon:libc_malloc]" ||
+                android::base::StartsWith(vmas[2].name, "[anon:scudo:"))
+            << "Unknown map name " << vmas[2].name;
     EXPECT_EQ(vmas[3].name, "/system/priv-app/SettingsProvider/oat/x86_64/SettingsProvider.odex");
     EXPECT_EQ(vmas[4].name, "/system/lib64/libhwui.so");
     EXPECT_EQ(vmas[5].name, "[vsyscall]");

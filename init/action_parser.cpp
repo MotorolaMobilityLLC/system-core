@@ -16,11 +16,14 @@
 
 #include "action_parser.h"
 
+#include <ctype.h>
+
 #include <android-base/properties.h>
 #include <android-base/strings.h>
 
 #if defined(__ANDROID__)
 #include "property_service.h"
+#include "selinux.h"
 #else
 #include "host_init_stubs.h"
 #endif
@@ -77,6 +80,17 @@ Result<void> ParsePropertyTrigger(const std::string& trigger, Subcontext* subcon
     return {};
 }
 
+Result<void> ValidateEventTrigger(const std::string& event_trigger) {
+    if (SelinuxGetVendorAndroidVersion() >= __ANDROID_API_R__) {
+        for (const char& c : event_trigger) {
+            if (c != '_' && c != '-' && !std::isalnum(c)) {
+                return Error() << "Illegal character '" << c << "' in '" << event_trigger << "'";
+            }
+        }
+    }
+    return {};
+}
+
 Result<void> ParseTriggers(const std::vector<std::string>& args, Subcontext* subcontext,
                            std::string* event_trigger,
                            std::map<std::string, std::string>* property_triggers) {
@@ -103,6 +117,9 @@ Result<void> ParseTriggers(const std::vector<std::string>& args, Subcontext* sub
             if (!event_trigger->empty()) {
                 return Error() << "multiple event triggers are not allowed";
             }
+            if (auto result = ValidateEventTrigger(args[i]); !result) {
+                return result;
+            }
 
             *event_trigger = args[i];
         }
@@ -121,13 +138,8 @@ Result<void> ActionParser::ParseSection(std::vector<std::string>&& args,
     }
 
     Subcontext* action_subcontext = nullptr;
-    if (subcontexts_) {
-        for (auto& subcontext : *subcontexts_) {
-            if (StartsWith(filename, subcontext.path_prefix())) {
-                action_subcontext = &subcontext;
-                break;
-            }
-        }
+    if (subcontext_ && subcontext_->PathMatchesSubcontext(filename)) {
+        action_subcontext = subcontext_;
     }
 
     std::string event_trigger;

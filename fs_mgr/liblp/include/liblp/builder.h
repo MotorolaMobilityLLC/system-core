@@ -260,7 +260,7 @@ class MetadataBuilder {
     Partition* AddPartition(const std::string& name, uint32_t attributes);
 
     // Delete a partition by name if it exists.
-    void RemovePartition(const std::string& name);
+    void RemovePartition(std::string_view name);
 
     // Find a partition by name. If no partition is found, nullptr is returned.
     Partition* FindPartition(std::string_view name);
@@ -289,7 +289,7 @@ class MetadataBuilder {
                          const std::vector<Interval>& free_region_hint = {});
 
     // Return the list of partitions belonging to a group.
-    std::vector<Partition*> ListPartitionsInGroup(const std::string& group_name);
+    std::vector<Partition*> ListPartitionsInGroup(std::string_view group_name);
 
     // Changes a partition's group. Size constraints will not be checked until
     // the metadata is exported, to avoid errors during potential group and

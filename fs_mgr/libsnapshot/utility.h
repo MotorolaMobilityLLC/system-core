@@ -22,9 +22,13 @@
 #include <libfiemap/image_manager.h>
 #include <liblp/builder.h>
 #include <libsnapshot/snapshot.h>
+#include <update_engine/update_metadata.pb.h>
 
 namespace android {
 namespace snapshot {
+
+// Unit is sectors, this is a 4K chunk.
+static constexpr uint32_t kSnapshotChunkSize = 8;
 
 struct AutoDevice {
     virtual ~AutoDevice(){};

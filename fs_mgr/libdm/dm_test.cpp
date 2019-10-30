@@ -47,50 +47,6 @@ TEST(libdm, HasMinimumTargets) {
     ASSERT_TRUE(dm.GetTargetByName("linear", &info));
 }
 
-// Helper to ensure that device mapper devices are released.
-class TempDevice {
-  public:
-    TempDevice(const std::string& name, const DmTable& table)
-        : dm_(DeviceMapper::Instance()), name_(name), valid_(false) {
-        valid_ = dm_.CreateDevice(name, table, &path_, 5s);
-    }
-    TempDevice(TempDevice&& other) noexcept
-        : dm_(other.dm_), name_(other.name_), path_(other.path_), valid_(other.valid_) {
-        other.valid_ = false;
-    }
-    ~TempDevice() {
-        if (valid_) {
-            dm_.DeleteDevice(name_);
-        }
-    }
-    bool Destroy() {
-        if (!valid_) {
-            return false;
-        }
-        valid_ = false;
-        return dm_.DeleteDevice(name_);
-    }
-    std::string path() const { return path_; }
-    const std::string& name() const { return name_; }
-    bool valid() const { return valid_; }
-
-    TempDevice(const TempDevice&) = delete;
-    TempDevice& operator=(const TempDevice&) = delete;
-
-    TempDevice& operator=(TempDevice&& other) noexcept {
-        name_ = other.name_;
-        valid_ = other.valid_;
-        other.valid_ = false;
-        return *this;
-    }
-
-  private:
-    DeviceMapper& dm_;
-    std::string name_;
-    std::string path_;
-    bool valid_;
-};
-
 TEST(libdm, DmLinear) {
     unique_fd tmp1(CreateTempFile("file_1", 4096));
     ASSERT_GE(tmp1, 0);
@@ -114,6 +70,7 @@ TEST(libdm, DmLinear) {
     ASSERT_TRUE(table.Emplace<DmTargetLinear>(0, 1, loop_a.device(), 0));
     ASSERT_TRUE(table.Emplace<DmTargetLinear>(1, 1, loop_b.device(), 0));
     ASSERT_TRUE(table.valid());
+    ASSERT_EQ(2u, table.num_sectors());
 
     TempDevice dev("libdm-test-dm-linear", table);
     ASSERT_TRUE(dev.valid());
@@ -176,6 +133,7 @@ TEST(libdm, DmSuspendResume) {
     DmTable table;
     ASSERT_TRUE(table.Emplace<DmTargetLinear>(0, 1, loop_a.device(), 0));
     ASSERT_TRUE(table.valid());
+    ASSERT_EQ(1u, table.num_sectors());
 
     TempDevice dev("libdm-test-dm-suspend-resume", table);
     ASSERT_TRUE(dev.valid());
@@ -292,6 +250,7 @@ void SnapshotTestHarness::SetupImpl() {
     ASSERT_TRUE(origin_table.AddTarget(make_unique<DmTargetSnapshotOrigin>(
             0, kBaseDeviceSize / kSectorSize, base_loop_->device())));
     ASSERT_TRUE(origin_table.valid());
+    ASSERT_EQ(kBaseDeviceSize / kSectorSize, origin_table.num_sectors());
 
     origin_dev_ = std::make_unique<TempDevice>("libdm-test-dm-snapshot-origin", origin_table);
     ASSERT_TRUE(origin_dev_->valid());
@@ -303,6 +262,7 @@ void SnapshotTestHarness::SetupImpl() {
             0, kBaseDeviceSize / kSectorSize, base_loop_->device(), cow_loop_->device(),
             SnapshotStorageMode::Persistent, 8)));
     ASSERT_TRUE(snap_table.valid());
+    ASSERT_EQ(kBaseDeviceSize / kSectorSize, snap_table.num_sectors());
 
     snapshot_dev_ = std::make_unique<TempDevice>("libdm-test-dm-snapshot", snap_table);
     ASSERT_TRUE(snapshot_dev_->valid());
@@ -322,6 +282,7 @@ void SnapshotTestHarness::MergeImpl() {
             make_unique<DmTargetSnapshot>(0, kBaseDeviceSize / kSectorSize, base_loop_->device(),
                                           cow_loop_->device(), SnapshotStorageMode::Merge, 8)));
     ASSERT_TRUE(merge_table.valid());
+    ASSERT_EQ(kBaseDeviceSize / kSectorSize, merge_table.num_sectors());
 
     DeviceMapper& dm = DeviceMapper::Instance();
     ASSERT_TRUE(dm.LoadTableAndActivate("libdm-test-dm-snapshot", merge_table));
