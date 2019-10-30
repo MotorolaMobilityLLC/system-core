@@ -42,6 +42,7 @@ std::string prop_carrier = "ro.carrier";
 std::string prop_amclient = "ro.com.google.clientidbase.am";
 std::string prop_msclient = "ro.com.google.clientidbase.ms";
 std::string prop_product = "ro.product.name";
+std::string prop_product_device = "ro.product.device";
 std::string prop_build_fingerprint = "ro.bootimage.build.fingerprint";
 std::string prop_fingerprint = "ro.build.fingerprint";
 std::string prop_vendor_fingerprint = "ro.vendor.build.fingerprint";
@@ -111,7 +112,8 @@ void set_system_properties(){
             property_set(prop_amclient, prop_client_value);
             property_set(prop_msclient, prop_clientrev_value);
         }
-    } else if (prop_product_value == "blackjack") {
+    } else if (prop_product_value == "blackjack" || prop_product_value == "blackjack_64") {
+        property_set(prop_product_device, "blackjack");
         if (isBlackjackReteu(carrier_value, carrier_ontim)) {
             prop_product_value = "blackjack_reteu";
             if (carrier_value == "timit") {
