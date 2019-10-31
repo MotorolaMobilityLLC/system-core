@@ -53,6 +53,7 @@ std::string prop_clientrevc_value = "android-americamovil-{country}-revc";
 std::string prop_clientmx_value = "android-attmexico-mx-revc";
 std::string prop_clientuk_value = "android-ee-uk-revc";
 std::string prop_clientbr_value = "android-tim-br-revc";
+std::string prop_clientit_value = "android-tim-it-revc";
 std::string prop_clienttmobile_value = "android-tmobile-{country}";
 std::string prop_clientdt_value = "android-dt-{country}-revc";
 std::string prop_product_value = "fiji";
@@ -76,25 +77,27 @@ void set_system_properties(){
     property_set("ro.vendor.product.version",fileContent);
 
     if (prop_product_value == "fiji") {
-        if (isFijiReteu(carrier_value, carrier_ontim)) {
+        if (isProductNameFijiReteu(carrier_value, carrier_ontim)) {
             prop_product_value = "fiji_reteu";
+            prop_carrier_value = "reteu";
             if (carrier_value == "eegb") {
-                property_set(prop_product, prop_product_value);
                 property_set(prop_msclient, prop_clientuk_value);
             } else if (carrier_value == "timit") {
-                property_set(prop_product, prop_product_value);
+                property_set(prop_msclient, prop_clientit_value);
+                property_set(prop_amazon_partnerid, carrier_value);
+            } else if (carrier_value == "windit") {
                 property_set(prop_amclient, prop_client_value);
                 property_set(prop_msclient, prop_clientrev_value);
+                property_set(prop_amazon_partnerid, carrier_value);
             } else {
-                prop_carrier_value = "reteu";
                 property_set(prop_amclient, prop_client_value);
                 property_set(prop_msclient, prop_clientrev_value);
-                property_set(prop_product, prop_product_value);
-                property_set(prop_build_fingerprint, get_fingerprint_property(prop_product_value));
-                property_set(prop_fingerprint, get_fingerprint_property(prop_product_value));
-                property_set(prop_vendor_fingerprint, get_fingerprint_property(prop_product_value));
-                property_set("persist.vendor.normal", "1");//表示正常版本，非 VTS 版本，prop 正常设置.
             }
+            property_set(prop_product, prop_product_value);
+            property_set(prop_build_fingerprint, get_fingerprint_property(prop_product_value));
+            property_set(prop_fingerprint, get_fingerprint_property(prop_product_value));
+            property_set(prop_vendor_fingerprint, get_fingerprint_property(prop_product_value));
+            property_set("persist.vendor.normal", "1");//表示正常版本，非 VTS 版本，prop 正常设置.
         } else if (carrier_value == "amxbr" || carrier_value == "amxmx" || carrier_value == "openmx"
               || carrier_value == "amxpe" || carrier_value == "amxcl" || carrier_value == "amxar") {
             property_set(prop_amclient, prop_clientcountry_value);
@@ -104,46 +107,85 @@ void set_system_properties(){
             property_set(prop_amazon_partnerid,carrier_value);
         } else if (carrier_value == "timbr") {
             property_set(prop_msclient, prop_clientbr_value);
-        } else if (carrier_value == "timit") {
-            property_set(prop_amazon_partnerid,carrier_value);
-        }  else if (carrier_value == "windit") {
-            property_set(prop_amazon_partnerid,carrier_value);
         } else {
             property_set(prop_amclient, prop_client_value);
             property_set(prop_msclient, prop_clientrev_value);
         }
     } else if (prop_product_value == "blackjack" || prop_product_value == "blackjack_64") {
         property_set(prop_product_device, "blackjack");
-        if (isBlackjackReteu(carrier_value, carrier_ontim)) {
-            prop_product_value = "blackjack_reteu";
-            if (carrier_value == "timit") {
-                property_set(prop_product, prop_product_value);
-                property_set(prop_amclient, prop_client_value);
-                property_set(prop_msclient, prop_clientrev_value);
+        if (isProductNameBlackjack(carrier_ontim)) {
+            if (carrier_ontim == "openmx_retmx" || carrier_ontim == "amxmx_amxmx"
+               || carrier_ontim == "amxmx_amxmxsl" || carrier_ontim == "retar_retclaro"
+               || carrier_ontim == "amxcl_tefcosl" || carrier_ontim == "amxpe_claro"
+               || carrier_ontim == "amxco_claro" || carrier_ontim == "amxco_claroes"
+               || carrier_ontim == "amxla_claro") {
+                property_set(prop_amclient, prop_clientcountry_value);
+                property_set(prop_msclient, prop_clientrevc_value);
+            } else if (carrier_ontim == "attmx_attmx") {
+                property_set(prop_msclient, prop_clientmx_value);
+	        property_set(prop_amazon_partnerid,carrier_value);
             } else {
-                prop_carrier_value = "reteu";
                 property_set(prop_amclient, prop_client_value);
                 property_set(prop_msclient, prop_clientrev_value);
-                property_set(prop_product, prop_product_value);
-                property_set(prop_build_fingerprint, get_fingerprint_property(prop_product_value));
-                property_set(prop_fingerprint, get_fingerprint_property(prop_product_value));
-                property_set(prop_vendor_fingerprint, get_fingerprint_property(prop_product_value));
-                property_set("persist.vendor.normal", "1");//表示正常版本，非 VTS 版本，prop 正常设置.
             }
-        } else if (carrier_value == "amxmx" || carrier_value == "amxco"|| carrier_value == "openmx"
-              || carrier_value == "amxpe" || carrier_value == "amxcl" || carrier_value == "amxar") {
-            property_set(prop_amclient, prop_clientcountry_value);
-            property_set(prop_msclient, prop_clientrevc_value);
-        } else if (carrier_value == "attmx") {
-            property_set(prop_msclient, prop_clientmx_value);
-	    property_set(prop_amazon_partnerid,carrier_value);
-        } else if (carrier_value == "timit") {
-            property_set(prop_amazon_partnerid,carrier_value);
-        } else if (carrier_value == "windit") {
-            property_set(prop_amazon_partnerid,carrier_value);
-        } else {
+        } else if (isProductNameBlackjack64(carrier_ontim)) {
+            prop_product_value = "blackjack_64";
+            if (carrier_ontim == "openmx_retmxco") {
+                property_set(prop_amclient, prop_clientcountry_value);
+                property_set(prop_msclient, prop_clientrevc_value);
+            } else {
+                property_set(prop_amclient, prop_client_value);
+                property_set(prop_msclient, prop_clientrev_value);
+            }
+            property_set(prop_product, prop_product_value);
+            property_set(prop_build_fingerprint, get_fingerprint_property(prop_product_value));
+            property_set(prop_fingerprint, get_fingerprint_property(prop_product_value));
+            property_set(prop_vendor_fingerprint, get_fingerprint_property(prop_product_value));
+            property_set("persist.vendor.normal", "1");//表示正常版本，非 VTS 版本，prop 正常设置.
+        } else if (isProductNameBlackjackReteu(carrier_ontim)) {
+            prop_product_value = "blackjack_reteu";
+            prop_carrier_value = "reteu";
+            if (carrier_ontim == "timit_timit") {
+                property_set(prop_msclient, prop_clientit_value);
+                property_set(prop_amazon_partnerid,carrier_value);
+            } else if (carrier_ontim == "windit_windds") {
+                property_set(prop_amclient, prop_client_value);
+                property_set(prop_msclient, prop_clientrev_value);
+                property_set(prop_amazon_partnerid,carrier_value);
+            } else {
+                property_set(prop_amclient, prop_client_value);
+                property_set(prop_msclient, prop_clientrev_value);
+            }
+            property_set(prop_product, prop_product_value);
+            property_set(prop_build_fingerprint, get_fingerprint_property(prop_product_value));
+            property_set(prop_fingerprint, get_fingerprint_property(prop_product_value));
+            property_set(prop_vendor_fingerprint, get_fingerprint_property(prop_product_value));
+            property_set("persist.vendor.normal", "1");//表示正常版本，非 VTS 版本，prop 正常设置.
+        } else if (isProductNameBlackjackReteu64(carrier_ontim)) {
+            prop_product_value = "blackjack_reteu_64";
+            prop_carrier_value = "reteu";
+            if (carrier_ontim == "dteu_tmp") {
+                property_set(prop_amclient, prop_clientcountry_value);
+                property_set(prop_msclient, prop_clientrevc_value);
+            } else {
+                property_set(prop_amclient, prop_client_value);
+                property_set(prop_msclient, prop_clientrev_value);
+            }
+            property_set(prop_product, prop_product_value);
+            property_set(prop_build_fingerprint, get_fingerprint_property(prop_product_value));
+            property_set(prop_fingerprint, get_fingerprint_property(prop_product_value));
+            property_set(prop_vendor_fingerprint, get_fingerprint_property(prop_product_value));
+            property_set("persist.vendor.normal", "1");//表示正常版本，非 VTS 版本，prop 正常设置.
+        } else if (isProductNameBlackjackLnv64(carrier_ontim)) {
+            prop_product_value = "blackjack_lnv_64";
+            prop_carrier_value = "lnv";
             property_set(prop_amclient, prop_client_value);
             property_set(prop_msclient, prop_clientrev_value);
+            property_set(prop_product, prop_product_value);
+            property_set(prop_build_fingerprint, get_fingerprint_property(prop_product_value));
+            property_set(prop_fingerprint, get_fingerprint_property(prop_product_value));
+            property_set(prop_vendor_fingerprint, get_fingerprint_property(prop_product_value));
+            property_set("persist.vendor.normal", "1");//表示正常版本，非 VTS 版本，prop 正常设置.
         }
     }
 
@@ -151,37 +193,93 @@ void set_system_properties(){
     property_set(prop_build_customerid, prop_carrier_value);
 }
 
-bool isFijiReteu(std::string carrier_value, std::string carrier_ontim) {
+bool isProductNameFijiReteu(std::string carrier_value, std::string carrier_ontim) {
     if (carrier_value == "retgb") return true;
     if (carrier_value == "o2gb") return true;
     if (carrier_value == "tescogb") return true;
     if (carrier_value == "pluspl") return true;
-    if (carrier_value == "reteu") {
-         if (carrier_ontim == "reteu_reteuse") return false;
-         if (carrier_ontim == "reteu_retksa") return false;
-         if (carrier_ontim == "reteu_reteuuae") return false;
-         return true;
-    }
     if (carrier_value == "windit") return true;
     if (carrier_value == "eegb") return true;
     if (carrier_value == "timit") return true;
+    if (carrier_value == "reteu") {
+        if (carrier_ontim == "reteu_reteuse") return false;
+        if (carrier_ontim == "reteu_retksa") return false;
+        if (carrier_ontim == "reteu_reteuuae") return false;
+        return true;
+    }
     return false;
 }
 
-bool isBlackjackReteu(std::string carrier_value, std::string carrier_ontim) {
-    if (carrier_value == "retgb") return true;
-    if (carrier_value == "3gb") return true;
-    if (carrier_value == "tescogb") return true;
-    if (carrier_value == "dteu") return true;
-    if (carrier_value == "playpl") return true;
-    if (carrier_value == "reteu") {
-         if (carrier_ontim == "reteu_reteuse") return false;
-         if (carrier_ontim == "reteu_retksa") return false;
-         if (carrier_ontim == "reteu_reteuuae") return false;
-         return true;
-    }
-    if (carrier_value == "windit") return true;
-    if (carrier_value == "timit") return true;
+bool isProductNameBlackjack(std::string carrier_ontim) {
+    if (carrier_ontim == "openmx_retmx") return true;
+    if (carrier_ontim == "amxmx_amxmx") return true;
+    if (carrier_ontim == "amxmx_amxmxsl") return true;
+    if (carrier_ontim == "attmx_attmx") return true;
+    if (carrier_ontim == "tefmx_movistarmx") return true;
+    if (carrier_ontim == "altmx_altmx") return true;
+    if (carrier_ontim == "retar_retclaro") return true;
+    if (carrier_ontim == "retar_retper") return true;
+    if (carrier_ontim == "retar_retag") return true;
+    if (carrier_ontim == "retar_movistar") return true;
+    if (carrier_ontim == "retcl_retcl") return true;
+    if (carrier_ontim == "amxcl_tefcosl") return true;
+    if (carrier_ontim == "amxpe_claro") return true;
+    if (carrier_ontim == "amxco_claro") return true;
+    if (carrier_ontim == "retla_retlas") return true;
+    if (carrier_ontim == "amxco_claroes") return true;
+    if (carrier_ontim == "amxla_claro") return true;
+    if (carrier_ontim == "tigca_tigca") return true;
+    if (carrier_ontim == "reteu_reteuse") return true;
+    return false;
+}
+
+bool isProductNameBlackjack64(std::string carrier_ontim) {
+    if (carrier_ontim == "retbr_retbr") return true;
+    if (carrier_ontim == "openmx_retmxco") return true;
+    if (carrier_ontim == "retar_retage") return true;
+    if (carrier_ontim == "retar_movistartel") return true;
+    if (carrier_ontim == "entcl_entcl") return true;
+    if (carrier_ontim == "tefcl_movistar") return true;
+    if (carrier_ontim == "womcl_womcl") return true;
+    if (carrier_ontim == "openpe_entpu") return true;
+    if (carrier_ontim == "openpe_movistar") return true;
+    if (carrier_ontim == "retla_retlac") return true;
+    if (carrier_ontim == "tigco_tigco") return true;
+    if (carrier_ontim == "tefco_tefco") return true;
+    return false;
+}
+
+bool isProductNameBlackjackReteu(std::string carrier_ontim) {
+    if (carrier_ontim == "retgb_retgbds") return true;
+    if (carrier_ontim == "tescogb_tessl") return true;
+    if (carrier_ontim == "reteu_reteurn") return true;
+    if (carrier_ontim == "reteu_reteurg") return true;
+    if (carrier_ontim == "reteu_reteult") return true;
+    if (carrier_ontim == "timit_timit") return true;
+    if (carrier_ontim == "windit_windds") return true;
+    return false;
+}
+
+bool isProductNameBlackjackReteu64(std::string carrier_ontim) {
+    if (carrier_ontim == "retgb_retgbdsuk") return true;
+    if (carrier_ontim == "retgb_cpwds") return true;
+    if (carrier_ontim == "3gb_3gb") return true;
+    if (carrier_ontim == "reteu_reteunet") return true;
+    if (carrier_ontim == "reteu_reteupo") return true;
+    if (carrier_ontim == "playpl_pyp") return true;
+    if (carrier_ontim == "dteu_tmp") return true;
+    if (carrier_ontim == "reteu_reteu") return true;
+    if (carrier_ontim == "reteu_retfr") return true;
+    if (carrier_ontim == "reteu_reteurs") return true;
+    if (carrier_ontim == "reteu_reteutel") return true;
+    return false;
+}
+
+bool isProductNameBlackjackLnv64(std::string carrier_ontim) {
+    if (carrier_ontim == "reteu_retksa") return true;
+    if (carrier_ontim == "reteu_reteuuae") return true;
+    if (carrier_ontim == "retapac_rettld") return true;
+    if (carrier_ontim == "retapac_rettw") return true;
     return false;
 }
 
