@@ -23,8 +23,12 @@ namespace android {
 namespace init {
 
 void set_system_properties();
-bool isFijiReteu(std::string carrier_value, std::string carrier_ontim);
-bool isBlackjackReteu(std::string carrier_value, std::string carrier_ontim);
+bool isProductNameFijiReteu(std::string carrier_value, std::string carrier_ontim);
+bool isProductNameBlackjack(std::string carrier_ontim);
+bool isProductNameBlackjack64(std::string carrier_ontim);
+bool isProductNameBlackjackReteu(std::string carrier_ontim);
+bool isProductNameBlackjackReteu64(std::string carrier_ontim);
+bool isProductNameBlackjackLnv64(std::string carrier_ontim);
 bool changeSystemProperty(std::string key);
 std::string get_fingerprint_property(std::string value);
 std::string get_version_property(std::string value);
