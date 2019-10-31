@@ -187,7 +187,8 @@ bool isBlackjackReteu(std::string carrier_value, std::string carrier_ontim) {
 
 bool changeSystemProperty(std::string key) {
     if (key == prop_product || key == prop_build_fingerprint
-      || key == prop_fingerprint || key == prop_vendor_fingerprint || key == prop_carrier) {
+      || key == prop_fingerprint || key == prop_vendor_fingerprint
+      || key == prop_carrier || key == prop_product_device) {
         return true;
     }
     return false;
