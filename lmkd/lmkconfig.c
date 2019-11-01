@@ -248,7 +248,7 @@ int lmkd_config_init(void)
 {
     CFG_INFO *cfg_info = &g_cfg_info;
     ALOGE("lmkd_config_init");
-    memset(cfg_info, 0, sizeof(cfg_info));
+    memset(cfg_info, 0, sizeof(CFG_INFO));
     lmkd_config_load(cfg_info);
     dump_cfg_info();
     return 0;
