@@ -1697,6 +1697,7 @@ static void mp_event_common_locked(int data, uint32_t events __unused) {
     union zoneinfo zi;
     struct timespec curr_tm;
     static struct timespec last_kill_tm;
+    static struct timespec last_noprogress_tm;
     static unsigned long kill_skip_count = 0;
     enum vmpressure_level level = (enum vmpressure_level)data;
     long other_free = 0, other_file = 0;
@@ -1745,6 +1746,12 @@ static void mp_event_common_locked(int data, uint32_t events __unused) {
             kill_skip_count++;
             return;
         }
+
+        // if lmkd kills no processes, let it take a break.
+        if (get_time_diff_ms(&last_noprogress_tm, &curr_tm) < kill_timeout_ms) {
+            kill_skip_count++;
+            return;
+        }
     }
 
     if (kill_skip_count > 0) {
@@ -1779,12 +1786,30 @@ static void mp_event_common_locked(int data, uint32_t events __unused) {
         }
 
         if (min_score_adj == OOM_SCORE_ADJ_MAX + 1) {
+            if (mi.field.free_swap <= mi.field.total_swap * swap_free_low_percentage / 100) {
+                switch (level) {
+                    case VMPRESS_LEVEL_MEDIUM:
+                        min_score_adj = lowmem_adj[lowmem_targets_size - 1];
+                        break;
+                    case VMPRESS_LEVEL_CRITICAL:
+                        min_score_adj = lowmem_adj[lowmem_targets_size - 2];
+                        break;
+                    default:
+                        break;
+                }
+            }
+            if (min_score_adj != OOM_SCORE_ADJ_MAX + 1)
+                goto do_kill;
+
             if (debug_process_killing) {
                 ALOGI("Ignore %s memory pressure event "
                       "(free memory=%ldkB, cache=%ldkB, limit=%ldkB)",
                       level_name[level], other_free * page_k, other_file * page_k,
                       (long)lowmem_minfree[lowmem_targets_size - 1] * page_k);
             }
+
+            // No progress when trying to kill process, so let it take a break.
+            last_noprogress_tm = curr_tm;
             return;
         }
 
@@ -1872,6 +1897,9 @@ do_kill:
         pages_freed = find_and_kill_process(min_score_adj);
 
         if (pages_freed == 0) {
+            /* No progress when trying to kill process, so let it take a break. */
+            last_noprogress_tm = curr_tm;
+
             /* Rate limit kill reports when nothing was reclaimed */
             if (get_time_diff_ms(&last_report_tm, &curr_tm) < FAIL_REPORT_RLIMIT_MS) {
                 report_skip_count++;
@@ -2250,7 +2278,7 @@ int main(int argc __unused, char **argv __unused) {
     per_app_memcg =
         property_get_bool("ro.config.per_app_memcg", low_ram_device);
     swap_free_low_percentage =
-        property_get_int32("ro.lmk.swap_free_low_percentage", 10);
+        property_get_int32("ro.lmk.swap_free_low_percentage", low_ram_device ? 10 : 20);
 
     /* By default use medium/critical threshold */
     psi_thresholds[VMPRESS_LEVEL_MEDIUM].threshold_ms =
