@@ -1578,7 +1578,7 @@ void LogBuffer::logMuchDetect(log_id_t log_id, log_time realtime) {
 
             /* strftime(timeBuf, sizeof(timeBuf), "%Y-%m-%d %H:%M:%S", ptm); */
             buff[0]='\n';
-            strftime(buff + 1, BUFF_MAX_SIZE - 1, "%m-%d %H:%M:%S", ptm);
+            if (ptm) strftime(buff + 1, BUFF_MAX_SIZE - 1, "%m-%d %H:%M:%S", ptm);
             buf_len = strlen(buff);
             buf_len += snprintf(buff + buf_len, BUFF_MAX_SIZE - buf_len, ".%06d ", (*test)->getRealTime().tv_nsec / 1000);
             /* event log tag */
