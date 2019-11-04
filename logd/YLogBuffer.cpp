@@ -158,8 +158,9 @@ unsigned char* getDeviceBuff(const char* path,long size){
 
     pMap = (unsigned char *)mmap(0, size, PROT_READ | PROT_WRITE, MAP_SHARED,fd, 0);
     if(pMap == MAP_FAILED)  {
-        android::prdebug("logd  mmap %s  error ",path);
+        android::prdebug("logd  mmap %s  error: %d",path,errno);
         PRINT2LOGCAT("logd  mmap %s  error ",path);
+        close(fd);
         return NULL;
     }
 
