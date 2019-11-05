@@ -28,6 +28,7 @@ cc_defaults {
         "liblp",
     ],
     static_libs: [
+        "libcutils",
         "libdm",
         "libfs_mgr",
         "libfstab",
@@ -49,11 +50,28 @@ cc_defaults {
         "libfiemap_headers",
     ],
     export_include_dirs: ["include"],
+    proto: {
+        type: "lite",
+        export_proto_headers: true,
+        canonical_path_from_root: false,
+    },
+}
+
+cc_defaults {
+    name: "libsnapshot_hal_deps",
+    cflags: [
+        "-DLIBSNAPSHOT_USE_HAL",
+    ],
+    shared_libs: [
+        "android.hardware.boot@1.0",
+        "android.hardware.boot@1.1",
+    ],
 }
 
 filegroup {
     name: "libsnapshot_sources",
     srcs: [
+        "android/snapshot/snapshot.proto",
         "snapshot.cpp",
         "snapshot_metadata_updater.cpp",
         "partition_cow_creator.cpp",
@@ -69,7 +87,10 @@ cc_library_headers {
 
 cc_library_static {
     name: "libsnapshot",
-    defaults: ["libsnapshot_defaults"],
+    defaults: [
+        "libsnapshot_defaults",
+        "libsnapshot_hal_deps",
+    ],
     srcs: [":libsnapshot_sources"],
     whole_static_libs: [
         "libfiemap_binder",
@@ -77,8 +98,21 @@ cc_library_static {
 }
 
 cc_library_static {
-    name: "libsnapshot_nobinder",
+    name: "libsnapshot_init",
     defaults: ["libsnapshot_defaults"],
+    srcs: [":libsnapshot_sources"],
+    recovery_available: true,
+    whole_static_libs: [
+        "libfiemap_passthrough",
+    ],
+}
+
+cc_library_static {
+    name: "libsnapshot_nobinder",
+    defaults: [
+        "libsnapshot_defaults",
+        "libsnapshot_hal_deps",
+    ],
     srcs: [":libsnapshot_sources"],
     recovery_available: true,
     whole_static_libs: [
@@ -97,12 +131,14 @@ cc_test {
     ],
     shared_libs: [
         "libbinder",
+        "libcrypto",
+        "libhidlbase",
         "libprotobuf-cpp-lite",
         "libutils",
     ],
     static_libs: [
-        "libcutils",
-        "libcrypto_static",
+        "android.hardware.boot@1.0",
+        "android.hardware.boot@1.1",
         "libfs_mgr",
         "libgmock",
         "liblp",
@@ -112,5 +148,36 @@ cc_test {
     ],
     header_libs: [
         "libstorage_literals_headers",
+    ],
+}
+
+cc_binary {
+    name: "snapshotctl",
+    srcs: [
+        "snapshotctl.cpp",
+    ],
+    static_libs: [
+        "libdm",
+        "libext2_uuid",
+        "libfiemap_binder",
+        "libfstab",
+        "libsnapshot",
+    ],
+    shared_libs: [
+        "android.hardware.boot@1.0",
+        "android.hardware.boot@1.1",
+        "libbase",
+        "libbinder",
+        "libbinderthreadstate",
+        "libext4_utils",
+        "libfs_mgr",
+        "libhidlbase",
+        "liblog",
+        "liblp",
+        "libprotobuf-cpp-lite",
+        "libutils",
+    ],
+    init_rc: [
+        "snapshotctl.rc",
     ],
 }

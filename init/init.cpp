@@ -113,7 +113,6 @@ static int property_fd = -1;
 static std::unique_ptr<Timer> waiting_for_prop(nullptr);
 static std::string wait_prop_name;
 static std::string wait_prop_value;
-static bool shutting_down;
 static std::string shutdown_command;
 static bool do_shutdown = false;
 static bool load_debug_prop = false;
@@ -195,7 +194,7 @@ void ResetWaitForProp() {
     waiting_for_prop.reset();
 }
 
-void EnterShutdown(const std::string& command) {
+void TriggerShutdown(const std::string& command) {
     // We can't call HandlePowerctlMessage() directly in this function,
     // because it modifies the contents of the action queue, which can cause the action queue
     // to get into a bad state if this function is called from a command being executed by the
@@ -213,7 +212,7 @@ void property_changed(const std::string& name, const std::string& value) {
     // In non-thermal-shutdown case, 'shutdown' trigger will be fired to let device specific
     // commands to be executed.
     if (name == "sys.powerctl") {
-        EnterShutdown(value);
+        TriggerShutdown(value);
     }
 
     if (property_triggers_enabled) ActionManager::GetInstance().QueuePropertyChange(name, value);
@@ -639,7 +638,15 @@ void SendStopSendingMessagesMessage() {
     auto init_message = InitMessage{};
     init_message.set_stop_sending_messages(true);
     if (auto result = SendMessage(property_fd, init_message); !result) {
-        LOG(ERROR) << "Failed to send load persistent properties message: " << result.error();
+        LOG(ERROR) << "Failed to send 'stop sending messages' message: " << result.error();
+    }
+}
+
+void SendStartSendingMessagesMessage() {
+    auto init_message = InitMessage{};
+    init_message.set_start_sending_messages(true);
+    if (auto result = SendMessage(property_fd, init_message); !result) {
+        LOG(ERROR) << "Failed to send 'start sending messages' message: " << result.error();
     }
 }
 
@@ -864,18 +871,16 @@ int SecondStageMain(int argc, char** argv) {
         // By default, sleep until something happens.
         auto epoll_timeout = std::optional<std::chrono::milliseconds>{};
 
-        if (do_shutdown && !shutting_down) {
+        if (do_shutdown && !IsShuttingDown()) {
             do_shutdown = false;
-            if (HandlePowerctlMessage(shutdown_command)) {
-                shutting_down = true;
-            }
+            HandlePowerctlMessage(shutdown_command);
         }
 
         if (!(waiting_for_prop || Service::is_exec_service_running())) {
             am.ExecuteOneCommand();
         }
         if (!(waiting_for_prop || Service::is_exec_service_running())) {
-            if (!shutting_down) {
+            if (!IsShuttingDown()) {
                 auto next_process_action_time = HandleProcessActions();
 
                 // If there's a process that needs restarting, wake up in time for that.

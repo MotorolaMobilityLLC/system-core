@@ -49,12 +49,23 @@ struct CreateLogicalPartitionParams;
 class IPartitionOpener;
 }  // namespace fs_mgr
 
+// Forward declare IBootControl types since we cannot include only the headers
+// with Soong. Note: keep the enum width in sync.
+namespace hardware {
+namespace boot {
+namespace V1_1 {
+enum class MergeStatus : int32_t;
+}  // namespace V1_1
+}  // namespace boot
+}  // namespace hardware
+
 namespace snapshot {
 
 struct AutoDeleteCowImage;
 struct AutoDeleteSnapshot;
-struct PartitionCowCreator;
 struct AutoDeviceList;
+struct PartitionCowCreator;
+class SnapshotStatus;
 
 static constexpr const std::string_view kCowGroupName = "cow";
 
@@ -93,6 +104,7 @@ class SnapshotManager final {
     using LpMetadata = android::fs_mgr::LpMetadata;
     using MetadataBuilder = android::fs_mgr::MetadataBuilder;
     using DeltaArchiveManifest = chromeos_update_engine::DeltaArchiveManifest;
+    using MergeStatus = android::hardware::boot::V1_1::MergeStatus;
 
   public:
     // Dependency injection for testing.
@@ -106,6 +118,7 @@ class SnapshotManager final {
         virtual std::string GetSuperDevice(uint32_t slot) const = 0;
         virtual const IPartitionOpener& GetPartitionOpener() const = 0;
         virtual bool IsOverlayfsSetup() const = 0;
+        virtual bool SetBootControlMergeStatus(MergeStatus status) = 0;
     };
 
     ~SnapshotManager();
@@ -192,6 +205,9 @@ class SnapshotManager final {
     // call to CreateLogicalPartitions when snapshots are present.
     bool CreateLogicalAndSnapshotPartitions(const std::string& super_device);
 
+    // Dump debug information.
+    bool Dump(std::ostream& os);
+
   private:
     FRIEND_TEST(SnapshotTest, CleanFirstStageMount);
     FRIEND_TEST(SnapshotTest, CreateSnapshot);
@@ -204,6 +220,7 @@ class SnapshotManager final {
     FRIEND_TEST(SnapshotTest, Merge);
     FRIEND_TEST(SnapshotTest, MergeCannotRemoveCow);
     FRIEND_TEST(SnapshotTest, NoMergeBeforeReboot);
+    FRIEND_TEST(SnapshotTest, UpdateBootControlHal);
     FRIEND_TEST(SnapshotUpdateTest, SnapshotStatusFileWithoutCow);
     friend class SnapshotTest;
     friend class SnapshotUpdateTest;
@@ -247,22 +264,6 @@ class SnapshotManager final {
     std::unique_ptr<LockedFile> OpenFile(const std::string& file, int open_flags, int lock_flags);
     bool Truncate(LockedFile* file);
 
-    enum class SnapshotState : int { None, Created, Merging, MergeCompleted };
-    static std::string to_string(SnapshotState state);
-
-    // This state is persisted per-snapshot in /metadata/ota/snapshots/.
-    struct SnapshotStatus {
-        SnapshotState state = SnapshotState::None;
-        uint64_t device_size = 0;
-        uint64_t snapshot_size = 0;
-        uint64_t cow_partition_size = 0;
-        uint64_t cow_file_size = 0;
-
-        // These are non-zero when merging.
-        uint64_t sectors_allocated = 0;
-        uint64_t metadata_sectors = 0;
-    };
-
     // Create a new snapshot record. This creates the backing COW store and
     // persists information needed to map the device. The device can be mapped
     // with MapSnapshot().
@@ -279,7 +280,7 @@ class SnapshotManager final {
     //
     // All sizes are specified in bytes, and the device, snapshot, COW partition and COW file sizes
     // must be a multiple of the sector size (512 bytes).
-    bool CreateSnapshot(LockedFile* lock, const std::string& name, SnapshotStatus status);
+    bool CreateSnapshot(LockedFile* lock, SnapshotStatus* status);
 
     // |name| should be the base partition name (e.g. "system_a"). Create the
     // backing COW image using the size previously passed to CreateSnapshot().
@@ -360,8 +361,7 @@ class SnapshotManager final {
     UpdateState CheckTargetMergeState(LockedFile* lock, const std::string& name);
 
     // Interact with status files under /metadata/ota/snapshots.
-    bool WriteSnapshotStatus(LockedFile* lock, const std::string& name,
-                             const SnapshotStatus& status);
+    bool WriteSnapshotStatus(LockedFile* lock, const SnapshotStatus& status);
     bool ReadSnapshotStatus(LockedFile* lock, const std::string& name, SnapshotStatus* status);
     std::string GetSnapshotStatusFilePath(const std::string& name);
 
@@ -402,6 +402,20 @@ class SnapshotManager final {
     // If there is a previous update and the device has boot into it, do nothing and return true.
     //   |needs_merge| is set to true.
     bool TryCancelUpdate(bool* needs_merge);
+
+    // Helper for CreateUpdateSnapshots.
+    // Creates all underlying images, COW partitions and snapshot files. Does not initialize them.
+    bool CreateUpdateSnapshotsInternal(LockedFile* lock, const DeltaArchiveManifest& manifest,
+                                       PartitionCowCreator* cow_creator,
+                                       AutoDeviceList* created_devices,
+                                       std::map<std::string, SnapshotStatus>* all_snapshot_status);
+
+    // Initialize snapshots so that they can be mapped later.
+    // Map the COW partition and zero-initialize the header.
+    bool InitializeUpdateSnapshots(
+            LockedFile* lock, MetadataBuilder* target_metadata,
+            const LpMetadata* exported_target_metadata, const std::string& target_suffix,
+            const std::map<std::string, SnapshotStatus>& all_snapshot_status);
 
     std::string gsid_dir_;
     std::string metadata_dir_;

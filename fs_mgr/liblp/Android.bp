@@ -56,6 +56,17 @@ cc_library {
     export_include_dirs: ["include"],
 }
 
+filegroup {
+    name: "liblp_test_srcs",
+    srcs: [
+        "builder_test.cpp",
+        "device_test.cpp",
+        "io_test.cpp",
+        "test_partition_opener.cpp",
+        "utility_test.cpp",
+    ],
+}
+
 cc_defaults {
     name: "liblp_test_defaults",
     defaults: ["fs_mgr_defaults"],
@@ -73,23 +84,23 @@ cc_defaults {
         "libstorage_literals_headers",
     ],
     stl: "libc++_static",
-    srcs: [
-        "builder_test.cpp",
-        "device_test.cpp",
-        "io_test.cpp",
-        "test_partition_opener.cpp",
-        "utility_test.cpp",
-    ],
+    srcs: [":liblp_test_srcs"],
 }
 
 cc_test {
     name: "liblp_test",
     defaults: ["liblp_test_defaults"],
     test_config: "liblp_test.xml",
-    test_suites: [
-        "device-tests",
-        "vts-core",
-    ],
+    test_suites: ["device-tests"],
+}
+
+cc_test {
+    name: "vts_core_liblp_test",
+    defaults: ["liblp_test_defaults"],
+    test_suites: ["vts-core"],
+    auto_gen_config: true,
+    test_min_api_level: 29,
+    require_root: true,
 }
 
 cc_test {

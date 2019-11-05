@@ -17,60 +17,36 @@
 #include <liblp/builder.h>
 #include <liblp/property_fetcher.h>
 
+#include "dm_snapshot_internals.h"
 #include "partition_cow_creator.h"
+#include "test_helpers.h"
 
-using ::android::fs_mgr::MetadataBuilder;
-using ::testing::_;
-using ::testing::AnyNumber;
-using ::testing::Return;
+using namespace android::fs_mgr;
 
 namespace android {
 namespace snapshot {
 
-class MockPropertyFetcher : public fs_mgr::IPropertyFetcher {
+class PartitionCowCreatorTest : public ::testing::Test {
   public:
-    MOCK_METHOD2(GetProperty, std::string(const std::string&, const std::string&));
-    MOCK_METHOD2(GetBoolProperty, bool(const std::string&, bool));
+    void SetUp() override { SnapshotTestPropertyFetcher::SetUp(); }
+    void TearDown() override { SnapshotTestPropertyFetcher::TearDown(); }
 };
 
-class PartitionCowCreatorTest : ::testing::Test {
-  public:
-    void SetUp() override {
-        fs_mgr::IPropertyFetcher::OverrideForTesting(std::make_unique<MockPropertyFetcher>());
+TEST_F(PartitionCowCreatorTest, IntersectSelf) {
+    constexpr uint64_t initial_size = 1_MiB;
+    constexpr uint64_t final_size = 40_KiB;
 
-        EXPECT_CALL(fetcher(), GetProperty("ro.boot.slot_suffix", _))
-                .Times(AnyNumber())
-                .WillRepeatedly(Return("_a"));
-        EXPECT_CALL(fetcher(), GetBoolProperty("ro.boot.dynamic_partitions", _))
-                .Times(AnyNumber())
-                .WillRepeatedly(Return(true));
-        EXPECT_CALL(fetcher(), GetBoolProperty("ro.boot.dynamic_partitions_retrofit", _))
-                .Times(AnyNumber())
-                .WillRepeatedly(Return(false));
-        EXPECT_CALL(fetcher(), GetBoolProperty("ro.virtual_ab.enabled", _))
-                .Times(AnyNumber())
-                .WillRepeatedly(Return(true));
-    }
-    void TearDown() override {
-        fs_mgr::IPropertyFetcher::OverrideForTesting(std::make_unique<MockPropertyFetcher>());
-    }
-    MockPropertyFetcher& fetcher() {
-        return *static_cast<MockPropertyFetcher*>(fs_mgr::IPropertyFetcher::GetInstance());
-    }
-};
-
-TEST(PartitionCowCreator, IntersectSelf) {
-    auto builder_a = MetadataBuilder::New(1024 * 1024, 1024, 2);
+    auto builder_a = MetadataBuilder::New(initial_size, 1_KiB, 2);
     ASSERT_NE(builder_a, nullptr);
     auto system_a = builder_a->AddPartition("system_a", LP_PARTITION_ATTR_READONLY);
     ASSERT_NE(system_a, nullptr);
-    ASSERT_TRUE(builder_a->ResizePartition(system_a, 40 * 1024));
+    ASSERT_TRUE(builder_a->ResizePartition(system_a, final_size));
 
-    auto builder_b = MetadataBuilder::New(1024 * 1024, 1024, 2);
+    auto builder_b = MetadataBuilder::New(initial_size, 1_KiB, 2);
     ASSERT_NE(builder_b, nullptr);
     auto system_b = builder_b->AddPartition("system_b", LP_PARTITION_ATTR_READONLY);
     ASSERT_NE(system_b, nullptr);
-    ASSERT_TRUE(builder_b->ResizePartition(system_b, 40 * 1024));
+    ASSERT_TRUE(builder_b->ResizePartition(system_b, final_size));
 
     PartitionCowCreator creator{.target_metadata = builder_b.get(),
                                 .target_suffix = "_b",
@@ -79,8 +55,75 @@ TEST(PartitionCowCreator, IntersectSelf) {
                                 .current_suffix = "_a"};
     auto ret = creator.Run();
     ASSERT_TRUE(ret.has_value());
-    ASSERT_EQ(40 * 1024, ret->snapshot_status.device_size);
-    ASSERT_EQ(40 * 1024, ret->snapshot_status.snapshot_size);
+    ASSERT_EQ(final_size, ret->snapshot_status.device_size());
+    ASSERT_EQ(final_size, ret->snapshot_status.snapshot_size());
+}
+
+TEST_F(PartitionCowCreatorTest, Holes) {
+    const auto& opener = test_device->GetPartitionOpener();
+
+    constexpr auto slack_space = 1_MiB;
+    constexpr auto big_size = (kSuperSize - slack_space) / 2;
+    constexpr auto small_size = big_size / 2;
+
+    BlockDeviceInfo super_device("super", kSuperSize, 0, 0, 4_KiB);
+    std::vector<BlockDeviceInfo> devices = {super_device};
+    auto source = MetadataBuilder::New(devices, "super", 1_KiB, 2);
+    auto system = source->AddPartition("system_a", 0);
+    ASSERT_NE(nullptr, system);
+    ASSERT_TRUE(source->ResizePartition(system, big_size));
+    auto vendor = source->AddPartition("vendor_a", 0);
+    ASSERT_NE(nullptr, vendor);
+    ASSERT_TRUE(source->ResizePartition(vendor, big_size));
+    // Create a hole between system and vendor
+    ASSERT_TRUE(source->ResizePartition(system, small_size));
+    auto source_metadata = source->Export();
+    ASSERT_NE(nullptr, source_metadata);
+    ASSERT_TRUE(FlashPartitionTable(opener, fake_super, *source_metadata.get()));
+
+    auto target = MetadataBuilder::NewForUpdate(opener, "super", 0, 1);
+    // Shrink vendor
+    vendor = target->FindPartition("vendor_b");
+    ASSERT_NE(nullptr, vendor);
+    ASSERT_TRUE(target->ResizePartition(vendor, small_size));
+    // Grow system to take hole & saved space from vendor
+    system = target->FindPartition("system_b");
+    ASSERT_NE(nullptr, system);
+    ASSERT_TRUE(target->ResizePartition(system, big_size * 2 - small_size));
+
+    PartitionCowCreator creator{.target_metadata = target.get(),
+                                .target_suffix = "_b",
+                                .target_partition = system,
+                                .current_metadata = source.get(),
+                                .current_suffix = "_a"};
+    auto ret = creator.Run();
+    ASSERT_TRUE(ret.has_value());
+}
+
+TEST(DmSnapshotInternals, CowSizeCalculator) {
+    DmSnapCowSizeCalculator cc(512, 8);
+    unsigned long int b;
+
+    // Empty COW
+    ASSERT_EQ(cc.cow_size_sectors(), 16);
+
+    // First chunk written
+    for (b = 0; b < 4_KiB; ++b) {
+        cc.WriteByte(b);
+        ASSERT_EQ(cc.cow_size_sectors(), 24);
+    }
+
+    // Second chunk written
+    for (b = 4_KiB; b < 8_KiB; ++b) {
+        cc.WriteByte(b);
+        ASSERT_EQ(cc.cow_size_sectors(), 32);
+    }
+
+    // Leave a hole and write 5th chunk
+    for (b = 16_KiB; b < 20_KiB; ++b) {
+        cc.WriteByte(b);
+        ASSERT_EQ(cc.cow_size_sectors(), 40);
+    }
 }
 
 }  // namespace snapshot

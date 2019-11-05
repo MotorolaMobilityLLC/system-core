@@ -171,7 +171,8 @@ std::unique_ptr<MetadataBuilder> MetadataBuilder::New(const LpMetadata& metadata
 std::unique_ptr<MetadataBuilder> MetadataBuilder::NewForUpdate(const IPartitionOpener& opener,
                                                                const std::string& source_partition,
                                                                uint32_t source_slot_number,
-                                                               uint32_t target_slot_number) {
+                                                               uint32_t target_slot_number,
+                                                               bool always_keep_source_slot) {
     auto metadata = ReadMetadata(opener, source_partition, source_slot_number);
     if (!metadata) {
         return nullptr;
@@ -189,7 +190,8 @@ std::unique_ptr<MetadataBuilder> MetadataBuilder::NewForUpdate(const IPartitionO
         }
     }
 
-    if (IPropertyFetcher::GetInstance()->GetBoolProperty("ro.virtual_ab.enabled", false)) {
+    if (IPropertyFetcher::GetInstance()->GetBoolProperty("ro.virtual_ab.enabled", false) &&
+        !always_keep_source_slot) {
         if (!UpdateMetadataForInPlaceSnapshot(metadata.get(), source_slot_number,
                                               target_slot_number)) {
             return nullptr;
@@ -1136,7 +1138,7 @@ bool MetadataBuilder::AddLinearExtent(Partition* partition, const std::string& b
     return true;
 }
 
-std::vector<Partition*> MetadataBuilder::ListPartitionsInGroup(const std::string& group_name) {
+std::vector<Partition*> MetadataBuilder::ListPartitionsInGroup(std::string_view group_name) {
     std::vector<Partition*> partitions;
     for (const auto& partition : partitions_) {
         if (partition->group_name() == group_name) {

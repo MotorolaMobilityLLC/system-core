@@ -35,7 +35,7 @@ namespace android {
 namespace init {
 
 // init.h
-inline void EnterShutdown(const std::string&) {
+inline void TriggerShutdown(const std::string&) {
     abort();
 }
 
@@ -55,7 +55,7 @@ inline uint32_t HandlePropertySet(const std::string&, const std::string&, const 
 
 // reboot_utils.h
 inline void SetFatalRebootTarget() {}
-inline void __attribute__((noreturn)) InitFatalReboot() {
+inline void __attribute__((noreturn)) InitFatalReboot(int signal_number) {
     abort();
 }
 

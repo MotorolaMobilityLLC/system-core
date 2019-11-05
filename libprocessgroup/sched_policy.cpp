@@ -46,40 +46,18 @@ int set_cpuset_policy(int tid, SchedPolicy policy) {
 
     switch (policy) {
         case SP_BACKGROUND:
-            return SetTaskProfiles(tid, {"HighEnergySaving", "ProcessCapacityLow", "LowIoPriority",
-                                         "TimerSlackHigh", "BlkIOBackground"},
-                                         true)
-                           ? 0
-                           : -1;
+            return SetTaskProfiles(tid, {"CPUSET_SP_BACKGROUND", "BlkIOBackground"}, true) ? 0 : -1;
         case SP_FOREGROUND:
-            return SetTaskProfiles(tid, {"HighPerformance", "ProcessCapacityHigh", "HighIoPriority",
-                                         "TimerSlackNormal", "BlkIOForeground"},
-                                         true)
-                           ? 0
-                           : -1;
+            return SetTaskProfiles(tid, {"CPUSET_SP_FOREGROUND", "BlkIOForeground"}, true) ? 0 : -1;
         case SP_AUDIO_APP:
         case SP_AUDIO_SYS:
-            return SetTaskProfiles(tid, {"HighPerformance", "AudioAppCapacity", "HighIoPriority",
-                                         "TimerSlackNormal", "BlkIOForeground"},
-                                         true)
-                           ? 0
-                           : -1;
+            return SetTaskProfiles(tid, {"CPUSET_SP_FOREGROUND", "AudioAppCapacity", "BlkIOForeground"}, true) ? 0 : -1;
         case SP_TOP_APP:
-            return SetTaskProfiles(tid, {"MaxPerformance", "ProcessCapacityMax", "MaxIoPriority",
-                                         "TimerSlackNormal", "BlkIOBackground"},
-                                         true)
-                           ? 0
-                           : -1;
+            return SetTaskProfiles(tid, {"CPUSET_SP_TOP_APP", "BlkIOBackground"}, true) ? 0 : -1;
         case SP_SYSTEM:
-            return SetTaskProfiles(tid,
-                                   {"ServiceCapacityLow", "TimerSlackNormal", "BlkIOForeground"},
-                                   true)
-                           ? 0
-                           : -1;
+            return SetTaskProfiles(tid, {"CPUSET_SP_SYSTEM", "BlkIOForeground"}, true) ? 0 : -1;
         case SP_RESTRICTED:
-            return SetTaskProfiles(tid, {"ServiceCapacityRestricted", "TimerSlackNormal"}, true)
-                           ? 0
-                           : -1;
+            return SetTaskProfiles(tid, {"CPUSET_SP_RESTRICTED"}, true) ? 0 : -1;
         default:
             break;
     }
@@ -140,32 +118,17 @@ int set_sched_policy(int tid, SchedPolicy policy) {
 
     switch (policy) {
         case SP_BACKGROUND:
-            return SetTaskProfiles(tid, {"HighEnergySaving", "LowIoPriority", "TimerSlackHigh", "BlkIOBackground"},
-                                   true)
-                           ? 0
-                           : -1;
+            return SetTaskProfiles(tid, {"SCHED_SP_BACKGROUND", "BlkIOBackground"}, true) ? 0 : -1;
         case SP_FOREGROUND:
-            return SetTaskProfiles(tid, {"HighPerformance", "HighIoPriority", "TimerSlackNormal", "BlkIOForeground"},
-                                   true)
-                          ? 0 : -1;
         case SP_AUDIO_APP:
         case SP_AUDIO_SYS:
-            return SetTaskProfiles(tid, {"HighPerformance", "HighIoPriority", "TimerSlackNormal", "BlkIOForeground"},
-                                   true)
-                           ? 0
-                           : -1;
+            return SetTaskProfiles(tid, {"SCHED_SP_FOREGROUND", "BlkIOForeground"}, true) ? 0 : -1;
         case SP_TOP_APP:
-            return SetTaskProfiles(tid, {"MaxPerformance", "MaxIoPriority", "TimerSlackNormal", "BlkIOForeground"},
-                                   true)
-                           ? 0
-                           : -1;
+            return SetTaskProfiles(tid, {"SCHED_SP_TOP_APP", "BlkIOForeground"}, true) ? 0 : -1;
         case SP_RT_APP:
-            return SetTaskProfiles(
-                           tid, {"RealtimePerformance", "MaxIoPriority", "TimerSlackNormal", "BlkIOForeground"}, true)
-                           ? 0
-                           : -1;
+            return SetTaskProfiles(tid, {"SCHED_SP_RT_APP", "BlkIOForeground"}, true) ? 0 : -1;
         default:
-            return SetTaskProfiles(tid, {"TimerSlackNormal"}, true) ? 0 : -1;
+            return SetTaskProfiles(tid, {"SCHED_SP_DEFAULT"}, true) ? 0 : -1;
     }
 
     return 0;
@@ -252,7 +215,45 @@ const char* get_sched_policy_name(SchedPolicy policy) {
     };
     static_assert(arraysize(kSchedPolicyNames) == SP_CNT, "missing name");
     if (policy < SP_BACKGROUND || policy >= SP_CNT) {
-        return "error";
+        return nullptr;
     }
     return kSchedPolicyNames[policy];
+}
+
+const char* get_cpuset_policy_profile_name(SchedPolicy policy) {
+    /*
+     *  cpuset profile array for:
+     *  SP_DEFAULT(-1), SP_BACKGROUND(0), SP_FOREGROUND(1),
+     *  SP_SYSTEM(2), SP_AUDIO_APP(3), SP_AUDIO_SYS(4),
+     *  SP_TOP_APP(5), SP_RT_APP(6), SP_RESTRICTED(7)
+     *  index is policy + 1
+     *  this need keep in sync with SchedPolicy enum
+     */
+    static constexpr const char* kCpusetProfiles[SP_CNT + 1] = {
+            "CPUSET_SP_DEFAULT", "CPUSET_SP_BACKGROUND", "CPUSET_SP_FOREGROUND",
+            "CPUSET_SP_SYSTEM",  "CPUSET_SP_FOREGROUND", "CPUSET_SP_FOREGROUND",
+            "CPUSET_SP_TOP_APP", "CPUSET_SP_DEFAULT",    "CPUSET_SP_RESTRICTED"};
+    if (policy < SP_DEFAULT || policy >= SP_CNT) {
+        return nullptr;
+    }
+    return kCpusetProfiles[policy + 1];
+}
+
+const char* get_sched_policy_profile_name(SchedPolicy policy) {
+    /*
+     *  sched profile array for:
+     *  SP_DEFAULT(-1), SP_BACKGROUND(0), SP_FOREGROUND(1),
+     *  SP_SYSTEM(2), SP_AUDIO_APP(3), SP_AUDIO_SYS(4),
+     *  SP_TOP_APP(5), SP_RT_APP(6), SP_RESTRICTED(7)
+     *  index is policy + 1
+     *  this need keep in sync with SchedPolicy enum
+     */
+    static constexpr const char* kSchedProfiles[SP_CNT + 1] = {
+            "SCHED_SP_DEFAULT", "SCHED_SP_BACKGROUND", "SCHED_SP_FOREGROUND",
+            "SCHED_SP_DEFAULT", "SCHED_SP_FOREGROUND", "SCHED_SP_FOREGROUND",
+            "SCHED_SP_TOP_APP", "SCHED_SP_RT_APP",     "SCHED_SP_DEFAULT"};
+    if (policy < SP_DEFAULT || policy >= SP_CNT) {
+        return nullptr;
+    }
+    return kSchedProfiles[policy + 1];
 }

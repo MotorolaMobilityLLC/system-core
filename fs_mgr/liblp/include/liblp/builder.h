@@ -209,10 +209,13 @@ class MetadataBuilder {
     // metadata may not have the target slot's devices listed yet, in which
     // case, it is automatically upgraded to include all available block
     // devices.
+    // If |always_keep_source_slot| is set, on a Virtual A/B device, source slot
+    // partitions are kept. This is useful when applying a downgrade package.
     static std::unique_ptr<MetadataBuilder> NewForUpdate(const IPartitionOpener& opener,
                                                          const std::string& source_partition,
                                                          uint32_t source_slot_number,
-                                                         uint32_t target_slot_number);
+                                                         uint32_t target_slot_number,
+                                                         bool always_keep_source_slot = false);
 
     // Import an existing table for modification. If the table is not valid, for
     // example it contains duplicate partition names, then nullptr is returned.
@@ -289,7 +292,7 @@ class MetadataBuilder {
                          const std::vector<Interval>& free_region_hint = {});
 
     // Return the list of partitions belonging to a group.
-    std::vector<Partition*> ListPartitionsInGroup(const std::string& group_name);
+    std::vector<Partition*> ListPartitionsInGroup(std::string_view group_name);
 
     // Changes a partition's group. Size constraints will not be checked until
     // the metadata is exported, to avoid errors during potential group and

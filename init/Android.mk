@@ -108,12 +108,13 @@ LOCAL_STATIC_LIBRARIES := \
     libgsi \
     libcom.android.sysprop.apex \
     liblzma \
-    libdexfile_support \
+    libdexfile_support_static \
     libunwindstack \
     libbacktrace \
     libmodprobe \
     libext2_uuid \
-    libsnapshot_nobinder \
+    libprotobuf-cpp-lite \
+    libsnapshot_init \
 
 LOCAL_SANITIZE := signed-integer-overflow
 # First stage init is weird: it may start without stdout/stderr, and no /proc.

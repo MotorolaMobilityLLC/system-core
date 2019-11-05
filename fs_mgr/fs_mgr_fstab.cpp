@@ -112,13 +112,16 @@ const std::array<const char*, 3> kFileNamesEncryptionMode = {
 };
 
 void ParseFileEncryption(const std::string& arg, FstabEntry* entry) {
-    // The fileencryption flag is followed by an = and the mode of contents encryption, then
-    // optionally a and the mode of filenames encryption (defaults to aes-256-cts).  Get it and
-    // return it.
+    // The fileencryption flag is followed by an = and 1 to 3 colon-separated fields:
+    //
+    // 1. Contents encryption mode
+    // 2. Filenames encryption mode (defaults to "aes-256-cts" or "adiantum"
+    //    depending on the contents encryption mode)
+    // 3. Encryption policy version (defaults to "v1". Use "v2" on new devices.)
     entry->fs_mgr_flags.file_encryption = true;
 
     auto parts = Split(arg, ":");
-    if (parts.empty() || parts.size() > 2) {
+    if (parts.empty() || parts.size() > 3) {
         LWARNING << "Warning: fileencryption= flag malformed: " << arg;
         return;
     }
@@ -137,7 +140,7 @@ void ParseFileEncryption(const std::string& arg, FstabEntry* entry) {
 
     entry->file_contents_mode = parts[0];
 
-    if (parts.size() == 2) {
+    if (parts.size() >= 2) {
         if (std::find(kFileNamesEncryptionMode.begin(), kFileNamesEncryptionMode.end(), parts[1]) ==
             kFileNamesEncryptionMode.end()) {
             LWARNING << "fileencryption= flag malformed, file names encryption mode not found: "
@@ -150,6 +153,16 @@ void ParseFileEncryption(const std::string& arg, FstabEntry* entry) {
         entry->file_names_mode = "adiantum";
     } else {
         entry->file_names_mode = "aes-256-cts";
+    }
+
+    if (parts.size() >= 3) {
+        if (!android::base::StartsWith(parts[2], 'v') ||
+            !android::base::ParseInt(&parts[2][1], &entry->file_policy_version)) {
+            LWARNING << "fileencryption= flag malformed, unknown options: " << arg;
+            return;
+        }
+    } else {
+        entry->file_policy_version = 1;
     }
 }
 
@@ -289,6 +302,7 @@ void ParseFsMgrFlags(const std::string& flags, FstabEntry* entry) {
             entry->key_loc = arg;
             entry->file_contents_mode = "aes-256-xts";
             entry->file_names_mode = "aes-256-cts";
+            entry->file_policy_version = 1;
         } else if (StartsWith(flag, "max_comp_streams=")) {
             if (!ParseInt(arg, &entry->max_comp_streams)) {
                 LWARNING << "Warning: max_comp_streams= flag malformed: " << arg;
@@ -673,13 +687,14 @@ void TransformFstabForDsu(Fstab* fstab, const std::vector<std::string>& dsu_part
         if (entries.empty()) {
             FstabEntry entry = {
                     .blk_device = partition,
+                    // .logical_partition_name is required to look up AVB Hashtree descriptors.
+                    .logical_partition_name = "system",
                     .mount_point = mount_point,
                     .fs_type = "ext4",
                     .flags = MS_RDONLY,
                     .fs_options = "barrier=1",
                     .avb_keys = kGsiKeys,
-                    // .logical_partition_name is required to look up AVB Hashtree descriptors.
-                    .logical_partition_name = "system"};
+            };
             entry.fs_mgr_flags.wait = true;
             entry.fs_mgr_flags.logical = true;
             entry.fs_mgr_flags.first_stage_mount = true;
