@@ -2380,7 +2380,7 @@ static void mainloop(void) {
             if (get_time_diff_ms(&last_report_tm, &curr_tm) >= PSI_POLL_PERIOD_MS) {
                 polling--;
                 poll_handler->handler(poll_handler->data, 0);
-                last_report_tm = curr_tm;
+                clock_gettime(CLOCK_MONOTONIC_COARSE, &last_report_tm);
             }
         } else {
             /* Wait for events with no timeout */
