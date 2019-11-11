@@ -1829,6 +1829,9 @@ static bool lmkd_skip_kill(struct proc* procp)
     if (!procp)
         return false;
 
+    if (procp->oomadj != 0)
+        return false;
+
     pid = procp->pid;
     uid = procp->uid;
     taskname = proc_get_name(pid, buf, sizeof(buf));
