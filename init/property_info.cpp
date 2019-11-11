@@ -88,7 +88,7 @@ void set_system_properties(){
             } else if (carrier_value == "windit") {
                 property_set(prop_amclient, prop_client_value);
                 property_set(prop_msclient, prop_clientrev_value);
-                property_set(prop_amazon_partnerid, carrier_value);
+                property_set(prop_amazon_partnerid, "3it");
             } else {
                 property_set(prop_amclient, prop_client_value);
                 property_set(prop_msclient, prop_clientrev_value);
@@ -151,7 +151,7 @@ void set_system_properties(){
             } else if (carrier_ontim == "windit_windds") {
                 property_set(prop_amclient, prop_client_value);
                 property_set(prop_msclient, prop_clientrev_value);
-                property_set(prop_amazon_partnerid,carrier_value);
+                property_set(prop_amazon_partnerid,"3it");
             } else {
                 property_set(prop_amclient, prop_client_value);
                 property_set(prop_msclient, prop_clientrev_value);
