@@ -24,8 +24,7 @@ namespace init {
 
 void set_system_properties();
 bool isProductNameFijiReteu(std::string carrier_value, std::string carrier_ontim);
-bool isProductNameBlackjack(std::string carrier_ontim);
-bool isProductNameBlackjack64(std::string carrier_ontim);
+bool isProductNameFijiLnv(std::string carrier_ontim);
 bool isProductNameBlackjackReteu(std::string carrier_ontim);
 bool isProductNameBlackjackReteu64(std::string carrier_ontim);
 bool isProductNameBlackjackLnv64(std::string carrier_ontim);
