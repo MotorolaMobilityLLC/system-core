@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
+#include <inttypes.h>
 #include <sys/cdefs.h>
 #include <sys/epoll.h>
 #include <sys/socket.h>
@@ -21,11 +22,12 @@
 #define LMFS_NETLINK_GROUP 21
 #define LMFS_NETLINK_MAX_NAME_LENGTH 100
 #define MEMINFO_PATH "/proc/meminfo"
+#define VMSTAT_PATH "/proc/vmstat"
 #define MAX_SWAPUSAGE_MEDIEM 60
 #define MAX_SWAPUSAGE_CRITIAL 70
 #define SWAP_KILL_ADJ 800
 #define VMPRESSURE_INTERVAL  1000
-
+#define THRASHING_CONTINUE_COUNT 2
 extern void find_and_kill_process_adj(int adj, bool critial);
 extern ssize_t read_all(int fd, char *buf, size_t max_len);
 
@@ -51,6 +53,11 @@ struct usr_msg {
     };
 };
 
+struct vmstat {
+    int64_t nr_inactive_file;
+    int64_t nr_active_file;
+    int64_t workingset_refault;
+};
 static int lmfs_netlink_socket;
 static int lmfs_unix_socket;
 static int lmfs_vmpressure_socket;
@@ -61,6 +68,96 @@ static int lmfs_swap_kill_adj;
 static int lmfs_max_swap_usage;
 static int vmpressure_enhanced;
 static int64_t vmpressure_last_notify_time = -1;
+static int lru_thrashing_threshold = -1;
+
+static void vmstat_parse_line(char *line, struct vmstat *vs) {
+    char *cp = line;
+    char *ap;
+    char *save_ptr;
+
+    cp = strtok_r(line, " ", &save_ptr);
+    if (!cp)
+        return;
+
+    ap = strtok_r(NULL, " ", &save_ptr);
+    if (!ap)
+        return;
+
+    if (!strcmp(cp, "nr_inactive_file"))
+        vs->nr_inactive_file = strtol(ap, NULL, 0);
+    else if (!strcmp(cp, "nr_active_file"))
+        vs->nr_active_file = strtol(ap, NULL, 0);
+    else if (!strcmp(cp, "workingset_refault"))
+        vs->workingset_refault = strtol(ap, NULL, 0);
+}
+
+int vmstat_parse(struct vmstat *vs) {
+        int fd;
+    ssize_t size;
+    char buf[PAGE_SIZE];
+    char *save_ptr;
+    char *line;
+
+    memset(vs, 0, sizeof(struct meminfo));
+
+    fd = open(VMSTAT_PATH, O_RDONLY | O_CLOEXEC);
+    if (fd == -1) {
+        ALOGE("%s open: errno=%d", VMSTAT_PATH, errno);
+        return -1;
+    }
+
+    size = read_all(fd, buf, sizeof(buf) - 1);
+    if (size < 0) {
+        ALOGE("thrashing %s read: errno=%d", VMSTAT_PATH, errno);
+        close(fd);
+        return -1;
+    }
+
+    ALOG_ASSERT((size_t)size < sizeof(buf) - 1, "/proc/vmstat too large");
+    buf[size] = 0;
+
+    for (line = strtok_r(buf, "\n", &save_ptr); line; line = strtok_r(NULL, "\n", &save_ptr))
+            vmstat_parse_line(line, vs);
+
+    close(fd);
+    return 0;
+}
+
+int getThrashingKill() {
+    static int64_t init_ws_refault = 0;
+    static int64_t base_file_lru = 0;
+    static int count = 0;
+    int64_t thrashing = 0;
+    int trashing_kill = 0;
+    struct vmstat vs;
+
+    if (vmstat_parse(&vs) < 0) {
+        ALOGE("Failed to parse vmstat!");
+        return 0;
+    }
+
+    if (base_file_lru != 0) {
+        thrashing = (vs.workingset_refault - init_ws_refault) * 100 / base_file_lru;
+    }
+    base_file_lru = vs.nr_inactive_file + vs.nr_active_file;
+    init_ws_refault = vs.workingset_refault;
+
+    if (thrashing > lru_thrashing_threshold) {
+        count++;
+    } else {
+        count = 0;
+    }
+
+    if (count > THRASHING_CONTINUE_COUNT) {
+        trashing_kill = 1;
+        count = 0;
+        ALOGD("lru trigger current thrashing %" PRId64 " workingset_refault %" PRId64
+            " nr_inactive_file %" PRId64 " nr_active_file %" PRId64,
+            thrashing, vs.workingset_refault,
+            vs.nr_inactive_file, vs.nr_active_file);
+    }
+    return trashing_kill;
+}
 
 static void handle_lmfs_unix_socket_connect(){
     struct sockaddr addr;
@@ -173,6 +270,8 @@ void handle_vmpressure(int vmpressure) {
     int swapusage;
     int nameLen = 0;
     char buffer[10];
+    int trashing = 0;
+
     if (vmpressure < 70 || meminfo_parse(&mi) < 0) {
         return;
     }
@@ -187,11 +286,14 @@ void handle_vmpressure(int vmpressure) {
             //we add this to avoid situation that swapusage almost 100,but cached > adj_900
             // kill adj 800
             ALOGD("handle_vmpressure %d current cache %d  swapfree  %d",
-            vmpressure, mi.cached, mi.swapfree);
+                    vmpressure, mi.cached, mi.swapfree);
+            if (lru_thrashing_threshold != -1) {
+                trashing = getThrashingKill();
+            }
             //use force-stop lru instead of  killing adj_800 by default:
             memset(buffer, 0, sizeof(buffer));
             if (lmfs_vmpressure_client_socket > 0) {
-                nameLen = snprintf(buffer, 9, "%d %d", swapusage, vmpressure);
+                nameLen = snprintf(buffer, 9, "%d %d %d", swapusage, vmpressure, trashing);
                 if (nameLen < 0) {
                     return;
                 }
@@ -305,6 +407,8 @@ static int lmfs_init_unix_socket(){
 }
 
 static void handle_lmfs_vmpressure_socket_connect() {
+    int numbytes;
+    char buff[10];
     struct sockaddr addr;
     socklen_t len = sizeof(addr);
 
@@ -319,6 +423,10 @@ static void handle_lmfs_vmpressure_socket_connect() {
         return;
     }
     ALOGD("vmpressure socket is connected:%d", lmfs_vmpressure_client_socket);
+    if((numbytes = recv(lmfs_vmpressure_client_socket, buff, sizeof(buff), 0)) != -1) {
+        lru_thrashing_threshold = atoi(buff);
+        ALOGD("vmpressure socket thrashing is connected:%d", lru_thrashing_threshold);
+    }
 }
 
 static int lmfs_init_vmpressure_socket() {
@@ -356,7 +464,7 @@ static int lmfs_init_epoll(){
 
 static int lmfs_init(){
     int ret = 1;
-    lmfs_max_swap_usage = property_get_int32("ro.lmk.swapusage", MAX_SWAPUSAGE_CRITIAL);
+    lmfs_max_swap_usage = property_get_int32("ro.lmk.swapusage", MAX_SWAPUSAGE_MEDIEM);
     lmfs_swap_kill_adj = property_get_int32("ro.lmk.swapkilladj", SWAP_KILL_ADJ);
     vmpressure_enhanced = property_get_bool("ro.lmk.vmpressurenhanced", false);
     ALOGD("lmfs_init lmfs_max_swap_usage=  %d, lmfs_swap_kill_adj = %d, vmpressure_enhanced = %d ",
