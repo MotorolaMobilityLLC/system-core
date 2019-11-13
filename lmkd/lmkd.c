@@ -82,7 +82,7 @@
 #define ZONEINFO_PATH "/proc/zoneinfo"
 #define MEMINFO_PATH "/proc/meminfo"
 #define VMSTAT_PATH "/proc/vmstat"
-#define PROC_STATUS_TGID_FIELD "Tgid:"
+#define PROC_STATUS_TGID_FIELD  "Tgid"
 #define LINE_MAX 128
 
 #define PERCEPTIBLE_APP_ADJ 200
@@ -796,7 +796,7 @@ static int proc_get_tgid(int pid) {
     int fd;
     ssize_t size;
     char *pos;
-    int64_t tgid = -1;
+    int64_t tgid = 0;
 
     snprintf(path, PATH_MAX, "/proc/%d/status", pid);
     fd = open(path, O_RDONLY | O_CLOEXEC);
@@ -824,7 +824,7 @@ static int proc_get_tgid(int pid) {
         goto out;
     }
 
-    pos += strlen(PROC_STATUS_TGID_FIELD);
+    pos += (strlen(PROC_STATUS_TGID_FIELD) + 1);
     while (*pos == ' ') pos++;
     parse_int64(pos, &tgid);
 
