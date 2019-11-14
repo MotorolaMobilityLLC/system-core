@@ -77,6 +77,12 @@ using namespace std::string_literals;
 
 static constexpr char kBootIndicatorPath[] = "/metadata/ota/snapshot-boot";
 
+#ifdef __ANDROID_RECOVERY__
+constexpr bool kIsRecovery = true;
+#else
+constexpr bool kIsRecovery = false;
+#endif
+
 class DeviceInfo final : public SnapshotManager::IDeviceInfo {
   public:
     std::string GetGsidDir() const override { return "ota"s; }
@@ -89,6 +95,7 @@ class DeviceInfo final : public SnapshotManager::IDeviceInfo {
     }
     bool IsOverlayfsSetup() const override { return fs_mgr_overlayfs_is_setup(); }
     bool SetBootControlMergeStatus(MergeStatus status) override;
+    bool IsRecovery() const override { return kIsRecovery; }
 
   private:
     android::fs_mgr::PartitionOpener opener_;
@@ -342,7 +349,6 @@ bool SnapshotManager::MapSnapshot(LockedFile* lock, const std::string& name,
                                   const std::chrono::milliseconds& timeout_ms,
                                   std::string* dev_path) {
     CHECK(lock);
-    if (!EnsureImageManager()) return false;
 
     SnapshotStatus status;
     if (!ReadSnapshotStatus(lock, name, &status)) {
@@ -450,9 +456,9 @@ bool SnapshotManager::MapSnapshot(LockedFile* lock, const std::string& name,
     return true;
 }
 
-bool SnapshotManager::MapCowImage(const std::string& name,
-                                  const std::chrono::milliseconds& timeout_ms) {
-    if (!EnsureImageManager()) return false;
+std::optional<std::string> SnapshotManager::MapCowImage(
+        const std::string& name, const std::chrono::milliseconds& timeout_ms) {
+    if (!EnsureImageManager()) return std::nullopt;
     auto cow_image_name = GetCowImageDeviceName(name);
 
     bool ok;
@@ -468,10 +474,10 @@ bool SnapshotManager::MapCowImage(const std::string& name,
 
     if (ok) {
         LOG(INFO) << "Mapped " << cow_image_name << " to " << cow_dev;
-    } else {
-        LOG(ERROR) << "Could not map image device: " << cow_image_name;
+        return cow_dev;
     }
-    return ok;
+    LOG(ERROR) << "Could not map image device: " << cow_image_name;
+    return std::nullopt;
 }
 
 bool SnapshotManager::UnmapSnapshot(LockedFile* lock, const std::string& name) {
@@ -1428,7 +1434,6 @@ bool SnapshotManager::MapCowDevices(LockedFile* lock, const CreateLogicalPartiti
                                     const SnapshotStatus& snapshot_status,
                                     AutoDeviceList* created_devices, std::string* cow_name) {
     CHECK(lock);
-    if (!EnsureImageManager()) return false;
     CHECK(snapshot_status.cow_partition_size() + snapshot_status.cow_file_size() > 0);
     auto begin = std::chrono::steady_clock::now();
 
@@ -1440,10 +1445,11 @@ bool SnapshotManager::MapCowDevices(LockedFile* lock, const CreateLogicalPartiti
 
     // Map COW image if necessary.
     if (snapshot_status.cow_file_size() > 0) {
+        if (!EnsureImageManager()) return false;
         auto remaining_time = GetRemainingTime(params.timeout_ms, begin);
         if (remaining_time.count() < 0) return false;
 
-        if (!MapCowImage(partition_name, remaining_time)) {
+        if (!MapCowImage(partition_name, remaining_time).has_value()) {
             LOG(ERROR) << "Could not map cow image for partition: " << partition_name;
             return false;
         }
@@ -1787,6 +1793,14 @@ bool SnapshotManager::CreateUpdateSnapshots(const DeltaArchiveManifest& manifest
     auto target_metadata =
             MetadataBuilder::NewForUpdate(opener, current_super, current_slot, target_slot);
 
+    // Delete partitions with target suffix in |current_metadata|. Otherwise,
+    // partition_cow_creator recognizes these left-over partitions as used space.
+    for (const auto& group_name : current_metadata->ListGroups()) {
+        if (android::base::EndsWith(group_name, target_suffix)) {
+            current_metadata->RemoveGroupAndPartitions(group_name);
+        }
+    }
+
     SnapshotMetadataUpdater metadata_updater(target_metadata.get(), target_slot, manifest);
     if (!metadata_updater.Update()) {
         LOG(ERROR) << "Cannot calculate new metadata.";
@@ -2064,6 +2078,15 @@ bool SnapshotManager::Dump(std::ostream& os) {
     }
     os << ss.rdbuf();
     return ok;
+}
+
+std::unique_ptr<AutoDevice> SnapshotManager::EnsureMetadataMounted() {
+    if (!device_->IsRecovery()) {
+        // No need to mount anything in recovery.
+        LOG(INFO) << "EnsureMetadataMounted does nothing in Android mode.";
+        return std::unique_ptr<AutoUnmountDevice>(new AutoUnmountDevice());
+    }
+    return AutoUnmountDevice::New(device_->GetMetadataDir());
 }
 
 }  // namespace snapshot
