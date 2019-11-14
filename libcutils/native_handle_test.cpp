@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 The Android Open Source Project
+ * Copyright (C) 2019 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,12 +14,14 @@
  * limitations under the License.
  */
 
-#include <signal.h>
-#include <stdlib.h>
+#include <cutils/native_handle.h>
 
-#include "logcat.h"
+#include <gtest/gtest.h>
 
-int main(int argc, char** argv) {
-    signal(SIGPIPE, exit);
-    return RunLogcat(argc, argv);
+TEST(native_handle, native_handle_delete) {
+    ASSERT_EQ(0, native_handle_delete(nullptr));
+}
+
+TEST(native_handle, native_handle_close) {
+    ASSERT_EQ(0, native_handle_close(nullptr));
 }

@@ -1,22 +1,6 @@
 LOCAL_PATH:= $(call my-dir)
 
 #######################################
-# init.rc
-include $(CLEAR_VARS)
-
-LOCAL_MODULE := init.rc
-LOCAL_SRC_FILES := $(LOCAL_MODULE)
-LOCAL_MODULE_CLASS := ETC
-LOCAL_MODULE_PATH := $(TARGET_ROOT_OUT)
-LOCAL_REQUIRED_MODULES := fsverity_init
-
-# The init symlink must be a post install command of a file that is to TARGET_ROOT_OUT.
-# Since init.rc is required for init and satisfies that requirement, we hijack it to create the symlink.
-LOCAL_POST_INSTALL_CMD := ln -sf /system/bin/init $(TARGET_ROOT_OUT)/init
-
-include $(BUILD_PREBUILT)
-
-#######################################
 # init-debug.rc
 include $(CLEAR_VARS)
 
@@ -147,6 +131,10 @@ endif
 ifeq ($(AB_OTA_UPDATER),true)
   LOCAL_POST_INSTALL_CMD += ; mkdir -p $(TARGET_ROOT_OUT)/postinstall
 endif
+
+# The init symlink must be a post install command of a file that is to TARGET_ROOT_OUT.
+# Since init.environ.rc is required for init and satisfies that requirement, we hijack it to create the symlink.
+LOCAL_POST_INSTALL_CMD += ; ln -sf /system/bin/init $(TARGET_ROOT_OUT)/init
 
 include $(BUILD_SYSTEM)/base_rules.mk
 
@@ -293,79 +281,6 @@ LOCAL_MODULE_PATH := $(TARGET_RECOVERY_ROOT_OUT)/system/etc
 LOCAL_MODULE_STEM := ld.config.txt
 include $(BUILD_PREBUILT)
 
-# Returns the unique installed basenames of a module, or module.so if there are
-# none.  The guess is to handle cases like libc, where the module itself is
-# marked uninstallable but a symlink is installed with the name libc.so.
-# $(1): list of libraries
-# $(2): suffix to to add to each library (not used for guess)
-define module-installed-files-or-guess
-$(foreach lib,$(1),$(or $(strip $(sort $(notdir $(call module-installed-files,$(lib)$(2))))),$(lib).so))
-endef
-
-#######################################
-# llndk.libraries.txt
-include $(CLEAR_VARS)
-LOCAL_MODULE := llndk.libraries.txt
-LOCAL_MODULE_CLASS := ETC
-LOCAL_MODULE_PATH := $(TARGET_OUT_ETC)
-LOCAL_MODULE_STEM := $(call append_vndk_version,$(LOCAL_MODULE))
-include $(BUILD_SYSTEM)/base_rules.mk
-$(LOCAL_BUILT_MODULE): PRIVATE_LLNDK_LIBRARIES := $(call module-installed-files-or-guess,$(LLNDK_LIBRARIES),)
-$(LOCAL_BUILT_MODULE):
-	@echo "Generate: $@"
-	@mkdir -p $(dir $@)
-	$(hide) echo -n > $@
-	$(hide) $(foreach lib,$(PRIVATE_LLNDK_LIBRARIES), \
-		echo $(lib) >> $@;)
-
-#######################################
-# vndksp.libraries.txt
-include $(CLEAR_VARS)
-LOCAL_MODULE := vndksp.libraries.txt
-LOCAL_MODULE_CLASS := ETC
-LOCAL_MODULE_PATH := $(TARGET_OUT_ETC)
-LOCAL_MODULE_STEM := $(call append_vndk_version,$(LOCAL_MODULE))
-include $(BUILD_SYSTEM)/base_rules.mk
-$(LOCAL_BUILT_MODULE): PRIVATE_VNDK_SAMEPROCESS_LIBRARIES := $(call module-installed-files-or-guess,$(VNDK_SAMEPROCESS_LIBRARIES),.com.android.vndk.current)
-$(LOCAL_BUILT_MODULE):
-	@echo "Generate: $@"
-	@mkdir -p $(dir $@)
-	$(hide) echo -n > $@
-	$(hide) $(foreach lib,$(PRIVATE_VNDK_SAMEPROCESS_LIBRARIES), \
-		echo $(lib) >> $@;)
-
-#######################################
-# vndkcore.libraries.txt
-include $(CLEAR_VARS)
-LOCAL_MODULE := vndkcore.libraries.txt
-LOCAL_MODULE_CLASS := ETC
-LOCAL_MODULE_PATH := $(TARGET_OUT_ETC)
-LOCAL_MODULE_STEM := $(call append_vndk_version,$(LOCAL_MODULE))
-include $(BUILD_SYSTEM)/base_rules.mk
-$(LOCAL_BUILT_MODULE): PRIVATE_VNDK_CORE_LIBRARIES := $(call module-installed-files-or-guess,$(VNDK_CORE_LIBRARIES),.com.android.vndk.current)
-$(LOCAL_BUILT_MODULE):
-	@echo "Generate: $@"
-	@mkdir -p $(dir $@)
-	$(hide) echo -n > $@
-	$(hide) $(foreach lib,$(PRIVATE_VNDK_CORE_LIBRARIES), \
-		echo $(lib) >> $@;)
-
-#######################################
-# vndkprivate.libraries.txt
-include $(CLEAR_VARS)
-LOCAL_MODULE := vndkprivate.libraries.txt
-LOCAL_MODULE_CLASS := ETC
-LOCAL_MODULE_PATH := $(TARGET_OUT_ETC)
-LOCAL_MODULE_STEM := $(call append_vndk_version,$(LOCAL_MODULE))
-include $(BUILD_SYSTEM)/base_rules.mk
-$(LOCAL_BUILT_MODULE): PRIVATE_VNDK_PRIVATE_LIBRARIES := $(call module-installed-files-or-guess,$(VNDK_PRIVATE_LIBRARIES),.com.android.vndk.current)
-$(LOCAL_BUILT_MODULE):
-	@echo "Generate: $@"
-	@mkdir -p $(dir $@)
-	$(hide) echo -n > $@
-	$(hide) $(foreach lib,$(PRIVATE_VNDK_PRIVATE_LIBRARIES), \
-		echo $(lib) >> $@;)
-
 #######################################
 # sanitizer.libraries.txt
 include $(CLEAR_VARS)
@@ -388,22 +303,6 @@ $(LOCAL_BUILT_MODULE):
 	@mkdir -p $(dir $@)
 	$(hide) echo -n > $@
 	$(hide) $(foreach lib,$(PRIVATE_SANITIZER_RUNTIME_LIBRARIES), \
-		echo $(lib) >> $@;)
-
-#######################################
-# vndkcorevariant.libraries.txt
-include $(CLEAR_VARS)
-LOCAL_MODULE := vndkcorevariant.libraries.txt
-LOCAL_MODULE_CLASS := ETC
-LOCAL_MODULE_PATH := $(TARGET_OUT_ETC)
-LOCAL_MODULE_STEM := $(call append_vndk_version,$(LOCAL_MODULE))
-include $(BUILD_SYSTEM)/base_rules.mk
-$(LOCAL_BUILT_MODULE): PRIVATE_VNDK_CORE_VARIANT_LIBRARIES := $(call module-installed-files-or-guess,$(VNDK_USING_CORE_VARIANT_LIBRARIES),.vendor)
-$(LOCAL_BUILT_MODULE):
-	@echo "Generate: $@"
-	@mkdir -p $(dir $@)
-	$(hide) echo -n > $@
-	$(hide) $(foreach lib,$(PRIVATE_VNDK_CORE_VARIANT_LIBRARIES), \
 		echo $(lib) >> $@;)
 
 #######################################

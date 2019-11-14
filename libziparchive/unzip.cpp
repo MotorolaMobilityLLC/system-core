@@ -15,11 +15,12 @@
  */
 
 #include <errno.h>
-#include <error.h>
 #include <fcntl.h>
 #include <fnmatch.h>
 #include <getopt.h>
 #include <inttypes.h>
+#include <libgen.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/stat.h>
@@ -64,6 +65,20 @@ static uint64_t total_uncompressed_length = 0;
 static uint64_t total_compressed_length = 0;
 static size_t file_count = 0;
 
+static const char* g_progname;
+
+static void die(int error, const char* fmt, ...) {
+  va_list ap;
+
+  va_start(ap, fmt);
+  fprintf(stderr, "%s: ", g_progname);
+  vfprintf(stderr, fmt, ap);
+  if (error != 0) fprintf(stderr, ": %s", strerror(error));
+  fprintf(stderr, "\n");
+  va_end(ap);
+  exit(1);
+}
+
 static bool ShouldInclude(const std::string& name) {
   // Explicitly excluded?
   if (!excludes.empty()) {
@@ -94,9 +109,10 @@ static bool MakeDirectoryHierarchy(const std::string& path) {
   return (mkdir(path.c_str(), 0777) != -1);
 }
 
-static int CompressionRatio(int64_t uncompressed, int64_t compressed) {
+static float CompressionRatio(int64_t uncompressed, int64_t compressed) {
   if (uncompressed == 0) return 0;
-  return static_cast<int>((100LL * (uncompressed - compressed)) / uncompressed);
+  return static_cast<float>(100LL * (uncompressed - compressed)) /
+         static_cast<float>(uncompressed);
 }
 
 static void MaybeShowHeader(ZipArchiveHandle zah) {
@@ -128,7 +144,7 @@ static void MaybeShowFooter() {
     if (flag_v) {
       printf(
           "--------          -------  ---                            -------\n"
-          "%8" PRId64 "         %8" PRId64 " %3d%%                            %zu file%s\n",
+          "%8" PRId64 "         %8" PRId64 " %3.0f%%                            %zu file%s\n",
           total_uncompressed_length, total_compressed_length,
           CompressionRatio(total_uncompressed_length, total_compressed_length), file_count,
           (file_count == 1) ? "" : "s");
@@ -140,7 +156,7 @@ static void MaybeShowFooter() {
     }
   } else {
     if (!flag_1 && includes.empty() && excludes.empty()) {
-      printf("%zu files, %" PRId64 " bytes uncompressed, %" PRId64 " bytes compressed: %3d%%\n",
+      printf("%zu files, %" PRId64 " bytes uncompressed, %" PRId64 " bytes compressed:  %.1f%%\n",
              file_count, total_uncompressed_length, total_compressed_length,
              CompressionRatio(total_uncompressed_length, total_compressed_length));
     }
@@ -155,7 +171,7 @@ static bool PromptOverwrite(const std::string& dst) {
     char* line = nullptr;
     size_t n;
     if (getline(&line, &n, stdin) == -1) {
-      error(1, 0, "(EOF/read error; assuming [N]one...)");
+      die(0, "(EOF/read error; assuming [N]one...)");
       overwrite_mode = kNever;
       return false;
     }
@@ -183,10 +199,10 @@ static void ExtractToPipe(ZipArchiveHandle zah, ZipEntry& entry, const std::stri
   uint8_t* buffer = new uint8_t[entry.uncompressed_length];
   int err = ExtractToMemory(zah, &entry, buffer, entry.uncompressed_length);
   if (err < 0) {
-    error(1, 0, "failed to extract %s: %s", name.c_str(), ErrorCodeString(err));
+    die(0, "failed to extract %s: %s", name.c_str(), ErrorCodeString(err));
   }
   if (!android::base::WriteFully(1, buffer, entry.uncompressed_length)) {
-    error(1, errno, "failed to write %s to stdout", name.c_str());
+    die(errno, "failed to write %s to stdout", name.c_str());
   }
   delete[] buffer;
 }
@@ -194,7 +210,7 @@ static void ExtractToPipe(ZipArchiveHandle zah, ZipEntry& entry, const std::stri
 static void ExtractOne(ZipArchiveHandle zah, ZipEntry& entry, const std::string& name) {
   // Bad filename?
   if (StartsWith(name, "/") || StartsWith(name, "../") || name.find("/../") != std::string::npos) {
-    error(1, 0, "bad filename %s", name.c_str());
+    die(0, "bad filename %s", name.c_str());
   }
 
   // Where are we actually extracting to (for human-readable output)?
@@ -207,7 +223,7 @@ static void ExtractOne(ZipArchiveHandle zah, ZipEntry& entry, const std::string&
 
   // Ensure the directory hierarchy exists.
   if (!MakeDirectoryHierarchy(android::base::Dirname(name))) {
-    error(1, errno, "couldn't create directory hierarchy for %s", dst.c_str());
+    die(errno, "couldn't create directory hierarchy for %s", dst.c_str());
   }
 
   // An entry in a zip file can just be a directory itself.
@@ -218,7 +234,7 @@ static void ExtractOne(ZipArchiveHandle zah, ZipEntry& entry, const std::string&
         struct stat sb;
         if (stat(name.c_str(), &sb) != -1 && S_ISDIR(sb.st_mode)) return;
       }
-      error(1, errno, "couldn't extract directory %s", dst.c_str());
+      die(errno, "couldn't extract directory %s", dst.c_str());
     }
     return;
   }
@@ -231,12 +247,12 @@ static void ExtractOne(ZipArchiveHandle zah, ZipEntry& entry, const std::string&
     // Either overwrite_mode is kAlways or the user consented to this specific case.
     fd = open(name.c_str(), O_WRONLY | O_CREAT | O_CLOEXEC | O_TRUNC, entry.unix_mode);
   }
-  if (fd == -1) error(1, errno, "couldn't create file %s", dst.c_str());
+  if (fd == -1) die(errno, "couldn't create file %s", dst.c_str());
 
   // Actually extract into the file.
   if (!flag_q) printf("  inflating: %s\n", dst.c_str());
   int err = ExtractEntryToFile(zah, &entry, fd);
-  if (err < 0) error(1, 0, "failed to extract %s: %s", dst.c_str(), ErrorCodeString(err));
+  if (err < 0) die(0, "failed to extract %s: %s", dst.c_str(), ErrorCodeString(err));
   close(fd);
 }
 
@@ -246,7 +262,7 @@ static void ListOne(const ZipEntry& entry, const std::string& name) {
   snprintf(time, sizeof(time), "%04d-%02d-%02d %02d:%02d", t.tm_year + 1900, t.tm_mon + 1,
            t.tm_mday, t.tm_hour, t.tm_min);
   if (flag_v) {
-    printf("%8d  %s  %7d %3d%% %s %08x  %s\n", entry.uncompressed_length,
+    printf("%8d  %s  %7d %3.0f%% %s %08x  %s\n", entry.uncompressed_length,
            (entry.method == kCompressStored) ? "Stored" : "Defl:N", entry.compressed_length,
            CompressionRatio(entry.uncompressed_length, entry.compressed_length), time, entry.crc32,
            name.c_str());
@@ -345,7 +361,7 @@ static void ProcessAll(ZipArchiveHandle zah) {
   void* cookie;
   int err = StartIteration(zah, &cookie);
   if (err != 0) {
-    error(1, 0, "couldn't iterate %s: %s", archive_name, ErrorCodeString(err));
+    die(0, "couldn't iterate %s: %s", archive_name, ErrorCodeString(err));
   }
 
   ZipEntry entry;
@@ -354,7 +370,7 @@ static void ProcessAll(ZipArchiveHandle zah) {
     if (ShouldInclude(name)) ProcessOne(zah, entry, name);
   }
 
-  if (err < -1) error(1, 0, "failed iterating %s: %s", archive_name, ErrorCodeString(err));
+  if (err < -1) die(0, "failed iterating %s: %s", archive_name, ErrorCodeString(err));
   EndIteration(cookie);
 
   MaybeShowFooter();
@@ -420,14 +436,14 @@ static void HandleCommonOption(int opt) {
 
 int main(int argc, char* argv[]) {
   // Who am I, and what am I doing?
-  const char* base = basename(argv[0]);
-  if (!strcmp(base, "ziptool") && argc > 1) return main(argc - 1, argv + 1);
-  if (!strcmp(base, "unzip")) {
+  g_progname = basename(argv[0]);
+  if (!strcmp(g_progname, "ziptool") && argc > 1) return main(argc - 1, argv + 1);
+  if (!strcmp(g_progname, "unzip")) {
     role = kUnzip;
-  } else if (!strcmp(base, "zipinfo")) {
+  } else if (!strcmp(g_progname, "zipinfo")) {
     role = kZipinfo;
   } else {
-    error(1, 0, "run as ziptool with unzip or zipinfo as the first argument, or symlink");
+    die(0, "run as ziptool with unzip or zipinfo as the first argument, or symlink");
   }
 
   static const struct option opts[] = {
@@ -484,19 +500,19 @@ int main(int argc, char* argv[]) {
     }
   }
 
-  if (!archive_name) error(1, 0, "missing archive filename");
+  if (!archive_name) die(0, "missing archive filename");
 
   // We can't support "-" to unzip from stdin because libziparchive relies on mmap.
   ZipArchiveHandle zah;
   int32_t err;
   if ((err = OpenArchive(archive_name, &zah)) != 0) {
-    error(1, 0, "couldn't open %s: %s", archive_name, ErrorCodeString(err));
+    die(0, "couldn't open %s: %s", archive_name, ErrorCodeString(err));
   }
 
   // Implement -d by changing into that directory.
   // We'll create implicit directories based on paths in the zip file, but we
   // require that the -d directory already exists.
-  if (flag_d && chdir(flag_d) == -1) error(1, errno, "couldn't chdir to %s", flag_d);
+  if (flag_d && chdir(flag_d) == -1) die(errno, "couldn't chdir to %s", flag_d);
 
   ProcessAll(zah);
 
