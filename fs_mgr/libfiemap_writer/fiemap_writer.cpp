@@ -41,9 +41,8 @@
 namespace android {
 namespace fiemap_writer {
 
-// We are expecting no more than 512 extents in a fiemap of the file we create.
-// If we find more, then it is treated as error for now.
-static constexpr const uint32_t kMaxExtents = 512;
+// We cap the maximum number of extents as a sanity measure.
+static constexpr const uint32_t kMaxExtents = 50000;
 
 // TODO: Fallback to using fibmap if FIEMAP_EXTENT_MERGED is set.
 static constexpr const uint32_t kUnsupportedExtentFlags =
@@ -456,10 +455,40 @@ bool FiemapWriter::HasPinnedExtents(const std::string& file_path) {
     return IsFilePinned(fd, file_path, sfs.f_type);
 }
 
+static bool CountFiemapExtents(int file_fd, const std::string& file_path, uint32_t* num_extents) {
+    struct fiemap fiemap = {};
+    fiemap.fm_start = 0;
+    fiemap.fm_length = UINT64_MAX;
+    fiemap.fm_flags = FIEMAP_FLAG_SYNC;
+    fiemap.fm_extent_count = 0;
+
+    if (ioctl(file_fd, FS_IOC_FIEMAP, &fiemap)) {
+        PLOG(ERROR) << "Failed to get FIEMAP from the kernel for file: " << file_path;
+        return false;
+    }
+
+    *num_extents = fiemap.fm_mapped_extents;
+    return true;
+}
+
 static bool ReadFiemap(int file_fd, const std::string& file_path,
                        std::vector<struct fiemap_extent>* extents) {
+    uint32_t num_extents;
+    if (!CountFiemapExtents(file_fd, file_path, &num_extents)) {
+        return false;
+    }
+    if (num_extents == 0) {
+        LOG(ERROR) << "File " << file_path << " has zero extents";
+        return false;
+    }
+    if (num_extents > kMaxExtents) {
+        LOG(ERROR) << "File has " << num_extents << ", maximum is " << kMaxExtents << ": "
+                   << file_path;
+        return false;
+    }
+
     uint64_t fiemap_size =
-            sizeof(struct fiemap_extent) + kMaxExtents * sizeof(struct fiemap_extent);
+            sizeof(struct fiemap_extent) + num_extents * sizeof(struct fiemap_extent);
     auto buffer = std::unique_ptr<void, decltype(&free)>(calloc(1, fiemap_size), free);
     if (buffer == nullptr) {
         LOG(ERROR) << "Failed to allocate memory for fiemap";
@@ -471,48 +500,41 @@ static bool ReadFiemap(int file_fd, const std::string& file_path,
     fiemap->fm_length = UINT64_MAX;
     // make sure file is synced to disk before we read the fiemap
     fiemap->fm_flags = FIEMAP_FLAG_SYNC;
-    fiemap->fm_extent_count = kMaxExtents;
+    fiemap->fm_extent_count = num_extents;
 
     if (ioctl(file_fd, FS_IOC_FIEMAP, fiemap)) {
         PLOG(ERROR) << "Failed to get FIEMAP from the kernel for file: " << file_path;
         return false;
     }
+    if (fiemap->fm_mapped_extents != num_extents) {
+        LOG(ERROR) << "FIEMAP returned unexpected extent count (" << num_extents
+                   << " expected, got " << fiemap->fm_mapped_extents << ") for file: " << file_path;
+        return false;
+    }
 
-    if (fiemap->fm_mapped_extents == 0) {
-        LOG(ERROR) << "File " << file_path << " has zero extents";
+    const struct fiemap_extent* last_extent = &fiemap->fm_extents[num_extents - 1];
+    if (!(last_extent->fe_flags & FIEMAP_EXTENT_LAST)) {
+        LOG(ERROR) << "FIEMAP did not return a final extent for file: " << file_path;
         return false;
     }
 
     // Iterate through each extent read and make sure its valid before adding it to the vector
-    bool last_extent_seen = false;
-    struct fiemap_extent* extent = &fiemap->fm_extents[0];
-    for (uint32_t i = 0; i < fiemap->fm_mapped_extents; i++, extent++) {
-        // LogExtent(i + 1, *extent);
+    for (uint32_t i = 0; i < num_extents; i++) {
+        const struct fiemap_extent* extent = &fiemap->fm_extents[i];
         if (extent->fe_flags & kUnsupportedExtentFlags) {
             LOG(ERROR) << "Extent " << i + 1 << " of file " << file_path
                        << " has unsupported flags";
-            extents->clear();
             return false;
         }
 
-        if (extent->fe_flags & FIEMAP_EXTENT_LAST) {
-            last_extent_seen = true;
-            if (i != (fiemap->fm_mapped_extents - 1)) {
-                LOG(WARNING) << "Extents are being received out-of-order";
-            }
-        }
-        extents->emplace_back(std::move(*extent));
-    }
+        if ((extent->fe_flags & FIEMAP_EXTENT_LAST) && extent != last_extent) {
+            LOG(ERROR) << "Extents are being received out-of-order";
+            return false;
+         }
+         extents->emplace_back(*extent);
+     }
 
-    if (!last_extent_seen) {
-        // The file is possibly too fragmented.
-        if (fiemap->fm_mapped_extents == kMaxExtents) {
-            LOG(ERROR) << "File is too fragmented, needs more than " << kMaxExtents << " extents.";
-        }
-        extents->clear();
-    }
-
-    return last_extent_seen;
+    return true;
 }
 
 static bool ReadFibmap(int file_fd, const std::string& file_path,
@@ -557,6 +579,10 @@ static bool ReadFibmap(int file_fd, const std::string& file_path,
                                              .fe_physical = static_cast<uint64_t>(block) * blksize,
                                              .fe_length = static_cast<uint64_t>(blksize),
                                              .fe_flags = 0});
+            if (extents->size() > kMaxExtents) {
+                LOG(ERROR) << "File has more than " << kMaxExtents << "extents: " << file_path;
+                return false;
+            }
         }
         last_block = block;
     }
