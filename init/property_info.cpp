@@ -50,6 +50,7 @@ std::string prop_client_value = "android-motorola";
 std::string prop_clientrev_value = "android-motorola-rev2";
 std::string prop_clientcountry_value = "android-americamovil-{country}";
 std::string prop_clientrevc_value = "android-americamovil-{country}-revc";
+std::string prop_clientwindit_value = "android-h3g-{country}-revc";
 std::string prop_clientmx_value = "android-attmexico-mx-revc";
 std::string prop_clientuk_value = "android-ee-uk-revc";
 std::string prop_clientbr_value = "android-tim-br-revc";
@@ -86,8 +87,7 @@ void set_system_properties(){
                 property_set(prop_msclient, prop_clientit_value);
                 property_set(prop_amazon_partnerid, carrier_value);
             } else if (carrier_ontim == "windit_windds") {
-                property_set(prop_amclient, prop_client_value);
-                property_set(prop_msclient, prop_clientrev_value);
+                property_set(prop_msclient, prop_clientwindit_value);
                 property_set(prop_amazon_partnerid, "3it");
             } else {
                 property_set(prop_amclient, prop_client_value);
