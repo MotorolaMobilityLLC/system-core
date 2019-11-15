@@ -1018,6 +1018,7 @@ void load_recovery_id_prop() {
 
 // modify by dongjunxia for sku prop .start
 void load_system_props() {
+    property_set("ro.vendor.aosp.ver", "no");
     load_properties_from_file("/system/build.prop", NULL);
     load_properties_from_file("/odm/build.prop", NULL);
     load_properties_from_file("/vendor/build.prop", NULL);
