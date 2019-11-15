@@ -33,6 +33,7 @@ class FuseBridgeLoopCallback {
  public:
    virtual void OnMount(int mount_id) = 0;
    virtual void OnClosed(int mount_id) = 0;
+   virtual void OnGetlock() = 0;
    virtual ~FuseBridgeLoopCallback() = default;
 };
 

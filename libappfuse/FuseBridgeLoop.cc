@@ -372,6 +372,7 @@ void FuseBridgeLoop::Start(FuseBridgeLoopCallback* callback) {
         const bool wait_result = epoll_controller_->Wait(bridges_.size(), &entries);
         LOG(VERBOSE) << "Receive epoll events";
         {
+            callback->OnGetlock();
             std::lock_guard<std::mutex> lock(mutex_);
             if (!(wait_result && ProcessEventLocked(entries, callback))) {
                 for (auto it = bridges_.begin(); it != bridges_.end();) {
