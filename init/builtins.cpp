@@ -42,6 +42,8 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <memory>
+
 #include <ApexProperties.sysprop.h>
 #include <android-base/chrono_utils.h>
 #include <android-base/file.h>
@@ -63,6 +65,7 @@
 
 #include "action_manager.h"
 #include "bootchart.h"
+#include "builtin_arguments.h"
 #include "fscrypt_init_extensions.h"
 #include "init.h"
 #include "mount_namespace.h"
@@ -138,14 +141,7 @@ static Result<void> reboot_into_recovery(const std::vector<std::string>& options
     if (!write_bootloader_message(options, &err)) {
         return Error() << "Failed to set bootloader message: " << err;
     }
-    // This function should only be reached from init and not from vendor_init, and we want to
-    // immediately trigger reboot instead of relaying through property_service.  Older devices may
-    // still have paths that reach here from vendor_init, so we keep the property_set as a fallback.
-    if (getpid() == 1) {
-        TriggerShutdown("reboot,recovery");
-    } else {
-        property_set("sys.powerctl", "reboot,recovery");
-    }
+    trigger_shutdown("reboot,recovery");
     return {};
 }
 
@@ -362,67 +358,52 @@ static Result<void> do_interface_stop(const BuiltinArguments& args) {
     return {};
 }
 
-// mkdir <path> [mode] [owner] [group]
+// mkdir <path> [mode] [owner] [group] [<option> ...]
 static Result<void> do_mkdir(const BuiltinArguments& args) {
-    mode_t mode = 0755;
-    Result<uid_t> uid = -1;
-    Result<gid_t> gid = -1;
-
-    switch (args.size()) {
-        case 5:
-            gid = DecodeUid(args[4]);
-            if (!gid) {
-                return Error() << "Unable to decode GID for '" << args[4] << "': " << gid.error();
-            }
-            FALLTHROUGH_INTENDED;
-        case 4:
-            uid = DecodeUid(args[3]);
-            if (!uid) {
-                return Error() << "Unable to decode UID for '" << args[3] << "': " << uid.error();
-            }
-            FALLTHROUGH_INTENDED;
-        case 3:
-            mode = std::strtoul(args[2].c_str(), 0, 8);
-            FALLTHROUGH_INTENDED;
-        case 2:
-            break;
-        default:
-            return Error() << "Unexpected argument count: " << args.size();
+    auto options = ParseMkdir(args.args);
+    if (!options) return options.error();
+    std::string ref_basename;
+    if (options->ref_option == "ref") {
+        ref_basename = fscrypt_key_ref;
+    } else if (options->ref_option == "per_boot_ref") {
+        ref_basename = fscrypt_key_per_boot_ref;
+    } else {
+        return Error() << "Unknown key option: '" << options->ref_option << "'";
     }
-    std::string target = args[1];
+
     struct stat mstat;
-    if (lstat(target.c_str(), &mstat) != 0) {
+    if (lstat(options->target.c_str(), &mstat) != 0) {
         if (errno != ENOENT) {
-            return ErrnoError() << "lstat() failed on " << target;
+            return ErrnoError() << "lstat() failed on " << options->target;
         }
-        if (!make_dir(target, mode)) {
-            return ErrnoErrorIgnoreEnoent() << "mkdir() failed on " << target;
+        if (!make_dir(options->target, options->mode)) {
+            return ErrnoErrorIgnoreEnoent() << "mkdir() failed on " << options->target;
         }
-        if (lstat(target.c_str(), &mstat) != 0) {
-            return ErrnoError() << "lstat() failed on new " << target;
+        if (lstat(options->target.c_str(), &mstat) != 0) {
+            return ErrnoError() << "lstat() failed on new " << options->target;
         }
     }
     if (!S_ISDIR(mstat.st_mode)) {
-        return Error() << "Not a directory on " << target;
+        return Error() << "Not a directory on " << options->target;
     }
-    bool needs_chmod = (mstat.st_mode & ~S_IFMT) != mode;
-    if ((*uid != static_cast<uid_t>(-1) && *uid != mstat.st_uid) ||
-        (*gid != static_cast<gid_t>(-1) && *gid != mstat.st_gid)) {
-        if (lchown(target.c_str(), *uid, *gid) == -1) {
-            return ErrnoError() << "lchown failed on " << target;
+    bool needs_chmod = (mstat.st_mode & ~S_IFMT) != options->mode;
+    if ((options->uid != static_cast<uid_t>(-1) && options->uid != mstat.st_uid) ||
+        (options->gid != static_cast<gid_t>(-1) && options->gid != mstat.st_gid)) {
+        if (lchown(options->target.c_str(), options->uid, options->gid) == -1) {
+            return ErrnoError() << "lchown failed on " << options->target;
         }
         // chown may have cleared S_ISUID and S_ISGID, chmod again
         needs_chmod = true;
     }
     if (needs_chmod) {
-        if (fchmodat(AT_FDCWD, target.c_str(), mode, AT_SYMLINK_NOFOLLOW) == -1) {
-            return ErrnoError() << "fchmodat() failed on " << target;
+        if (fchmodat(AT_FDCWD, options->target.c_str(), options->mode, AT_SYMLINK_NOFOLLOW) == -1) {
+            return ErrnoError() << "fchmodat() failed on " << options->target;
         }
     }
     if (fscrypt_is_native()) {
-        if (fscrypt_set_directory_policy(target)) {
+        if (!FscryptSetDirectoryPolicy(ref_basename, options->fscrypt_action, options->target)) {
             return reboot_into_recovery(
-                    {"--prompt_and_wipe_data", "--reason=set_policy_failed:"s + target});
+                    {"--prompt_and_wipe_data", "--reason=set_policy_failed:"s + options->target});
         }
     }
     return {};
@@ -560,11 +541,25 @@ static void import_late(const std::vector<std::string>& args, size_t start_index
  *
  * return code is processed based on input code
  */
-static Result<void> queue_fs_event(int code) {
+static Result<void> queue_fs_event(int code, bool userdata_remount) {
     if (code == FS_MGR_MNTALL_DEV_NEEDS_ENCRYPTION) {
+        if (userdata_remount) {
+            // FS_MGR_MNTALL_DEV_NEEDS_ENCRYPTION should only happen on FDE devices. Since we don't
+            // support userdata remount on FDE devices, this should never been triggered. Time to
+            // panic!
+            LOG(ERROR) << "Userdata remount is not supported on FDE devices. How did you get here?";
+            trigger_shutdown("reboot,requested-userdata-remount-on-fde-device");
+        }
         ActionManager::GetInstance().QueueEventTrigger("encrypt");
         return {};
     } else if (code == FS_MGR_MNTALL_DEV_MIGHT_BE_ENCRYPTED) {
+        if (userdata_remount) {
+            // FS_MGR_MNTALL_DEV_MIGHT_BE_ENCRYPTED should only happen on FDE devices. Since we
+            // don't support userdata remount on FDE devices, this should never been triggered.
+            // Time to panic!
+            LOG(ERROR) << "Userdata remount is not supported on FDE devices. How did you get here?";
+            trigger_shutdown("reboot,requested-userdata-remount-on-fde-device");
+        }
         property_set("ro.crypto.state", "encrypted");
         property_set("ro.crypto.type", "block");
         ActionManager::GetInstance().QueueEventTrigger("defaultcrypto");
@@ -587,8 +582,8 @@ static Result<void> queue_fs_event(int code) {
         return reboot_into_recovery(options);
         /* If reboot worked, there is no return. */
     } else if (code == FS_MGR_MNTALL_DEV_FILE_ENCRYPTED) {
-        if (fscrypt_install_keyring()) {
-            return Error() << "fscrypt_install_keyring() failed";
+        if (!userdata_remount && !FscryptInstallKeyring()) {
+            return Error() << "FscryptInstallKeyring() failed";
         }
         property_set("ro.crypto.state", "encrypted");
         property_set("ro.crypto.type", "file");
@@ -598,8 +593,8 @@ static Result<void> queue_fs_event(int code) {
         ActionManager::GetInstance().QueueEventTrigger("nonencrypted");
         return {};
     } else if (code == FS_MGR_MNTALL_DEV_IS_METADATA_ENCRYPTED) {
-        if (fscrypt_install_keyring()) {
-            return Error() << "fscrypt_install_keyring() failed";
+        if (!userdata_remount && !FscryptInstallKeyring()) {
+            return Error() << "FscryptInstallKeyring() failed";
         }
         property_set("ro.crypto.state", "encrypted");
         property_set("ro.crypto.type", "file");
@@ -609,8 +604,8 @@ static Result<void> queue_fs_event(int code) {
         ActionManager::GetInstance().QueueEventTrigger("nonencrypted");
         return {};
     } else if (code == FS_MGR_MNTALL_DEV_NEEDS_METADATA_ENCRYPTION) {
-        if (fscrypt_install_keyring()) {
-            return Error() << "fscrypt_install_keyring() failed";
+        if (!userdata_remount && !FscryptInstallKeyring()) {
+            return Error() << "FscryptInstallKeyring() failed";
         }
         property_set("ro.crypto.state", "encrypted");
         property_set("ro.crypto.type", "file");
@@ -626,6 +621,8 @@ static Result<void> queue_fs_event(int code) {
 
     return Error() << "Invalid code: " << code;
 }
+
+static int initial_mount_fstab_return_code = -1;
 
 /* mount_all <fstab> [ <path> ]* [--<options>]*
  *
@@ -662,6 +659,7 @@ static Result<void> do_mount_all(const BuiltinArguments& args) {
     if (!ReadFstabFromFile(fstab_file, &fstab)) {
         return Error() << "Could not read fstab";
     }
+
     auto mount_fstab_return_code = fs_mgr_mount_all(&fstab, mount_mode);
     property_set(prop_name, std::to_string(t.duration().count()));
 
@@ -673,7 +671,8 @@ static Result<void> do_mount_all(const BuiltinArguments& args) {
     if (queue_event) {
         /* queue_fs_event will queue event based on mount_fstab return code
          * and return processed return code*/
-        auto queue_fs_result = queue_fs_event(mount_fstab_return_code);
+        initial_mount_fstab_return_code = mount_fstab_return_code;
+        auto queue_fs_result = queue_fs_event(mount_fstab_return_code, false);
         if (!queue_fs_result) {
             return Error() << "queue_fs_event() failed: " << queue_fs_result.error();
         }
@@ -1132,6 +1131,25 @@ static Result<void> ExecVdcRebootOnFailure(const std::string& vdc_arg) {
     return ExecWithFunctionOnFailure(args, reboot);
 }
 
+static Result<void> do_remount_userdata(const BuiltinArguments& args) {
+    if (initial_mount_fstab_return_code == -1) {
+        return Error() << "Calling remount_userdata too early";
+    }
+    Fstab fstab;
+    if (!ReadDefaultFstab(&fstab)) {
+        // TODO(b/135984674): should we reboot here?
+        return Error() << "Failed to read fstab";
+    }
+    // TODO(b/135984674): check that fstab contains /data.
+    if (auto rc = fs_mgr_remount_userdata_into_checkpointing(&fstab); rc < 0) {
+        trigger_shutdown("reboot,mount-userdata-failed");
+    }
+    if (auto result = queue_fs_event(initial_mount_fstab_return_code, true); !result) {
+        return Error() << "queue_fs_event() failed: " << result.error();
+    }
+    return {};
+}
+
 static Result<void> do_installkey(const BuiltinArguments& args) {
     if (!is_file_crypto()) return {};
 
@@ -1199,6 +1217,15 @@ static Result<void> do_enter_default_mount_ns(const BuiltinArguments& args) {
     }
 }
 
+static Result<void> do_finish_userspace_reboot(const BuiltinArguments&) {
+    LOG(INFO) << "Userspace reboot successfully finished";
+    boot_clock::time_point now = boot_clock::now();
+    property_set("sys.init.userspace_reboot.last_finished",
+                 std::to_string(now.time_since_epoch().count()));
+    property_set(kUserspaceRebootInProgress, "0");
+    return {};
+}
+
 // Builtin-function-map start
 const BuiltinFunctionMap& GetBuiltinFunctionMap() {
     constexpr std::size_t kMax = std::numeric_limits<std::size_t>::max();
@@ -1220,6 +1247,7 @@ const BuiltinFunctionMap& GetBuiltinFunctionMap() {
         {"exec_background",         {1,     kMax, {false,  do_exec_background}}},
         {"exec_start",              {1,     1,    {false,  do_exec_start}}},
         {"export",                  {2,     2,    {false,  do_export}}},
+        {"finish_userspace_reboot", {0,     0,    {false,  do_finish_userspace_reboot}}},
         {"hostname",                {1,     1,    {true,   do_hostname}}},
         {"ifup",                    {1,     1,    {true,   do_ifup}}},
         {"init_user0",              {0,     0,    {false,  do_init_user0}}},
@@ -1232,7 +1260,7 @@ const BuiltinFunctionMap& GetBuiltinFunctionMap() {
         {"load_system_props",       {0,     0,    {false,  do_load_system_props}}},
         {"loglevel",                {1,     1,    {false,  do_loglevel}}},
         {"mark_post_data",          {0,     0,    {false,  do_mark_post_data}}},
-        {"mkdir",                   {1,     4,    {true,   do_mkdir}}},
+        {"mkdir",                   {1,     6,    {true,   do_mkdir}}},
         // TODO: Do mount operations in vendor_init.
         // mount_all is currently too complex to run in vendor_init as it queues action triggers,
         // imports rc scripts, etc.  It should be simplified and run in vendor_init context.
@@ -1243,6 +1271,7 @@ const BuiltinFunctionMap& GetBuiltinFunctionMap() {
         {"umount",                  {1,     1,    {false,  do_umount}}},
         {"umount_all",              {1,     1,    {false,  do_umount_all}}},
         {"readahead",               {1,     2,    {true,   do_readahead}}},
+        {"remount_userdata",        {0,     0,    {false,  do_remount_userdata}}},
         {"restart",                 {1,     1,    {false,  do_restart}}},
         {"restorecon",              {1,     kMax, {true,   do_restorecon}}},
         {"restorecon_recursive",    {1,     kMax, {true,   do_restorecon_recursive}}},

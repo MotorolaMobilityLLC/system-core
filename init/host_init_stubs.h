@@ -26,6 +26,7 @@
 
 // android/api-level.h
 #define __ANDROID_API_P__ 28
+#define __ANDROID_API_Q__ 29
 #define __ANDROID_API_R__ 30
 
 // sys/system_properties.h
@@ -33,11 +34,6 @@
 
 namespace android {
 namespace init {
-
-// init.h
-inline void TriggerShutdown(const std::string&) {
-    abort();
-}
 
 // property_service.h
 inline bool CanReadProperty(const std::string&, const std::string&) {

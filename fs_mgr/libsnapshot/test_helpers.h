@@ -16,7 +16,9 @@
 
 #include <optional>
 #include <string>
+#include <unordered_set>
 
+#include <android/hardware/boot/1.1/IBootControl.h>
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include <libfiemap/image_manager.h>
@@ -32,6 +34,7 @@ namespace snapshot {
 using android::fs_mgr::IPropertyFetcher;
 using android::fs_mgr::MetadataBuilder;
 using android::fs_mgr::testing::MockPropertyFetcher;
+using android::hardware::boot::V1_1::MergeStatus;
 using chromeos_update_engine::DeltaArchiveManifest;
 using chromeos_update_engine::PartitionUpdate;
 using testing::_;
@@ -81,16 +84,32 @@ class TestDeviceInfo : public SnapshotManager::IDeviceInfo {
     const android::fs_mgr::IPartitionOpener& GetPartitionOpener() const override {
         return *opener_.get();
     }
+    bool SetBootControlMergeStatus(MergeStatus status) override {
+        merge_status_ = status;
+        return true;
+    }
     bool IsOverlayfsSetup() const override { return false; }
+    bool IsRecovery() const override { return recovery_; }
+    bool SetSlotAsUnbootable(unsigned int slot) override {
+        unbootable_slots_.insert(slot);
+        return true;
+    }
+
+    bool IsSlotUnbootable(uint32_t slot) { return unbootable_slots_.count(slot) != 0; }
 
     void set_slot_suffix(const std::string& suffix) { slot_suffix_ = suffix; }
     void set_fake_super(const std::string& path) {
         opener_ = std::make_unique<TestPartitionOpener>(path);
     }
+    void set_recovery(bool value) { recovery_ = value; }
+    MergeStatus merge_status() const { return merge_status_; }
 
   private:
     std::string slot_suffix_ = "_a";
     std::unique_ptr<TestPartitionOpener> opener_;
+    MergeStatus merge_status_;
+    bool recovery_ = false;
+    std::unordered_set<uint32_t> unbootable_slots_;
 };
 
 class SnapshotTestPropertyFetcher : public android::fs_mgr::testing::MockPropertyFetcher {
@@ -129,6 +148,9 @@ AssertionResult FillFakeMetadata(MetadataBuilder* builder, const DeltaArchiveMan
 
 // In the update package metadata, set a partition with the given size.
 void SetSize(PartitionUpdate* partition_update, uint64_t size);
+
+// Get partition size from update package metadata.
+uint64_t GetSize(PartitionUpdate* partition_update);
 
 }  // namespace snapshot
 }  // namespace android

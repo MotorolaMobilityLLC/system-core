@@ -58,6 +58,7 @@
 #include <fs_avb/fs_avb.h>
 #include <fs_mgr/file_wait.h>
 #include <fs_mgr_overlayfs.h>
+#include <fscrypt/fscrypt.h>
 #include <libdm/dm.h>
 #include <liblp/metadata_format.h>
 #include <linux/fs.h>
@@ -83,6 +84,9 @@
 #define ZRAM_BACK_DEV   "/sys/block/zram0/backing_dev"
 
 #define SYSFS_EXT4_VERITY "/sys/fs/ext4/features/verity"
+
+// FIXME: this should be in system/extras
+#define EXT4_FEATURE_COMPAT_STABLE_INODES 0x0800
 
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(*(a)))
 
@@ -412,25 +416,43 @@ static void tune_reserved_size(const std::string& blk_device, const FstabEntry& 
 // Enable file-based encryption if needed.
 static void tune_encrypt(const std::string& blk_device, const FstabEntry& entry,
                          const struct ext4_super_block* sb, int* fs_stat) {
-    bool has_encrypt = (sb->s_feature_incompat & cpu_to_le32(EXT4_FEATURE_INCOMPAT_ENCRYPT)) != 0;
-    bool want_encrypt = entry.fs_mgr_flags.file_encryption;
-
-    if (has_encrypt || !want_encrypt) {
+    if (!entry.fs_mgr_flags.file_encryption) {
+        return;  // Nothing needs done.
+    }
+    std::vector<std::string> features_needed;
+    if ((sb->s_feature_incompat & cpu_to_le32(EXT4_FEATURE_INCOMPAT_ENCRYPT)) == 0) {
+        features_needed.emplace_back("encrypt");
+    }
+    android::fscrypt::EncryptionOptions options;
+    if (!android::fscrypt::ParseOptions(entry.encryption_options, &options)) {
+        LERROR << "Unable to parse encryption options on " << blk_device << ": "
+               << entry.encryption_options;
         return;
     }
-
+    if ((options.flags & FSCRYPT_POLICY_FLAG_IV_INO_LBLK_64) != 0) {
+        // We can only use this policy on ext4 if the "stable_inodes" feature
+        // is set on the filesystem, otherwise shrinking will break encrypted files.
+        if ((sb->s_feature_compat & cpu_to_le32(EXT4_FEATURE_COMPAT_STABLE_INODES)) == 0) {
+            features_needed.emplace_back("stable_inodes");
+        }
+    }
+    if (features_needed.size() == 0) {
+        return;
+    }
     if (!tune2fs_available()) {
         LERROR << "Unable to enable ext4 encryption on " << blk_device
                << " because " TUNE2FS_BIN " is missing";
         return;
     }
 
-    const char* argv[] = {TUNE2FS_BIN, "-Oencrypt", blk_device.c_str()};
+    auto flags = android::base::Join(features_needed, ',');
+    auto flag_arg = "-O"s + flags;
+    const char* argv[] = {TUNE2FS_BIN, flag_arg.c_str(), blk_device.c_str()};
 
-    LINFO << "Enabling ext4 encryption on " << blk_device;
+    LINFO << "Enabling ext4 flags " << flags << " on " << blk_device;
     if (!run_tune2fs(argv, ARRAY_SIZE(argv))) {
         LERROR << "Failed to run " TUNE2FS_BIN " to enable "
-               << "ext4 encryption on " << blk_device;
+               << "ext4 flags " << flags << " on " << blk_device;
         *fs_stat |= FS_STAT_ENABLE_ENCRYPTION_FAILED;
     }
 }
@@ -888,6 +910,17 @@ class CheckpointManager {
   public:
     CheckpointManager(int needs_checkpoint = -1) : needs_checkpoint_(needs_checkpoint) {}
 
+    bool NeedsCheckpoint() {
+        if (needs_checkpoint_ != UNKNOWN) {
+            return needs_checkpoint_ == YES;
+        }
+        if (!call_vdc({"checkpoint", "needsCheckpoint"}, &needs_checkpoint_)) {
+            LERROR << "Failed to find if checkpointing is needed. Assuming no.";
+            needs_checkpoint_ = NO;
+        }
+        return needs_checkpoint_ == YES;
+    }
+
     bool Update(FstabEntry* entry, const std::string& block_device = std::string()) {
         if (!entry->fs_mgr_flags.checkpoint_blk && !entry->fs_mgr_flags.checkpoint_fs) {
             return true;
@@ -897,13 +930,7 @@ class CheckpointManager {
             call_vdc({"checkpoint", "restoreCheckpoint", entry->blk_device}, nullptr);
         }
 
-        if (needs_checkpoint_ == UNKNOWN &&
-            !call_vdc({"checkpoint", "needsCheckpoint"}, &needs_checkpoint_)) {
-            LERROR << "Failed to find if checkpointing is needed. Assuming no.";
-            needs_checkpoint_ = NO;
-        }
-
-        if (needs_checkpoint_ != YES) {
+        if (!NeedsCheckpoint()) {
             return true;
         }
 
@@ -1324,6 +1351,68 @@ int fs_mgr_umount_all(android::fs_mgr::Fstab* fstab) {
     return ret;
 }
 
+static std::string GetUserdataBlockDevice() {
+    Fstab fstab;
+    if (!ReadFstabFromFile("/proc/mounts", &fstab)) {
+        LERROR << "Failed to read /proc/mounts";
+        return "";
+    }
+    auto entry = GetEntryForMountPoint(&fstab, "/data");
+    if (entry == nullptr) {
+        LERROR << "Didn't find /data mount point in /proc/mounts";
+        return "";
+    }
+    return entry->blk_device;
+}
+
+int fs_mgr_remount_userdata_into_checkpointing(Fstab* fstab) {
+    const std::string& block_device = GetUserdataBlockDevice();
+    LINFO << "Userdata is mounted on " << block_device;
+    auto entry = std::find_if(fstab->begin(), fstab->end(), [&block_device](const FstabEntry& e) {
+        if (e.mount_point != "/data") {
+            return false;
+        }
+        if (e.blk_device == block_device) {
+            return true;
+        }
+        DeviceMapper& dm = DeviceMapper::Instance();
+        std::string path;
+        if (!dm.GetDmDevicePathByName("userdata", &path)) {
+            return false;
+        }
+        return path == block_device;
+    });
+    if (entry == fstab->end()) {
+        LERROR << "Can't find /data in fstab";
+        return -1;
+    }
+    if (!entry->fs_mgr_flags.checkpoint_blk && !entry->fs_mgr_flags.checkpoint_fs) {
+        LINFO << "Userdata doesn't support checkpointing. Nothing to do";
+        return 0;
+    }
+    CheckpointManager checkpoint_manager;
+    if (!checkpoint_manager.NeedsCheckpoint()) {
+        LINFO << "Checkpointing not needed. Don't remount";
+        return 0;
+    }
+    if (entry->fs_mgr_flags.checkpoint_fs) {
+        // Userdata is f2fs, simply remount it.
+        if (!checkpoint_manager.Update(&(*entry))) {
+            LERROR << "Failed to remount userdata in checkpointing mode";
+            return -1;
+        }
+        if (mount(entry->blk_device.c_str(), entry->mount_point.c_str(), "none",
+                  MS_REMOUNT | entry->flags, entry->fs_options.c_str()) != 0) {
+            LERROR << "Failed to remount userdata in checkpointing mode";
+            return -1;
+        }
+    } else {
+        // STOPSHIP(b/143970043): support remounting for ext4.
+        LWARNING << "Remounting into checkpointing is not supported for ex4. Proceed with caution";
+    }
+    return 0;
+}
+
 // wrapper to __mount() and expects a fully prepared fstab_rec,
 // unlike fs_mgr_do_mount which does more things with avb / verity etc.
 int fs_mgr_do_mount_one(const FstabEntry& entry, const std::string& mount_point) {
@@ -1493,12 +1582,10 @@ static bool InstallZramDevice(const std::string& device) {
     return true;
 }
 
-static bool PrepareZramDevice(const std::string& loop, off64_t size, const std::string& bdev) {
-    if (loop.empty() && bdev.empty()) return true;
+static bool PrepareZramBackingDevice(off64_t size) {
 
-    if (bdev.length()) {
-        return InstallZramDevice(bdev);
-    }
+    constexpr const char* file_path = "/data/per_boot/zram_swap";
+    if (size == 0) return true;
 
     // Get free loopback
     unique_fd loop_fd(TEMP_FAILURE_RETRY(open("/dev/loop-control", O_RDWR | O_CLOEXEC)));
@@ -1514,13 +1601,13 @@ static bool PrepareZramDevice(const std::string& loop, off64_t size, const std::
     }
 
     // Prepare target path
-    unique_fd target_fd(TEMP_FAILURE_RETRY(open(loop.c_str(), O_RDWR | O_CREAT | O_CLOEXEC, 0600)));
+    unique_fd target_fd(TEMP_FAILURE_RETRY(open(file_path, O_RDWR | O_CREAT | O_CLOEXEC, 0600)));
     if (target_fd.get() == -1) {
-        PERROR << "Cannot open target path: " << loop;
+        PERROR << "Cannot open target path: " << file_path;
         return false;
     }
     if (fallocate(target_fd.get(), 0, 0, size) < 0) {
-        PERROR << "Cannot truncate target path: " << loop;
+        PERROR << "Cannot truncate target path: " << file_path;
         return false;
     }
 
@@ -1556,11 +1643,10 @@ bool fs_mgr_swapon_all(const Fstab& fstab) {
             continue;
         }
 
-        if (!PrepareZramDevice(entry.zram_loopback_path, entry.zram_loopback_size, entry.zram_backing_dev_path)) {
-            LERROR << "Skipping losetup for '" << entry.blk_device << "'";
-        }
-
         if (entry.zram_size > 0) {
+	    if (!PrepareZramBackingDevice(entry.zram_backingdev_size)) {
+                LERROR << "Failure of zram backing device file for '" << entry.blk_device << "'";
+            }
             // A zram_size was specified, so we need to configure the
             // device.  There is no point in having multiple zram devices
             // on a system (all the memory comes from the same pool) so

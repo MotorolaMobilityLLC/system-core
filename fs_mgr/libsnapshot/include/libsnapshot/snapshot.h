@@ -19,6 +19,7 @@
 #include <chrono>
 #include <map>
 #include <memory>
+#include <optional>
 #include <ostream>
 #include <string>
 #include <string_view>
@@ -31,6 +32,8 @@
 #include <liblp/builder.h>
 #include <liblp/liblp.h>
 #include <update_engine/update_metadata.pb.h>
+
+#include <libsnapshot/auto_device.h>
 
 #ifndef FRIEND_TEST
 #define FRIEND_TEST(test_set_name, individual_test) \
@@ -48,6 +51,16 @@ namespace fs_mgr {
 struct CreateLogicalPartitionParams;
 class IPartitionOpener;
 }  // namespace fs_mgr
+
+// Forward declare IBootControl types since we cannot include only the headers
+// with Soong. Note: keep the enum width in sync.
+namespace hardware {
+namespace boot {
+namespace V1_1 {
+enum class MergeStatus : int32_t;
+}  // namespace V1_1
+}  // namespace boot
+}  // namespace hardware
 
 namespace snapshot {
 
@@ -94,6 +107,7 @@ class SnapshotManager final {
     using LpMetadata = android::fs_mgr::LpMetadata;
     using MetadataBuilder = android::fs_mgr::MetadataBuilder;
     using DeltaArchiveManifest = chromeos_update_engine::DeltaArchiveManifest;
+    using MergeStatus = android::hardware::boot::V1_1::MergeStatus;
 
   public:
     // Dependency injection for testing.
@@ -107,6 +121,9 @@ class SnapshotManager final {
         virtual std::string GetSuperDevice(uint32_t slot) const = 0;
         virtual const IPartitionOpener& GetPartitionOpener() const = 0;
         virtual bool IsOverlayfsSetup() const = 0;
+        virtual bool SetBootControlMergeStatus(MergeStatus status) = 0;
+        virtual bool SetSlotAsUnbootable(unsigned int slot) = 0;
+        virtual bool IsRecovery() const = 0;
     };
 
     ~SnapshotManager();
@@ -117,7 +134,7 @@ class SnapshotManager final {
     static std::unique_ptr<SnapshotManager> New(IDeviceInfo* device = nullptr);
 
     // This is similar to New(), except designed specifically for first-stage
-    // init.
+    // init or recovery.
     static std::unique_ptr<SnapshotManager> NewForFirstStageMount(IDeviceInfo* device = nullptr);
 
     // Helper function for first-stage init to check whether a SnapshotManager
@@ -138,6 +155,7 @@ class SnapshotManager final {
     // rebooting or after rolling back), or merge the OTA.
     bool FinishedSnapshotWrites();
 
+  private:
     // Initiate a merge on all snapshot devices. This should only be used after an
     // update has been marked successful after booting.
     bool InitiateMerge();
@@ -163,7 +181,19 @@ class SnapshotManager final {
     //
     //   MergeCompleted indicates that the update has fully completed.
     //   GetUpdateState will return None, and a new update can begin.
-    UpdateState ProcessUpdateState();
+    //
+    // The optional callback allows the caller to periodically check the
+    // progress with GetUpdateState().
+    UpdateState ProcessUpdateState(const std::function<void()>& callback = {});
+
+  public:
+    // Initiate the merge if necessary, then wait for the merge to finish.
+    // See InitiateMerge() and ProcessUpdateState() for details.
+    // Returns:
+    //   - None if no merge to initiate
+    //   - MergeCompleted if merge is completed
+    //   - other states indicating an error has occurred
+    UpdateState InitiateMergeAndWait();
 
     // Find the status of the current update, if any.
     //
@@ -193,8 +223,36 @@ class SnapshotManager final {
     // call to CreateLogicalPartitions when snapshots are present.
     bool CreateLogicalAndSnapshotPartitions(const std::string& super_device);
 
+    // This method should be called preceding any wipe or flash of metadata or
+    // userdata. It is only valid in recovery.
+    //
+    // When userdata will be wiped or flashed, it is necessary to clean up any
+    // snapshot state. If a merge is in progress, the merge must be finished.
+    // If a snapshot is present but not yet merged, the slot must be marked as
+    // unbootable.
+    //
+    // Returns true on success (or nothing to do), false on failure. The
+    // optional callback fires periodically to query progress via GetUpdateState.
+    bool HandleImminentDataWipe(const std::function<void()>& callback = {});
+
     // Dump debug information.
     bool Dump(std::ostream& os);
+
+    // Ensure metadata directory is mounted in recovery. When the returned
+    // AutoDevice is destroyed, the metadata directory is automatically
+    // unmounted.
+    // Return nullptr if any failure.
+    // In Android mode, Return an AutoDevice that does nothing
+    // In recovery, return an AutoDevice that does nothing if metadata entry
+    // is not found in fstab.
+    // Note: if this function is called the second time before the AutoDevice returned from the
+    // first call is destroyed, the device will be unmounted when any of these AutoDevices is
+    // destroyed. For example:
+    //   auto a = mgr->EnsureMetadataMounted(); // mounts
+    //   auto b = mgr->EnsureMetadataMounted(); // does nothing
+    //   b.reset() // unmounts
+    //   a.reset() // does nothing
+    std::unique_ptr<AutoDevice> EnsureMetadataMounted();
 
   private:
     FRIEND_TEST(SnapshotTest, CleanFirstStageMount);
@@ -206,11 +264,16 @@ class SnapshotManager final {
     FRIEND_TEST(SnapshotTest, MapPartialSnapshot);
     FRIEND_TEST(SnapshotTest, MapSnapshot);
     FRIEND_TEST(SnapshotTest, Merge);
-    FRIEND_TEST(SnapshotTest, MergeCannotRemoveCow);
     FRIEND_TEST(SnapshotTest, NoMergeBeforeReboot);
+    FRIEND_TEST(SnapshotTest, UpdateBootControlHal);
+    FRIEND_TEST(SnapshotUpdateTest, DataWipeAfterRollback);
+    FRIEND_TEST(SnapshotUpdateTest, DataWipeRollbackInRecovery);
+    FRIEND_TEST(SnapshotUpdateTest, MergeCannotRemoveCow);
+    FRIEND_TEST(SnapshotUpdateTest, MergeInRecovery);
     FRIEND_TEST(SnapshotUpdateTest, SnapshotStatusFileWithoutCow);
     friend class SnapshotTest;
     friend class SnapshotUpdateTest;
+    friend class FlashAfterUpdateTest;
     friend struct AutoDeleteCowImage;
     friend struct AutoDeleteSnapshot;
     friend struct PartitionCowCreator;
@@ -285,7 +348,8 @@ class SnapshotManager final {
                      std::string* dev_path);
 
     // Map a COW image that was previous created with CreateCowImage.
-    bool MapCowImage(const std::string& name, const std::chrono::milliseconds& timeout_ms);
+    std::optional<std::string> MapCowImage(const std::string& name,
+                                           const std::chrono::milliseconds& timeout_ms);
 
     // Remove the backing copy-on-write image and snapshot states for the named snapshot. The
     // caller is responsible for ensuring that the snapshot is unmapped.
@@ -307,6 +371,9 @@ class SnapshotManager final {
     // condition was detected and handled.
     bool HandleCancelledUpdate(LockedFile* lock);
 
+    // Helper for HandleCancelledUpdate. Assumes booting from new slot.
+    bool HandleCancelledUpdateOnNewSlot(LockedFile* lock);
+
     // Remove artifacts created by the update process, such as snapshots, and
     // set the update state to None.
     bool RemoveAllUpdateState(LockedFile* lock);
@@ -325,7 +392,19 @@ class SnapshotManager final {
     bool MarkSnapshotMergeCompleted(LockedFile* snapshot_lock, const std::string& snapshot_name);
     void AcknowledgeMergeSuccess(LockedFile* lock);
     void AcknowledgeMergeFailure();
-    bool IsCancelledSnapshot(const std::string& snapshot_name);
+    std::unique_ptr<LpMetadata> ReadCurrentMetadata();
+
+    enum class MetadataPartitionState {
+        // Partition does not exist.
+        None,
+        // Partition is flashed.
+        Flashed,
+        // Partition is created by OTA client.
+        Updated,
+    };
+    // Helper function to check the state of a partition as described in metadata.
+    MetadataPartitionState GetMetadataPartitionState(const LpMetadata& metadata,
+                                                     const std::string& name);
 
     // Note that these require the name of the device containing the snapshot,
     // which may be the "inner" device. Use GetsnapshotDeviecName().
@@ -403,6 +482,10 @@ class SnapshotManager final {
             LockedFile* lock, MetadataBuilder* target_metadata,
             const LpMetadata* exported_target_metadata, const std::string& target_suffix,
             const std::map<std::string, SnapshotStatus>& all_snapshot_status);
+
+    // Unmap all partitions that were mapped by CreateLogicalAndSnapshotPartitions.
+    // This should only be called in recovery.
+    bool UnmapAllPartitions();
 
     std::string gsid_dir_;
     std::string metadata_dir_;
