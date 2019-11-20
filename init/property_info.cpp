@@ -197,6 +197,17 @@ void set_system_properties(){
                 property_set(prop_msclient, prop_clientrev_value);
             }
         }
+        // BEGIN Ontim, maqing, 20/11/2019, EKBLACKJ-178 , St-result :PASS,[BJ][Europe Requirement][Fiji Features]FEATURE-5963
+        if (carrier_ontim == "timit_timit") {
+             property_set(prop_amazon_partnerid, carrier_value);
+        }
+        if (carrier_ontim == "windit_windds") {
+             property_set(prop_amazon_partnerid, "3it");
+        }
+        if (carrier_ontim == "attmx_attmx") {
+             property_set(prop_amazon_partnerid,carrier_value);
+        }
+        // END EKBLACKJ-178
     }
 
     property_set(prop_build_fullversion, get_version_property(prop_version_value));
