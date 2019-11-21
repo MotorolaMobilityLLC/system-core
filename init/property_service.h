@@ -52,6 +52,9 @@ unsigned char read_from_factory();
 void set_properties_from_hwinfo();
 /* modify by dongjunxia for add sku prop .end */
 bool is_cache_file_exists();
+// BEGIN Ontim, maqing, 20/11/2019, EKFIJIROW-31 , St-result :PASS,[FiJi][Common Requirement][AOSP Feature]Adaptive Brightness
+void set_property_screen_lcd_vendor();
+// END EKFIJIROW-31
 }  // namespace init
 }  // namespace android
 
