@@ -462,7 +462,7 @@ int main(int argc, char* argv[]) {
         pthread_attr_destroy(&attr);
     }
 
-    YLogBuffer::init();
+    YLogBuffer::getInstance()->init();
 
     bool auditd =
         __android_logger_property_get_bool("ro.logd.auditd", BOOL_DEFAULT_TRUE);

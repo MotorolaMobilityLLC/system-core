@@ -36,6 +36,7 @@
 #include "CommandListener.h"
 #include "LogCommand.h"
 #include "LogUtils.h"
+#include "YLogBuffer.h"
 
 CommandListener::CommandListener(LogBuffer* buf, LogReader* /*reader*/,
                                  LogListener* /*swl*/)
@@ -375,9 +376,7 @@ int CommandListener::GetLastlogCmd::runCommand(SocketClient* cli, int argc,
                                                   char** argv) {
     setname();
     argc;
-    extern int getLastLog(SocketClient* cli, int argc,char** argv);
-    getLastLog(cli, argc,argv);
-
+    YLogBuffer::getInstance()->getLastLog(cli, argc,argv);
     return 0;
 }
 
