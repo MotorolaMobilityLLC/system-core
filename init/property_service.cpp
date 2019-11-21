@@ -983,8 +983,18 @@ void set_properties_from_hwinfo() {
 
 }
 // modify by dongjunxia for sku prop .end
-
-
+// BEGIN Ontim, maqing, 20/11/2019, EKFIJIROW-31 , St-result :PASS,[FiJi][Common Requirement][AOSP Feature]Adaptive Brightness
+void set_property_screen_lcd_vendor() {
+    const std::string lcd_path = "/sys/ontim_dev_debug/touch_screen/lcdvendor";
+    std::string file_content;
+    if (!ReadFileToString(lcd_path, &file_content)) {
+        PLOG(INFO) << "Could not read properties from '" << lcd_path << "'";
+        return;
+    }
+    std::string lcd_vendor = android::base::Trim(file_content);
+    property_set("ro.screen.lcdvendor", lcd_vendor);
+}
+// END EKFIJIROW-31
 void load_recovery_id_prop() {
     std::unique_ptr<fstab, decltype(&fs_mgr_free_fstab)> fstab(fs_mgr_read_fstab_default(),
                                                                fs_mgr_free_fstab);
@@ -1027,6 +1037,9 @@ void load_system_props() {
     set_properties_from_proinfo();
     set_properties_from_hwinfo();
     set_system_properties();
+    // BEGIN Ontim, maqing, 20/11/2019, EKFIJIROW-31 , St-result :PASS,[FiJi][Common Requirement][AOSP Feature]Adaptive Brightness
+    set_property_screen_lcd_vendor();
+    // END EKFIJIROW-31
 }
 // modify by dongjunxia for sku prop .end
 
