@@ -83,6 +83,7 @@
 #define MEMCG_MEMORYSW_USAGE "/dev/memcg/memory.memsw.usage_in_bytes"
 #define ZONEINFO_PATH "/proc/zoneinfo"
 #define MEMINFO_PATH "/proc/meminfo"
+#define TRACE_MARKER_PATH "/sys/kernel/debug/tracing/trace_marker"
 #define LINE_MAX 128
 #define MAX_NR_ZONES 6
 
@@ -1331,6 +1332,42 @@ static int parse_one_zone_watermark(char *buf, struct watermark_info *w)
     return ret;
 }
 
+static void trace_log(char *fmt, ...)
+{
+    char buf[PAGE_SIZE];
+    va_list ap;
+    static int fd = -1;
+    ssize_t len, ret;
+
+    if (fd < 0) {
+	    fd = open(TRACE_MARKER_PATH, O_WRONLY | O_CLOEXEC);
+	    if (fd < 0) {
+		    ALOGE("Error opening " TRACE_MARKER_PATH "; errno=%d",
+				    errno);
+		    return;
+	    }
+    }
+
+    va_start(ap, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+
+    len = strlen(buf);
+    ret = TEMP_FAILURE_RETRY(write(fd, buf, len));
+    if (ret < 0) {
+	    ALOGE("Error writing " TRACE_MARKER_PATH ";errno=%d", errno);
+	    close(fd);
+	    fd = -1;
+	    return;
+    } else if (ret < len) {
+	    ALOGE("Short write on " TRACE_MARKER_PATH "; length=%zd", ret);
+    }
+}
+
+#define ULMK_LOG(X, fmt...) ({ \
+		ALOG##X(fmt);  \
+		trace_log(fmt); \
+		})
 static int file_cache_to_adj(int nr_file)
 {
     int min_score_adj = OOM_SCORE_ADJ_MAX + 1;
@@ -1344,7 +1381,7 @@ static int file_cache_to_adj(int nr_file)
             break;
         }
     }
-    ALOGE("adj: %d file_cache: %d\n", min_score_adj, nr_file);
+    ULMK_LOG(E, "adj: %d file_cache: %d\n", min_score_adj, nr_file);
     return min_score_adj;
 }
 
@@ -1380,7 +1417,7 @@ static int zone_watermarks_ok()
             break;
 
         offset += nr;
-        ALOGD("Zone %s: free:%d high:%d cma:%d reserve:(%d %d %d) anon:(%d %d) file:(%d %d)\n",
+        ULMK_LOG(D, "Zone %s: free:%d high:%d cma:%d reserve:(%d %d %d) anon:(%d %d) file:(%d %d)\n",
                 w.name, w.free, w.high, w.cma,
                 w.lowmem_reserve[0], w.lowmem_reserve[1], w.lowmem_reserve[2],
                 w.inactive_anon, w.active_anon, w.inactive_file, w.active_file);
@@ -1758,7 +1795,7 @@ static int kill_one_process(struct proc* procp, int min_oom_score) {
     set_process_group_and_prio(pid, SP_FOREGROUND, ANDROID_PRIORITY_HIGHEST);
 
     inc_killcnt(procp->oomadj);
-    ALOGE("Kill '%s' (%d), uid %d, oom_adj %d to free %ldkB", taskname, pid, uid, procp->oomadj,
+    ULMK_LOG(E, "Kill '%s' (%d), uid %d, oom_adj %d to free %ldkB", taskname, pid, uid, procp->oomadj,
           tasksize * page_k);
 
     TRACE_KILL_END();
@@ -2108,7 +2145,7 @@ do_kill:
                 /* Free up enough memory to downgrate the memory pressure to low level */
                 if (mi.field.nr_free_pages >= low_pressure_mem.max_nr_free_pages) {
                     if (debug_process_killing) {
-                        ALOGI("Ignoring pressure since more memory is "
+                        ULMK_LOG(I, "Ignoring pressure since more memory is "
                             "available (%" PRId64 ") than watermark (%" PRId64 ")",
                             mi.field.nr_free_pages, low_pressure_mem.max_nr_free_pages);
                     }
@@ -2119,7 +2156,7 @@ do_kill:
                 min_score_adj = zone_watermarks_ok();
                 if (min_score_adj == OOM_SCORE_ADJ_MAX + 1)
 		        {
-                    ALOGI("Ignoring pressure since per-zone watermarks ok");
+                    ULMK_LOG(I, "Ignoring pressure since per-zone watermarks ok");
                     return;
                 }
             }
