@@ -26,33 +26,20 @@
 
 #include "logger.h"
 
-static int pmsgAvailable(log_id_t logId);
-static int pmsgVersion(struct android_log_logger* logger,
-                       struct android_log_transport_context* transp);
-static int pmsgRead(struct android_log_logger_list* logger_list,
-                    struct android_log_transport_context* transp, struct log_msg* log_msg);
-static void pmsgClose(struct android_log_logger_list* logger_list,
+static int PmsgAvailable(log_id_t logId);
+static int PmsgRead(struct logger_list* logger_list, struct android_log_transport_context* transp,
+                    struct log_msg* log_msg);
+static void PmsgClose(struct logger_list* logger_list,
                       struct android_log_transport_context* transp);
-static int pmsgClear(struct android_log_logger* logger,
-                     struct android_log_transport_context* transp);
 
 struct android_log_transport_read pmsgLoggerRead = {
     .name = "pmsg",
-    .available = pmsgAvailable,
-    .version = pmsgVersion,
-    .close = pmsgClose,
-    .read = pmsgRead,
-    .poll = NULL,
-    .clear = pmsgClear,
-    .setSize = NULL,
-    .getSize = NULL,
-    .getReadableSize = NULL,
-    .getPrune = NULL,
-    .setPrune = NULL,
-    .getStats = NULL,
+    .available = PmsgAvailable,
+    .close = PmsgClose,
+    .read = PmsgRead,
 };
 
-static int pmsgAvailable(log_id_t logId) {
+static int PmsgAvailable(log_id_t logId) {
   if (logId > LOG_ID_SECURITY) {
     return -EINVAL;
   }
@@ -62,21 +49,8 @@ static int pmsgAvailable(log_id_t logId) {
   return -EBADF;
 }
 
-static int pmsgClear(struct android_log_logger* logger __unused,
-                     struct android_log_transport_context* transp __unused) {
-  return unlink("/sys/fs/pstore/pmsg-ramoops-0");
-}
-
-/*
- * returns the logger version
- */
-static int pmsgVersion(struct android_log_logger* logger __unused,
-                       struct android_log_transport_context* transp __unused) {
-  return 4;
-}
-
-static int pmsgRead(struct android_log_logger_list* logger_list,
-                    struct android_log_transport_context* transp, struct log_msg* log_msg) {
+static int PmsgRead(struct logger_list* logger_list, struct android_log_transport_context* transp,
+                    struct log_msg* log_msg) {
   ssize_t ret;
   off_t current, next;
   struct __attribute__((__packed__)) {
@@ -138,7 +112,7 @@ static int pmsgRead(struct android_log_logger_list* logger_list,
     }
     preread_count = 0;
 
-    if ((transp->logMask & (1 << buf.l.id)) &&
+    if ((logger_list->log_mask & (1 << buf.l.id)) &&
         ((!logger_list->start.tv_sec && !logger_list->start.tv_nsec) ||
          ((logger_list->start.tv_sec <= buf.l.realtime.tv_sec) &&
           ((logger_list->start.tv_sec != buf.l.realtime.tv_sec) ||
@@ -192,8 +166,7 @@ static int pmsgRead(struct android_log_logger_list* logger_list,
   }
 }
 
-static void pmsgClose(struct android_log_logger_list* logger_list __unused,
-                      struct android_log_transport_context* transp) {
+static void PmsgClose(struct logger_list*, struct android_log_transport_context* transp) {
   int fd = atomic_exchange(&transp->context.fd, 0);
   if (fd > 0) {
     close(fd);
@@ -211,7 +184,7 @@ static void* realloc_or_free(void* ptr, size_t new_size) {
 ssize_t __android_log_pmsg_file_read(log_id_t logId, char prio, const char* prefix,
                                      __android_log_pmsg_file_read_fn fn, void* arg) {
   ssize_t ret;
-  struct android_log_logger_list logger_list;
+  struct logger_list logger_list;
   struct android_log_transport_context transp;
   struct content {
     struct listnode node;
@@ -237,12 +210,12 @@ ssize_t __android_log_pmsg_file_read(log_id_t logId, char prio, const char* pref
   memset(&transp, 0, sizeof(transp));
 
   logger_list.mode = ANDROID_LOG_PSTORE | ANDROID_LOG_NONBLOCK | ANDROID_LOG_RDONLY;
-  transp.logMask = (unsigned)-1;
+  logger_list.log_mask = (unsigned)-1;
   if (logId != LOG_ID_ANY) {
-    transp.logMask = (1 << logId);
+    logger_list.log_mask = (1 << logId);
   }
-  transp.logMask &= ~((1 << LOG_ID_KERNEL) | (1 << LOG_ID_EVENTS) | (1 << LOG_ID_SECURITY));
-  if (!transp.logMask) {
+  logger_list.log_mask &= ~((1 << LOG_ID_KERNEL) | (1 << LOG_ID_EVENTS) | (1 << LOG_ID_SECURITY));
+  if (!logger_list.log_mask) {
     return -EINVAL;
   }
 
@@ -268,7 +241,7 @@ ssize_t __android_log_pmsg_file_read(log_id_t logId, char prio, const char* pref
 
   /* Read the file content */
   log_msg log_msg;
-  while (pmsgRead(&logger_list, &transp, &log_msg) > 0) {
+  while (PmsgRead(&logger_list, &transp, &log_msg) > 0) {
     const char* cp;
     size_t hdr_size = log_msg.entry.hdr_size;
 
@@ -426,7 +399,7 @@ ssize_t __android_log_pmsg_file_read(log_id_t logId, char prio, const char* pref
     }
     list_add_head(node, &content->node);
   }
-  pmsgClose(&logger_list, &transp);
+  PmsgClose(&logger_list, &transp);
 
   /* Progress through all the collected files */
   list_for_each_safe(node, n, &name_list) {
