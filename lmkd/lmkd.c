@@ -86,6 +86,7 @@
 #define LINE_MAX 128
 
 #define PERCEPTIBLE_APP_ADJ 200
+#define VISIBLE_APP_ADJ     100
 
 /* Android Logger event logtags (see event.logtags) */
 #define MEMINFO_LOG_TAG 10195355
@@ -146,10 +147,12 @@
 
 /* default to old in-kernel interface if no memory pressure events */
 static bool use_inkernel_interface = true;
-static int vmpressure_enhanced;
 static bool has_inkernel_module;
+static int vmpressure_enhanced;
 static bool enhance_meminfo_enable;
 static bool is_support_memcg;
+static bool lmfs_enabled;
+static bool lmkd_config_enabled;
 
 /* memory pressure levels */
 enum vmpressure_level {
@@ -192,6 +195,7 @@ static int psi_complete_stall_ms;
 static int thrashing_limit_pct;
 static int thrashing_limit_decay_pct;
 static bool use_psi_monitors = false;
+static int critical_minfree;
 static struct psi_threshold psi_thresholds[VMPRESS_LEVEL_COUNT] = {
     { PSI_SOME, 70 },    /* 70ms out of 1sec for partial stall */
     { PSI_SOME, 100 },   /* 100ms out of 1sec for partial stall */
@@ -225,8 +229,6 @@ struct event_handler_info {
     int data;
     void (*handler)(int data, uint32_t events, struct polling_params *poll_params);
 };
-static bool lmfs_enabled;
-static bool lmkd_config_enabled;
 
 /* data required to handle socket events */
 struct sock_event_handler_info {
@@ -2341,6 +2343,30 @@ static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_
         min_score_adj = PERCEPTIBLE_APP_ADJ;
     }
 
+    /* adjust min_score_adj 0; when adj0 thresold isn't breached */
+    if (!min_score_adj) {
+        long other_free = 0;
+        long other_file = 0;
+        int minfree = 0;
+        struct zoneinfo zi;
+
+        if (zoneinfo_parse(&zi) < 0) {
+            ALOGE("Failed to get zoneinfo");
+            zi.totalreserve_pages = 0;
+        }
+
+        other_free = mi.field.nr_free_pages - zi.totalreserve_pages;
+        if (mi.field.nr_file_pages > (mi.field.shmem + mi.field.unevictable_file + mi.field.swap_cached))
+            other_file = mi.field.nr_file_pages - mi.field.shmem -
+                         mi.field.unevictable_file - mi.field.swap_cached;
+
+        minfree = critical_minfree ? critical_minfree : lowmem_minfree[0];
+        if (other_free > minfree || other_file > minfree) {
+            min_score_adj = VISIBLE_APP_ADJ;
+            strcat(kill_desc, ", adjust critical adj.");
+        }
+    }
+
     /* Kill a process if necessary */
     if (kill_reason != NONE) {
         int pages_freed = find_and_kill_process(min_score_adj, kill_desc);
@@ -3128,6 +3154,8 @@ int main(int argc __unused, char **argv __unused) {
         low_ram_device ? DEF_THRASHING_LOWRAM : DEF_THRASHING));
     thrashing_limit_decay_pct = clamp(0, 100, property_get_int32("ro.lmk.thrashing_limit_decay",
         low_ram_device ? DEF_THRASHING_DECAY_LOWRAM : DEF_THRASHING_DECAY));
+
+    critical_minfree = property_get_int32("ro.lmk.critical_minfree", 0);
 
     ctx = create_android_logger(MEMINFO_LOG_TAG);
 
