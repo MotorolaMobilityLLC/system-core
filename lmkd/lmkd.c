@@ -928,7 +928,8 @@ static void cmd_procprio(LMKD_CTRL_PACKET packet) {
 
     if (use_inkernel_interface && !vmpressure_enhanced) {
 #ifdef LMKD_LOG_STATS
-        stats_store_taskname(params.pid, proc_get_name(params.pid));
+        char buf[LINE_MAX];
+        stats_store_taskname(params.pid, proc_get_name(params.pid, buf, sizeof(buf)));
 #endif
         return;
     }
