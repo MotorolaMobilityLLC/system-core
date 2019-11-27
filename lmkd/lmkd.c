@@ -1993,6 +1993,7 @@ static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_
     union meminfo mi;
     union vmstat vs;
     struct timespec curr_tm;
+    static struct timespec last_kill_tm;
     int64_t thrashing = 0;
     bool swap_is_low = false;
     enum vmpressure_level level = (enum vmpressure_level)data;
@@ -2004,15 +2005,20 @@ static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_
     int min_score_adj = 0;
     long other_free = 0, other_file = 0;
 
-    /* Skip while still killing a process */
-    if (is_kill_pending()) {
-        /* TODO: replace this quick polling with pidfd polling if kernel supports */
-        goto no_kill;
-    }
-
     if (clock_gettime(CLOCK_MONOTONIC_COARSE, &curr_tm) != 0) {
         ALOGE("Failed to get current time");
         return;
+    }
+
+    if (kill_timeout_ms && get_time_diff_ms(&last_kill_tm, &curr_tm) < kill_timeout_ms) {
+        /*
+         * If we're within the no-kill timeout, see if there's pending reclaim work
+         * from the last killed process. If so, skip killing for now.
+         */
+        if (is_kill_pending()) {
+	    /* TODO: replace this quick polling with pidfd polling if kernel supports */
+	    goto no_kill;
+	}
     }
 
     if (vmstat_parse(&vs) < 0) {
@@ -2141,6 +2147,7 @@ static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_
         if (find_and_kill_process(min_score_adj, kill_desc) > 0) {
             killing = true;
             meminfo_log(&mi);
+            last_kill_tm = curr_tm;
         } else {
             /* No eligible processes found, reset thrashing limit */
             thrashing_limit = thrashing_limit_pct;
@@ -2798,7 +2805,7 @@ int main(int argc __unused, char **argv __unused) {
         property_get_bool("ro.lmk.kill_heaviest_task", false);
     low_ram_device = property_get_bool("ro.config.low_ram", false);
     kill_timeout_ms =
-        (unsigned long)property_get_int32("ro.lmk.kill_timeout_ms", 0);
+        (unsigned long)property_get_int32("ro.lmk.kill_timeout_ms", 1000);
     use_minfree_levels =
         property_get_bool("ro.lmk.use_minfree_levels", false);
     per_app_memcg =
