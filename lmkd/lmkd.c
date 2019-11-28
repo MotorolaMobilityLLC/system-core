@@ -196,6 +196,9 @@ static int thrashing_limit_pct;
 static int thrashing_limit_decay_pct;
 static bool use_psi_monitors = false;
 static int critical_minfree;
+static int min_watermark;
+static int low_watermark;
+static int high_watermark;
 static struct psi_threshold psi_thresholds[VMPRESS_LEVEL_COUNT] = {
     { PSI_SOME, 70 },    /* 70ms out of 1sec for partial stall */
     { PSI_SOME, 100 },   /* 100ms out of 1sec for partial stall */
@@ -2139,13 +2142,17 @@ static enum zone_watermark get_lowest_watermark(union meminfo *mi,
 {
     int64_t nr_free_pages = mi->field.nr_free_pages - mi->field.cma_free;
 
-    if (nr_free_pages < watermarks->min_wmark) {
+    min_watermark = min_watermark ? min_watermark : watermarks->min_wmark;
+    low_watermark = low_watermark ? low_watermark : watermarks->low_wmark;
+    high_watermark = high_watermark ? high_watermark : watermarks->high_wmark;
+
+    if (nr_free_pages < min_watermark) {
         return WMARK_MIN;
     }
-    if (nr_free_pages < watermarks->low_wmark) {
+    if (nr_free_pages < low_watermark) {
         return WMARK_LOW;
     }
-    if (nr_free_pages < watermarks->high_wmark) {
+    if (nr_free_pages < high_watermark) {
         return WMARK_HIGH;
     }
     return WMARK_NONE;
@@ -3157,6 +3164,9 @@ int main(int argc __unused, char **argv __unused) {
         low_ram_device ? DEF_THRASHING_DECAY_LOWRAM : DEF_THRASHING_DECAY));
 
     critical_minfree = property_get_int32("ro.lmk.critical_minfree", 0);
+    min_watermark = property_get_int32("ro.lmk.min_watermark", 0);
+    low_watermark = property_get_int32("ro.lmk.low_watermark", 0);
+    high_watermark = property_get_int32("ro.lmk.high_watermark", 0);
 
     ctx = create_android_logger(MEMINFO_LOG_TAG);
 
