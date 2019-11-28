@@ -360,17 +360,19 @@ static void KillZramBackingDevice() {
     // shutdown zram handle
     Timer swap_timer;
     LOG(INFO) << "swapoff() start...";
+#if 0
     if (swapoff(ZRAM_DEVICE) == -1) {
         LOG(ERROR) << "zram_backing_dev: swapoff (" << backing_dev << ")" << " failed";
         return;
     }
+#endif
     LOG(INFO) << "swapoff() took " << swap_timer;;
-
+#if 0
     if (!android::base::WriteStringToFile("1", ZRAM_RESET)) {
         LOG(ERROR) << "zram_backing_dev: reset (" << backing_dev << ")" << " failed";
         return;
     }
-
+#endif
     // clear loopback device
     unique_fd loop(TEMP_FAILURE_RETRY(open(backing_dev.c_str(), O_RDWR | O_CLOEXEC)));
     if (loop.get() < 0) {
@@ -382,6 +384,7 @@ static void KillZramBackingDevice() {
         LOG(ERROR) << "zram_backing_dev: loop_clear (" << backing_dev << ")" << " failed";
         return;
     }
+
     LOG(INFO) << "zram_backing_dev: `" << backing_dev << "` is cleared successfully.";
 }
 
