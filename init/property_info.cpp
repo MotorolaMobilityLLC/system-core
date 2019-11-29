@@ -62,6 +62,7 @@ std::string prop_carrier_value = "retail";
 std::string prop_version_value;
 std::string product_version_file = "/product/version.txt";
 std::string prop_amazon_partnerid = "ro.csc.amazon.partnerid";
+std::string prop_build_name = "ro.build.name";
 
 void set_system_properties(){
     std::ifstream stream(product_version_file);
@@ -76,6 +77,7 @@ void set_system_properties(){
     property_set("ro.oem.key1",carrier_value);
     property_set("ro.product.ontim.version",fileContent);
     property_set("ro.vendor.product.version",fileContent);
+    std::string  build_name = android::base::GetProperty(prop_build_name, "");
 
     if (prop_product_value == "fiji") {
         if (isProductNameFijiReteu(carrier_value, carrier_ontim)) {
@@ -99,7 +101,11 @@ void set_system_properties(){
             property_set(prop_vendor_fingerprint, get_fingerprint_property(prop_product_value));
             property_set("persist.vendor.normal", "1");//表示正常版本，非 VTS 版本，prop 正常设置.
         } else if (isProductNameFijiLnv(carrier_ontim)) {
-            prop_product_value = "fiji_lnv";
+            if(build_name == "lenovo") {
+                prop_product_value = "fiji_lnv";
+            } else {
+                prop_product_value = "fiji";
+            }
             prop_carrier_value = "lnv";
             property_set(prop_amclient, prop_client_value);
             property_set(prop_msclient, prop_clientrev_value);
@@ -179,7 +185,11 @@ void set_system_properties(){
             property_set(prop_vendor_fingerprint, get_fingerprint_property(prop_product_value));
             property_set("persist.vendor.normal", "1");//表示正常版本，非 VTS 版本，prop 正常设置.
         } else if (isProductNameBlackjackLnv64(carrier_ontim)) {
-            prop_product_value = "blackjack_lnv_64";
+            if(build_name == "lenovo") {
+                prop_product_value = "blackjack_lnv";
+            } else {
+                prop_product_value = "blackjack";
+            }
             prop_carrier_value = "lnv";
             property_set(prop_amclient, prop_client_value);
             property_set(prop_msclient, prop_clientrev_value);
