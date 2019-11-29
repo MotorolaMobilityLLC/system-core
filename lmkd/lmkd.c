@@ -1968,6 +1968,49 @@ out:
     return result;
 }
 
+static int find_and_kill_multi_processes(int min_score_adj, const char *reason, bool kill_all) {
+    int i;
+    int killed_size = 0;
+
+#ifdef LMKD_LOG_STATS
+    bool lmk_state_change_start = false;
+#endif
+
+    for (i = OOM_SCORE_ADJ_MAX; i >= min_score_adj; i--) {
+        struct proc *procp;
+
+        while (true) {
+            procp = kill_heaviest_task ?
+                proc_get_heaviest(i) : proc_adj_lru_skip(i);
+
+            if (!procp)
+                break;
+
+            killed_size += kill_one_process(procp, min_score_adj, reason);
+            if (killed_size >= 0) {
+#ifdef LMKD_LOG_STATS
+                if (enable_stats_log && !lmk_state_change_start) {
+                    lmk_state_change_start = true;
+                    stats_write_lmk_state_changed(log_ctx, LMK_STATE_CHANGED,
+                                                  LMK_STATE_CHANGE_START);
+                }
+#endif
+            }
+        }
+        if (!kill_all && killed_size > 0)
+            break;
+    }
+
+out:
+#ifdef LMKD_LOG_STATS
+    if (enable_stats_log && lmk_state_change_start) {
+        stats_write_lmk_state_changed(log_ctx, LMK_STATE_CHANGED, LMK_STATE_CHANGE_STOP);
+    }
+#endif
+
+    return killed_size;
+}
+
 /*
  * Find one process to kill at or above the given oom_adj level.
  * Returns size of the killed process.
@@ -2224,6 +2267,7 @@ static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_
     /* Skip while still killing a process */
     if (is_kill_pending()) {
         /* TODO: replace this quick polling with pidfd polling if kernel supports */
+        ALOGI("Last killed task is pending. pid:%d", last_killed_pid);
         goto no_kill;
     }
 
@@ -2355,7 +2399,7 @@ static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_
     }
 
     /* adjust min_score_adj 0; when adj0 thresold isn't breached */
-    if (!min_score_adj) {
+    if (!min_score_adj && kill_reason != NONE) {
         long other_free = 0;
         long other_file = 0;
         int minfree = 0;
@@ -2375,6 +2419,30 @@ static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_
         if (other_free > minfree || other_file > minfree) {
             min_score_adj = VISIBLE_APP_ADJ;
             strcat(kill_desc, ", adjust critical adj.");
+        }
+
+        /* kill multi apps */
+        if (low_ram_device && level == VMPRESS_LEVEL_CRITICAL && events != 0) {
+            int freed = 0;
+            if (swap_is_low) {
+                strcat(kill_desc, " <kill all processes above>");
+                freed = find_and_kill_multi_processes(min_score_adj, kill_desc, true);
+            } else {
+                strcat(kill_desc, " <kill group processes>");
+                freed = find_and_kill_multi_processes(min_score_adj, kill_desc, false);
+            }
+            if (freed > 0) {
+                killing = true;
+                if (cut_thrashing_limit) {
+                    /*
+                     * Cut thrasing limit by thrashing_limit_decay_pct percentage of the current
+                     * thrashing limit until the system stops thrashing.
+                     */
+                    thrashing_limit = (thrashing_limit * (100 - thrashing_limit_decay_pct)) / 100;
+                }
+            }
+            meminfo_log(&mi);
+            goto no_kill;
         }
     }
 
