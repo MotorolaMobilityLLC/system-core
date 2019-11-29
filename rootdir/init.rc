@@ -372,6 +372,9 @@ on post-fs
     restorecon_recursive /metadata
     mkdir /metadata/vold
     chmod 0700 /metadata/vold
+    mkdir /elabel 775 system system
+    mount ext4 /dev/block/bootdevice/by-name/elabel /elabel noatime nosuid nodev barrier=1
+    restorecon_recursive /elabel
 
 on late-fs
     # Ensure that tracefs has the correct permissions.
