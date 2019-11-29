@@ -381,6 +381,7 @@ enum meminfo_field {
     MI_ION_HELP,
     MI_ION_HELP_POOL,
     MI_CMA_FREE,
+    MI_WRITE_BACK,
     MI_FIELD_COUNT
 };
 
@@ -405,6 +406,7 @@ static const char* const meminfo_field_names[MI_FIELD_COUNT] = {
     "ION_heap:",
     "ION_heap_pool:",
     "CmaFree:",
+    "Writeback:",
 };
 
 union meminfo {
@@ -429,6 +431,7 @@ union meminfo {
         int64_t ion_heap;
         int64_t ion_heap_pool;
         int64_t cma_free;
+        int64_t write_back;
         /* fields below are calculated rather than read from the file */
         int64_t nr_file_pages;
         int64_t unevictable_file;
@@ -448,7 +451,7 @@ enum vmstat_field {
     VS_FIELD_COUNT
 };
 
-static const char* const vmstat_field_names[MI_FIELD_COUNT] = {
+static const char* const vmstat_field_names[VS_FIELD_COUNT] = {
     "nr_free_pages",
     "nr_inactive_file",
     "nr_active_file",
