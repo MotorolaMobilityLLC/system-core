@@ -763,8 +763,8 @@ int SecondStageMain(int argc, char** argv) {
     bool memcg_enabled = android::base::GetBoolProperty("ro.boot.memcg",false);
     if (memcg_enabled) {
        // root memory control cgroup
-       mkdir("/dev/memcg", 0700);
-       chown("/dev/memcg",AID_ROOT,AID_SYSTEM);
+       mkdir("/dev/memcg", 0755);
+       chown("/dev/memcg",AID_SYSTEM,AID_SYSTEM);
        mount("none", "/dev/memcg", "cgroup", 0, "memory");
        // app mem cgroups, used by activity manager, lmkd and zygote
        mkdir("/dev/memcg/apps/",0755);
