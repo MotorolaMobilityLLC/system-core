@@ -879,6 +879,24 @@ static void property_derive_build_fingerprint() {
     }
 }
 
+// tweak the incremental for run-time fingerprint variants
+static void mmi_modify_incremental(std::map<std::string, std::string>* properties) {
+
+    auto suffix = properties->find("ro.build.version.incremental.suffix");
+    if (suffix != properties->end()) {
+        LOG(INFO) << "mmi_modify_incremental(): Found incremental suffix";
+        auto suffix_val = suffix->second;
+        // an incremental suffix is set, so append it to the incremental property, if it's set
+        auto incremental = properties->find("ro.build.version.incremental");
+        if (incremental != properties->end()) {
+            auto incremental_val = incremental->second;
+            LOG(INFO) << "mmi_modify_incremental(): Found incremental " << incremental_val << ".  Appending " << suffix_val << "...";
+            // append the suffix to the incremental
+            incremental_val = incremental_val + suffix_val;
+            incremental->second = incremental_val;
+        }
+    }
+}
 void property_load_boot_defaults(bool load_debug_prop) {
     // TODO(b/117892318): merge prop.default and build.prop files into one
     // We read the properties and their values into a map, in order to always allow properties
@@ -914,12 +932,13 @@ void property_load_boot_defaults(bool load_debug_prop) {
         load_properties_from_file(kDebugRamdiskProp, nullptr, &properties);
     }
 
-// BEGIN motorola, IKSWQ-6171
 #ifdef MOTO_INIT_HWVARIANT
-    // Set/modify properties based on utags
+    // Motorola IKSWQ-6171: Set/modify properties based on utags
     process_hw_mappings("/vendor/etc/vhw.xml", properties);
 #endif
-// END IKSWQ-6171
+
+    // Motorola: Append the incremental suffix, if it's set
+    mmi_modify_incremental(&properties);
 
     for (const auto& [name, value] : properties) {
         std::string error;
