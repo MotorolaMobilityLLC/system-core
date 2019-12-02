@@ -2182,15 +2182,17 @@ struct zone_watermarks {
 
 /*
  * Returns lowest breached watermark or WMARK_NONE.
+ * lmkd.high_watermark = low_wmark + (high_wmark - low_wmark)/2
  */
 static enum zone_watermark get_lowest_watermark(union meminfo *mi,
                                                 struct zone_watermarks *watermarks)
 {
     int64_t nr_free_pages = mi->field.nr_free_pages - mi->field.cma_free;
+    long high_wmark = (watermarks->low_wmark + watermarks->high_wmark) / 2;
 
     min_watermark = min_watermark ? min_watermark : watermarks->min_wmark;
     low_watermark = low_watermark ? low_watermark : watermarks->low_wmark;
-    high_watermark = high_watermark ? high_watermark : watermarks->high_wmark;
+    high_watermark = high_watermark ? high_watermark : high_wmark;
 
     if (nr_free_pages < min_watermark) {
         return WMARK_MIN;
