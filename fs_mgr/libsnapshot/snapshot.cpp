@@ -300,7 +300,7 @@ bool SnapshotManager::MapSnapshot(LockedFile* lock, const std::string& name,
     if (!ReadSnapshotStatus(lock, name, &status)) {
         return false;
     }
-    if (status.state() == SnapshotState::MERGE_COMPLETED) {
+    if (status.state() == SnapshotState::NONE || status.state() == SnapshotState::MERGE_COMPLETED) {
         LOG(ERROR) << "Should not create a snapshot device for " << name
                    << " after merging has completed.";
         return false;
@@ -1376,6 +1376,17 @@ bool SnapshotManager::MapPartitionWithSnapshot(LockedFile* lock,
         if (live_snapshot_status->state() == SnapshotState::MERGE_COMPLETED) {
             live_snapshot_status.reset();
         }
+
+        if (live_snapshot_status->state() == SnapshotState::NONE ||
+            live_snapshot_status->cow_partition_size() + live_snapshot_status->cow_file_size() ==
+                    0) {
+            LOG(WARNING) << "Snapshot status for " << params.GetPartitionName()
+                         << " is invalid, ignoring: state = "
+                         << SnapshotState_Name(live_snapshot_status->state())
+                         << ", cow_partition_size = " << live_snapshot_status->cow_partition_size()
+                         << ", cow_file_size = " << live_snapshot_status->cow_file_size();
+            live_snapshot_status.reset();
+        }
     } while (0);
 
     if (live_snapshot_status.has_value()) {
@@ -1663,10 +1674,6 @@ bool SnapshotManager::WriteUpdateState(LockedFile* file, UpdateState state) {
     if (contents.empty()) return false;
 
     if (!Truncate(file)) return false;
-    if (!android::base::WriteStringToFd(contents, file->fd())) {
-        PLOG(ERROR) << "Could not write to state file";
-        return false;
-    }
 
 #ifdef LIBSNAPSHOT_USE_HAL
     auto merge_status = MergeStatus::UNKNOWN;
@@ -1692,7 +1699,21 @@ bool SnapshotManager::WriteUpdateState(LockedFile* file, UpdateState state) {
             LOG(ERROR) << "Unexpected update status: " << state;
             break;
     }
-    if (!device_->SetBootControlMergeStatus(merge_status)) {
+
+    bool set_before_write =
+            merge_status == MergeStatus::SNAPSHOTTED || merge_status == MergeStatus::MERGING;
+    if (set_before_write && !device_->SetBootControlMergeStatus(merge_status)) {
+        return false;
+    }
+#endif
+
+    if (!android::base::WriteStringToFd(contents, file->fd())) {
+        PLOG(ERROR) << "Could not write to state file";
+        return false;
+    }
+
+#ifdef LIBSNAPSHOT_USE_HAL
+    if (!set_before_write && !device_->SetBootControlMergeStatus(merge_status)) {
         return false;
     }
 #endif
@@ -2150,6 +2171,15 @@ std::unique_ptr<AutoDevice> SnapshotManager::EnsureMetadataMounted() {
 }
 
 UpdateState SnapshotManager::InitiateMergeAndWait() {
+    {
+        auto lock = LockExclusive();
+        // Sync update state from file with bootloader.
+        if (!WriteUpdateState(lock.get(), ReadUpdateState(lock.get()))) {
+            LOG(WARNING) << "Unable to sync write update state, fastboot may "
+                         << "reject / accept wipes incorrectly!";
+        }
+    }
+
     LOG(INFO) << "Waiting for any previous merge request to complete. "
               << "This can take up to several minutes.";
     auto state = ProcessUpdateState();
@@ -2182,6 +2212,15 @@ bool SnapshotManager::HandleImminentDataWipe(const std::function<void()>& callba
         // We allow the wipe to continue, because if we can't mount /metadata,
         // it is unlikely the device would have booted anyway. If there is no
         // metadata partition, then the device predates Virtual A/B.
+        return true;
+    }
+
+    // Check this early, so we don't accidentally start trying to populate
+    // the state file in recovery. Note we don't call GetUpdateState since
+    // we want errors in acquiring the lock to be propagated, instead of
+    // returning UpdateState::None.
+    auto state_file = GetStateFilePath();
+    if (access(state_file.c_str(), F_OK) != 0 && errno == ENOENT) {
         return true;
     }
 
