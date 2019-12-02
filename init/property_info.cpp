@@ -81,9 +81,22 @@ void set_system_properties(){
     std::string  build_name = android::base::GetProperty(prop_build_name, "");
 
     if (prop_product_value == "fiji") {
+        if(build_name == "lenovo") {
+            prop_product_value = "fiji_lnv";
+            property_set(prop_amclient, prop_client_value);
+            property_set(prop_msclient, prop_clientrev_value);
+            property_set(prop_product, prop_product_value);
+            property_set(prop_build_fingerprint, get_fingerprint_property(prop_product_value));
+            property_set(prop_fingerprint, get_fingerprint_property(prop_product_value));
+            property_set(prop_vendor_fingerprint, get_fingerprint_property(prop_product_value));
+            property_set("persist.vendor.normal", "1");//表示正常版本，非 VTS 版本，prop 正常设置.
+            property_set(prop_build_fullversion, get_version_property(prop_version_value));
+            property_set(prop_build_customerid, prop_carrier_value);
+            return;
+        }
+
         if (isProductNameFijiReteu(carrier_ontim)) {
             prop_product_value = "fiji_reteu";
-            prop_carrier_value = "reteu";
             if (carrier_ontim == "eegb_uksl") {
                 property_set(prop_msclient, prop_clientuk_value);
             } else if (carrier_ontim == "timit_timit") {
@@ -100,21 +113,19 @@ void set_system_properties(){
             property_set(prop_build_fingerprint, get_fingerprint_property(prop_product_value));
             property_set(prop_fingerprint, get_fingerprint_property(prop_product_value));
             property_set(prop_vendor_fingerprint, get_fingerprint_property(prop_product_value));
-            property_set("persist.vendor.normal", "1");//表示正常版本，非 VTS 版本，prop 正常设置.
         } else if (isProductNameFijiLnv(carrier_ontim)) {
+            //remain this temporarily for requirement update
             if(build_name == "lenovo") {
                 prop_product_value = "fiji_lnv";
             } else {
                 prop_product_value = "fiji";
             }
-            prop_carrier_value = "lnv";
             property_set(prop_amclient, prop_client_value);
             property_set(prop_msclient, prop_clientrev_value);
             property_set(prop_product, prop_product_value);
             property_set(prop_build_fingerprint, get_fingerprint_property(prop_product_value));
             property_set(prop_fingerprint, get_fingerprint_property(prop_product_value));
             property_set(prop_vendor_fingerprint, get_fingerprint_property(prop_product_value));
-            property_set("persist.vendor.normal", "1");//表示正常版本，非 VTS 版本，prop 正常设置.
         } else {
             if (carrier_ontim == "amxbr_clarobr" || carrier_ontim == "amxmx_amxmx"
              || carrier_ontim == "amxmx_amxmxsl" || carrier_ontim == "openmx_retmx"
@@ -131,12 +142,39 @@ void set_system_properties(){
                 property_set(prop_amclient, prop_client_value);
                 property_set(prop_msclient, prop_clientrev_value);
             }
+            property_set(prop_vendor_fingerprint, get_fingerprint_property(prop_product_value));
         }
     } else if (prop_product_value == "blackjack" || prop_product_value == "blackjack_64") {
         property_set(prop_product_device, "blackjack");
+
+        if(build_name == "lenovo") {
+            prop_product_value = "blackjack_lnv";
+            property_set(prop_amclient, prop_client_value);
+            property_set(prop_msclient, prop_clientrev_value);
+            property_set(prop_product, prop_product_value);
+            property_set(prop_build_fingerprint, get_fingerprint_property(prop_product_value));
+            property_set(prop_fingerprint, get_fingerprint_property(prop_product_value));
+            property_set(prop_vendor_fingerprint, get_fingerprint_property(prop_product_value));
+            property_set("persist.vendor.normal", "1");//表示正常版本，非 VTS 版本，prop 正常设置.
+            property_set(prop_build_fullversion, get_version_property(prop_version_value));
+            property_set(prop_build_customerid, prop_carrier_value);
+
+            // BEGIN Ontim, maqing, 20/11/2019, EKBLACKJ-178 , St-result :PASS,[BJ][Europe Requirement][Fiji Features]FEATURE-5963
+            if (carrier_ontim == "timit_timit") {
+                property_set(prop_amazon_partnerid, carrier_value);
+            }
+            if (carrier_ontim == "windit_windds") {
+                property_set(prop_amazon_partnerid, "3it");
+            }
+            if (carrier_ontim == "attmx_attmx") {
+                property_set(prop_amazon_partnerid,carrier_value);
+            }
+            // END EKBLACKJ-178
+            return;
+        }
+
         if (isProductNameBlackjackReteu(carrier_ontim)) {
             prop_product_value = "blackjack_reteu";
-            prop_carrier_value = "reteu";
             if (carrier_ontim == "timit_timit") {
                 property_set(prop_msclient, prop_clientit_value);
                 property_set(prop_amazon_partnerid,carrier_value);
@@ -156,22 +194,22 @@ void set_system_properties(){
             property_set(prop_build_fingerprint, get_fingerprint_property(prop_product_value));
             property_set(prop_fingerprint, get_fingerprint_property(prop_product_value));
             property_set(prop_vendor_fingerprint, get_fingerprint_property(prop_product_value));
-            property_set("persist.vendor.normal", "1");//表示正常版本，非 VTS 版本，prop 正常设置.
         } else if (isProductNameBlackjackLnv(carrier_ontim)) {
+            //remain this temporarily for requirement update
             if(build_name == "lenovo") {
                 prop_product_value = "blackjack_lnv";
             } else {
                 prop_product_value = "blackjack";
             }
-            prop_carrier_value = "lnv";
             property_set(prop_amclient, prop_client_value);
             property_set(prop_msclient, prop_clientrev_value);
             property_set(prop_product, prop_product_value);
             property_set(prop_build_fingerprint, get_fingerprint_property(prop_product_value));
             property_set(prop_fingerprint, get_fingerprint_property(prop_product_value));
             property_set(prop_vendor_fingerprint, get_fingerprint_property(prop_product_value));
-            property_set("persist.vendor.normal", "1");//表示正常版本，非 VTS 版本，prop 正常设置.
         } else {
+            prop_product_value = "blackjack";
+            property_set(prop_vendor_fingerprint, get_fingerprint_property(prop_product_value));
             if (carrier_ontim == "openmx_retmx" || carrier_ontim == "amxmx_amxmx"
              || carrier_ontim == "amxmx_amxmxsl" || carrier_ontim == "retar_retclaro"
              || carrier_ontim == "amxcl_tefcosl" || carrier_ontim == "amxpe_claro"
@@ -201,6 +239,7 @@ void set_system_properties(){
         // END EKBLACKJ-178
     }
 
+    property_set("persist.vendor.normal", "1");//表示正常版本，非 VTS 版本，prop 正常设置.
     property_set(prop_build_fullversion, get_version_property(prop_version_value));
     property_set(prop_build_customerid, prop_carrier_value);
 }
