@@ -153,6 +153,7 @@ static bool enhance_meminfo_enable;
 static bool is_support_memcg;
 static bool lmfs_enabled;
 static bool lmkd_config_enabled;
+static bool fast_kill_enabled;
 
 /* memory pressure levels */
 enum vmpressure_level {
@@ -1192,6 +1193,19 @@ static void cmd_target(int ntargets, LMKD_CTRL_PACKET packet) {
     }
 }
 
+static void cmd_fastkill(LMKD_CTRL_PACKET packet) {
+    struct lmk_fastkill params;
+
+    if (use_inkernel_interface) {
+        /* kernel driver does not expose this information */
+        return;
+    }
+
+    lmkd_pack_fastkill(packet, &params);
+
+    fast_kill_enabled = params.do_fastkill;
+}
+
 static void ctrl_data_close(int dsock_idx) {
     struct epoll_event epev;
 
@@ -1287,6 +1301,11 @@ static void ctrl_command_handler(int dsock_idx) {
         len = lmkd_pack_set_getkillcnt_repl(packet, kill_cnt);
         if (ctrl_data_write(dsock_idx, (char *)packet, len) != len)
             return;
+        break;
+    case LMK_FASTKILL:
+        if (nargs != 1)
+            goto wronglen;
+        cmd_fastkill(packet);
         break;
     default:
         ALOGE("Received unknown command code %d", cmd);
@@ -2234,7 +2253,8 @@ static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_
         LOW_MEM_AND_SWAP,
         LOW_MEM_AND_THRASHING,
         DIRECT_RECL_AND_THRASHING,
-        KILL_REASON_COUNT
+        KILL_REASON_COUNT,
+        DO_FAST_KILL
     };
     enum reclaim_state {
         NO_RECLAIM = 0,
@@ -2265,6 +2285,7 @@ static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_
     char kill_desc[LINE_MAX];
     bool cut_thrashing_limit = false;
     int min_score_adj = 0;
+    bool do_multi_kill = false;
 
     /* Skip while still killing a process */
     if (is_kill_pending()) {
@@ -2370,6 +2391,12 @@ static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_
          */
         kill_reason = NOT_RESPONDING;
         strncpy(kill_desc, "device is not responding", sizeof(kill_desc));
+    } else if (fast_kill_enabled) {
+        /*
+         * Device is too busy reclaiming memory which might lead to ANR..
+         */
+        kill_reason = DO_FAST_KILL;
+        strncpy(kill_desc, "do fast kill", sizeof(kill_desc));
     } else if (swap_is_low && thrashing > thrashing_limit_pct) {
         /* Page cache is thrashing while swap is low */
         kill_reason = LOW_SWAP_AND_THRASHING;
@@ -2425,32 +2452,29 @@ static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_
 
         /* kill multi apps */
         if (low_ram_device && level == VMPRESS_LEVEL_CRITICAL && events != 0) {
-            int freed = 0;
-            if (swap_is_low) {
-                strcat(kill_desc, " <kill all processes above>");
-                freed = find_and_kill_multi_processes(min_score_adj, kill_desc, true);
-            } else {
-                strcat(kill_desc, " <kill group processes>");
-                freed = find_and_kill_multi_processes(min_score_adj, kill_desc, false);
-            }
-            if (freed > 0) {
-                killing = true;
-                if (cut_thrashing_limit) {
-                    /*
-                     * Cut thrasing limit by thrashing_limit_decay_pct percentage of the current
-                     * thrashing limit until the system stops thrashing.
-                     */
-                    thrashing_limit = (thrashing_limit * (100 - thrashing_limit_decay_pct)) / 100;
-                }
-            }
-            meminfo_log(&mi);
-            goto no_kill;
+            do_multi_kill = true;
         }
     }
 
     /* Kill a process if necessary */
     if (kill_reason != NONE) {
-        int pages_freed = find_and_kill_process(min_score_adj, kill_desc);
+        int pages_freed;
+
+        if (do_multi_kill) {
+            do_multi_kill = false;
+            if (swap_is_low) {
+                strcat(kill_desc, " <kill all processes above>");
+                pages_freed = find_and_kill_multi_processes(min_score_adj, kill_desc, true);
+            } else {
+                strcat(kill_desc, " <kill group processes>");
+                pages_freed = find_and_kill_multi_processes(min_score_adj, kill_desc, false);
+            }
+        } else if (fast_kill_enabled) {
+            fast_kill_enabled = false;
+            pages_freed = find_and_kill_multi_processes(min_score_adj, kill_desc, true);
+        } else
+            pages_freed = find_and_kill_process(min_score_adj, kill_desc);
+
         if (pages_freed > 0) {
             killing = true;
             if (cut_thrashing_limit) {

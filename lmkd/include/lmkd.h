@@ -32,6 +32,7 @@ enum lmk_cmd {
     LMK_PROCREMOVE,  /* Unregister a process */
     LMK_PROCPURGE,   /* Purge all registered processes */
     LMK_GETKILLCNT,  /* Get number of kills */
+    LMK_FASTKILL,    /* Fast kill */
 };
 
 /*
@@ -186,6 +187,18 @@ static inline size_t lmkd_pack_set_getkillcnt_repl(LMKD_CTRL_PACKET packet, int 
     packet[0] = htonl(LMK_GETKILLCNT);
     packet[1] = htonl(kill_cnt);
     return 2 * sizeof(int);
+}
+
+/* LMK_FASTKILL packet payload */
+struct lmk_fastkill {
+    int do_fastkill;
+};
+/*
+ * Prepare LMK_FASTKILL packet get its payload.
+ * Warning: no checks performed, caller should ensure valid parameters.
+ */
+static inline void lmkd_pack_fastkill(LMKD_CTRL_PACKET packet, struct lmk_fastkill* params) {
+    params->do_fastkill = ntohl(packet[1]);
 }
 
 __END_DECLS
