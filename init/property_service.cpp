@@ -786,7 +786,9 @@ static void load_override_properties() {
 
 #ifdef MTK_RSC
 static void LoadRscRoProps() {
-    const std::string rscname = android::base::GetProperty("ro.boot.rsc", "");
+    const std::string rscname_org = android::base::GetProperty("ro.boot.rsc", "");
+    const std::string rscname_ago = android::base::GetProperty("ro.boot.rsc.ago", "");
+    const std::string rscname = rscname_org == "" ? rscname_ago : rscname_org;
     const std::string rscpath = rscname == "" ? "" : "etc/rsc/"+rscname+"/";
     std::map<std::string, std::string> properties;
     load_properties_from_file(
@@ -804,7 +806,9 @@ static void LoadRscRoProps() {
 }
 
 static void LoadRscRwProps() {
-    const std::string rscname = android::base::GetProperty("ro.boot.rsc", "");
+    const std::string rscname_org = android::base::GetProperty("ro.boot.rsc", "");
+    const std::string rscname_ago = android::base::GetProperty("ro.boot.rsc.ago", "");
+    const std::string rscname = rscname_org == "" ? rscname_ago : rscname_org;
     const std::string rscpath = rscname == "" ? "" : "etc/rsc/"+rscname+"/";
     std::map<std::string, std::string> properties;
     load_properties_from_file(
