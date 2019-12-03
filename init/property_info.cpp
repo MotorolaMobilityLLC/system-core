@@ -46,6 +46,7 @@ std::string prop_product_device = "ro.product.device";
 std::string prop_build_fingerprint = "ro.bootimage.build.fingerprint";
 std::string prop_fingerprint = "ro.build.fingerprint";
 std::string prop_vendor_fingerprint = "ro.vendor.build.fingerprint";
+std::string prop_product_fingerprint = "ro.product.build.fingerprint";
 std::string prop_client_value = "android-motorola";
 std::string prop_clientrev_value = "android-motorola-rev2";
 std::string prop_clientcountry_value = "android-americamovil-{country}";
@@ -89,6 +90,7 @@ void set_system_properties(){
             property_set(prop_build_fingerprint, get_fingerprint_property(prop_product_value));
             property_set(prop_fingerprint, get_fingerprint_property(prop_product_value));
             property_set(prop_vendor_fingerprint, get_fingerprint_property(prop_product_value));
+            property_set(prop_product_fingerprint, get_fingerprint_property(prop_product_value));
             property_set("persist.vendor.normal", "1");//表示正常版本，非 VTS 版本，prop 正常设置.
             property_set(prop_build_fullversion, get_version_property(prop_version_value));
             property_set(prop_build_customerid, prop_carrier_value);
@@ -113,6 +115,7 @@ void set_system_properties(){
             property_set(prop_build_fingerprint, get_fingerprint_property(prop_product_value));
             property_set(prop_fingerprint, get_fingerprint_property(prop_product_value));
             property_set(prop_vendor_fingerprint, get_fingerprint_property(prop_product_value));
+            property_set(prop_product_fingerprint, get_fingerprint_property(prop_product_value));
         } else if (isProductNameFijiLnv(carrier_ontim)) {
             //remain this temporarily for requirement update
             if(build_name == "lenovo") {
@@ -126,6 +129,7 @@ void set_system_properties(){
             property_set(prop_build_fingerprint, get_fingerprint_property(prop_product_value));
             property_set(prop_fingerprint, get_fingerprint_property(prop_product_value));
             property_set(prop_vendor_fingerprint, get_fingerprint_property(prop_product_value));
+            property_set(prop_product_fingerprint, get_fingerprint_property(prop_product_value));
         } else {
             if (carrier_ontim == "amxbr_clarobr" || carrier_ontim == "amxmx_amxmx"
              || carrier_ontim == "amxmx_amxmxsl" || carrier_ontim == "openmx_retmx"
@@ -142,7 +146,9 @@ void set_system_properties(){
                 property_set(prop_amclient, prop_client_value);
                 property_set(prop_msclient, prop_clientrev_value);
             }
+            //not defined yet, so need set here.
             property_set(prop_vendor_fingerprint, get_fingerprint_property(prop_product_value));
+            property_set(prop_product_fingerprint, get_fingerprint_property(prop_product_value));
         }
     } else if (prop_product_value == "blackjack" || prop_product_value == "blackjack_64") {
         property_set(prop_product_device, "blackjack");
@@ -155,21 +161,10 @@ void set_system_properties(){
             property_set(prop_build_fingerprint, get_fingerprint_property(prop_product_value));
             property_set(prop_fingerprint, get_fingerprint_property(prop_product_value));
             property_set(prop_vendor_fingerprint, get_fingerprint_property(prop_product_value));
+            property_set(prop_product_fingerprint, get_fingerprint_property(prop_product_value));
             property_set("persist.vendor.normal", "1");//表示正常版本，非 VTS 版本，prop 正常设置.
             property_set(prop_build_fullversion, get_version_property(prop_version_value));
             property_set(prop_build_customerid, prop_carrier_value);
-
-            // BEGIN Ontim, maqing, 20/11/2019, EKBLACKJ-178 , St-result :PASS,[BJ][Europe Requirement][Fiji Features]FEATURE-5963
-            if (carrier_ontim == "timit_timit") {
-                property_set(prop_amazon_partnerid, carrier_value);
-            }
-            if (carrier_ontim == "windit_windds") {
-                property_set(prop_amazon_partnerid, "3it");
-            }
-            if (carrier_ontim == "attmx_attmx") {
-                property_set(prop_amazon_partnerid,carrier_value);
-            }
-            // END EKBLACKJ-178
             return;
         }
 
@@ -194,6 +189,7 @@ void set_system_properties(){
             property_set(prop_build_fingerprint, get_fingerprint_property(prop_product_value));
             property_set(prop_fingerprint, get_fingerprint_property(prop_product_value));
             property_set(prop_vendor_fingerprint, get_fingerprint_property(prop_product_value));
+            property_set(prop_product_fingerprint, get_fingerprint_property(prop_product_value));
         } else if (isProductNameBlackjackLnv(carrier_ontim)) {
             //remain this temporarily for requirement update
             if(build_name == "lenovo") {
@@ -207,9 +203,12 @@ void set_system_properties(){
             property_set(prop_build_fingerprint, get_fingerprint_property(prop_product_value));
             property_set(prop_fingerprint, get_fingerprint_property(prop_product_value));
             property_set(prop_vendor_fingerprint, get_fingerprint_property(prop_product_value));
+            property_set(prop_product_fingerprint, get_fingerprint_property(prop_product_value));
         } else {
             prop_product_value = "blackjack";
+            //not defined yet, so need set here.
             property_set(prop_vendor_fingerprint, get_fingerprint_property(prop_product_value));
+            property_set(prop_product_fingerprint, get_fingerprint_property(prop_product_value));
             if (carrier_ontim == "openmx_retmx" || carrier_ontim == "amxmx_amxmx"
              || carrier_ontim == "amxmx_amxmxsl" || carrier_ontim == "retar_retclaro"
              || carrier_ontim == "amxcl_tefcosl" || carrier_ontim == "amxpe_claro"
@@ -289,7 +288,8 @@ bool isProductNameBlackjackLnv(std::string carrier_ontim) {
 bool changeSystemProperty(std::string key) {
     if (key == prop_product || key == prop_build_fingerprint
       || key == prop_fingerprint || key == prop_vendor_fingerprint
-      || key == prop_carrier || key == prop_product_device) {
+      || key == prop_carrier || key == prop_product_device
+      || key == prop_product_fingerprint) {
         return true;
     }
     return false;
