@@ -96,7 +96,6 @@ void set_system_properties(){
             property_set(prop_build_customerid, prop_carrier_value);
             return;
         }
-
         if (isProductNameFijiReteu(carrier_ontim)) {
             prop_product_value = "fiji_reteu";
             if (carrier_ontim == "eegb_uksl") {
@@ -111,11 +110,6 @@ void set_system_properties(){
                 property_set(prop_amclient, prop_client_value);
                 property_set(prop_msclient, prop_clientrev_value);
             }
-            property_set(prop_product, prop_product_value);
-            property_set(prop_build_fingerprint, get_fingerprint_property(prop_product_value));
-            property_set(prop_fingerprint, get_fingerprint_property(prop_product_value));
-            property_set(prop_vendor_fingerprint, get_fingerprint_property(prop_product_value));
-            property_set(prop_product_fingerprint, get_fingerprint_property(prop_product_value));
         } else if (isProductNameFijiLnv(carrier_ontim)) {
             //remain this temporarily for requirement update
             if(build_name == "lenovo") {
@@ -125,16 +119,11 @@ void set_system_properties(){
             }
             property_set(prop_amclient, prop_client_value);
             property_set(prop_msclient, prop_clientrev_value);
-            property_set(prop_product, prop_product_value);
-            property_set(prop_build_fingerprint, get_fingerprint_property(prop_product_value));
-            property_set(prop_fingerprint, get_fingerprint_property(prop_product_value));
-            property_set(prop_vendor_fingerprint, get_fingerprint_property(prop_product_value));
-            property_set(prop_product_fingerprint, get_fingerprint_property(prop_product_value));
         } else {
             if (carrier_ontim == "amxbr_clarobr" || carrier_ontim == "amxmx_amxmx"
              || carrier_ontim == "amxmx_amxmxsl" || carrier_ontim == "openmx_retmx"
              || carrier_ontim == "amxpe_claro" || carrier_ontim == "amxcl_tefcosl"
-             || carrier_ontim == "amxar_amxar") {
+             || carrier_ontim == "amxar_amxar" || carrier_ontim == "amxcl_clarosl") {
                 property_set(prop_amclient, prop_clientcountry_value);
                 property_set(prop_msclient, prop_clientrevc_value);
             } else if (carrier_ontim == "attmx_attmx") {
@@ -146,10 +135,13 @@ void set_system_properties(){
                 property_set(prop_amclient, prop_client_value);
                 property_set(prop_msclient, prop_clientrev_value);
             }
-            //not defined yet, so need set here.
-            property_set(prop_vendor_fingerprint, get_fingerprint_property(prop_product_value));
-            property_set(prop_product_fingerprint, get_fingerprint_property(prop_product_value));
         }
+
+        property_set(prop_product, prop_product_value);
+        property_set(prop_build_fingerprint, get_fingerprint_property(prop_product_value));
+        property_set(prop_fingerprint, get_fingerprint_property(prop_product_value));
+        property_set(prop_vendor_fingerprint, get_fingerprint_property(prop_product_value));
+        property_set(prop_product_fingerprint, get_fingerprint_property(prop_product_value));
     } else if (prop_product_value == "blackjack" || prop_product_value == "blackjack_64") {
         property_set(prop_product_device, "blackjack");
 
@@ -185,11 +177,6 @@ void set_system_properties(){
                 property_set(prop_amclient, prop_client_value);
                 property_set(prop_msclient, prop_clientrev_value);
             }
-            property_set(prop_product, prop_product_value);
-            property_set(prop_build_fingerprint, get_fingerprint_property(prop_product_value));
-            property_set(prop_fingerprint, get_fingerprint_property(prop_product_value));
-            property_set(prop_vendor_fingerprint, get_fingerprint_property(prop_product_value));
-            property_set(prop_product_fingerprint, get_fingerprint_property(prop_product_value));
         } else if (isProductNameBlackjackLnv(carrier_ontim)) {
             //remain this temporarily for requirement update
             if(build_name == "lenovo") {
@@ -199,31 +186,34 @@ void set_system_properties(){
             }
             property_set(prop_amclient, prop_client_value);
             property_set(prop_msclient, prop_clientrev_value);
-            property_set(prop_product, prop_product_value);
-            property_set(prop_build_fingerprint, get_fingerprint_property(prop_product_value));
-            property_set(prop_fingerprint, get_fingerprint_property(prop_product_value));
-            property_set(prop_vendor_fingerprint, get_fingerprint_property(prop_product_value));
-            property_set(prop_product_fingerprint, get_fingerprint_property(prop_product_value));
         } else {
             prop_product_value = "blackjack";
-            //not defined yet, so need set here.
-            property_set(prop_vendor_fingerprint, get_fingerprint_property(prop_product_value));
-            property_set(prop_product_fingerprint, get_fingerprint_property(prop_product_value));
             if (carrier_ontim == "openmx_retmx" || carrier_ontim == "amxmx_amxmx"
              || carrier_ontim == "amxmx_amxmxsl" || carrier_ontim == "retar_retclaro"
              || carrier_ontim == "amxcl_tefcosl" || carrier_ontim == "amxpe_claro"
              || carrier_ontim == "amxco_claro" || carrier_ontim == "amxco_claroes"
-             || carrier_ontim == "amxla_claro" || carrier_ontim == "openmx_retmxco") {
+             || carrier_ontim == "amxla_claro" || carrier_ontim == "openmx_retmxco"
+             || carrier_ontim == "amxbr_clarobr" || carrier_ontim == "amxar_amxar"
+             || carrier_ontim == "amxcl_clarosl" || carrier_ontim == "amxla_amxlas"
+             || carrier_ontim == "amxla_amxlag") {
                 property_set(prop_amclient, prop_clientcountry_value);
                 property_set(prop_msclient, prop_clientrevc_value);
             } else if (carrier_ontim == "attmx_attmx") {
                 property_set(prop_msclient, prop_clientmx_value);
                 property_set(prop_amazon_partnerid,carrier_value);
+            } else if (carrier_ontim == "timbr_clarobr") {
+                property_set(prop_msclient, prop_clientbr_value);
             } else {
                 property_set(prop_amclient, prop_client_value);
                 property_set(prop_msclient, prop_clientrev_value);
             }
         }
+
+        property_set(prop_product, prop_product_value);
+        property_set(prop_build_fingerprint, get_fingerprint_property(prop_product_value));
+        property_set(prop_fingerprint, get_fingerprint_property(prop_product_value));
+        property_set(prop_vendor_fingerprint, get_fingerprint_property(prop_product_value));
+        property_set(prop_product_fingerprint, get_fingerprint_property(prop_product_value));
 
         // BEGIN Ontim, maqing, 20/11/2019, EKBLACKJ-178 , St-result :PASS,[BJ][Europe Requirement][Fiji Features]FEATURE-5963
         if (carrier_ontim == "timit_timit") {
