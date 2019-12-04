@@ -170,7 +170,7 @@ cc_library_static {
 
     target: {
         recovery: {
-            cflags: ["-DRECOVERY"],
+            cflags: ["-DRECOVERY","-DONTIM_FASTBOOT_PROPERITY"],
             exclude_shared_libs: ["libbinder", "libutils"],
         },
     },
