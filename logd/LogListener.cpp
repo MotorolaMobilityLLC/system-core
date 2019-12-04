@@ -136,29 +136,54 @@ bool LogListener::onDataAvailable(SocketClient* cli) {
 
    {
         static uint32_t last_log_time=0;
-	char value[PROPERTY_VALUE_MAX];
-	property_get("ro.tiny", value, "");
+        char value[PROPERTY_VALUE_MAX];
+        property_get("ro.tiny", value, "");
         int elps=last_log_time - header->realtime.tv_sec;
         if ((last_log_time!=0)&&(elps>60)){
             android::prdebug("logd will reinit by reboot:systemtime changed %d",elps);
-	    if (!strcmp(value, ""))
+            if (!strcmp(value, ""))
                 exit(0);
-        }
-        last_log_time=header->realtime.tv_sec;
+            }
+           last_log_time=header->realtime.tv_sec;
     }
+
+    struct timespec ts1,ts2,ts3,ts4;
+    clock_gettime(CLOCK_MONOTONIC, &ts1);
+    clock_gettime(CLOCK_MONOTONIC, &ts2);
+    clock_gettime(CLOCK_MONOTONIC, &ts3);
+    clock_gettime(CLOCK_MONOTONIC, &ts4);
+    static long logcount=0;
+    static long threshold_count=0;
+    logcount++;
 
     if (logbuf != nullptr) {
         int res = logbuf->log(
             logId, header->realtime, cred->uid, cred->pid, header->tid, msg,
             ((size_t)n <= UINT16_MAX) ? (uint16_t)n : UINT16_MAX);
+        clock_gettime(CLOCK_MONOTONIC, &ts2);
+
         if (res > 0 && reader != nullptr) {
             reader->notifyNewLog(static_cast<log_mask_t>(1 << logId));
+            clock_gettime(CLOCK_MONOTONIC, &ts3);
         }
     }
     if (logbuf != nullptr) {
         YLogBuffer::getInstance()->log((LogBuffer*)logbuf,(log_id_t)header->id, header->realtime,
                 cred->uid, cred->pid, header->tid, msg,
                 ((size_t) n <= USHRT_MAX) ? (unsigned short) n : USHRT_MAX) ;
+        clock_gettime(CLOCK_MONOTONIC, &ts4);
+
+        long t1_time=ts2.tv_nsec - ts1.tv_nsec;
+        long t2_time=ts3.tv_nsec - ts2.tv_nsec;
+        long t3_time=ts4.tv_nsec - ts3.tv_nsec;
+        long threshold=10*1000*1000;
+        if( (t1_time>threshold) ||(t2_time>threshold)||(t3_time>threshold)){
+            threshold_count++;
+            if(0==(logcount%10)){
+                android::prdebug("t1:%ld t2:%ld t3:%ld c:%ld",t1_time,t2_time,t3_time,threshold_count);
+                threshold_count=0;
+            }
+        }
     }
     return true;
 }
