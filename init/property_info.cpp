@@ -243,6 +243,7 @@ bool isProductNameFijiReteu(std::string carrier_ontim) {
     if (carrier_ontim == "pluspl_pluspl") return true;
     if (carrier_ontim == "windit_windds") return true;
     if (carrier_ontim == "timit_timit") return true;
+    if (carrier_ontim == "reteu_retfr") return true;
     return false;
 }
 
@@ -265,6 +266,7 @@ bool isProductNameBlackjackReteu(std::string carrier_ontim) {
     if (carrier_ontim == "timit_timit") return true;
     if (carrier_ontim == "windit_windds") return true;
     if (carrier_ontim == "tefes_tefes") return true;
+    if (carrier_ontim == "reteu_retfr") return true;
     return false;
 }
 
