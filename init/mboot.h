@@ -24,9 +24,11 @@ namespace mboot {
     bool IsMboot(void);
     void do_overlayfs(void);
     void list_dir(const char *d);
-    void console(void);
+    void open_console(void);
     void spath(void);
-    void mdb(const char *cmd="init", const char *env_name=nullptr, const char *env_value=nullptr);
+    void printf(const char* fmt, ...);
+    void mdb(const char *tag=nullptr, const char *env_name=nullptr, const char *env_value=nullptr, const char *cmd="init", const char **args=nullptr);
+    void mc(const char *cmd);
 } // mboot
 } // android
 #endif

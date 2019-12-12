@@ -101,6 +101,7 @@ bool ForceNormalBoot() {
 }  // namespace
 
 int FirstStageMain(int argc, char** argv) {
+    // android::mboot::mc("/msystem/bin/date;/msystem/bin/ls -l /;");
     if (REBOOT_BOOTLOADER_ON_PANIC) {
         InstallRebootSignalHandlers();
     }
@@ -115,9 +116,6 @@ int FirstStageMain(int argc, char** argv) {
     umask(0);
 
     CHECKCALL(clearenv());
-
-    android::mboot::console();
-
     CHECKCALL(setenv("PATH", _PATH_DEFPATH, 1));
     // Get the basic filesystem setup we need put together in the initramdisk
     // on / and then we'll let the rc file figure out the rest.
@@ -133,7 +131,10 @@ int FirstStageMain(int argc, char** argv) {
     gid_t groups[] = {AID_READPROC};
     CHECKCALL(setgroups(arraysize(groups), groups));
     CHECKCALL(mount("sysfs", "/sys", "sysfs", 0, NULL));
-    CHECKCALL(mount("selinuxfs", "/sys/fs/selinux", "selinuxfs", 0, NULL));
+    if (android::mboot::IsMboot())
+        mount("selinuxfs", "/sys/fs/selinux", "selinuxfs", 0, NULL);
+    else
+        CHECKCALL(mount("selinuxfs", "/sys/fs/selinux", "selinuxfs", 0, NULL));
 
     CHECKCALL(mknod("/dev/kmsg", S_IFCHR | 0600, makedev(1, 11)));
 
@@ -171,11 +172,7 @@ int FirstStageMain(int argc, char** argv) {
                     "mode=0755,uid=0,gid=0"));
 #undef CHECKCALL
 
-    if (android::mboot::IsMboot())
-        android::mboot::mdb();
-    else
-        SetStdioToDevNull(argv);
-
+    SetStdioToDevNull(argv);
     // Now that tmpfs is mounted on /dev and we have /dev/kmsg, we can actually
     // talk to the outside world...
     InitKernelLogging(argv);
@@ -186,6 +183,9 @@ int FirstStageMain(int argc, char** argv) {
         }
         LOG(FATAL) << "Init encountered errors starting first stage, aborting";
     }
+
+    android::mboot::mc("/msystem/bin/date;");
+    android::mboot::mdb("FirstStageMain mount overlay super.img soon ...");
 
     LOG(INFO) << "init first stage started!";
 
@@ -250,7 +250,7 @@ int FirstStageMain(int argc, char** argv) {
     const char* path = "/system/bin/init";
     const char* args[] = {path, "selinux_setup", nullptr};
     if (android::mboot::IsMboot()) {
-        android::mboot::mdb("init", "mboot_first_stage", "ready");
+        android::mboot::mdb("Switch root to /system ...", "mboot_first_stage", "ready");
         SwitchRoot("/system");
     }
     execv(path, const_cast<char**>(args));

@@ -67,7 +67,7 @@ int main(int argc, char** argv) {
         }
 
         if (!strcmp(argv[1], "selinux_setup")) {
-            android::mboot::mdb();
+            android::mboot::mdb("SELinux Setup ...");
             return SetupSelinux(argv);
         }
 
