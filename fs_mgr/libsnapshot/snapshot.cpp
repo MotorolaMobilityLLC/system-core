@@ -65,6 +65,7 @@ using android::fs_mgr::MetadataBuilder;
 using android::fs_mgr::SlotNumberForSlotSuffix;
 using android::hardware::boot::V1_1::MergeStatus;
 using chromeos_update_engine::DeltaArchiveManifest;
+using chromeos_update_engine::Extent;
 using chromeos_update_engine::InstallOperation;
 template <typename T>
 using RepeatedPtrField = google::protobuf::RepeatedPtrField<T>;
@@ -127,6 +128,11 @@ bool SnapshotManager::BeginUpdate() {
 
     auto file = LockExclusive();
     if (!file) return false;
+
+    // Purge the ImageManager just in case there is a corrupt lp_metadata file
+    // lying around. (NB: no need to return false on an error, we can let the
+    // update try to progress.)
+    images_->RemoveAllImages();
 
     auto state = ReadUpdateState(file.get());
     if (state != UpdateState::None) {
@@ -300,7 +306,7 @@ bool SnapshotManager::MapSnapshot(LockedFile* lock, const std::string& name,
     if (!ReadSnapshotStatus(lock, name, &status)) {
         return false;
     }
-    if (status.state() == SnapshotState::MERGE_COMPLETED) {
+    if (status.state() == SnapshotState::NONE || status.state() == SnapshotState::MERGE_COMPLETED) {
         LOG(ERROR) << "Should not create a snapshot device for " << name
                    << " after merging has completed.";
         return false;
@@ -1181,8 +1187,26 @@ bool SnapshotManager::RemoveAllSnapshots(LockedFile* lock) {
     }
 
     bool ok = true;
+    bool has_mapped_cow_images = false;
     for (const auto& name : snapshots) {
-        ok &= (UnmapPartitionWithSnapshot(lock, name) && DeleteSnapshot(lock, name));
+        if (!UnmapPartitionWithSnapshot(lock, name) || !DeleteSnapshot(lock, name)) {
+            // Remember whether or not we were able to unmap the cow image.
+            auto cow_image_device = GetCowImageDeviceName(name);
+            has_mapped_cow_images |= images_->IsImageMapped(cow_image_device);
+
+            ok = false;
+        }
+    }
+
+    if (ok || !has_mapped_cow_images) {
+        // Delete any image artifacts as a precaution, in case an update is
+        // being cancelled due to some corrupted state in an lp_metadata file.
+        // Note that we do not do this if some cow images are still mapped,
+        // since we must not remove backing storage if it's in use.
+        if (!images_->RemoveAllImages()) {
+            LOG(ERROR) << "Could not remove all snapshot artifacts";
+            return false;
+        }
     }
     return ok;
 }
@@ -1374,6 +1398,17 @@ bool SnapshotManager::MapPartitionWithSnapshot(LockedFile* lock,
         }
         // No live snapshot if merge is completed.
         if (live_snapshot_status->state() == SnapshotState::MERGE_COMPLETED) {
+            live_snapshot_status.reset();
+        }
+
+        if (live_snapshot_status->state() == SnapshotState::NONE ||
+            live_snapshot_status->cow_partition_size() + live_snapshot_status->cow_file_size() ==
+                    0) {
+            LOG(WARNING) << "Snapshot status for " << params.GetPartitionName()
+                         << " is invalid, ignoring: state = "
+                         << SnapshotState_Name(live_snapshot_status->state())
+                         << ", cow_partition_size = " << live_snapshot_status->cow_partition_size()
+                         << ", cow_file_size = " << live_snapshot_status->cow_file_size();
             live_snapshot_status.reset();
         }
     } while (0);
@@ -1663,10 +1698,6 @@ bool SnapshotManager::WriteUpdateState(LockedFile* file, UpdateState state) {
     if (contents.empty()) return false;
 
     if (!Truncate(file)) return false;
-    if (!android::base::WriteStringToFd(contents, file->fd())) {
-        PLOG(ERROR) << "Could not write to state file";
-        return false;
-    }
 
 #ifdef LIBSNAPSHOT_USE_HAL
     auto merge_status = MergeStatus::UNKNOWN;
@@ -1692,7 +1723,21 @@ bool SnapshotManager::WriteUpdateState(LockedFile* file, UpdateState state) {
             LOG(ERROR) << "Unexpected update status: " << state;
             break;
     }
-    if (!device_->SetBootControlMergeStatus(merge_status)) {
+
+    bool set_before_write =
+            merge_status == MergeStatus::SNAPSHOTTED || merge_status == MergeStatus::MERGING;
+    if (set_before_write && !device_->SetBootControlMergeStatus(merge_status)) {
+        return false;
+    }
+#endif
+
+    if (!android::base::WriteStringToFd(contents, file->fd())) {
+        PLOG(ERROR) << "Could not write to state file";
+        return false;
+    }
+
+#ifdef LIBSNAPSHOT_USE_HAL
+    if (!set_before_write && !device_->SetBootControlMergeStatus(merge_status)) {
         return false;
     }
 #endif
@@ -1865,12 +1910,15 @@ bool SnapshotManager::CreateUpdateSnapshots(const DeltaArchiveManifest& manifest
     // these devices.
     AutoDeviceList created_devices;
 
-    PartitionCowCreator cow_creator{.target_metadata = target_metadata.get(),
-                                    .target_suffix = target_suffix,
-                                    .target_partition = nullptr,
-                                    .current_metadata = current_metadata.get(),
-                                    .current_suffix = current_suffix,
-                                    .operations = nullptr};
+    PartitionCowCreator cow_creator{
+            .target_metadata = target_metadata.get(),
+            .target_suffix = target_suffix,
+            .target_partition = nullptr,
+            .current_metadata = current_metadata.get(),
+            .current_suffix = current_suffix,
+            .operations = nullptr,
+            .extra_extents = {},
+    };
 
     if (!CreateUpdateSnapshotsInternal(lock.get(), manifest, &cow_creator, &created_devices,
                                        &all_snapshot_status)) {
@@ -1916,14 +1964,23 @@ bool SnapshotManager::CreateUpdateSnapshotsInternal(
     }
 
     std::map<std::string, const RepeatedPtrField<InstallOperation>*> install_operation_map;
+    std::map<std::string, std::vector<Extent>> extra_extents_map;
     for (const auto& partition_update : manifest.partitions()) {
         auto suffixed_name = partition_update.partition_name() + target_suffix;
-        auto&& [it, inserted] = install_operation_map.emplace(std::move(suffixed_name),
-                                                              &partition_update.operations());
+        auto&& [it, inserted] =
+                install_operation_map.emplace(suffixed_name, &partition_update.operations());
         if (!inserted) {
             LOG(ERROR) << "Duplicated partition " << partition_update.partition_name()
                        << " in update manifest.";
             return false;
+        }
+
+        auto& extra_extents = extra_extents_map[suffixed_name];
+        if (partition_update.has_hash_tree_extent()) {
+            extra_extents.push_back(partition_update.hash_tree_extent());
+        }
+        if (partition_update.has_fec_extent()) {
+            extra_extents.push_back(partition_update.fec_extent());
         }
     }
 
@@ -1933,6 +1990,12 @@ bool SnapshotManager::CreateUpdateSnapshotsInternal(
         auto operations_it = install_operation_map.find(target_partition->name());
         if (operations_it != install_operation_map.end()) {
             cow_creator->operations = operations_it->second;
+        }
+
+        cow_creator->extra_extents.clear();
+        auto extra_extents_it = extra_extents_map.find(target_partition->name());
+        if (extra_extents_it != extra_extents_map.end()) {
+            cow_creator->extra_extents = std::move(extra_extents_it->second);
         }
 
         // Compute the device sizes for the partition.
@@ -2150,6 +2213,15 @@ std::unique_ptr<AutoDevice> SnapshotManager::EnsureMetadataMounted() {
 }
 
 UpdateState SnapshotManager::InitiateMergeAndWait() {
+    {
+        auto lock = LockExclusive();
+        // Sync update state from file with bootloader.
+        if (!WriteUpdateState(lock.get(), ReadUpdateState(lock.get()))) {
+            LOG(WARNING) << "Unable to sync write update state, fastboot may "
+                         << "reject / accept wipes incorrectly!";
+        }
+    }
+
     LOG(INFO) << "Waiting for any previous merge request to complete. "
               << "This can take up to several minutes.";
     auto state = ProcessUpdateState();

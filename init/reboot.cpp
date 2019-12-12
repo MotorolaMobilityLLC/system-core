@@ -38,6 +38,7 @@
 #include <thread>
 #include <vector>
 
+#include <InitProperties.sysprop.h>
 #include <android-base/chrono_utils.h>
 #include <android-base/file.h>
 #include <android-base/logging.h>
@@ -751,8 +752,8 @@ static Result<void> DoUserspaceReboot() {
     // actions. We should make sure, that all of them are propagated before
     // proceeding with userspace reboot. Synchronously setting kUserspaceRebootInProgress property
     // is not perfect, but it should do the trick.
-    if (property_set(kUserspaceRebootInProgress, "1") != 0) {
-        return Error() << "Failed to set property " << kUserspaceRebootInProgress;
+    if (!android::sysprop::InitProperties::userspace_reboot_in_progress(true)) {
+        return Error() << "Failed to set sys.init.userspace_reboot.in_progress property";
     }
     EnterShutdown();
     std::vector<Service*> stop_first;
@@ -813,7 +814,7 @@ static Result<void> DoUserspaceReboot() {
 }
 
 static void UserspaceRebootWatchdogThread() {
-    if (!WaitForProperty("sys.init.userspace_reboot_in_progress", "1", 20s)) {
+    if (!WaitForProperty("sys.init.userspace_reboot.in_progress", "1", 20s)) {
         // TODO(b/135984674): should we reboot instead?
         LOG(WARNING) << "Userspace reboot didn't start in 20 seconds. Stopping watchdog";
         return;
