@@ -18,7 +18,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#include "include/stats_event_list.h"
+#include "stats_buffer_writer.h"
 
 #define STATS_EVENT_TAG 1937006964
 #define LOGGER_ENTRY_MAX_PAYLOAD 4068
@@ -132,7 +132,7 @@ static void append_float(struct stats_event* event, float value) {
     }
 }
 
-static void append_byte_array(struct stats_event* event, uint8_t* buf, size_t size) {
+static void append_byte_array(struct stats_event* event, const uint8_t* buf, size_t size) {
     if (!overflows(event, size)) {
         memcpy(&event->buf[event->size], buf, size);
         event->size += size;
@@ -185,7 +185,7 @@ void stats_event_write_bool(struct stats_event* event, bool value) {
     append_bool(event, value);
 }
 
-void stats_event_write_byte_array(struct stats_event* event, uint8_t* buf, size_t numBytes) {
+void stats_event_write_byte_array(struct stats_event* event, const uint8_t* buf, size_t numBytes) {
     if (event->errors) return;
 
     start_field(event, BYTE_ARRAY_TYPE);
@@ -202,8 +202,8 @@ void stats_event_write_string8(struct stats_event* event, const char* buf) {
 }
 
 // Tags are assumed to be encoded using UTF8
-void stats_event_write_attribution_chain(struct stats_event* event, uint32_t* uids,
-                                         const char** tags, uint8_t numNodes) {
+void stats_event_write_attribution_chain(struct stats_event* event, const uint32_t* uids,
+                                         const char* const* tags, uint8_t numNodes) {
     if (numNodes > MAX_BYTE_VALUE) event->errors |= ERROR_ATTRIBUTION_CHAIN_TOO_LONG;
     if (event->errors) return;
 
@@ -323,11 +323,5 @@ void stats_event_build(struct stats_event* event) {
 void stats_event_write(struct stats_event* event) {
     stats_event_build(event);
 
-    // Prepare iovecs for write to statsd.
-    struct iovec vecs[2];
-    vecs[0].iov_base = &event->tag;
-    vecs[0].iov_len = sizeof(event->tag);
-    vecs[1].iov_base = &event->buf;
-    vecs[1].iov_len = event->size;
-    write_to_statsd(vecs, 2);
+    write_buffer_to_statsd(&event->buf, event->size, event->atomId);
 }
