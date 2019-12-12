@@ -85,6 +85,8 @@
 #define PROC_STATUS_TGID_FIELD  "Tgid"
 #define LINE_MAX 128
 
+#define HOME_APP_ADJ  600
+#define BACKUP_APP_ADJ    300
 #define PERCEPTIBLE_APP_ADJ 200
 #define VISIBLE_APP_ADJ     100
 #define SERVICE_ADJ         250
@@ -148,6 +150,10 @@
 /* ro.lmk.kill_timeout_ms property defaults */
 #define DEF_KILL_TIMEOUT  5000
 
+
+#define UPGRADE_THRASHING_L1 4
+#define UPGRADE_THRASHING_L2 10
+#define UPGRADE_THRASHING_L3 20
 
 /* default to old in-kernel interface if no memory pressure events */
 static bool use_inkernel_interface = true;
@@ -2435,6 +2441,19 @@ static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_
         cut_thrashing_limit = true;
         /* Do not kill perceptible apps because of thrashing */
         min_score_adj = PERCEPTIBLE_APP_ADJ;
+    }
+
+    if (PERCEPTIBLE_APP_ADJ == min_score_adj) {
+        if (thrashing < thrashing_limit_pct) {
+            min_score_adj = HOME_APP_ADJ;
+        } else if (thrashing > UPGRADE_THRASHING_L3 * thrashing_limit_pct) {
+            min_score_adj = VISIBLE_APP_ADJ;
+            do_multi_kill = true;
+        } else if (thrashing < UPGRADE_THRASHING_L1 * thrashing_limit_pct) {
+            min_score_adj = BACKUP_APP_ADJ;
+        } else if (thrashing < UPGRADE_THRASHING_L2 * thrashing_limit_pct) {
+            do_multi_kill = true;
+        }
     }
 
     /* adjust min_score_adj 0; when adj0 thresold isn't breached */
