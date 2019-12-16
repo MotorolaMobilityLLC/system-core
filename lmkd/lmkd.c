@@ -145,6 +145,9 @@
 #define DEF_PARTIAL_STALL 70
 /* ro.lmk.psi_complete_stall_ms property defaults */
 #define DEF_COMPLETE_STALL 700
+/* ro.lmk.kill_timeout_ms property defaults */
+#define DEF_KILL_TIMEOUT  5000
+
 
 /* default to old in-kernel interface if no memory pressure events */
 static bool use_inkernel_interface = true;
@@ -2272,6 +2275,7 @@ static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_
     static bool in_reclaim;
     static struct zone_watermarks watermarks;
     static struct timespec wmark_update_tm;
+    static struct timespec last_kill_tm;
 
     union meminfo mi;
     union vmstat vs;
@@ -2288,16 +2292,20 @@ static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_
     int min_score_adj = 0;
     bool do_multi_kill = false;
 
-    /* Skip while still killing a process */
-    if (is_kill_pending()) {
-        /* TODO: replace this quick polling with pidfd polling if kernel supports */
-        ALOGI("Last killed task is pending. pid:%d", last_killed_pid);
-        goto no_kill;
-    }
-
     if (clock_gettime(CLOCK_MONOTONIC_COARSE, &curr_tm) != 0) {
         ALOGE("Failed to get current time");
         return;
+    }
+
+    /* Skip while still killing a process */
+    if (is_kill_pending()) {
+        if (kill_timeout_ms && (get_time_diff_ms(&last_kill_tm, &curr_tm) < kill_timeout_ms)) {
+            /* TODO: replace this quick polling with pidfd polling if kernel supports */
+            goto no_kill;
+        } else {
+            ALOGI("Kill task (pid: %d) cost %lu ms, skip the task.", last_killed_pid, kill_timeout_ms);
+            last_killed_pid = -1;
+        }
     }
 
     if (vmstat_parse(&vs) < 0) {
@@ -2487,6 +2495,7 @@ static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_
                 thrashing_limit = (thrashing_limit * (100 - thrashing_limit_decay_pct)) / 100;
             }
         }
+        last_kill_tm = curr_tm;
         meminfo_log(&mi);
     }
 
@@ -3222,6 +3231,7 @@ int main(int argc __unused, char **argv __unused) {
     struct sched_param param = {
             .sched_priority = 1,
     };
+    bool use_new_strategy;
 
     vmpressure_enhanced = property_get_bool("ro.lmk.vmpressurenhanced", false);
     /* By default disable low level vmpressure events */
@@ -3245,10 +3255,13 @@ int main(int argc __unused, char **argv __unused) {
     kill_heaviest_task =
         property_get_bool("ro.lmk.kill_heaviest_task", false);
     low_ram_device = property_get_bool("ro.config.low_ram", false);
-    kill_timeout_ms =
-        (unsigned long)property_get_int32("ro.lmk.kill_timeout_ms", 0);
     use_minfree_levels =
         property_get_bool("ro.lmk.use_minfree_levels", false);
+    use_new_strategy =
+        property_get_bool("ro.lmk.use_new_strategy", low_ram_device || !use_minfree_levels);
+    kill_timeout_ms =
+        (unsigned long)property_get_int32("ro.lmk.kill_timeout_ms",
+        use_new_strategy ? DEF_KILL_TIMEOUT : 0);
     per_app_memcg =
         property_get_bool("ro.config.per_app_memcg", low_ram_device);
     swap_free_low_percentage = clamp(0, 100, property_get_int32("ro.lmk.swap_free_low_percentage",
