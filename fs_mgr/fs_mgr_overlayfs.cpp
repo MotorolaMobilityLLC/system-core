@@ -815,26 +815,72 @@ std::string fs_mgr_overlayfs_scratch_mount_type() {
     return "auto";
 }
 
-std::string fs_mgr_overlayfs_scratch_device() {
-    if (!scratch_device_cache.empty()) return scratch_device_cache;
+enum class ScratchStrategy {
+    kNone,
+    // DAP device, use logical partitions.
+    kDynamicPartition,
+    // Retrofit DAP device, use super_<other>.
+    kSuperOther,
+    // Pre-DAP device, uses the other slot.
+    kSystemOther
+};
 
-    // Is this a multiple super device (retrofit)?
+static ScratchStrategy GetScratchStrategy(std::string* backing_device) {
     auto slot_number = fs_mgr_overlayfs_slot_number();
     auto super_device = fs_mgr_overlayfs_super_device(slot_number);
     auto path = fs_mgr_overlayfs_super_device(slot_number == 0);
-    if (super_device == path) {
-        // Create from within single super device;
-        auto& dm = DeviceMapper::Instance();
-        const auto partition_name = android::base::Basename(kScratchMountPoint);
-        if (!dm.GetDmDevicePathByName(partition_name, &path)) {
-            // non-DAP A/B device?
-            if (fs_mgr_access(super_device)) return "";
-            auto other_slot = fs_mgr_get_other_slot_suffix();
-            if (other_slot.empty()) return "";
-            path = kPhysicalDevice + "system" + other_slot;
+    if (super_device != path) {
+        // Note: we do not check access() here, since in first-stage init we
+        // wouldn't have registed by-name symlinks for the device as it's
+        // normally not needed. The access checks elsewhere in this function
+        // are safe because system/super are always required.
+        *backing_device = path;
+        return ScratchStrategy::kSuperOther;
+    }
+    if (fs_mgr_access(super_device)) {
+        *backing_device = super_device;
+        return ScratchStrategy::kDynamicPartition;
+    }
+
+    auto other_slot = fs_mgr_get_other_slot_suffix();
+    if (!other_slot.empty()) {
+        path = kPhysicalDevice + "system" + other_slot;
+        if (fs_mgr_access(path)) {
+            *backing_device = path;
+            return ScratchStrategy::kSystemOther;
         }
     }
-    return scratch_device_cache = path;
+    return ScratchStrategy::kNone;
+}
+
+// Return the scratch device if it exists.
+static std::string GetScratchDevice() {
+    std::string device;
+    ScratchStrategy strategy = GetScratchStrategy(&device);
+
+    switch (strategy) {
+        case ScratchStrategy::kSuperOther:
+        case ScratchStrategy::kSystemOther:
+            return device;
+        case ScratchStrategy::kDynamicPartition: {
+            auto& dm = DeviceMapper::Instance();
+            auto partition_name = android::base::Basename(kScratchMountPoint);
+            if (dm.GetState(partition_name) != DmDeviceState::INVALID &&
+                dm.GetDmDevicePathByName(partition_name, &device)) {
+                return device;
+            }
+            return "";
+        }
+        default:
+            return "";
+    }
+}
+
+std::string fs_mgr_overlayfs_scratch_device() {
+    if (!scratch_device_cache.empty()) return scratch_device_cache;
+
+    scratch_device_cache = GetScratchDevice();
+    return scratch_device_cache;
 }
 
 bool fs_mgr_overlayfs_make_scratch(const std::string& scratch_device, const std::string& mnt_type) {
@@ -1066,6 +1112,25 @@ Fstab fs_mgr_overlayfs_candidate_list(const Fstab& fstab) {
     return candidates;
 }
 
+static void TryMountScratch() {
+    auto scratch_device = fs_mgr_overlayfs_scratch_device();
+    if (!fs_mgr_overlayfs_scratch_can_be_mounted(scratch_device)) {
+        return;
+    }
+    if (!WaitForFile(scratch_device, 10s)) {
+        return;
+    }
+    const auto mount_type = fs_mgr_overlayfs_scratch_mount_type();
+    if (!fs_mgr_overlayfs_mount_scratch(scratch_device, mount_type, true /* readonly */)) {
+        return;
+    }
+    auto has_overlayfs_dir = fs_mgr_access(kScratchMountPoint + kOverlayTopDir);
+    fs_mgr_overlayfs_umount_scratch();
+    if (has_overlayfs_dir) {
+        fs_mgr_overlayfs_mount_scratch(scratch_device, mount_type);
+    }
+}
+
 bool fs_mgr_overlayfs_mount_all(Fstab* fstab) {
     auto ret = false;
     if (fs_mgr_overlayfs_invalid()) return ret;
@@ -1080,19 +1145,7 @@ bool fs_mgr_overlayfs_mount_all(Fstab* fstab) {
         }
         if (scratch_can_be_mounted) {
             scratch_can_be_mounted = false;
-            auto scratch_device = fs_mgr_overlayfs_scratch_device();
-            if (fs_mgr_overlayfs_scratch_can_be_mounted(scratch_device) &&
-                WaitForFile(scratch_device, 10s)) {
-                const auto mount_type = fs_mgr_overlayfs_scratch_mount_type();
-                if (fs_mgr_overlayfs_mount_scratch(scratch_device, mount_type,
-                                                   true /* readonly */)) {
-                    auto has_overlayfs_dir = fs_mgr_access(kScratchMountPoint + kOverlayTopDir);
-                    fs_mgr_overlayfs_umount_scratch();
-                    if (has_overlayfs_dir) {
-                        fs_mgr_overlayfs_mount_scratch(scratch_device, mount_type);
-                    }
-                }
-            }
+            TryMountScratch();
         }
         if (fs_mgr_overlayfs_mount(mount_point)) ret = true;
     }
