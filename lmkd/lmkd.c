@@ -170,13 +170,19 @@ enum vmpressure_level {
     VMPRESS_LEVEL_LOW = 0,
     VMPRESS_LEVEL_MEDIUM,
     VMPRESS_LEVEL_CRITICAL,
+    VMPRESS_LEVEL_LOW_EXT,
+    VMPRESS_LEVEL_MEDIUM_EXT,
+    VMPRESS_LEVEL_CRITICAL_EXT,
     VMPRESS_LEVEL_COUNT
 };
 
 static const char *level_name[] = {
     "low",
     "medium",
-    "critical"
+    "critical",
+    "low",
+    "medium",
+    "critical",
 };
 
 struct {
@@ -190,7 +196,7 @@ struct psi_threshold {
 };
 
 static int level_oomadj[VMPRESS_LEVEL_COUNT];
-static int mpevfd[VMPRESS_LEVEL_COUNT] = { -1, -1, -1 };
+static int mpevfd[VMPRESS_LEVEL_COUNT] = { -1, -1, -1, -1, -1, -1};
 static bool debug_process_killing;
 static bool enable_pressure_upgrade;
 static int64_t upgrade_pressure;
@@ -210,6 +216,10 @@ static int critical_minfree;
 static int min_watermark;
 static int low_watermark;
 static int high_watermark;
+static bool use_psi_vmpressure;
+static unsigned long vmpressure_interval_ms;
+static struct timespec last_psi_events_tm;
+static unsigned long psi_delay_timeout_ms;
 static struct psi_threshold psi_thresholds[VMPRESS_LEVEL_COUNT] = {
     { PSI_SOME, 70 },    /* 70ms out of 1sec for partial stall */
     { PSI_SOME, 100 },   /* 100ms out of 1sec for partial stall */
@@ -2456,12 +2466,14 @@ static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_
         }
     }
 
-    /* adjust min_score_adj 0; when adj0 thresold isn't breached */
-    if (!min_score_adj && kill_reason != NONE) {
+    /* adjust min_socre_adj and Kill a process if necessary */
+    if (kill_reason != NONE) {
+        int pages_freed;
         long other_free = 0;
         long other_file = 0;
         int minfree = 0;
         struct zoneinfo zi;
+        int min_score_adj_adjust = -1;
 
         if (zoneinfo_parse(&zi) < 0) {
             ALOGE("Failed to get zoneinfo");
@@ -2474,20 +2486,25 @@ static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_
                          mi.field.unevictable_file - mi.field.swap_cached;
 
         minfree = critical_minfree ? critical_minfree : lowmem_minfree[0];
-        if (other_free > minfree || other_file > minfree) {
+        if (other_free <= minfree && other_file <= minfree) {
+            min_score_adj_adjust = lowmem_adj[0];
+            strcat(kill_desc, ", adjust adj0.");
+        } else if (other_free <= lowmem_minfree[1] && other_file <= lowmem_minfree[1]) {
+            min_score_adj_adjust = lowmem_adj[1];
+            strcat(kill_desc, ", adjust adj1.");
+        }
+
+        if (min_score_adj_adjust == -1 && !min_score_adj) {
             min_score_adj = VISIBLE_APP_ADJ;
             strcat(kill_desc, ", adjust critical adj.");
+        } else if (min_score_adj_adjust != -1){
+            min_score_adj = min_score_adj_adjust;
         }
 
         /* kill multi apps */
         if (low_ram_device && level == VMPRESS_LEVEL_CRITICAL && events != 0) {
             do_multi_kill = true;
         }
-    }
-
-    /* Kill a process if necessary */
-    if (kill_reason != NONE) {
-        int pages_freed;
 
         if (do_multi_kill) {
             do_multi_kill = false;
@@ -2519,6 +2536,10 @@ static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_
     }
 
 no_kill:
+
+    if (use_psi_vmpressure) {
+        return;
+    }
     /*
      * Start polling after initial PSI event;
      * extend polling while device is in direct reclaim or process is being killed;
@@ -2528,7 +2549,6 @@ no_kill:
     if (events || killing || reclaim == DIRECT_RECLAIM) {
         poll_params->update = POLLING_START;
     }
-
     /* Decide the polling interval */
     if (swap_is_low || killing) {
         /* Fast polling during and after a kill or when swap is low */
@@ -2829,6 +2849,65 @@ static void mp_event_common(int data, uint32_t events, struct polling_params *po
     pthread_mutex_unlock(&gLruMutex);
 }
 
+static void mp_event_psi_vmpressure(int data, uint32_t events, struct polling_params *poll_params) {
+    static struct timespec last_vmpressure_tm;
+    static struct timespec cur_vmpressure_tm;
+    static unsigned long vmpressure_events_skip = 0;
+    enum vmpressure_level lvl = (enum vmpressure_level)data;
+    unsigned long long evcount;
+
+    if (mpevfd[lvl] == -1) {
+        return;
+    }
+
+    TEMP_FAILURE_RETRY(read(mpevfd[lvl], &evcount, sizeof(evcount)));
+
+    if (clock_gettime(CLOCK_MONOTONIC_COARSE, &cur_vmpressure_tm) != 0) {
+        ALOGE("Failed to get current time");
+        return;
+    }
+
+    if (vmpressure_interval_ms) {
+        if (get_time_diff_ms(&last_vmpressure_tm, &cur_vmpressure_tm) < vmpressure_interval_ms) {
+	    ALOGI("add  vmpressure events: %lu", vmpressure_events_skip);
+            vmpressure_events_skip++;
+            return;
+        }
+    }
+
+    if (vmpressure_events_skip > 0) {
+	ALOGI("skil %lu vmpressure events", vmpressure_events_skip);
+        vmpressure_events_skip = 0;
+    }
+
+    last_vmpressure_tm = cur_vmpressure_tm;
+
+    if (get_time_diff_ms(&last_psi_events_tm, &cur_vmpressure_tm) < psi_delay_timeout_ms) {
+        return;
+    }
+
+    mp_event_psi(data, events, poll_params);
+
+    return;
+}
+
+static void mp_event_psi_psi(int data, uint32_t events, struct polling_params *poll_params) {
+    static struct timespec cur_psi_events_tm;
+
+    if (clock_gettime(CLOCK_MONOTONIC_COARSE, &cur_psi_events_tm) != 0) {
+        ALOGE("Failed to get current time");
+        return;
+    }
+
+    if (use_psi_vmpressure) {
+        last_psi_events_tm = cur_psi_events_tm;
+    }
+
+    mp_event_psi(data, events, poll_params);
+
+    return;
+}
+
 static bool init_mp_psi(enum vmpressure_level level, bool use_new_strategy) {
     int fd;
 
@@ -2845,7 +2924,7 @@ static bool init_mp_psi(enum vmpressure_level level, bool use_new_strategy) {
         return false;
     }
 
-    vmpressure_hinfo[level].handler = use_new_strategy ? mp_event_psi : mp_event_common;
+    vmpressure_hinfo[level].handler = use_new_strategy ? mp_event_psi_psi : mp_event_common;
     vmpressure_hinfo[level].data = level;
     if (register_psi_monitor(epollfd, fd, &vmpressure_hinfo[level]) < 0) {
         destroy_psi_monitor(fd);
@@ -2944,7 +3023,7 @@ static bool init_mp_common(enum vmpressure_level level) {
     epev.events = EPOLLIN;
     /* use data to store event level */
     vmpressure_hinfo[level_idx].data = level_idx;
-    vmpressure_hinfo[level_idx].handler = mp_event_common;
+    vmpressure_hinfo[level_idx].handler = use_psi_vmpressure ? mp_event_psi_vmpressure : mp_event_common;
     epev.data.ptr = (void *)&vmpressure_hinfo[level_idx];
     ret = epoll_ctl(epollfd, EPOLL_CTL_ADD, evfd, &epev);
     if (ret == -1) {
@@ -3095,6 +3174,12 @@ static int init(void) {
         /* Try to use psi monitor first if kernel has it */
         use_psi_monitors = property_get_bool("ro.lmk.use_psi", true) &&
             init_psi_monitors();
+
+        if (use_psi_vmpressure && use_psi_monitors) {
+            if (!init_mp_common(VMPRESS_LEVEL_MEDIUM_EXT)) {
+                ALOGE("Kernel does no support memory pressure events.use psi only.");
+            }
+        }
         /* Fall back to vmpressure */
         if (!use_psi_monitors &&
             (!init_mp_common(VMPRESS_LEVEL_LOW) ||
@@ -3103,7 +3188,9 @@ static int init(void) {
             ALOGE("Kernel does not support memory pressure events or in-kernel low memory killer");
             return -1;
         }
-        if (use_psi_monitors) {
+        if (use_psi_monitors && use_psi_vmpressure) {
+            ALOGI("Using psi monitors and vmpressure for memory pressure detection");
+        } else if (use_psi_monitors) {
             ALOGI("Using psi monitors for memory pressure detection");
         } else {
             ALOGI("Using vmpressure for memory pressure detection");
@@ -3298,6 +3385,10 @@ int main(int argc __unused, char **argv __unused) {
     min_watermark = property_get_int32("ro.lmk.min_watermark", 0);
     low_watermark = property_get_int32("ro.lmk.low_watermark", 0);
     high_watermark = property_get_int32("ro.lmk.high_watermark", 0);
+
+    use_psi_vmpressure = property_get_bool("ro.lmk.use_psi_vmpressure", low_ram_device ? true : false);
+    vmpressure_interval_ms = (unsigned long)property_get_int32("ro.lmk.vmpressure_interval_time", 0);
+    psi_delay_timeout_ms = (unsigned long)property_get_int32("ro.lmk.psi_delay_timeout_ms", 0);
 
     ctx = create_android_logger(MEMINFO_LOG_TAG);
 
