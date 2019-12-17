@@ -2658,6 +2658,11 @@ static void mp_event_common_locked(int data, uint32_t events, struct polling_par
             minfree = lowmem_minfree[i];
             if (other_free < minfree && other_file < minfree) {
                 min_score_adj = lowmem_adj[i];
+                if (mi.field.free_swap <= mi.field.total_swap * swap_free_low_percentage / 100 &&
+                    min_score_adj != 0) {
+                    min_score_adj = lowmem_adj[i-1];
+                    minfree = lowmem_minfree[i-1];
+                }
                 break;
             }
         }
