@@ -84,6 +84,7 @@
 #define ZONEINFO_PATH "/proc/zoneinfo"
 #define MEMINFO_PATH "/proc/meminfo"
 #define PROC_STATUS_TGID_FIELD "Tgid:"
+#define VMSTAT_PATH "/proc/vmstat"
 #define TRACE_MARKER_PATH "/sys/kernel/debug/tracing/trace_marker"
 #define LINE_MAX 128
 #define MAX_NR_ZONES 6
@@ -142,7 +143,8 @@ enum vmpressure_level {
 static const char *level_name[] = {
     "low",
     "medium",
-    "critical"
+    "critical",
+    "super critical",
 };
 
 struct {
@@ -164,6 +166,7 @@ static int64_t downgrade_pressure;
 static bool low_ram_device;
 static bool kill_heaviest_task;
 static unsigned long kill_timeout_ms;
+static int direct_reclaim_pressure = 45;
 static bool use_minfree_levels;
 static bool per_app_memcg;
 static bool enhance_batch_kill;
@@ -324,6 +327,41 @@ union meminfo {
         int64_t nr_file_pages;
     } field;
     int64_t arr[MI_FIELD_COUNT];
+};
+
+/* Fields to parse in /proc/vmstat */
+enum vmstat_field {
+    VS_FREE_PAGES,
+    VS_INACTIVE_FILE,
+    VS_ACTIVE_FILE,
+    VS_WORKINGSET_REFAULT,
+    VS_PGSCAN_KSWAPD,
+    VS_PGSCAN_DIRECT,
+    VS_PGSCAN_DIRECT_THROTTLE,
+    VS_FIELD_COUNT
+};
+
+static const char* const vmstat_field_names[MI_FIELD_COUNT] = {
+    "nr_free_pages",
+    "nr_inactive_file",
+    "nr_active_file",
+    "workingset_refault",
+    "pgscan_kswapd",
+    "pgscan_direct",
+    "pgscan_direct_throttle",
+};
+
+union vmstat {
+    struct {
+        int64_t nr_free_pages;
+        int64_t nr_inactive_file;
+        int64_t nr_active_file;
+        int64_t workingset_refault;
+        int64_t pgscan_kswapd;
+        int64_t pgscan_direct;
+        int64_t pgscan_direct_throttle;
+    } field;
+    int64_t arr[VS_FIELD_COUNT];
 };
 
 enum field_match_result {
@@ -1298,6 +1336,54 @@ static int meminfo_parse(union meminfo *mi) {
     return 0;
 }
 
+/* /proc/vmstat parsing routines */
+static bool vmstat_parse_line(char *line, union vmstat *vs)
+{
+    char *cp;
+    char *ap;
+    char *save_ptr;
+    int64_t val;
+    int field_idx;
+    enum field_match_result match_res;
+    cp = strtok_r(line, " ", &save_ptr);
+    if (!cp) {
+        return false;
+    }
+    ap = strtok_r(NULL, " ", &save_ptr);
+    if (!ap) {
+        return false;
+    }
+    match_res = match_field(cp, ap, vmstat_field_names, VS_FIELD_COUNT,
+        &val, &field_idx);
+    if (match_res == PARSE_SUCCESS) {
+        vs->arr[field_idx] = val;
+    }
+    return (match_res != PARSE_FAIL);
+}
+
+static int vmstat_parse(union vmstat *vs)
+{
+    static struct reread_data file_data = {
+        .filename = VMSTAT_PATH,
+        .fd = -1,
+    };
+    char buf[2*PAGE_SIZE];
+    char *save_ptr;
+    char *line;
+    memset(vs, 0, sizeof(union vmstat));
+    if (reread_file(&file_data, buf, sizeof(buf)) < 0) {
+        return -1;
+    }
+    for (line = strtok_r(buf, "\n", &save_ptr); line;
+         line = strtok_r(NULL, "\n", &save_ptr)) {
+        if (!vmstat_parse_line(line, vs)) {
+            ALOGE("%s parse error", file_data.filename);
+            return -1;
+        }
+    }
+    return 0;
+}
+
 static void meminfo_log(union meminfo *mi) {
     for (int field_idx = 0; field_idx < MI_FIELD_COUNT; field_idx++) {
         android_log_write_int32(ctx, (int32_t)min(mi->arr[field_idx] * page_k, INT32_MAX));
@@ -1518,7 +1604,7 @@ static int zone_watermarks_ok(enum vmpressure_level level)
             if (w.lowmem_reserve[i] && (margin > w.lowmem_reserve[i]))
                 lowmem_reserve_ok[i] = true;
 
-        if (margin >= 0 || lowmem_reserve_ok[zone_id])
+        if (!s_crit_event && (margin >= 0 || lowmem_reserve_ok[zone_id]))
             continue;
 
         return file_cache_to_adj(level, w.free, nr_file);
@@ -1889,7 +1975,6 @@ static int kill_one_process(struct proc* procp, int min_oom_score) {
     inc_killcnt(procp->oomadj);
     ULMK_LOG(E, "Kill '%s' (%d), uid %d, oom_adj %d to free %ldkB", taskname, pid, uid, procp->oomadj,
           tasksize * page_k);
-
     TRACE_KILL_END();
 
     last_killed_pid = pid;
@@ -2052,6 +2137,45 @@ static bool is_kill_pending(void) {
     return false;
 }
 
+enum vmpressure_level upgrade_vmpressure_event(enum vmpressure_level level)
+{
+	static union vmstat base;
+	union vmstat current;
+	int64_t throttle;
+	int64_t sync, async, pressure;
+
+	switch (level) {
+		case VMPRESS_LEVEL_LOW:
+		    if (vmstat_parse(&base) < 0) {
+			    ULMK_LOG(E, "Failed to parse vmstat!");
+			    goto out;
+		    }
+		    break;
+		case VMPRESS_LEVEL_MEDIUM:
+		case VMPRESS_LEVEL_CRITICAL:
+		   if (vmstat_parse(&current) < 0) {
+			   ULMK_LOG(E, "Failed to parse vmstat!");
+			    goto out;
+		   }
+		   throttle = current.field.pgscan_direct_throttle -
+			      base.field.pgscan_direct_throttle;
+		   sync = current.field.pgscan_direct -
+			   base.field.pgscan_direct;
+		   async = current.field.pgscan_kswapd -
+			   base.field.pgscan_kswapd;
+		   pressure = ((100 * sync)/(sync + async + 1));
+		   if (throttle || (pressure >= direct_reclaim_pressure)) {
+			   s_crit_event = true;
+		   }
+		   base = current;
+		   break;
+	    default:
+		   ;
+    }
+out:
+	return level;
+}
+
 static void mp_event_common(int data, uint32_t events __unused) {
     int ret;
     unsigned long long evcount;
@@ -2076,6 +2200,9 @@ static void mp_event_common(int data, uint32_t events __unused) {
         .filename = MEMCG_MEMORYSW_USAGE,
         .fd = -1,
     };
+
+    if (!s_crit_event)
+	    level = upgrade_vmpressure_event(level);
 
     if (debug_process_killing) {
         ALOGI("%s memory pressure event is triggered", level_name[level]);
@@ -2650,6 +2777,10 @@ int main(int argc __unused, char **argv __unused) {
 			  level_oomadj[VMPRESS_LEVEL_SUPER_CRITICAL]);
 	  strlcpy(property, perf_wait_get_prop("ro.lmk.super_critical", default_value).value, PROPERTY_VALUE_MAX);
 	  level_oomadj[VMPRESS_LEVEL_SUPER_CRITICAL] = strtod(property, NULL);
+
+	  snprintf(default_value, PROPERTY_VALUE_MAX, "%d", direct_reclaim_pressure);
+	  strlcpy(property, perf_wait_get_prop("ro.lmk.direct_reclaim_pressure", default_value).value, PROPERTY_VALUE_MAX);
+	  direct_reclaim_pressure = strtod(property, NULL);
 
           strlcpy(default_value, (use_minfree_levels)? "true" : "false", PROPERTY_VALUE_MAX);
           strlcpy(property, perf_wait_get_prop("ro.lmk.use_minfree_levels_dup", default_value).value, PROPERTY_VALUE_MAX);
