@@ -2415,6 +2415,7 @@ static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_
          * of the memory congestion) breaches the configured threshold.
          */
         kill_reason = NOT_RESPONDING;
+        do_multi_kill = low_ram_device ? true : false;
         strncpy(kill_desc, "device is not responding", sizeof(kill_desc));
     } else if (fast_kill_enabled) {
         /*
@@ -2422,7 +2423,7 @@ static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_
          */
         kill_reason = DO_FAST_KILL;
         strncpy(kill_desc, "do fast kill", sizeof(kill_desc));
-        min_score_adj = SERVICE_ADJ;      
+        min_score_adj = low_ram_device ? 0 : SERVICE_ADJ;
     } else if (swap_is_low && thrashing > thrashing_limit_pct) {
         /* Page cache is thrashing while swap is low */
         kill_reason = LOW_SWAP_AND_THRASHING;
@@ -2501,14 +2502,9 @@ static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_
             min_score_adj = min_score_adj_adjust;
         }
 
-        /* kill multi apps */
-        if (low_ram_device && level == VMPRESS_LEVEL_CRITICAL && events != 0) {
-            do_multi_kill = true;
-        }
-
         if (do_multi_kill) {
             do_multi_kill = false;
-            if (swap_is_low) {
+            if (swap_is_low || NOT_RESPONDING == kill_reason) {
                 strcat(kill_desc, " <kill all processes above>");
                 pages_freed = find_and_kill_multi_processes(min_score_adj, kill_desc, true);
             } else {
