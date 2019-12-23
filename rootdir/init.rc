@@ -806,6 +806,8 @@ on property:vold.decrypt=trigger_restart_framework
 on property:vold.decrypt=trigger_shutdown_framework
     class_reset late_start
     class_reset main
+
+on property:vold.decrypt=trigger_reset_post_data_framework
     class_reset_post_data core
     class_reset_post_data hal
 
