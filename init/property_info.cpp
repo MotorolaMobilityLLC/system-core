@@ -122,8 +122,8 @@ void set_system_properties(){
         } else {
             if (carrier_ontim == "amxbr_clarobr" || carrier_ontim == "amxmx_amxmx"
              || carrier_ontim == "amxmx_amxmxsl" || carrier_ontim == "openmx_retmx"
-             || carrier_ontim == "amxpe_claro" || carrier_ontim == "amxcl_tefcosl"
-             || carrier_ontim == "amxar_amxar" || carrier_ontim == "amxcl_clarosl") {
+             || carrier_ontim == "amxpe_claro" || carrier_ontim == "amxcl_clarosl"
+             || carrier_ontim == "amxar_amxar") {
                 property_set(prop_amclient, prop_clientcountry_value);
                 property_set(prop_msclient, prop_clientrevc_value);
             } else if (carrier_ontim == "attmx_attmx") {
@@ -164,10 +164,8 @@ void set_system_properties(){
             prop_product_value = "blackjack_reteu";
             if (carrier_ontim == "timit_timit") {
                 property_set(prop_msclient, prop_clientit_value);
-                property_set(prop_amazon_partnerid,carrier_value);
             } else if (carrier_ontim == "windit_windds") {
                 property_set(prop_msclient, prop_clientwindit_value);
-                property_set(prop_amazon_partnerid,"3it");
             } else if (carrier_ontim == "dteu_dteu") {
                 property_set(prop_amclient, prop_clienttmobile_value);
                 property_set(prop_msclient, prop_clientdt_value);
@@ -189,18 +187,14 @@ void set_system_properties(){
         } else {
             prop_product_value = "blackjack";
             if (carrier_ontim == "openmx_retmx" || carrier_ontim == "amxmx_amxmx"
-             || carrier_ontim == "amxmx_amxmxsl" || carrier_ontim == "retar_retclaro"
-             || carrier_ontim == "amxcl_tefcosl" || carrier_ontim == "amxpe_claro"
-             || carrier_ontim == "amxco_claro" || carrier_ontim == "amxco_claroes"
-             || carrier_ontim == "amxla_claro" || carrier_ontim == "openmx_retmxco"
-             || carrier_ontim == "amxbr_clarobr" || carrier_ontim == "amxar_amxar"
-             || carrier_ontim == "amxcl_clarosl" || carrier_ontim == "amxla_amxlas"
-             || carrier_ontim == "amxla_amxlag") {
+             || carrier_ontim == "amxmx_amxmxsl" || carrier_ontim == "amxpe_claro"
+             || carrier_ontim == "amxco_claro" || carrier_ontim == "amxbr_clarobr"
+             || carrier_ontim == "amxar_amxar" || carrier_ontim == "amxcl_clarosl"
+             || carrier_ontim == "amxla_amxlas" || carrier_ontim == "amxla_amxlag") {
                 property_set(prop_amclient, prop_clientcountry_value);
                 property_set(prop_msclient, prop_clientrevc_value);
             } else if (carrier_ontim == "attmx_attmx") {
                 property_set(prop_msclient, prop_clientmx_value);
-                property_set(prop_amazon_partnerid,carrier_value);
             } else if (carrier_ontim == "timbr_clarobr") {
                 property_set(prop_msclient, prop_clientbr_value);
             } else {
@@ -265,7 +259,6 @@ bool isProductNameBlackjackReteu(std::string carrier_ontim) {
     if (carrier_ontim == "openeu_pluspl") return true;
     if (carrier_ontim == "timit_timit") return true;
     if (carrier_ontim == "windit_windds") return true;
-    if (carrier_ontim == "tefes_tefes") return true;
     if (carrier_ontim == "reteu_retfr") return true;
     return false;
 }
