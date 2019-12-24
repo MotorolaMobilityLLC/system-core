@@ -89,7 +89,7 @@
 #define BACKUP_APP_ADJ    300
 #define PERCEPTIBLE_APP_ADJ 200
 #define VISIBLE_APP_ADJ     100
-#define SERVICE_ADJ         250
+#define PERCEPTIBLE_LOW_APP_ADJ        250
 
 /* Android Logger event logtags (see event.logtags) */
 #define MEMINFO_LOG_TAG 10195355
@@ -2423,7 +2423,7 @@ static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_
          */
         kill_reason = DO_FAST_KILL;
         strncpy(kill_desc, "do fast kill", sizeof(kill_desc));
-        min_score_adj = low_ram_device ? 0 : SERVICE_ADJ;
+        min_score_adj = low_ram_device ? 0 : PERCEPTIBLE_LOW_APP_ADJ;
     } else if (swap_is_low && thrashing > thrashing_limit_pct) {
         /* Page cache is thrashing while swap is low */
         kill_reason = LOW_SWAP_AND_THRASHING;
@@ -2469,7 +2469,7 @@ static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_
 
     /* adjust min_socre_adj and Kill a process if necessary */
     if (kill_reason != NONE) {
-        int pages_freed;
+        int pages_freed = 0;
         long other_free = 0;
         long other_file = 0;
         int minfree = 0;
@@ -2870,14 +2870,14 @@ static void mp_event_psi_vmpressure(int data, uint32_t events, struct polling_pa
 
     if (vmpressure_interval_ms) {
         if (get_time_diff_ms(&last_vmpressure_tm, &cur_vmpressure_tm) < vmpressure_interval_ms) {
-	    ALOGI("add  vmpressure events: %lu", vmpressure_events_skip);
+            ALOGI("add  vmpressure events: %lu", vmpressure_events_skip);
             vmpressure_events_skip++;
             return;
         }
     }
 
     if (vmpressure_events_skip > 0) {
-	ALOGI("skil %lu vmpressure events", vmpressure_events_skip);
+        ALOGI("skil %lu vmpressure events", vmpressure_events_skip);
         vmpressure_events_skip = 0;
     }
 
