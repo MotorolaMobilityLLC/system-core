@@ -15,7 +15,6 @@
  * limitations under the License.
  */
 #include "property_info.h"
-
 #include "property_service.h"
 
 #include <android-base/properties.h>
@@ -63,22 +62,29 @@ std::string prop_product_value = "fiji";
 std::string prop_carrier_value = "retail";
 std::string prop_version_value;
 std::string product_version_file = "/product/version.txt";
+std::string elabel_version_file = "/elabel/version.txt";
 std::string prop_amazon_partnerid = "ro.csc.amazon.partnerid";
 std::string prop_build_name = "ro.build.name";
 
 void set_system_properties(){
-    std::ifstream stream(product_version_file);
-    std::stringstream fileStream;
-    fileStream << stream.rdbuf();
-    std::string fileContent = fileStream.str().substr(0,3);
+    std::ifstream stream_product(product_version_file);
+    std::ifstream stream_elabel(elabel_version_file);
+    std::stringstream fileStream_product;
+    std::stringstream fileStream_elabel;
+    fileStream_product << stream_product.rdbuf();
+    fileStream_elabel << stream_elabel.rdbuf();
+    std::string fileContent_product = fileStream_product.str().substr(0,3);
+    std::string fileContent_elabel = fileStream_elabel.str().substr(0,3);
     std::string  carrier_ontim = android::base::GetProperty(prop_carrier_ontim, "");
     size_t position = carrier_ontim.find("_");
     std::string  carrier_value = carrier_ontim.substr(0, position);
     prop_product_value = android::base::GetProperty(prop_product, "");
     property_set(prop_carrier,carrier_value);
     property_set("ro.oem.key1",carrier_value);
-    property_set("ro.product.ontim.version",fileContent);
-    property_set("ro.vendor.product.version",fileContent);
+    property_set("ro.product.ontim.version", fileContent_product);
+    property_set("ro.vendor.product.version", fileContent_product);
+    property_set("ro.elabel.ontim.version", fileContent_elabel);
+    property_set("ro.vendor.elabel.version", fileContent_elabel);
     std::string  build_name = android::base::GetProperty(prop_build_name, "");
 
     if (prop_product_value == "fiji") {
