@@ -2423,7 +2423,7 @@ static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_
          */
         kill_reason = DO_FAST_KILL;
         strncpy(kill_desc, "do fast kill", sizeof(kill_desc));
-        min_score_adj = low_ram_device ? 0 : PERCEPTIBLE_LOW_APP_ADJ;
+        min_score_adj = PERCEPTIBLE_LOW_APP_ADJ;
     } else if (swap_is_low && thrashing > thrashing_limit_pct) {
         /* Page cache is thrashing while swap is low */
         kill_reason = LOW_SWAP_AND_THRASHING;
