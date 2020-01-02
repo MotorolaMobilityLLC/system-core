@@ -551,7 +551,9 @@ struct UsbFfsConnection : public Connection {
             } else {
                 size_t bytes_left = incoming_header_->data_length - incoming_payload_.size();
                 Block payload = std::move(*block->payload);
-                CHECK_LE(payload.size(), bytes_left);
+                /* CHECK_LE(payload.size(), bytes_left); */
+		if (!(payload.size() <= bytes_left))
+			LOG(ERROR) << "adbd : Check failed: payload.size() <= bytes_left";
                 incoming_payload_.append(std::make_unique<Block>(std::move(payload)));
             }
 
