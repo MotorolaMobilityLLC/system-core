@@ -17,7 +17,6 @@
 liblog_sources = [
     "log_event_list.cpp",
     "log_event_write.cpp",
-    "logger_lock.cpp",
     "logger_name.cpp",
     "logger_read.cpp",
     "logger_write.cpp",
@@ -96,7 +95,10 @@ cc_library {
         },
     },
 
-    header_libs: ["liblog_headers"],
+    header_libs: [
+        "libbase_headers",
+        "liblog_headers",
+    ],
     export_header_lib_headers: ["liblog_headers"],
 
     stubs: {

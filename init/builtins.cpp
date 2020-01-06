@@ -59,6 +59,8 @@
 #include <fs_mgr.h>
 #include <fscrypt/fscrypt.h>
 #include <libgsi/libgsi.h>
+#include <logwrap/logwrap.h>
+#include <private/android_filesystem_config.h>
 #include <selinux/android.h>
 #include <selinux/label.h>
 #include <selinux/selinux.h>
@@ -1198,6 +1200,37 @@ static Result<void> do_mark_post_data(const BuiltinArguments& args) {
     return {};
 }
 
+static Result<void> GenerateLinkerConfiguration() {
+    const char* linkerconfig_binary = "/system/bin/linkerconfig";
+    const char* linkerconfig_target = "/linkerconfig";
+    const char* arguments[] = {linkerconfig_binary, "--target", linkerconfig_target};
+
+    if (logwrap_fork_execvp(arraysize(arguments), arguments, nullptr, false, LOG_KLOG, false,
+                            nullptr) != 0) {
+        return ErrnoError() << "failed to execute linkerconfig";
+    }
+
+    LOG(INFO) << "linkerconfig generated " << linkerconfig_target
+              << " with mounted APEX modules info";
+
+    return {};
+}
+
+static bool IsApexUpdatable() {
+    static bool updatable = android::sysprop::ApexProperties::updatable().value_or(false);
+    return updatable;
+}
+
+static Result<void> do_update_linker_config(const BuiltinArguments&) {
+    // If APEX is not updatable, then all APEX information are already included in the first
+    // linker config generation, so there is no need to update linker configuration again.
+    if (IsApexUpdatable()) {
+        return GenerateLinkerConfiguration();
+    }
+
+    return {};
+}
+
 static Result<void> parse_apex_configs() {
     glob_t glob_result;
     static constexpr char glob_pattern[] = "/apex/*/etc/*.rc";
@@ -1256,9 +1289,7 @@ static Result<void> create_apex_data_dirs() {
         if (strchr(name, '@') != nullptr) continue;
 
         auto path = "/data/misc/apexdata/" + std::string(name);
-        auto system_uid = DecodeUid("system");
-        auto options =
-                MkdirOptions{path, 0700, *system_uid, *system_uid, FscryptAction::kNone, "ref"};
+        auto options = MkdirOptions{path, 0770, AID_ROOT, AID_SYSTEM, FscryptAction::kNone, "ref"};
         make_dir_with_options(options);
     }
     return {};
@@ -1273,6 +1304,12 @@ static Result<void> do_perform_apex_config(const BuiltinArguments& args) {
     if (!parse_configs) {
         return parse_configs.error();
     }
+
+    auto update_linker_config = do_update_linker_config(args);
+    if (!update_linker_config) {
+        return update_linker_config.error();
+    }
+
     return {};
 }
 
@@ -1339,6 +1376,7 @@ const BuiltinFunctionMap& GetBuiltinFunctionMap() {
         {"perform_apex_config",     {0,     0,    {false,  do_perform_apex_config}}},
         {"umount",                  {1,     1,    {false,  do_umount}}},
         {"umount_all",              {1,     1,    {false,  do_umount_all}}},
+        {"update_linker_config",    {0,     0,    {false,  do_update_linker_config}}},
         {"readahead",               {1,     2,    {true,   do_readahead}}},
         {"remount_userdata",        {0,     0,    {false,  do_remount_userdata}}},
         {"restart",                 {1,     1,    {false,  do_restart}}},
