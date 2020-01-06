@@ -14,15 +14,15 @@
 // limitations under the License.
 //
 
-// ==========================================================
-// Native library to write stats log to statsd socket
-// ==========================================================
+// ============================================================================
+// Native library to write stats log to statsd socket on Android Q and earlier.
+// This library is only meant to be used by libstatssocket_compat.
+// ============================================================================
 cc_library {
-    name: "libstatssocket",
+    name: "libstatssocket_q",
     srcs: [
         "stats_event_list.c",
         "statsd_writer.c",
-        "stats_event.c",
     ],
     host_supported: true,
     cflags: [

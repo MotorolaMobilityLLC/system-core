@@ -38,12 +38,9 @@ on early-init
     # Allow up to 32K FDs per process
     setrlimit nofile 32768 32768
 
-    # Create directory to keep ld.config.txt
-    mkdir /dev/linkerconfig 0755
-
     # Generate ld.config.txt for early executed processes
-    exec -- /system/bin/linkerconfig --target /dev/linkerconfig/ld.config.txt
-    chmod 444 /dev/linkerconfig/ld.config.txt
+    exec -- /system/bin/linkerconfig --target /linkerconfig/ld.config.txt
+    chmod 444 /linkerconfig/ld.config.txt
 
     start ueventd
 
@@ -592,6 +589,8 @@ on post-fs-data
     mkdir /data/misc/profman 0770 system shell
     mkdir /data/misc/gcov 0770 root root
     mkdir /data/misc/installd 0700 root root
+    mkdir /data/misc/apexdata 0700 root root
+    mkdir /data/misc/apexrollback 0700 root root
 
     mkdir /data/preloads 0775 system system encryption=None
 
@@ -681,7 +680,9 @@ on post-fs-data
 
     # Wait for apexd to finish activating APEXes before starting more processes.
     wait_for_prop apexd.status ready
-    parse_apex_configs
+    perform_apex_config
+
+    exec_start derive_sdk
 
     init_user0
 
@@ -781,6 +782,11 @@ on boot
     # are not aware of using fsync()/sync() to prepare sudden power-cut.
     write /sys/fs/f2fs/${dev.mnt.blk.data}/cp_interval 200
     write /sys/fs/f2fs/${dev.mnt.blk.data}/gc_urgent_sleep_time 50
+
+    # limit discard size to 128MB in order to avoid long IO latency
+    # for filesystem tuning first (dm or sda)
+    # Note that, if dm-<num> is used, sda/mmcblk0 should be tuned in vendor/init.rc
+    write /sys/devices/virtual/block/${dev.mnt.blk.data}/queue/discard_max_bytes 134217728
 
     # Permissions for System Server and daemons.
     chown system system /sys/power/autosleep
