@@ -177,6 +177,8 @@ void set_system_properties(){
                 property_set(prop_msclient, prop_clientdt_value);
             } else if (carrier_ontim == "reteu_reteuop") {
                 property_set(prop_msclient, prop_clientor_value);
+            } else if (carrier_ontim == "eegb_uksl") {
+                property_set(prop_msclient, prop_clientuk_value);
             } else {
                 property_set(prop_amclient, prop_client_value);
                 property_set(prop_msclient, prop_clientrev_value);
@@ -266,6 +268,8 @@ bool isProductNameBlackjackReteu(std::string carrier_ontim) {
     if (carrier_ontim == "timit_timit") return true;
     if (carrier_ontim == "windit_windds") return true;
     if (carrier_ontim == "reteu_retfr") return true;
+    if (carrier_ontim == "eegb_uksl") return true;
+    if (carrier_ontim == "vfeu_vfeu") return true;
     return false;
 }
 
