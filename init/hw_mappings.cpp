@@ -264,7 +264,8 @@ xml_match_multiple_choices(element_t *head, map_outs_t *mouts)
             char *value = xml_tag_get_value(choice->name);
             if (!value ||
                 strncmp(choice->payload, value, strlen(choice->payload))) {
-                pr_debug << "[" << choice->name << "]: '" << choice->payload << "' != '" << value << "'\n";
+                if (value)
+                    pr_debug << "[" << choice->name << "]: '" << choice->payload << "' != '" << value << "'\n";
                 match = false;
                 break;
             }
@@ -305,11 +306,14 @@ static element_t
     element_t *branch;
 
     for (branch = head->child; branch; branch = branch->next) {
-        pr_debug << "matching token '" << token << "' to name='" << branch->name << "' tag='" << branch->tag << "' payload='" << branch->payload << "'\n";
+        if (branch->name)
+            pr_debug << "matching token '" << token << "' to name='" << branch->name << "'\n";
+        if (branch->tag)
+            pr_debug << "matching token '" << token << "' to tag='" << branch->tag << "'\n";
         /* effectively, searching a substring in case of BY_NAME */
         if (by == BY_NAME && branch->name && !strncmp(branch->name, token, strlen(branch->name)))
             break;
-        else if (by == BY_TAG && !strncmp(branch->tag, token, strlen(token)))
+        else if (by == BY_TAG && branch->tag && !strncmp(branch->tag, token, strlen(branch->tag)))
             break;
     }
     return branch;
