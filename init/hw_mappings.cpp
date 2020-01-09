@@ -482,6 +482,10 @@ xml_handle_mappings(parse_ctrl_t *info,  std::map<std::string, std::string> &pro
             if (!mouts.export_prop)
                 continue;
 
+            if (strstr(mouts.export_prop_name, "vendor") &&
+                strncmp(mouts.export_prop_name, "ro.vendor.hw.variant", strlen(mouts.export_prop_name)))
+                continue;
+
             properties_map[mouts.export_prop_name] = mouts.export_prop;
             pr_debug << "Match found '" << mouts.export_prop << "'";
             pr_debug << "exported '" << mouts.export_prop_name
