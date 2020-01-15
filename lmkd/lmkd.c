@@ -2483,7 +2483,8 @@ static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_
             other_file = mi.field.nr_file_pages - mi.field.shmem -
                          mi.field.unevictable_file - mi.field.swap_cached;
 
-        if (NOT_RESPONDING == kill_reason ||
+        if (swap_is_low ||
+            NOT_RESPONDING == kill_reason ||
             PRESSURE_AFTER_KILL == kill_reason)
             minfree = lowmem_minfree[0];
         else
@@ -2508,6 +2509,9 @@ static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_
             do_multi_kill = false;
             if (NOT_RESPONDING == kill_reason) {
                 min_score_adj = swap_is_low ? 0 : min_score_adj;
+                strcat(kill_desc, " <kill all processes above>");
+                pages_freed = find_and_kill_multi_processes(min_score_adj, kill_desc, true);
+            } else if (swap_is_low) {
                 strcat(kill_desc, " <kill all processes above>");
                 pages_freed = find_and_kill_multi_processes(min_score_adj, kill_desc, true);
             } else {
