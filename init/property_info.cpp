@@ -270,6 +270,7 @@ bool isProductNameBlackjackReteu(std::string carrier_ontim) {
     if (carrier_ontim == "reteu_retfr") return true;
     if (carrier_ontim == "eegb_uksl") return true;
     if (carrier_ontim == "vfeu_vfeu") return true;
+    if (carrier_ontim == "reteu_dtag") return true;
     return false;
 }
 
