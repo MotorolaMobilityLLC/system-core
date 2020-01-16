@@ -129,7 +129,8 @@ void set_system_properties(){
             if (carrier_ontim == "amxbr_clarobr" || carrier_ontim == "amxmx_amxmx"
              || carrier_ontim == "amxmx_amxmxsl" || carrier_ontim == "openmx_retmx"
              || carrier_ontim == "amxpe_claro" || carrier_ontim == "amxcl_clarosl"
-             || carrier_ontim == "amxar_amxar") {
+             || carrier_ontim == "amxar_amxar" || carrier_ontim == "amxla_amxlas"
+             || carrier_ontim == "amxla_amxlag") {
                 property_set(prop_amclient, prop_clientcountry_value);
                 property_set(prop_msclient, prop_clientrevc_value);
             } else if (carrier_ontim == "attmx_attmx") {
