@@ -65,6 +65,14 @@ std::string product_version_file = "/product/version.txt";
 std::string elabel_version_file = "/elabel/version.txt";
 std::string prop_amazon_partnerid = "ro.csc.amazon.partnerid";
 std::string prop_build_name = "ro.build.name";
+std::string prop_build_product = "ro.build.product";
+std::string prop_product_board = "ro.product.board";
+std::string prop_product_vendor_device = "ro.product.vendor.device";
+std::string prop_product_vendor_name = "ro.product.vendor.name";
+std::string prop_boot_bootloader = "ro.boot.bootloader";
+std::string prop_bootloader = "ro.bootloader";
+std::string prop_build_description = "ro.build.description";
+std::string prop_build_flavor = "ro.build.flavor";
 
 void set_system_properties(){
     std::ifstream stream_product(product_version_file);
@@ -151,6 +159,7 @@ void set_system_properties(){
         property_set(prop_product_fingerprint, get_fingerprint_property(prop_product_value));
     } else if (prop_product_value == "blackjack" || prop_product_value == "blackjack_64") {
         property_set(prop_product_device, "blackjack");
+        set_some_vendor_properties("blackjack");
 
         if(build_name == "lenovo") {
             prop_product_value = "blackjack_lnv";
@@ -164,6 +173,7 @@ void set_system_properties(){
             property_set("persist.vendor.normal", "1");//表示正常版本，非 VTS 版本，prop 正常设置.
             property_set(prop_build_fullversion, get_version_property(prop_version_value));
             property_set(prop_build_customerid, prop_carrier_value);
+            property_set(prop_product_vendor_name, prop_product_value);
             return;
         }
 
@@ -217,6 +227,7 @@ void set_system_properties(){
         property_set(prop_fingerprint, get_fingerprint_property(prop_product_value));
         property_set(prop_vendor_fingerprint, get_fingerprint_property(prop_product_value));
         property_set(prop_product_fingerprint, get_fingerprint_property(prop_product_value));
+        property_set(prop_product_vendor_name, prop_product_value);
 
         // BEGIN Ontim, maqing, 20/11/2019, EKBLACKJ-178 , St-result :PASS,[BJ][Europe Requirement][Fiji Features]FEATURE-5963
         if (carrier_ontim == "timit_timit") {
@@ -234,6 +245,18 @@ void set_system_properties(){
     property_set("persist.vendor.normal", "1");//表示正常版本，非 VTS 版本，prop 正常设置.
     property_set(prop_build_fullversion, get_version_property(prop_version_value));
     property_set(prop_build_customerid, prop_carrier_value);
+}
+
+void set_some_vendor_properties(std::string prop_product_value) {
+
+        property_set(prop_build_product, prop_product_value);
+        property_set(prop_product_board, prop_product_value);
+        property_set(prop_product_vendor_device, prop_product_value);
+        property_set(prop_boot_bootloader, get_product_property(prop_boot_bootloader,prop_product_value));
+        property_set(prop_bootloader, get_product_property(prop_bootloader,prop_product_value));
+        property_set(prop_build_description, get_product_property(prop_build_description,prop_product_value));
+        property_set(prop_build_flavor, get_product_property(prop_build_flavor,prop_product_value));
+
 }
 
 bool isProductNameFijiReteu(std::string carrier_ontim) {
@@ -284,7 +307,11 @@ bool changeSystemProperty(std::string key) {
     if (key == prop_product || key == prop_build_fingerprint
       || key == prop_fingerprint || key == prop_vendor_fingerprint
       || key == prop_carrier || key == prop_product_device
-      || key == prop_product_fingerprint) {
+      || key == prop_product_fingerprint || key == prop_build_product
+      || key == prop_product_board || key == prop_product_vendor_device
+      || key == prop_product_vendor_name || key == prop_boot_bootloader
+      || key == prop_bootloader|| key == prop_build_description
+      || key == prop_build_flavor) {
         return true;
     }
     return false;
@@ -295,6 +322,13 @@ std::string get_fingerprint_property(std::string value) {
     std::vector<std::string> fingerprint = android::base::Split(buildFingerprint, "/");
     fingerprint[1] = value;
     return android::base::Join(fingerprint, "/");
+}
+
+std::string get_product_property(std::string prop_name, std::string value) {
+    std::string  product_name = android::base::GetProperty(prop_name, "");
+    std::vector<std::string> product = android::base::Split(product_name, "-");
+    product[0] = value;
+    return android::base::Join(product, "-");
 }
 
 std::string get_version_property(std::string value) {
