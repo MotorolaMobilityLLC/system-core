@@ -243,7 +243,6 @@ bool isProductNameFijiReteu(std::string carrier_ontim) {
     if (carrier_ontim == "o2gb_teluk") return true;
     if (carrier_ontim == "tescogb_tescogb") return true;
     if (carrier_ontim == "reteu_reteu") return true;
-    if (carrier_ontim == "pluspl_pluspl") return true;
     if (carrier_ontim == "windit_windds") return true;
     if (carrier_ontim == "timit_timit") return true;
     if (carrier_ontim == "reteu_retfr") return true;
@@ -251,7 +250,6 @@ bool isProductNameFijiReteu(std::string carrier_ontim) {
 }
 
 bool isProductNameFijiLnv(std::string carrier_ontim) {
-    if (carrier_ontim == "retapac_reteusa") return true;
     if (carrier_ontim == "retapac_reteuuae") return true;
     if (carrier_ontim == "retapac_rettld") return true;
     return false;
