@@ -163,6 +163,7 @@ void set_system_properties(){
 
         if(build_name == "lenovo") {
             prop_product_value = "blackjack_lnv";
+            property_set(prop_product_vendor_name, prop_product_value);
             property_set(prop_amclient, prop_client_value);
             property_set(prop_msclient, prop_clientrev_value);
             property_set(prop_product, prop_product_value);
@@ -173,7 +174,6 @@ void set_system_properties(){
             property_set("persist.vendor.normal", "1");//表示正常版本，非 VTS 版本，prop 正常设置.
             property_set(prop_build_fullversion, get_version_property(prop_version_value));
             property_set(prop_build_customerid, prop_carrier_value);
-            property_set(prop_product_vendor_name, prop_product_value);
             return;
         }
 
