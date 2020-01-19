@@ -98,6 +98,7 @@ void set_system_properties(){
     if (prop_product_value == "fiji") {
         if(build_name == "lenovo") {
             prop_product_value = "fiji_lnv";
+            property_set(prop_product_vendor_name, prop_product_value);
             property_set(prop_amclient, prop_client_value);
             property_set(prop_msclient, prop_clientrev_value);
             property_set(prop_product, prop_product_value);
@@ -151,7 +152,7 @@ void set_system_properties(){
                 property_set(prop_msclient, prop_clientrev_value);
             }
         }
-
+        property_set(prop_product_vendor_name, prop_product_value);
         property_set(prop_product, prop_product_value);
         property_set(prop_build_fingerprint, get_fingerprint_property(prop_product_value));
         property_set(prop_fingerprint, get_fingerprint_property(prop_product_value));
