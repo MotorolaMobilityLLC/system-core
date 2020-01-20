@@ -546,7 +546,7 @@ long YLogBuffer::readFileToMem(const char* file, char* result, long len) {
         }
         int ret=fseek(fp, -1 * fileSize, SEEK_CUR);
         if ((-1!=ret)&&(fileSize > 0)) {
-            ret=fread(result, fileSize, 1, fp);
+            ret=fread(result, 1, fileSize, fp);
             if(ret!=fileSize){
               android::prdebug("readFileToMem err");
             }
