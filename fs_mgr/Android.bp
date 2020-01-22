@@ -89,6 +89,12 @@ cc_defaults {
                 "-DALLOW_ADBD_DISABLE_VERITY=1",
             ],
         },
+        not_production: {
+            cppflags: [
+                "-UALLOW_ADBD_DISABLE_VERITY",
+                "-DALLOW_ADBD_DISABLE_VERITY=1",
+            ],
+        },
     },
     header_libs: [
         "libfiemap_headers",
@@ -198,6 +204,12 @@ cc_binary {
     ],
     product_variables: {
         debuggable: {
+            cppflags: [
+                "-UALLOW_ADBD_DISABLE_VERITY",
+                "-DALLOW_ADBD_DISABLE_VERITY=1",
+            ],
+        },
+        not_production: {
             cppflags: [
                 "-UALLOW_ADBD_DISABLE_VERITY",
                 "-DALLOW_ADBD_DISABLE_VERITY=1",
