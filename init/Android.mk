@@ -21,10 +21,11 @@ init_options += \
     -DWORLD_WRITABLE_KMSG=0 \
     -DDUMP_ON_UMOUNT_FAILURE=0
 
-ifeq ($(RADIO_SECURE),1)
-init_options += -DALLOW_PERMISSIVE_SELINUX=0
-else
+# Motorola: Allow enabling of permissive mode on all non-production builds
+ifeq ($(PRODUCT_IS_PRODUCTION),false)
 init_options += -DALLOW_PERMISSIVE_SELINUX=1
+else
+init_options += -DALLOW_PERMISSIVE_SELINUX=0
 endif
 
 endif
