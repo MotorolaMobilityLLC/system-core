@@ -96,6 +96,12 @@ cc_library {
                 "-DALLOW_ADBD_DISABLE_VERITY=1",
             ],
         },
+        not_production: {
+            cppflags: [
+                "-UALLOW_ADBD_DISABLE_VERITY",
+                "-DALLOW_ADBD_DISABLE_VERITY=1",
+            ],
+        },
     },
 }
 
@@ -152,6 +158,12 @@ cc_binary {
     ],
     product_variables: {
         debuggable: {
+            cppflags: [
+                "-UALLOW_ADBD_DISABLE_VERITY",
+                "-DALLOW_ADBD_DISABLE_VERITY=1",
+            ],
+        },
+        not_production: {
             cppflags: [
                 "-UALLOW_ADBD_DISABLE_VERITY",
                 "-DALLOW_ADBD_DISABLE_VERITY=1",
