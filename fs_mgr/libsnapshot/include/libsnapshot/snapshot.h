@@ -155,6 +155,7 @@ class SnapshotManager final {
     // Mark snapshot writes as having completed. After this, new snapshots cannot
     // be created, and the device must either cancel the OTA (either before
     // rebooting or after rolling back), or merge the OTA.
+    // Before calling this function, all snapshots must be mapped.
     bool FinishedSnapshotWrites();
 
   private:
@@ -196,6 +197,13 @@ class SnapshotManager final {
     //   - MergeCompleted if merge is completed
     //   - other states indicating an error has occurred
     UpdateState InitiateMergeAndWait();
+
+    // Wait for the merge if rebooted into the new slot. Does NOT initiate a
+    // merge. If the merge has not been initiated (but should be), wait.
+    // Returns:
+    //   - true there is no merge or merge finishes
+    //   - false indicating an error has occurred
+    bool WaitForMerge();
 
     // Find the status of the current update, if any.
     //
@@ -489,6 +497,15 @@ class SnapshotManager final {
     // Unmap all partitions that were mapped by CreateLogicalAndSnapshotPartitions.
     // This should only be called in recovery.
     bool UnmapAllPartitions();
+
+    // Sanity check no snapshot overflows. Note that this returns false negatives if the snapshot
+    // overflows, then is remapped and not written afterwards. Hence, the function may only serve
+    // as a sanity check.
+    bool EnsureNoOverflowSnapshot(LockedFile* lock);
+
+    enum class Slot { Unknown, Source, Target };
+    friend std::ostream& operator<<(std::ostream& os, SnapshotManager::Slot slot);
+    Slot GetCurrentSlot();
 
     std::string gsid_dir_;
     std::string metadata_dir_;

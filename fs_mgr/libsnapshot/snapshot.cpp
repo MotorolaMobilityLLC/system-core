@@ -74,6 +74,7 @@ using namespace std::chrono_literals;
 using namespace std::string_literals;
 
 static constexpr char kBootIndicatorPath[] = "/metadata/ota/snapshot-boot";
+static constexpr auto kUpdateStateCheckInterval = 2s;
 
 // Note: IImageManager is an incomplete type in the header, so the default
 // destructor doesn't work.
@@ -171,19 +172,27 @@ bool SnapshotManager::TryCancelUpdate(bool* needs_merge) {
 
     if (state == UpdateState::Unverified) {
         // We completed an update, but it can still be canceled if we haven't booted into it.
-        auto boot_file = GetSnapshotBootIndicatorPath();
-        std::string contents;
-        if (!android::base::ReadFileToString(boot_file, &contents)) {
-            PLOG(WARNING) << "Cannot read " << boot_file << ", proceed to canceling the update:";
-            return RemoveAllUpdateState(file.get());
-        }
-        if (device_->GetSlotSuffix() == contents) {
-            LOG(INFO) << "Canceling a previously completed update";
+        auto slot = GetCurrentSlot();
+        if (slot != Slot::Target) {
+            LOG(INFO) << "Canceling previously completed updates (if any)";
             return RemoveAllUpdateState(file.get());
         }
     }
     *needs_merge = true;
     return true;
+}
+
+SnapshotManager::Slot SnapshotManager::GetCurrentSlot() {
+    auto boot_file = GetSnapshotBootIndicatorPath();
+    std::string contents;
+    if (!android::base::ReadFileToString(boot_file, &contents)) {
+        PLOG(WARNING) << "Cannot read " << boot_file;
+        return Slot::Unknown;
+    }
+    if (device_->GetSlotSuffix() == contents) {
+        return Slot::Source;
+    }
+    return Slot::Target;
 }
 
 bool SnapshotManager::RemoveAllUpdateState(LockedFile* lock) {
@@ -211,6 +220,11 @@ bool SnapshotManager::FinishedSnapshotWrites() {
 
     if (update_state != UpdateState::Initiated) {
         LOG(ERROR) << "Can only transition to the Unverified state from the Initiated state.";
+        return false;
+    }
+
+    if (!EnsureNoOverflowSnapshot(lock.get())) {
+        LOG(ERROR) << "Cannot ensure there are no overflow snapshots.";
         return false;
     }
 
@@ -500,15 +514,9 @@ bool SnapshotManager::InitiateMerge() {
         return false;
     }
 
-    std::string old_slot;
-    auto boot_file = GetSnapshotBootIndicatorPath();
-    if (!android::base::ReadFileToString(boot_file, &old_slot)) {
-        LOG(ERROR) << "Could not determine the previous slot; aborting merge";
-        return false;
-    }
-    auto new_slot = device_->GetSlotSuffix();
-    if (new_slot == old_slot) {
-        LOG(ERROR) << "Device cannot merge while booting off old slot " << old_slot;
+    auto slot = GetCurrentSlot();
+    if (slot != Slot::Target) {
+        LOG(ERROR) << "Device cannot merge while not booting from new slot";
         return false;
     }
 
@@ -724,7 +732,7 @@ UpdateState SnapshotManager::ProcessUpdateState(const std::function<void()>& cal
 
         // This wait is not super time sensitive, so we have a relatively
         // low polling frequency.
-        std::this_thread::sleep_for(2s);
+        std::this_thread::sleep_for(kUpdateStateCheckInterval);
     }
 }
 
@@ -1092,13 +1100,11 @@ bool SnapshotManager::CollapseSnapshotDevice(const std::string& name,
 }
 
 bool SnapshotManager::HandleCancelledUpdate(LockedFile* lock) {
-    std::string old_slot;
-    auto boot_file = GetSnapshotBootIndicatorPath();
-    if (!android::base::ReadFileToString(boot_file, &old_slot)) {
-        PLOG(ERROR) << "Unable to read the snapshot indicator file: " << boot_file;
+    auto slot = GetCurrentSlot();
+    if (slot == Slot::Unknown) {
         return false;
     }
-    if (device_->GetSlotSuffix() != old_slot) {
+    if (slot == Slot::Target) {
         // We're booted into the target slot, which means we just rebooted
         // after applying the update.
         if (!HandleCancelledUpdateOnNewSlot(lock)) {
@@ -1266,14 +1272,9 @@ bool SnapshotManager::NeedSnapshotsInFirstStageMount() {
     // ultimately we'll fail to boot. Why not make it a fatal error and have
     // the reason be clearer? Because the indicator file still exists, and
     // if this was FATAL, reverting to the old slot would be broken.
-    std::string old_slot;
-    auto boot_file = GetSnapshotBootIndicatorPath();
-    if (!android::base::ReadFileToString(boot_file, &old_slot)) {
-        PLOG(ERROR) << "Unable to read the snapshot indicator file: " << boot_file;
-        return false;
-    }
-    if (device_->GetSlotSuffix() == old_slot) {
-        LOG(INFO) << "Detected slot rollback, will not mount snapshots.";
+    auto slot = GetCurrentSlot();
+    if (slot != Slot::Target) {
+        LOG(INFO) << "Not booting from new slot. Will not mount snapshots.";
         return false;
     }
 
@@ -2151,6 +2152,17 @@ bool SnapshotManager::UnmapAllPartitions() {
     return ok;
 }
 
+std::ostream& operator<<(std::ostream& os, SnapshotManager::Slot slot) {
+    switch (slot) {
+        case SnapshotManager::Slot::Unknown:
+            return os << "unknown";
+        case SnapshotManager::Slot::Source:
+            return os << "source";
+        case SnapshotManager::Slot::Target:
+            return os << "target";
+    }
+}
+
 bool SnapshotManager::Dump(std::ostream& os) {
     // Don't actually lock. Dump() is for debugging purposes only, so it is okay
     // if it is racy.
@@ -2161,11 +2173,8 @@ bool SnapshotManager::Dump(std::ostream& os) {
 
     ss << "Update state: " << ReadUpdateState(file.get()) << std::endl;
 
-    auto boot_file = GetSnapshotBootIndicatorPath();
-    std::string boot_indicator;
-    if (android::base::ReadFileToString(boot_file, &boot_indicator)) {
-        ss << "Boot indicator: old slot = " << boot_indicator << std::endl;
-    }
+    ss << "Current slot: " << device_->GetSlotSuffix() << std::endl;
+    ss << "Boot indicator: booting from " << GetCurrentSlot() << " slot" << std::endl;
 
     bool ok = true;
     std::vector<std::string> snapshots;
@@ -2233,6 +2242,21 @@ UpdateState SnapshotManager::InitiateMergeAndWait() {
     return state;
 }
 
+bool SnapshotManager::WaitForMerge() {
+    LOG(INFO) << "Waiting for any previous merge request to complete. "
+              << "This can take up to several minutes.";
+    while (true) {
+        auto state = ProcessUpdateState();
+        if (state == UpdateState::Unverified && GetCurrentSlot() == Slot::Target) {
+            LOG(INFO) << "Wait for merge to be initiated.";
+            std::this_thread::sleep_for(kUpdateStateCheckInterval);
+            continue;
+        }
+        LOG(INFO) << "Wait for merge exits with state " << state;
+        return state == UpdateState::None || state == UpdateState::MergeCompleted;
+    }
+}
+
 bool SnapshotManager::HandleImminentDataWipe(const std::function<void()>& callback) {
     if (!device_->IsRecovery()) {
         LOG(ERROR) << "Data wipes are only allowed in recovery.";
@@ -2278,11 +2302,9 @@ bool SnapshotManager::HandleImminentDataWipe(const std::function<void()>& callba
             //
             // Since the rollback is inevitable, we don't treat a HAL failure
             // as an error here.
-            std::string old_slot;
-            auto boot_file = GetSnapshotBootIndicatorPath();
-            if (android::base::ReadFileToString(boot_file, &old_slot) &&
-                device_->GetSlotSuffix() != old_slot) {
-                LOG(ERROR) << "Reverting to slot " << old_slot << " since update will be deleted.";
+            auto slot = GetCurrentSlot();
+            if (slot == Slot::Target) {
+                LOG(ERROR) << "Reverting to old slot since update will be deleted.";
                 device_->SetSlotAsUnbootable(slot_number);
             }
             break;
@@ -2300,6 +2322,37 @@ bool SnapshotManager::HandleImminentDataWipe(const std::function<void()>& callba
     if (!UnmapAllPartitions()) {
         LOG(ERROR) << "Unable to unmap all partitions; fastboot may fail to flash.";
     }
+    return true;
+}
+
+bool SnapshotManager::EnsureNoOverflowSnapshot(LockedFile* lock) {
+    CHECK(lock);
+
+    std::vector<std::string> snapshots;
+    if (!ListSnapshots(lock, &snapshots)) {
+        LOG(ERROR) << "Could not list snapshots.";
+        return false;
+    }
+
+    auto& dm = DeviceMapper::Instance();
+    for (const auto& snapshot : snapshots) {
+        std::vector<DeviceMapper::TargetInfo> targets;
+        if (!dm.GetTableStatus(snapshot, &targets)) {
+            LOG(ERROR) << "Could not read snapshot device table: " << snapshot;
+            return false;
+        }
+        if (targets.size() != 1) {
+            LOG(ERROR) << "Unexpected device-mapper table for snapshot: " << snapshot
+                       << ", size = " << targets.size();
+            return false;
+        }
+        if (targets[0].IsOverflowSnapshot()) {
+            LOG(ERROR) << "Detected overflow in snapshot " << snapshot
+                       << ", CoW device size computation is wrong!";
+            return false;
+        }
+    }
+
     return true;
 }
 
