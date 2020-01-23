@@ -687,6 +687,45 @@ static void cmd_procpurge() {
     memset(&pidhash[0], 0, sizeof(pidhash));
 }
 
+static void save_killcnt_to_prop() {
+    int i;
+    int slot;
+    uint8_t idx;
+    char killcnt_str[PROPERTY_VALUE_MAX];
+    char *pstr = killcnt_str;
+    char *pend = killcnt_str + sizeof(killcnt_str);
+    static struct timespec last_req_tm;
+    struct timespec curr_tm;
+
+    if (clock_gettime(CLOCK_MONOTONIC_COARSE, &curr_tm) != 0) {
+        ALOGE("Failed to get current time");
+        return;
+    }
+
+    if (get_time_diff_ms(&last_req_tm, &curr_tm) < 1000) {
+        return;
+    }
+    last_req_tm = curr_tm;
+
+    // don't care killcnt below adj 0.
+    for (i = OOM_SCORE_ADJ_MAX; i >= 0; i--) {
+        slot = ADJTOSLOT(i);
+        idx = killcnt_idx[slot];
+        if (idx != KILLCNT_INVALID_IDX) {
+            pstr += snprintf(pstr, pend - pstr, "%d:%d,", i, killcnt[idx]);
+            if (pstr >= pend) {
+                /* if no more space in the buffer then terminate the loop */
+                pstr = pend;
+                break;
+            }
+        }
+    }
+
+    /* Override the last extra comma */
+    pstr[-1] = '\0';
+    property_set("sys.lmk.killcnt", killcnt_str);
+}
+
 static void inc_killcnt(int oomadj) {
     int slot = ADJTOSLOT(oomadj);
     uint8_t idx = killcnt_idx[slot];
@@ -710,6 +749,8 @@ static void inc_killcnt(int oomadj) {
     }
     /* increment total kill counter */
     killcnt_total++;
+
+    save_killcnt_to_prop();
 }
 
 static int get_killcnt(int min_oomadj, int max_oomadj) {
