@@ -40,6 +40,14 @@ cc_library {
         "libcutils",
         "liblog",
     ],
+
+    // enumerate stable entry points for APEX use
+    stubs: {
+        symbol_file: "libstatssocket.map.txt",
+        versions: [
+            "1",
+        ],
+    }
 }
 
 cc_library_headers {
@@ -66,4 +74,23 @@ cc_benchmark {
         "liblog",
         "libgtest_prod",
     ],
+}
+
+cc_test {
+    name: "libstatssocket_test",
+    srcs: ["tests/stats_event_test.cpp"],
+    cflags: [
+        "-Wall",
+        "-Werror",
+    ],
+    static_libs: [
+        "libgmock",
+        "libstatssocket",
+    ],
+    shared_libs: [
+        "libcutils",
+        "liblog",
+        "libutils",
+    ],
+    test_suites: ["device_tests"],
 }

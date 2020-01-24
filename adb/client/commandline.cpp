@@ -790,6 +790,15 @@ static int adb_abb(int argc, const char** argv) {
                        service_string);
 }
 
+static int adb_shell_noinput(int argc, const char** argv) {
+#if !defined(_WIN32)
+    unique_fd fd(adb_open("/dev/null", O_RDONLY));
+    CHECK_NE(STDIN_FILENO, fd.get());
+    dup2(fd.get(), STDIN_FILENO);
+#endif
+    return adb_shell(argc, argv);
+}
+
 static int adb_sideload_legacy(const char* filename, int in_fd, int size) {
     std::string error;
     unique_fd out_fd(adb_connect(android::base::StringPrintf("sideload:%d", size), &error));
@@ -1116,8 +1125,8 @@ static bool adb_root(const char* command) {
         return false;
     }
 
+    fwrite(buf, 1, sizeof(buf) - bytes_left, stdout);
     fflush(stdout);
-    WriteFdExactly(STDOUT_FILENO, buf, sizeof(buf) - bytes_left);
     if (cur != buf && strstr(buf, "restarting") == nullptr) {
         return true;
     }
@@ -1612,7 +1621,7 @@ int adb_commandline(int argc, const char** argv) {
         return adb_query_command(query);
     }
     else if (!strcmp(argv[0], "connect")) {
-        if (argc != 2) error_exit("usage: adb connect HOST[:PORT>]");
+        if (argc != 2) error_exit("usage: adb connect HOST[:PORT]");
 
         std::string query = android::base::StringPrintf("host:connect:%s", argv[1]);
         return adb_query_command(query);
@@ -1711,7 +1720,7 @@ int adb_commandline(int argc, const char** argv) {
         if (CanUseFeature(features, kFeatureRemountShell)) {
             std::vector<const char*> args = {"shell"};
             args.insert(args.cend(), argv, argv + argc);
-            return adb_shell(args.size(), args.data());
+            return adb_shell_noinput(args.size(), args.data());
         } else if (argc > 1) {
             auto command = android::base::StringPrintf("%s:%s", argv[0], argv[1]);
             return adb_connect_command(command);

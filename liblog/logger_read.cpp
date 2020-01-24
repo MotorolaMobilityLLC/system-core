@@ -27,10 +27,7 @@
 #include <unistd.h>
 
 #include <android/log.h>
-#include <cutils/list.h>
-#include <private/android_filesystem_config.h>
 
-#include "log_portability.h"
 #include "logd_reader.h"
 #include "logger.h"
 #include "pmsg_reader.h"
