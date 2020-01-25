@@ -417,6 +417,13 @@ cc_library {
                 "remount",
             ],
         },
+        // Motorola: Add remount to all non-production
+        //           builds
+        not_production: {
+            required: [
+                "remount",
+            ],
+        },
     },
 
     target: {
