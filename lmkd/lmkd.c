@@ -176,7 +176,6 @@ static bool enable_watermark_check;
 static int swap_free_low_percentage;
 static bool use_psi_monitors = false;
 static bool enable_preferred_apps =  false;
-static bool s_crit_event = false;
 static unsigned long pa_update_timeout_ms = 60000; /* 1 min */
 static struct psi_threshold psi_thresholds[VMPRESS_LEVEL_COUNT] = {
     { PSI_SOME, 70 },    /* 70ms out of 1sec for partial stall */
@@ -436,6 +435,10 @@ static uint8_t killcnt_idx[ADJTOSLOT_COUNT];
 static uint16_t killcnt[MAX_DISTINCT_OOM_ADJ];
 static int killcnt_free_idx = 0;
 static uint32_t killcnt_total = 0;
+
+/* Super critical event related variables. */
+static union vmstat s_crit_base;
+static bool s_crit_event = false;
 
 /* PAGE_SIZE / 1024 */
 static long page_k;
@@ -2166,6 +2169,7 @@ enum vmpressure_level upgrade_vmpressure_event(enum vmpressure_level level)
 		   pressure = ((100 * sync)/(sync + async + 1));
 		   if (throttle || (pressure >= direct_reclaim_pressure)) {
 			   s_crit_event = true;
+			   s_crit_base = current;
 		   }
 		   base = current;
 		   break;
@@ -2620,6 +2624,7 @@ static void mainloop(void) {
     struct event_handler_info* poll_handler = NULL;
     struct timespec last_report_tm, curr_tm;
     struct epoll_event *evt;
+    union vmstat s_crit_current;
     long delay = -1;
     int polling = 0;
 
@@ -2687,10 +2692,26 @@ static void mainloop(void) {
                 if (use_psi_monitors && handler_info->handler == mp_event_common) {
 		    if (handler_info->data == VMPRESS_LEVEL_SUPER_CRITICAL) {
 			    s_crit_event = true;
+			    vmstat_parse(&s_crit_base);
 			    continue;
 		    }
                     if (polling && handler_info->data < poll_handler->data) {
-			s_crit_event = false;
+			/*
+			 * Override the supercritical event only if the system
+			 * is not in direct reclaim.
+			 */
+			if (s_crit_event) {
+				int64_t throttle, sync;
+
+				vmstat_parse(&s_crit_current);
+				throttle = s_crit_current.field.pgscan_direct_throttle -
+					   s_crit_base.field.pgscan_direct_throttle;
+				sync = s_crit_current.field.pgscan_direct -
+				       s_crit_base.field.pgscan_direct;
+				if (!throttle && !sync)
+					s_crit_event = false;
+				s_crit_base = s_crit_current;
+			}
                         continue;
 		    }
 
