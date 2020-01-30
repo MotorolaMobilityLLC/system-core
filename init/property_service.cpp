@@ -775,6 +775,60 @@ void load_persist_props(void) {
     property_set("ro.persistent_properties.ready", "true");
 }
 
+/* Motorola:
+ * Generate the named property's suffix property, and
+ * append it to the property's value.
+ *
+ *  Parameters
+ *      name        base name of ro.product.* property
+ *      prop_val    value of base property
+ *      ro_product_props_sources
+ *                  list of "source" partitions
+ *
+ *  Returns
+ *      prop_val set to prop_val + ro.product.<name>.suffix
+ *
+ *      And ro.product.<name>.suffix is a concat of
+ *      ro.product.<source>.<name>.suffix.
+ *
+ */
+static void mmi_append_ro_product_prop_suffix(const std::string& name, std::string& prop_val, const std::string& ro_product_props_sources) {
+
+    const std::string EMPTY = "";
+
+    // Construct the "canonical" ro.product.<name>.suffix property name
+    std::string base_prop = "ro.product." + name;
+    std::string suffix_prop = base_prop + ".suffix";
+
+    // Check the "canonical" property. If it exists then just use it.
+    std::string suffix_prop_val = GetProperty(suffix_prop, EMPTY);
+    if (suffix_prop_val.empty()) {
+        // aggregate all the ro.product.<source>.<name> properties into a single string
+        for (const auto& source : Split(ro_product_props_sources, ",")) {
+            std::string source_suffix_prop = "ro.product." + source + "." + name + ".suffix";
+
+            std::string source_suffix_val = GetProperty(source_suffix_prop, EMPTY);
+            suffix_prop_val += source_suffix_val;
+        }
+        if (!suffix_prop_val.empty()) {
+           LOG(INFO) << "Aggregated " << suffix_prop << ": " << suffix_prop_val;
+
+           // Set the "canonical" suffix proprety based on the aggregated value.
+           std::string error;
+            uint32_t res = PropertySet(suffix_prop, suffix_prop_val, &error);
+            if (res != PROP_SUCCESS) {
+                LOG(ERROR) << "Error setting suffix property " << suffix_prop << ": err=" << res
+                           << " (" << error << ")";
+            }
+        }
+    }
+    if (!suffix_prop_val.empty())
+    {
+        LOG(INFO) << "Appending " << suffix_prop << " [" << suffix_prop_val << "] to : " << base_prop << " [" << prop_val << "]";
+        prop_val += suffix_prop_val;
+    }
+ }
+
 // If the ro.product.[brand|device|manufacturer|model|name] properties have not been explicitly
 // set, derive them from ro.product.${partition}.* properties
 static void property_initialize_ro_product_props() {
@@ -831,6 +885,11 @@ static void property_initialize_ro_product_props() {
 
             std::string target_prop_val = GetProperty(target_prop, EMPTY);
             if (!target_prop_val.empty()) {
+                // Motorola: Append ro.product.<source>.name.suffix properties to ro.product.name
+                if (strcmp(ro_product_prop,"name") == 0) {
+                    mmi_append_ro_product_prop_suffix(ro_product_prop, target_prop_val, ro_product_props_source_order);
+                 }
+
                 LOG(INFO) << "Setting product property " << base_prop << " to '" << target_prop_val
                           << "' (from " << target_prop << ")";
                 std::string error;
