@@ -135,6 +135,7 @@ enum vmpressure_level {
     VMPRESS_LEVEL_LOW = 0,
     VMPRESS_LEVEL_MEDIUM,
     VMPRESS_LEVEL_CRITICAL,
+    VMPRESS_LEVEL_SUPER_CRITICAL,
     VMPRESS_LEVEL_COUNT
 };
 
@@ -155,7 +156,7 @@ struct psi_threshold {
 };
 
 static int level_oomadj[VMPRESS_LEVEL_COUNT];
-static int mpevfd[VMPRESS_LEVEL_COUNT] = { -1, -1, -1 };
+static int mpevfd[VMPRESS_LEVEL_COUNT] = { -1, -1, -1, -1 };
 static bool debug_process_killing;
 static bool enable_pressure_upgrade;
 static int64_t upgrade_pressure;
@@ -172,11 +173,13 @@ static bool enable_watermark_check;
 static int swap_free_low_percentage;
 static bool use_psi_monitors = false;
 static bool enable_preferred_apps =  false;
+static bool s_crit_event = false;
 static unsigned long pa_update_timeout_ms = 60000; /* 1 min */
 static struct psi_threshold psi_thresholds[VMPRESS_LEVEL_COUNT] = {
     { PSI_SOME, 70 },    /* 70ms out of 1sec for partial stall */
     { PSI_SOME, 100 },   /* 100ms out of 1sec for partial stall */
     { PSI_FULL, 70 },    /* 70ms out of 1sec for complete stall */
+    { PSI_FULL, 80 },    /* 80ms out of 1sec for complete stall */
 };
 
 static android_log_context ctx;
@@ -1421,11 +1424,23 @@ static void trace_log(char *fmt, ...)
 		ALOG##X(fmt);  \
 		trace_log(fmt); \
 		})
-static int file_cache_to_adj(int nr_file)
+static int file_cache_to_adj(enum vmpressure_level lvl, int nr_free,
+			     int nr_file)
 {
     int min_score_adj = OOM_SCORE_ADJ_MAX + 1;
     int minfree;
     int i;
+    int crit_minfree;
+    int s_crit_adj_level = level_oomadj[VMPRESS_LEVEL_SUPER_CRITICAL];
+
+    /*
+     * Below condition is to catch the zones where the file pages
+     * are not allowed to, eg: Movable zone.
+     * A corner case is where file_cache = 0 in the allowed zones
+     * which is a very rare scenario.
+     */
+    if (!nr_file)
+	    goto out;
 
     for (i = 0; i < lowmem_targets_size; i++) {
         minfree = lowmem_minfree[i];
@@ -1434,14 +1449,31 @@ static int file_cache_to_adj(int nr_file)
             break;
         }
     }
-    ULMK_LOG(E, "adj: %d file_cache: %d\n", min_score_adj, nr_file);
+
+    crit_minfree = lowmem_minfree[lowmem_targets_size - 1] +
+		(lowmem_minfree[lowmem_targets_size - 1] -
+		 lowmem_minfree[lowmem_targets_size - 2]);
+    /* Adjust the selected adj in accordance with pressure. */
+    if (s_crit_event && (min_score_adj > s_crit_adj_level)) {
+	    min_score_adj = s_crit_adj_level;
+    } else {
+	    if (lvl == VMPRESS_LEVEL_CRITICAL &&
+		nr_free < lowmem_minfree[lowmem_targets_size -1] &&
+		nr_file < crit_minfree &&
+		min_score_adj > s_crit_adj_level) {
+		    min_score_adj = s_crit_adj_level;
+	    }
+    }
+
+out:
+    ULMK_LOG(E, "adj:%d file_cache: %d\n", min_score_adj, nr_file);
     return min_score_adj;
 }
 
 /*
  * Returns OOM_XCORE_ADJ_MAX + 1  on parsing error.
  */
-static int zone_watermarks_ok()
+static int zone_watermarks_ok(enum vmpressure_level level)
 {
     static struct reread_data file_data = {
         .filename = ZONEINFO_PATH,
@@ -1489,7 +1521,7 @@ static int zone_watermarks_ok()
         if (margin >= 0 || lowmem_reserve_ok[zone_id])
             continue;
 
-        return file_cache_to_adj(nr_file);
+        return file_cache_to_adj(level, w.free, nr_file);
     }
 
     if (offset == buf)
@@ -2212,8 +2244,8 @@ do_kill:
                     return;
                 }
                 min_score_adj = level_oomadj[level];
-            } else {
-                min_score_adj = zone_watermarks_ok();
+	    } else {
+                min_score_adj = zone_watermarks_ok(level);
                 if (min_score_adj == OOM_SCORE_ADJ_MAX + 1)
 		        {
                     ULMK_LOG(I, "Ignoring pressure since per-zone watermarks ok");
@@ -2300,6 +2332,12 @@ static bool init_psi_monitors() {
         return false;
     }
     if (!init_mp_psi(VMPRESS_LEVEL_CRITICAL)) {
+        destroy_mp_psi(VMPRESS_LEVEL_MEDIUM);
+        destroy_mp_psi(VMPRESS_LEVEL_LOW);
+        return false;
+    }
+    if (!init_mp_psi(VMPRESS_LEVEL_SUPER_CRITICAL)) {
+        destroy_mp_psi(VMPRESS_LEVEL_CRITICAL);
         destroy_mp_psi(VMPRESS_LEVEL_MEDIUM);
         destroy_mp_psi(VMPRESS_LEVEL_LOW);
         return false;
@@ -2481,6 +2519,7 @@ static void mainloop(void) {
             }
         } else {
             /* Wait for events with no timeout */
+	    s_crit_event = false;
             nevents = epoll_wait(epollfd, events, maxevents, -1);
         }
 
@@ -2519,8 +2558,14 @@ static void mainloop(void) {
                 handler_info->handler(handler_info->data, evt->events);
 
                 if (use_psi_monitors && handler_info->handler == mp_event_common) {
-                    if (polling && handler_info->data < poll_handler->data)
+		    if (handler_info->data == VMPRESS_LEVEL_SUPER_CRITICAL) {
+			    s_crit_event = true;
+			    continue;
+		    }
+                    if (polling && handler_info->data < poll_handler->data) {
+			s_crit_event = false;
                         continue;
+		    }
 
                     /*
                      * Poll for the duration of PSI_WINDOW_SIZE_MS after the
@@ -2548,6 +2593,8 @@ int main(int argc __unused, char **argv __unused) {
         property_get_int32("ro.lmk.medium", 800);
     level_oomadj[VMPRESS_LEVEL_CRITICAL] =
         property_get_int32("ro.lmk.critical", 0);
+    /* This will gets updated through perf_wait_get_prop. */
+    level_oomadj[VMPRESS_LEVEL_SUPER_CRITICAL] = 606;
     debug_process_killing = property_get_bool("ro.lmk.debug", false);
 
     /* By default disable upgrade/downgrade logic */
@@ -2598,6 +2645,11 @@ int main(int argc __unused, char **argv __unused) {
           snprintf(default_value, PROPERTY_VALUE_MAX, "%lu", (kill_timeout_ms));
           strlcpy(property, perf_wait_get_prop("ro.lmk.kill_timeout_ms_dup", default_value).value, PROPERTY_VALUE_MAX);
           kill_timeout_ms =  strtod(property, NULL);
+
+	  snprintf(default_value, PROPERTY_VALUE_MAX, "%d",
+			  level_oomadj[VMPRESS_LEVEL_SUPER_CRITICAL]);
+	  strlcpy(property, perf_wait_get_prop("ro.lmk.super_critical", default_value).value, PROPERTY_VALUE_MAX);
+	  level_oomadj[VMPRESS_LEVEL_SUPER_CRITICAL] = strtod(property, NULL);
 
           strlcpy(default_value, (use_minfree_levels)? "true" : "false", PROPERTY_VALUE_MAX);
           strlcpy(property, perf_wait_get_prop("ro.lmk.use_minfree_levels_dup", default_value).value, PROPERTY_VALUE_MAX);
