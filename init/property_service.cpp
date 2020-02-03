@@ -44,6 +44,9 @@
 #include <mutex>
 #include <optional>
 #include <queue>
+#ifdef G1122717
+#include <set>
+#endif
 #include <thread>
 #include <vector>
 
@@ -97,6 +100,10 @@ static bool accept_messages = false;
 
 static PropertyInfoAreaFile property_info_area;
 
+#ifdef G1122717
+std::set<std::string> init_watched_properties;
+#endif
+
 struct PropertyAuditData {
     const ucred* cr;
     const char* name;
@@ -147,6 +154,56 @@ static bool CheckMacPerms(const std::string& name, const char* target_context,
     return has_access;
 }
 
+#ifdef MTK_LOG
+static void PropSetMask(const std::string& name, std::string& value)
+{
+    if (android::base::StartsWith(name, "vendor.ril.iccid.sim")) {
+        if (value.length() > 9) {
+            value.replace(9, value.length() - 9, value.length() - 9, '*');
+        }
+    }
+}
+
+static int PropSetFilter(const std::string& name)
+{
+#if 0
+    if ((android::base::StartsWith(name, "ro.") &&
+         !android::base::StartsWith(name, "ro.boottime."))
+#else
+    if (0
+#endif
+        || android::base::StartsWith(name, "persist.log.tag")
+        // || android::base::StartsWith(name, "ro.")
+        // || android::base::StartsWith(name, "vold.encrypt_")
+        // || android::base::StartsWith(name, "vendor.debug.mtk.aee")
+        // || android::base::StartsWith(name, "init.svc.")
+       )
+    {
+        return 1;
+    }
+
+    return 0;
+}
+
+static void PropSetLog(const std::string& name, const std::string& value, std::string* error)
+{
+    if (PropSetFilter(name))
+        return;
+
+    std::string new_value(value.c_str());
+    std::size_t found = new_value.find_first_of("\n");
+    while (found!=std::string::npos)
+    {
+        new_value[found]=' ';
+        found = new_value.find_first_of("\n", found + 1);
+    }
+
+    PropSetMask(name, new_value);
+
+    LOG(INFO) << "PropSet [" << name << "]=[" << new_value << "]";
+}
+#endif
+
 static void SendPropertyChanged(const std::string& name, const std::string& value) {
     auto property_msg = PropertyMessage{};
     auto* changed_message = property_msg.mutable_changed_message();
@@ -195,9 +252,19 @@ static uint32_t PropertySet(const std::string& name, const std::string& value, s
     }
     // If init hasn't started its main loop, then it won't be handling property changed messages
     // anyway, so there's no need to try to send them.
+#ifndef G1122717
     if (accept_messages) {
+#else
+    if (accept_messages && init_watched_properties.count(name) > 0) {
+#endif
         SendPropertyChanged(name, value);
     }
+
+#ifdef MTK_LOG
+    // MTK add log
+    PropSetLog(name, value, error);
+#endif
+
     return PROP_SUCCESS;
 }
 
@@ -1116,10 +1183,26 @@ static void HandleInitSocket() {
             accept_messages = true;
             break;
         }
+#ifdef G1122717
+        case InitMessage::kStartWatchingProperty: {
+            init_watched_properties.emplace(init_message.start_watching_property());
+            break;
+        }
+#endif
         default:
             LOG(ERROR) << "Unknown message type from init: " << init_message.msg_case();
     }
 }
+
+#ifdef MTK_LOG
+static int _LogReap() {
+    int log_ms = -1;
+
+    log_ms = PropSetLogReap(0);
+
+    return log_ms;
+}
+#endif
 
 static void PropertyServiceThread() {
     Epoll epoll;
@@ -1135,8 +1218,24 @@ static void PropertyServiceThread() {
         LOG(FATAL) << result.error();
     }
 
+#ifdef MTK_LOG
+    PropServThrSetTid(gettid());
+    LOG(INFO) << "PropertyServiceThread start pid:" << getpid() << ", tid:" << gettid();
+#endif
+
     while (true) {
+
+#ifdef MTK_LOG
+        auto epoll_timeout = std::optional<std::chrono::milliseconds>{};
+        int log_ms = _LogReap();//PropSetLogReap();
+
+        if (log_ms > -1)
+            epoll_timeout = std::chrono::milliseconds(log_ms);
+
+        auto pending_functions = epoll.Wait(epoll_timeout);
+#else
         auto pending_functions = epoll.Wait(std::nullopt);
+#endif
         if (!pending_functions) {
             LOG(ERROR) << pending_functions.error();
         } else {
@@ -1166,6 +1265,10 @@ void StartPropertyService(int* epoll_socket) {
     }
 
     listen(property_set_fd, 8);
+
+#ifdef MTK_LOG
+    SetPropServThrStart(1);
+#endif
 
     std::thread{PropertyServiceThread}.detach();
 }

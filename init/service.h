@@ -94,6 +94,9 @@ class Service {
     bool IsShutdownCritical() const { return (flags_ & SVC_SHUTDOWN_CRITICAL) != 0; }
     void UnSetExec() {
         is_exec_service_running_ = false;
+#ifdef MTK_LOG
+        pexec_service_ = NULL;
+#endif
         flags_ &= ~SVC_EXEC;
     }
     void AddReapCallback(std::function<void(const siginfo_t& siginfo)> callback) {
@@ -102,6 +105,10 @@ class Service {
     size_t CheckAllCommands() const { return onrestart_.CheckAllCommands(); }
 
     static bool is_exec_service_running() { return is_exec_service_running_; }
+#ifdef MTK_LOG
+    static Service* get_pexec_service_() { return pexec_service_; };
+    int DumpExecState() const;
+#endif
 
     const std::string& name() const { return name_; }
     const std::set<std::string>& classnames() const { return classnames_; }
@@ -139,6 +146,9 @@ class Service {
 
     static unsigned long next_start_order_;
     static bool is_exec_service_running_;
+#ifdef MTK_LOG
+    static Service* pexec_service_;
+#endif
 
     std::string name_;
     std::set<std::string> classnames_;

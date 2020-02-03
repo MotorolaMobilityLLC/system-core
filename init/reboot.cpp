@@ -69,6 +69,12 @@
 
 using namespace std::literals;
 
+#ifdef MTK_UMOUNT_RETRY
+#include <android-base/stringprintf.h>
+
+using android::base::StringPrintf;
+#endif
+
 using android::base::boot_clock;
 using android::base::GetBoolProperty;
 using android::base::SetProperty;
@@ -388,6 +394,111 @@ void RebootMonitorThread(unsigned int cmd, const std::string& reboot_target,
     }
 }
 
+#ifdef MTK_UMOUNT_RETRY
+static pid_t reapOneProcess() {
+    siginfo_t siginfo = {};
+    // This returns a zombie pid or informs us that there are no zombies left to be reaped.
+    // It does NOT reap the pid; that is done below.
+    if (TEMP_FAILURE_RETRY(waitid(P_ALL, 0, &siginfo, WEXITED | WNOHANG)) != 0) {
+        PLOG(ERROR) << "waitid failed";
+        return 0;
+    }
+
+    auto pid = siginfo.si_pid;
+
+    LOG(INFO) << "Reap pid: " << pid;
+
+    return pid;
+}
+
+static void reapAnyOutstandingChildren() {
+    while (reapOneProcess() != 0) {
+    }
+}
+
+static int log_processes_ppid(int filter, char status, int log) {
+    int cnt = 0;
+    std::unique_ptr<DIR, int(*)(DIR*)> dir(opendir("/proc"), closedir);
+    struct dirent* entry;
+    while ((entry = readdir(dir.get())) != NULL) {
+        // Only match numeric values.
+        int pid = atoi(entry->d_name);
+        if (pid == 0) continue;
+
+        // /proc/<pid>/stat only has truncated task names, so get the full
+        // name from /proc/<pid>/cmdline.
+        std::string cmdline;
+        android::base::ReadFileToString(StringPrintf("/proc/%d/cmdline", pid), &cmdline);
+        const char* full_name = cmdline.c_str(); // So we stop at the first NUL.
+
+        // Read process stat line.
+        std::string stat;
+        if (android::base::ReadFileToString(StringPrintf("/proc/%d/stat", pid), &stat)) {
+
+            size_t open = stat.find('(');
+            size_t close = stat.find_last_of(')');
+            if (open != std::string::npos && close != std::string::npos) {
+                size_t bbstate = stat.find(' ', close);
+                size_t bbppid = stat.find(' ', bbstate + 1);
+                size_t bappid = stat.find(' ', bbppid + 1);
+                std::string sppid;
+                std::string sstate;
+                int ppid = -1;
+
+                if (bbstate != std::string::npos && bbppid != std::string::npos) {
+                    sstate = stat.substr(bbstate + 1, bbppid - bbstate - 1);
+                }
+
+                if (bbppid != std::string::npos && bappid != std::string::npos) {
+                    sppid = stat.substr(bbppid + 1, bappid - bbppid - 1);
+                    ppid = atoi(sppid.c_str());
+                }
+
+                if (ppid != filter || sstate.length() != 1 || sstate.at(0) == status) continue;
+
+                if (!cmdline.empty()) {
+                    stat.replace(open + 1, close - open - 1, full_name);
+                }
+
+                cnt++;
+                if (log) LOG(INFO) << stat;
+            }
+        }
+    }
+
+    return cnt;
+}
+
+static void WaitAllProcessesDead(std::chrono::milliseconds timeout) {
+
+    Timer t;
+    LOG(INFO) << "WaitAllUserSpaceProcessesDead started!";
+
+    int cnt = log_processes_ppid(1, 'Z', 1);
+
+    while (true) {
+        if (cnt == 0)
+            goto out;
+
+        if ((timeout < t.duration())) {
+            break;
+        }
+
+        std::this_thread::sleep_for(100ms);
+
+        cnt = log_processes_ppid(1, 'Z', 0);
+    }
+
+    if (cnt)
+        cnt = log_processes_ppid(1, 'Z', 1);
+
+out:
+    reapAnyOutstandingChildren();
+
+    LOG(INFO) << "WaitAllUserSpaceProcessesDead exited!";
+}
+#endif
+
 /* Try umounting all emulated file systems R/W block device cfile systems.
  * This will just try umount and give it up if it fails.
  * For fs like ext4, this is ok as file system will be marked as unclean shutdown
@@ -411,7 +522,13 @@ static UmountStat TryUmountAndFsck(unsigned int cmd, bool run_fsck,
     if (stat != UMOUNT_STAT_SUCCESS) {
         LOG(INFO) << "umount timeout, last resort, kill all and try";
         if (DUMP_ON_UMOUNT_FAILURE) DumpUmountDebuggingInfo();
+#ifdef MTK_UMOUNT_RETRY
+        log_processes_ppid(1, 'Z', 1);
+#endif
         KillAllProcesses();
+#ifdef MTK_UMOUNT_RETRY
+        WaitAllProcessesDead(1000ms);
+#endif
         // even if it succeeds, still it is timeout and do not run fsck with all processes killed
         UmountStat st = UmountPartitions(0ms);
         if ((st != UMOUNT_STAT_SUCCESS) && DUMP_ON_UMOUNT_FAILURE) DumpUmountDebuggingInfo();

@@ -510,6 +510,47 @@ void HandleKeychord(const std::vector<int>& keycodes) {
     }
 }
 
+#ifdef MTK_LOG
+static int _LogReap() {
+    int wait_ = -1;
+    int log_ms = -1;
+
+    if (Service::is_exec_service_running()) {
+
+        Service *pService = Service::get_pexec_service_();
+
+        if (pService) {
+            wait_ = pService->DumpExecState();
+        }
+    } else if (waiting_for_prop) {
+        wait_ = (*waiting_for_prop).duration().count() / 1000;
+
+        if (wait_ >= 60) {
+            LOG(INFO) << "Have been waiting property '" << wait_prop_name << "=" << wait_prop_value
+                      << "' for " << *waiting_for_prop;
+        }
+    }
+
+    if (wait_ >= 60)
+        wait_ = 1000;
+    else if (wait_ >= 0)
+        wait_ = (60 - wait_) * 1000;
+
+    if (!isPropServThrStart()) {
+        log_ms = PropSetLogReap(0);
+
+        if (log_ms == -1)
+            return wait_;
+        else if (wait_ == -1)
+            return log_ms;
+        else if (log_ms <= wait_)
+            return log_ms;
+    }
+
+    return wait_;
+}
+#endif
+
 static void UmountDebugRamdisk() {
     if (umount("/debug_ramdisk") != 0) {
         PLOG(ERROR) << "Failed to umount /debug_ramdisk";
@@ -579,6 +620,16 @@ void SendStartSendingMessagesMessage() {
     }
 }
 
+#ifdef G1122717
+void SendStartWatchingPropertyMessage(const std::string& property) {
+    auto init_message = InitMessage{};
+    init_message.set_start_watching_property(property);
+    if (auto result = SendMessage(property_fd, init_message); !result) {
+        LOG(ERROR) << "Failed to send start watching property message: " << result.error();
+    }
+}
+#endif
+
 static void HandlePropertyFd() {
     auto message = ReadMessage(property_fd);
     if (!message) {
@@ -627,7 +678,11 @@ int SecondStageMain(int argc, char** argv) {
     trigger_shutdown = TriggerShutdown;
 
     SetStdioToDevNull(argv);
+#ifdef MTK_LOG
+    InitKernelLogging_split(argv);
+#else
     InitKernelLogging(argv);
+#endif
     LOG(INFO) << "init second stage started!";
 
     // Will handle EPIPE at the time of write by checking the errno
@@ -674,7 +729,11 @@ int SecondStageMain(int argc, char** argv) {
     MountExtraFilesystems();
 
     // Now set up SELinux for second stage.
+#ifdef MTK_LOG
+    SelinuxSetupKernelLogging_split();
+#else
     SelinuxSetupKernelLogging();
+#endif
     SelabelInitialize();
     SelinuxRestoreContext();
 
@@ -689,6 +748,14 @@ int SecondStageMain(int argc, char** argv) {
     if (auto result = epoll.RegisterHandler(property_fd, HandlePropertyFd); !result) {
         LOG(FATAL) << "Could not register epoll handler for property fd: " << result.error();
     }
+
+#ifdef G1122717
+    // Watch properties with specific meanings to init.
+    LOG(INFO) << "Apply watching properties with specific meanings to init.";
+    SendStartWatchingPropertyMessage("sys.powerctl");
+    SendStartWatchingPropertyMessage("ro.persistent_properties.ready");
+    SendStartWatchingPropertyMessage(kColdBootDoneProp);
+#endif
 
     // Make the time that init stages started available for bootstat to log.
     RecordStageBoottimes(start_time);
@@ -795,6 +862,12 @@ int SecondStageMain(int argc, char** argv) {
             // If there's more work to do, wake up again immediately.
             if (am.HasMoreCommands()) epoll_timeout = 0ms;
         }
+
+#ifdef MTK_LOG
+        int log_ms = _LogReap();//PropSetLogReap();
+        if (log_ms > -1 && (!epoll_timeout || epoll_timeout->count() > log_ms))
+            epoll_timeout = std::chrono::milliseconds(log_ms);
+#endif
 
         auto pending_functions = epoll.Wait(epoll_timeout);
         if (!pending_functions) {

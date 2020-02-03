@@ -35,6 +35,11 @@
 namespace android {
 namespace init {
 
+#ifdef G1122717
+// init.h
+inline void SendStartWatchingPropertyMessage(const std::string& property) {}
+#endif
+
 // property_service.h
 inline bool CanReadProperty(const std::string&, const std::string&) {
     return true;

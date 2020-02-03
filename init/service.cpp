@@ -129,6 +129,9 @@ static bool AreRuntimeApexesReady() {
 
 unsigned long Service::next_start_order_ = 1;
 bool Service::is_exec_service_running_ = false;
+#ifdef MTK_LOG
+Service* Service::pexec_service_ = NULL;
+#endif
 
 Service::Service(const std::string& name, Subcontext* subcontext_for_restart_commands,
                  const std::vector<std::string>& args, bool from_apex)
@@ -345,6 +348,29 @@ void Service::Reap(const siginfo_t& siginfo) {
     return;
 }
 
+#ifdef MTK_LOG
+int Service::DumpExecState() const {
+    int wait_s = -1;
+
+    if (this->flags() & SVC_EXEC) {
+        auto exec_duration = boot_clock::now() - this->time_started();
+        auto exec_duration_ms =
+            std::chrono::duration_cast<std::chrono::milliseconds>(exec_duration).count();
+
+        wait_s = exec_duration_ms / 1000;
+
+        if (wait_s >= 60)
+            LOG(INFO) << "Have been waiting SVC_EXEC service '" << name_ << "' for "
+                      << exec_duration_ms << "ms."
+                      << " pid " << pid_ << " (uid " << uid() << " gid "
+                      << gid() << "+" << supp_gids().size() << " context "
+                      << (!seclabel_.empty() ? seclabel_ : "default") << ")";
+    }
+
+    return wait_s;
+}
+#endif
+
 void Service::DumpState() const {
     LOG(INFO) << "service " << name_;
     LOG(INFO) << "  class '" << Join(classnames_, " ") << "'";
@@ -380,6 +406,9 @@ Result<void> Service::ExecStart() {
 
     flags_ |= SVC_EXEC;
     is_exec_service_running_ = true;
+#ifdef MTK_LOG
+    pexec_service_ = this;
+#endif
 
     LOG(INFO) << "SVC_EXEC service '" << name_ << "' pid " << pid_ << " (uid " << proc_attr_.uid
               << " gid " << proc_attr_.gid << "+" << proc_attr_.supp_gids.size() << " context "
@@ -492,6 +521,9 @@ Result<void> Service::Start() {
     }
 
     if (pid == 0) {
+#ifdef MTK_LOG
+        PropSetLogReset();
+#endif
         umask(077);
 
         if (auto result = EnterNamespaces(namespaces_, name_, pre_apexd_); !result) {

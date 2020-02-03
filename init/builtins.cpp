@@ -741,6 +741,13 @@ static Result<void> do_start(const BuiltinArguments& args) {
     Service* svc = ServiceList::GetInstance().FindService(args[1]);
     if (!svc) return Error() << "service " << args[1] << " not found";
     if (auto result = svc->Start(); !result) {
+
+#ifdef MTK_LOG
+        if (android::base::GetMinimumLogSeverity() > android::base::DEBUG &&
+            android::base::StartsWith(result.error().message(), "Cannot find '"))
+            LOG(INFO) << "Could not start service '" << args[1] << "': " << result.error();
+#endif
+
         return ErrorIgnoreEnoent() << "Could not start service: " << result.error();
     }
     return {};

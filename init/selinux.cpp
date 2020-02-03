@@ -564,6 +564,41 @@ void SelinuxSetupKernelLogging() {
     selinux_set_callback(SELINUX_CB_LOG, cb);
 }
 
+#ifdef MTK_LOG
+static int SelinuxKlogCallback_split(int type, const char* fmt, ...) {
+    android::base::LogSeverity severity = android::base::ERROR;
+    if (type == SELINUX_WARNING) {
+        severity = android::base::WARNING;
+    } else if (type == SELINUX_INFO) {
+        severity = android::base::INFO;
+    }
+    char buf[kKlogMessageSize];
+    va_list ap;
+    va_start(ap, fmt);
+    int length_written = vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    if (length_written <= 0) {
+        return 0;
+    }
+    if (type == SELINUX_AVC) {
+        SelinuxAvcLog(buf, sizeof(buf));
+    } else {
+        KernelLogger_split(android::base::MAIN, severity, "selinux", nullptr, 0, buf);
+    }
+    return 0;
+}
+
+// This function sets up SELinux logging to be written to kmsg, to match init's logging.
+void SelinuxSetupKernelLogging_split() {
+    if (SelinuxSetupKernelLogging_split_check() >= 0)
+        return SelinuxSetupKernelLogging();
+
+    selinux_callback cb;
+    cb.func_log = SelinuxKlogCallback_split;
+    selinux_set_callback(SELINUX_CB_LOG, cb);
+}
+#endif
+
 int SelinuxGetVendorAndroidVersion() {
     static int vendor_android_version = [] {
         if (!IsSplitPolicyDevice()) {
@@ -591,7 +626,11 @@ int SelinuxGetVendorAndroidVersion() {
 
 int SetupSelinux(char** argv) {
     SetStdioToDevNull(argv);
+#ifdef MTK_LOG
+    InitKernelLogging_split(argv);
+#else
     InitKernelLogging(argv);
+#endif
 
     if (REBOOT_BOOTLOADER_ON_PANIC) {
         InstallRebootSignalHandlers();
@@ -600,7 +639,11 @@ int SetupSelinux(char** argv) {
     boot_clock::time_point start_time = boot_clock::now();
 
     // Set up SELinux, loading the SELinux policy.
+#ifdef MTK_LOG
+    SelinuxSetupKernelLogging_split();
+#else
     SelinuxSetupKernelLogging();
+#endif
     SelinuxInitialize();
 
     // We're in the kernel domain and want to transition to the init domain.  File systems that

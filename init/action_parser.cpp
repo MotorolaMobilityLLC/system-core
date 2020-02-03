@@ -22,6 +22,9 @@
 #include <android-base/strings.h>
 
 #if defined(__ANDROID__)
+#ifdef G1122717
+#include "init.h"
+#endif
 #include "property_service.h"
 #include "selinux.h"
 #else
@@ -150,6 +153,12 @@ Result<void> ActionParser::ParseSection(std::vector<std::string>&& args,
         return Error() << "ParseTriggers() failed: " << result.error();
     }
 
+#ifdef G1122717
+    for (const auto& [property, _] : property_triggers) {
+        SendStartWatchingPropertyMessage(property);
+    }
+#endif
+
     auto action = std::make_unique<Action>(false, action_subcontext, filename, line, event_trigger,
                                            property_triggers);
 
@@ -158,6 +167,11 @@ Result<void> ActionParser::ParseSection(std::vector<std::string>&& args,
 }
 
 Result<void> ActionParser::ParseLineSection(std::vector<std::string>&& args, int line) {
+#ifdef G1122717
+    if (args.size() >= 2 && args[0] == "wait_for_prop") {
+        SendStartWatchingPropertyMessage(args[1]);
+    }
+#endif
     return action_ ? action_->AddCommand(std::move(args), line) : Result<void>{};
 }
 

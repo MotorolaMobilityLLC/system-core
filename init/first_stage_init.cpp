@@ -212,7 +212,11 @@ int FirstStageMain(int argc, char** argv) {
     SetStdioToDevNull(argv);
     // Now that tmpfs is mounted on /dev and we have /dev/kmsg, we can actually
     // talk to the outside world...
+#ifdef MTK_LOG
+    InitKernelLogging_split(argv);
+#else
     InitKernelLogging(argv);
+#endif
 
     if (!errors.empty()) {
         for (const auto& [error_string, error_errno] : errors) {
@@ -234,6 +238,9 @@ int FirstStageMain(int argc, char** argv) {
         old_root_dir.reset();
     }
 
+#ifdef MTK_LOG
+    LOG(INFO) << "Modprobe /lib/modules starting!";
+#endif
     Modprobe m({"/lib/modules"});
     auto want_console = ALLOW_FIRST_STAGE_CONSOLE && FirstStageConsole(cmdline);
     if (!m.LoadListedModules(!want_console)) {
@@ -243,6 +250,9 @@ int FirstStageMain(int argc, char** argv) {
             LOG(FATAL) << "Failed to load kernel modules";
         }
     }
+#ifdef MTK_LOG
+    LOG(INFO) << "Modprobe /lib/modules exited!";
+#endif
 
     if (want_console) {
         StartConsole();
@@ -268,6 +278,9 @@ int FirstStageMain(int argc, char** argv) {
         } else {
             // setenv for second-stage init to read above kDebugRamdisk* files.
             setenv("INIT_FORCE_DEBUGGABLE", "true", 1);
+#ifdef MTK_LOG
+            LOG(INFO) << "setenv (INIT_FORCE_DEBUGGABLE,true) for second-stage init to read above kDebugRamdisk* files";
+#endif
         }
     }
 

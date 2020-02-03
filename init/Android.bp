@@ -33,6 +33,10 @@ cc_defaults {
         "-DWORLD_WRITABLE_KMSG=0",
         "-DDUMP_ON_UMOUNT_FAILURE=0",
         "-DSHUTDOWN_ZERO_TIMEOUT=0",
+        "-DMTK_LOG=1",
+        "-DMTK_TRACE=1",
+        "-DMTK_UMOUNT_RETRY=1",
+        "-DG1122717=1",
     ],
     product_variables: {
         debuggable: {

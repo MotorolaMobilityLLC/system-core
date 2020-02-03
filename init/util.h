@@ -25,6 +25,10 @@
 
 #include <android-base/chrono_utils.h>
 
+#ifdef MTK_LOG
+#include <android-base/logging.h>
+#endif
+
 #include "fscrypt_init_extensions.h"
 #include "result.h"
 
@@ -79,5 +83,26 @@ Result<std::pair<int, std::vector<std::string>>> ParseRestorecon(
 void SetStdioToDevNull(char** argv);
 void InitKernelLogging(char** argv);
 bool IsRecoveryMode();
+
+#ifdef MTK_LOG
+int PropSetLogReap(int);
+void PropSetLogReset();
+
+void InitKernelLogging_split(char** argv);
+void KernelLogger_split(android::base::LogId, android::base::LogSeverity severity,
+                  const char* tag, const char*, unsigned int, const char* msg);
+int SelinuxSetupKernelLogging_split_check();
+
+void SetPropServThrStart(int);
+int isPropServThrStart(void);
+
+void PropServThrSetTid(pid_t);
+pid_t PropServThrGetTid(void);
+#endif
+
+#ifdef MTK_TRACE
+void StartWriteTrace(const char* tracemsg, int pid);
+void EndWriteTrace(int pid);
+#endif
 }  // namespace init
 }  // namespace android

@@ -27,6 +27,10 @@ int SetupSelinux(char** argv);
 // This must happen before /dev is populated by ueventd.
 void SelinuxRestoreContext();
 
+#ifdef MTK_LOG
+void SelinuxSetupKernelLogging_split();
+#endif
+
 // Set up SELinux logging to be written to kmsg, to match init's logging.
 void SelinuxSetupKernelLogging();
 

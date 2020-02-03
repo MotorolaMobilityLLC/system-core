@@ -40,6 +40,9 @@ void ResetWaitForProp();
 void SendLoadPersistentPropertiesMessage();
 void SendStopSendingMessagesMessage();
 void SendStartSendingMessagesMessage();
+#ifdef G1122717
+void SendStartWatchingPropertyMessage(const std::string& property);
+#endif
 
 int SecondStageMain(int argc, char** argv);
 
