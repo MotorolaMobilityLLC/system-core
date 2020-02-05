@@ -36,7 +36,6 @@
 #include <log/log_id.h>
 #include <log/logprint.h>
 
-#include "log_portability.h"
 #include "logger.h"
 
 #define kMaxTagLen 16 /* from the long-dead utils/Log.cpp */
@@ -48,14 +47,6 @@
 #else
 #define TRACE(...) ((void)0)
 #endif
-
-static void FakeClose();
-static int FakeWrite(log_id_t log_id, struct timespec* ts, struct iovec* vec, size_t nr);
-
-struct android_log_transport_write fakeLoggerWrite = {
-    .close = FakeClose,
-    .write = FakeWrite,
-};
 
 typedef struct LogState {
   bool initialized = false;
@@ -453,7 +444,7 @@ static void ShowLog(int logPrio, const char* tag, const char* msg) {
  *  tag (N bytes -- null-terminated ASCII string)
  *  message (N bytes -- null-terminated ASCII string)
  */
-static int FakeWrite(log_id_t log_id, struct timespec*, struct iovec* vector, size_t count) {
+int FakeWrite(log_id_t log_id, struct timespec*, struct iovec* vector, size_t count) {
   /* Make sure that no-one frees the LogState while we're using it.
    * Also guarantees that only one thread is in showLog() at a given
    * time (if it matters).
@@ -519,20 +510,22 @@ static int FakeWrite(log_id_t log_id, struct timespec*, struct iovec* vector, si
  * call is in the exit handler. Logging can continue in the exit handler to
  * help debug HOST tools ...
  */
-static void FakeClose() {
+void FakeClose() {
   auto lock = std::lock_guard{*fake_log_mutex};
 
   memset(&log_state, 0, sizeof(log_state));
 }
 
-int __android_log_is_loggable(int prio, const char*, int def) {
-  int logLevel = def;
-  return logLevel >= 0 && prio >= logLevel;
+int __android_log_is_loggable(int prio, const char*, int) {
+  int minimum_priority = __android_log_get_minimum_priority();
+  if (minimum_priority == ANDROID_LOG_DEFAULT) {
+    minimum_priority = ANDROID_LOG_INFO;
+  }
+  return prio >= minimum_priority;
 }
 
 int __android_log_is_loggable_len(int prio, const char*, size_t, int def) {
-  int logLevel = def;
-  return logLevel >= 0 && prio >= logLevel;
+  return __android_log_is_loggable(prio, nullptr, def);
 }
 
 int __android_log_is_debuggable() {

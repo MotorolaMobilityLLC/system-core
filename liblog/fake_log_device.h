@@ -16,18 +16,15 @@
 
 #pragma once
 
+#include <sys/cdefs.h>
 #include <sys/types.h>
 
-#include "log_portability.h"
-#include "uio.h"
-
-struct iovec;
+#include <android/log.h>
 
 __BEGIN_DECLS
 
-int fakeLogOpen(const char* pathName);
-int fakeLogClose(int fd);
-ssize_t fakeLogWritev(int fd, const struct iovec* vector, int count);
+void FakeClose();
+int FakeWrite(log_id_t log_id, struct timespec* ts, struct iovec* vec, size_t nr);
 
 int __android_log_is_loggable(int prio, const char*, int def);
 int __android_log_is_loggable_len(int prio, const char*, size_t, int def);

@@ -42,6 +42,10 @@ on early-init
     mkdir /linkerconfig/bootstrap 0755
     mkdir /linkerconfig/default 0755
 
+    # Disable dm-verity hash prefetching, since it doesn't help performance
+    # Read more in b/136247322
+    write /sys/module/dm_verity/parameters/prefetch_cluster 0
+
     # Generate ld.config.txt for early executed processes
     exec -- /system/bin/linkerconfig --target /linkerconfig/bootstrap
     chmod 644 /linkerconfig/bootstrap/ld.config.txt
@@ -560,6 +564,7 @@ on post-fs-data
     chown bluetooth bluetooth /data/misc/bluedroid/bt_config.conf
     mkdir /data/misc/bluetooth 0770 bluetooth bluetooth
     mkdir /data/misc/bluetooth/logs 0770 bluetooth bluetooth
+    mkdir /data/misc/credstore 0700 credstore credstore
     mkdir /data/misc/keystore 0700 keystore keystore
     mkdir /data/misc/gatekeeper 0700 system system
     mkdir /data/misc/keychain 0771 system system
@@ -597,11 +602,11 @@ on post-fs-data
     # profile file layout
     mkdir /data/misc/profiles 0771 system system
     mkdir /data/misc/profiles/cur 0771 system system
-    mkdir /data/misc/profiles/ref 0771 system system
+    mkdir /data/misc/profiles/ref 0770 system system
     mkdir /data/misc/profman 0770 system shell
     mkdir /data/misc/gcov 0770 root root
     mkdir /data/misc/installd 0700 root root
-    mkdir /data/misc/apexdata 0700 root root
+    mkdir /data/misc/apexdata 0711 root root
     mkdir /data/misc/apexrollback 0700 root root
 
     mkdir /data/preloads 0775 system system encryption=None
@@ -704,6 +709,10 @@ on post-fs-data
     mount none /data/user /data_mirror/data_ce/null bind rec
     mount none /data/user_de /data_mirror/data_de/null bind rec
 
+    # Create mirror directory for jit profiles
+    mkdir /data_mirror/cur_profiles 0700 root root
+    mount none /data/misc/profiles/cur /data_mirror/cur_profiles bind rec
+
     mkdir /data/cache 0770 system cache encryption=Require
     mkdir /data/cache/recovery 0770 system cache
     mkdir /data/cache/backup_stage 0700 system system
@@ -714,7 +723,7 @@ on post-fs-data
     mkdir /data/rollback-observer 0700 system system encryption=DeleteIfNecessary
 
     # Create root dir for Incremental Service
-    mkdir /data/incremental 0770 system system encryption=None
+    mkdir /data/incremental 0771 system system encryption=Require
 
     # Wait for apexd to finish activating APEXes before starting more processes.
     wait_for_prop apexd.status ready
@@ -954,14 +963,33 @@ on property:sys.sysctl.extra_free_kbytes=*
 on property:sys.sysctl.tcp_def_init_rwnd=*
     write /proc/sys/net/ipv4/tcp_default_init_rwnd ${sys.sysctl.tcp_def_init_rwnd}
 
-on property:security.perf_harden=0
+# perf_event_open syscall security:
+# Newer kernels have the ability to control the use of the syscall via SELinux
+# hooks. init tests for this, and sets sys_init.perf_lsm_hooks to 1 if the
+# kernel has the hooks. In this case, the system-wide perf_event_paranoid
+# sysctl is set to -1 (unrestricted use), and the SELinux policy is used for
+# controlling access. On older kernels, the paranoid value is the only means of
+# controlling access. It is normally 3 (allow only root), but the shell user
+# can lower it to 1 (allowing thread-scoped pofiling) via security.perf_harden.
+on property:sys.init.perf_lsm_hooks=1
+    write /proc/sys/kernel/perf_event_paranoid -1
+on property:security.perf_harden=0 && property:sys.init.perf_lsm_hooks=""
     write /proc/sys/kernel/perf_event_paranoid 1
+on property:security.perf_harden=1 && property:sys.init.perf_lsm_hooks=""
+    write /proc/sys/kernel/perf_event_paranoid 3
+
+# Additionally, simpleperf profiler uses debug.* and security.perf_harden
+# sysprops to be able to indirectly set these sysctls.
+on property:security.perf_harden=0
     write /proc/sys/kernel/perf_event_max_sample_rate ${debug.perf_event_max_sample_rate:-100000}
     write /proc/sys/kernel/perf_cpu_time_max_percent ${debug.perf_cpu_time_max_percent:-25}
     write /proc/sys/kernel/perf_event_mlock_kb ${debug.perf_event_mlock_kb:-516}
-
+# Default values.
 on property:security.perf_harden=1
-    write /proc/sys/kernel/perf_event_paranoid 3
+    write /proc/sys/kernel/perf_event_max_sample_rate 100000
+    write /proc/sys/kernel/perf_cpu_time_max_percent 25
+    write /proc/sys/kernel/perf_event_mlock_kb 516
+
 
 # on shutdown
 # In device's init.rc, this trigger can be used to do device-specific actions

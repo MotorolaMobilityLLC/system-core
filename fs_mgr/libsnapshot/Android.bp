@@ -75,6 +75,7 @@ filegroup {
         "snapshot.cpp",
         "snapshot_metadata_updater.cpp",
         "partition_cow_creator.cpp",
+        "return.cpp",
         "utility.cpp",
     ],
 }
@@ -127,6 +128,7 @@ cc_library_static {
         "include_test",
     ],
     srcs: [
+        "android/snapshot/snapshot.proto",
         "test_helpers.cpp",
     ],
     shared_libs: [
