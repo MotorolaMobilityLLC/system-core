@@ -211,26 +211,27 @@ static AbortFunction& Aborter() {
   return aborter;
 }
 
+// Only used for Q fallback.
 static std::recursive_mutex& TagLock() {
   static auto& tag_lock = *new std::recursive_mutex();
   return tag_lock;
 }
+// Only used for Q fallback.
 static std::string* gDefaultTag;
-std::string GetDefaultTag() {
-  std::lock_guard<std::recursive_mutex> lock(TagLock());
-  if (gDefaultTag == nullptr) {
-    return "";
-  }
-  return *gDefaultTag;
-}
+
 void SetDefaultTag(const std::string& tag) {
-  std::lock_guard<std::recursive_mutex> lock(TagLock());
-  if (gDefaultTag != nullptr) {
-    delete gDefaultTag;
-    gDefaultTag = nullptr;
-  }
-  if (!tag.empty()) {
-    gDefaultTag = new std::string(tag);
+  static auto& liblog_functions = GetLibLogFunctions();
+  if (liblog_functions) {
+    liblog_functions->__android_log_set_default_tag(tag.c_str());
+  } else {
+    std::lock_guard<std::recursive_mutex> lock(TagLock());
+    if (gDefaultTag != nullptr) {
+      delete gDefaultTag;
+      gDefaultTag = nullptr;
+    }
+    if (!tag.empty()) {
+      gDefaultTag = new std::string(tag);
+    }
   }
 }
 
@@ -339,18 +340,18 @@ void LogdLogger::operator()(LogId id, LogSeverity severity, const char* tag,
 
   int lg_id = LogIdTolog_id_t(id);
 
-  char log_message[1024];
+  char log_message_with_file[4068];  // LOGGER_ENTRY_MAX_PAYLOAD, not available in the NDK.
   if (priority == ANDROID_LOG_FATAL && file != nullptr) {
-    snprintf(log_message, sizeof(log_message), "%s:%u] %s", file, line, message);
-  } else {
-    snprintf(log_message, sizeof(log_message), "%s", message);
+    snprintf(log_message_with_file, sizeof(log_message_with_file), "%s:%u] %s", file, line,
+             message);
+    message = log_message_with_file;
   }
 
   static auto& liblog_functions = GetLibLogFunctions();
   if (liblog_functions) {
     __android_logger_data logger_data = {sizeof(__android_logger_data),     lg_id, priority, tag,
                                          static_cast<const char*>(nullptr), 0};
-    liblog_functions->__android_log_logd_logger(&logger_data, log_message);
+    liblog_functions->__android_log_logd_logger(&logger_data, message);
   } else {
     __android_log_buf_print(lg_id, priority, tag, "%s", message);
   }
@@ -574,24 +575,18 @@ void LogMessage::LogLine(const char* file, unsigned int line, LogSeverity severi
                          const char* message) {
   static auto& liblog_functions = GetLibLogFunctions();
   auto priority = LogSeverityToPriority(severity);
-  if (tag == nullptr) {
-    std::lock_guard<std::recursive_mutex> lock(TagLock());
-    if (gDefaultTag == nullptr) {
-      gDefaultTag = new std::string(getprogname());
-    }
-
-    if (liblog_functions) {
-      __android_logger_data logger_data = {sizeof(__android_logger_data), LOG_ID_DEFAULT, priority,
-                                           gDefaultTag->c_str(),          file,           line};
-      __android_log_write_logger_data(&logger_data, message);
-    } else {
-      Logger()(DEFAULT, severity, gDefaultTag->c_str(), file, line, message);
-    }
+  if (liblog_functions) {
+    __android_logger_data logger_data = {
+        sizeof(__android_logger_data), LOG_ID_DEFAULT, priority, tag, file, line};
+    __android_log_write_logger_data(&logger_data, message);
   } else {
-    if (liblog_functions) {
-      __android_logger_data logger_data = {
-          sizeof(__android_logger_data), LOG_ID_DEFAULT, priority, tag, file, line};
-      __android_log_write_logger_data(&logger_data, message);
+    if (tag == nullptr) {
+      std::lock_guard<std::recursive_mutex> lock(TagLock());
+      if (gDefaultTag == nullptr) {
+        gDefaultTag = new std::string(getprogname());
+      }
+
+      Logger()(DEFAULT, severity, gDefaultTag->c_str(), file, line, message);
     } else {
       Logger()(DEFAULT, severity, tag, file, line, message);
     }
@@ -613,7 +608,6 @@ bool ShouldLog(LogSeverity severity, const char* tag) {
   // we need to fall back to using gMinimumLogSeverity, since __android_log_is_loggable() will not
   // take into consideration the value from SetMinimumLogSeverity().
   if (liblog_functions) {
-    // TODO: It is safe to pass nullptr for tag, but it will be better to use the default log tag.
     int priority = LogSeverityToPriority(severity);
     return __android_log_is_loggable(priority, tag, ANDROID_LOG_INFO);
   } else {

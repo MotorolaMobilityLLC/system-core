@@ -828,7 +828,8 @@ UpdateState SnapshotManager::CheckMergeState(LockedFile* lock) {
                 cancelled = true;
                 break;
             default:
-                LOG(ERROR) << "Unknown merge status: " << static_cast<uint32_t>(snapshot_state);
+                LOG(ERROR) << "Unknown merge status for \"" << snapshot << "\": "
+                           << "\"" << snapshot_state << "\"";
                 failed = true;
                 break;
         }
@@ -1218,7 +1219,8 @@ bool SnapshotManager::RemoveAllSnapshots(LockedFile* lock) {
         if (!UnmapPartitionWithSnapshot(lock, name) || !DeleteSnapshot(lock, name)) {
             // Remember whether or not we were able to unmap the cow image.
             auto cow_image_device = GetCowImageDeviceName(name);
-            has_mapped_cow_images |= images_->IsImageMapped(cow_image_device);
+            has_mapped_cow_images |=
+                    (EnsureImageManager() && images_->IsImageMapped(cow_image_device));
 
             ok = false;
         }
@@ -1344,7 +1346,8 @@ bool SnapshotManager::NeedSnapshotsInFirstStageMount() {
     }
 }
 
-bool SnapshotManager::CreateLogicalAndSnapshotPartitions(const std::string& super_device) {
+bool SnapshotManager::CreateLogicalAndSnapshotPartitions(
+        const std::string& super_device, const std::chrono::milliseconds& timeout_ms) {
     LOG(INFO) << "Creating logical partitions with snapshots as needed";
 
     auto lock = LockExclusive();
@@ -1370,6 +1373,7 @@ bool SnapshotManager::CreateLogicalAndSnapshotPartitions(const std::string& supe
                 .metadata = metadata.get(),
                 .partition = &partition,
                 .partition_opener = &opener,
+                .timeout_ms = timeout_ms,
         };
         std::string ignore_path;
         if (!MapPartitionWithSnapshot(lock.get(), std::move(params), &ignore_path)) {
@@ -1705,8 +1709,10 @@ static UpdateState UpdateStateFromString(const std::string& contents) {
         return UpdateState::MergeNeedsReboot;
     } else if (contents == "merge-failed") {
         return UpdateState::MergeFailed;
+    } else if (contents == "cancelled") {
+        return UpdateState::Cancelled;
     } else {
-        LOG(ERROR) << "Unknown merge state in update state file";
+        LOG(ERROR) << "Unknown merge state in update state file: \"" << contents << "\"";
         return UpdateState::None;
     }
 }
@@ -1727,8 +1733,10 @@ std::ostream& operator<<(std::ostream& os, UpdateState state) {
             return os << "merge-needs-reboot";
         case UpdateState::MergeFailed:
             return os << "merge-failed";
+        case UpdateState::Cancelled:
+            return os << "cancelled";
         default:
-            LOG(ERROR) << "Unknown update state";
+            LOG(ERROR) << "Unknown update state: " << static_cast<uint32_t>(state);
             return os;
     }
 }
@@ -1953,8 +1961,17 @@ Return SnapshotManager::CreateUpdateSnapshots(const DeltaArchiveManifest& manife
     auto current_super = device_->GetSuperDevice(current_slot);
 
     auto current_metadata = MetadataBuilder::New(opener, current_super, current_slot);
+    if (current_metadata == nullptr) {
+        LOG(ERROR) << "Cannot create metadata builder.";
+        return Return::Error();
+    }
+
     auto target_metadata =
             MetadataBuilder::NewForUpdate(opener, current_super, current_slot, target_slot);
+    if (target_metadata == nullptr) {
+        LOG(ERROR) << "Cannot create target metadata builder.";
+        return Return::Error();
+    }
 
     // Delete partitions with target suffix in |current_metadata|. Otherwise,
     // partition_cow_creator recognizes these left-over partitions as used space.
