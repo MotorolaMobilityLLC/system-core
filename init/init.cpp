@@ -797,8 +797,8 @@ int SecondStageMain(int argc, char** argv) {
     }
 
     am.QueueBuiltinAction(SetupCgroupsAction, "SetupCgroups");
-
     am.QueueBuiltinAction(SetKptrRestrictAction, "SetKptrRestrict");
+    am.QueueBuiltinAction(TestPerfEventSelinuxAction, "TestPerfEventSelinux");
     am.QueueEventTrigger("early-init");
 
     // Queue an action that waits for coldboot done so we know ueventd has set up all of /dev...
@@ -847,18 +847,18 @@ int SecondStageMain(int argc, char** argv) {
         if (!(waiting_for_prop || Service::is_exec_service_running())) {
             am.ExecuteOneCommand();
         }
-        if (!(waiting_for_prop || Service::is_exec_service_running())) {
-            if (!IsShuttingDown()) {
-                auto next_process_action_time = HandleProcessActions();
+        if (!IsShuttingDown()) {
+            auto next_process_action_time = HandleProcessActions();
 
-                // If there's a process that needs restarting, wake up in time for that.
-                if (next_process_action_time) {
-                    epoll_timeout = std::chrono::ceil<std::chrono::milliseconds>(
-                            *next_process_action_time - boot_clock::now());
-                    if (*epoll_timeout < 0ms) epoll_timeout = 0ms;
-                }
+            // If there's a process that needs restarting, wake up in time for that.
+            if (next_process_action_time) {
+                epoll_timeout = std::chrono::ceil<std::chrono::milliseconds>(
+                        *next_process_action_time - boot_clock::now());
+                if (*epoll_timeout < 0ms) epoll_timeout = 0ms;
             }
+        }
 
+        if (!(waiting_for_prop || Service::is_exec_service_running())) {
             // If there's more work to do, wake up again immediately.
             if (am.HasMoreCommands()) epoll_timeout = 0ms;
         }

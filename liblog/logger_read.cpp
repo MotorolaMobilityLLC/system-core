@@ -27,10 +27,7 @@
 #include <unistd.h>
 
 #include <android/log.h>
-#include <cutils/list.h>
-#include <private/android_filesystem_config.h>
 
-#include "log_portability.h"
 #include "logd_reader.h"
 #include "logger.h"
 #include "pmsg_reader.h"
@@ -100,7 +97,7 @@ int android_logger_list_read(struct logger_list* logger_list, struct log_msg* lo
 
   int ret = 0;
 
-#if (FAKE_LOG_DEVICE == 0)
+#ifdef __ANDROID__
   if (logger_list->mode & ANDROID_LOG_PSTORE) {
     ret = PmsgRead(logger_list, log_msg);
   } else {
@@ -138,7 +135,7 @@ void android_logger_list_free(struct logger_list* logger_list) {
     return;
   }
 
-#if (FAKE_LOG_DEVICE == 0)
+#ifdef __ANDROID__
   if (logger_list->mode & ANDROID_LOG_PSTORE) {
     PmsgClose(logger_list);
   } else {

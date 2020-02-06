@@ -114,6 +114,66 @@ cc_defaults {
     },
 }
 
+// libadbconnection
+// =========================================================
+// libadbconnection_client/server implement the socket handling for jdwp
+// forwarding and the track-jdwp service.
+cc_library {
+    name: "libadbconnection_server",
+    srcs: ["adbconnection/adbconnection_server.cpp"],
+
+    export_include_dirs: ["adbconnection/include"],
+
+    stl: "libc++_static",
+    shared_libs: ["liblog"],
+    static_libs: ["libbase"],
+
+    defaults: ["adbd_defaults", "host_adbd_supported"],
+
+    // Avoid getting duplicate symbol of android::build::getbuildnumber().
+    use_version_lib: false,
+
+    recovery_available: true,
+    compile_multilib: "both",
+}
+
+cc_library {
+    name: "libadbconnection_client",
+    srcs: ["adbconnection/adbconnection_client.cpp"],
+
+    export_include_dirs: ["adbconnection/include"],
+
+    stl: "libc++_static",
+    shared_libs: ["liblog"],
+    static_libs: ["libbase"],
+
+    defaults: ["adbd_defaults"],
+    visibility: [
+        "//art:__subpackages__",
+        "//system/core/adb/apex:__subpackages__",
+    ],
+    apex_available: [
+        "com.android.adbd",
+        "test_com.android.adbd",
+    ],
+
+    // libadbconnection_client doesn't need an embedded build number.
+    use_version_lib: false,
+
+    target: {
+        linux: {
+            version_script: "adbconnection/libadbconnection_client.map.txt",
+        },
+    },
+    stubs: {
+        symbol_file: "adbconnection/libadbconnection_client.map.txt",
+        versions: ["1"],
+    },
+
+    host_supported: true,
+    compile_multilib: "both",
+}
+
 // libadb
 // =========================================================
 // These files are compiled for both the host and the device.
@@ -217,6 +277,7 @@ cc_test_host {
         "libcutils",
         "libcrypto_utils",
         "libcrypto",
+        "liblog",
         "libmdnssd",
         "libdiagnose_usb",
         "libusb",
@@ -263,6 +324,7 @@ cc_benchmark {
 cc_binary_host {
     name: "adb",
 
+    stl: "libc++_static",
     defaults: ["adb_defaults"],
 
     srcs: [
@@ -302,8 +364,6 @@ cc_binary_host {
         "libziparchive",
         "libz",
     ],
-
-    stl: "libc++_static",
 
     // Don't add anything here, we don't want additional shared dependencies
     // on the host adb tool, and shared libraries that link against libc++
@@ -357,11 +417,11 @@ cc_library_static {
     generated_headers: ["platform_tools_version"],
 
     static_libs: [
+        "libadbconnection_server",
         "libdiagnose_usb",
     ],
 
     shared_libs: [
-        "libadbconnection_server",
         "libadbd_auth",
         "libasyncio",
         "libbase",
@@ -410,12 +470,12 @@ cc_library {
     ],
 
     static_libs: [
+        "libadbconnection_server",
         "libadbd_core",
         "libdiagnose_usb",
     ],
 
     shared_libs: [
-        "libadbconnection_server",
         "libadbd_auth",
         "libasyncio",
         "libbase",
@@ -451,7 +511,7 @@ cc_library {
     defaults: ["adbd_defaults", "host_adbd_supported"],
     recovery_available: true,
 
-    // Avoid getting duplicate symbol of android::build::GetBuildNumber().
+    // avoid getting duplicate symbol of android::build::getbuildnumber().
     use_version_lib: false,
 
     // libminadbd wants both, as it's used to build native tests.
@@ -459,11 +519,11 @@ cc_library {
 
     // libadbd doesn't build any additional source, but to expose libadbd_core as a shared library.
     whole_static_libs: [
+        "libadbconnection_server",
         "libadbd_core",
     ],
 
     shared_libs: [
-        "libadbconnection_server",
         "libadbd_auth",
         "libadbd_services",
         "libasyncio",
@@ -482,6 +542,7 @@ cc_library {
 cc_binary {
     name: "adbd",
     defaults: ["adbd_defaults", "host_adbd_supported"],
+    stl: "libc++_static",
     recovery_available: true,
 
     srcs: [
@@ -497,10 +558,9 @@ cc_binary {
         keep_symbols: true,
     },
 
-    stl: "libc++_static",
     static_libs: [
+        "libadbconnection_server",
         "libadbd",
-        "libadbd_auth",
         "libadbd_services",
         "libasyncio",
         "libbase",
@@ -515,16 +575,17 @@ cc_binary {
     ],
 
     shared_libs: [
-        "libadbconnection_server",
+        "libadbd_auth",
         "libcrypto",
     ],
+
+    required: ["libadbd_auth"],
 }
 
 phony {
     name: "adbd_system_binaries",
     required: [
         "abb",
-        "libadbd_auth",
         "reboot",
         "set-verity-state",
     ]
@@ -541,6 +602,7 @@ cc_binary {
     name: "abb",
 
     defaults: ["adbd_defaults"],
+    stl: "libc++",
     recovery_available: false,
 
     srcs: [
@@ -573,7 +635,11 @@ cc_binary {
 
 cc_test {
     name: "adbd_test",
+
     defaults: ["adbd_defaults"],
+    stl: "libc++_static",
+
+    recovery_available: false,
     srcs: libadb_test_srcs + [
         "daemon/services.cpp",
         "daemon/shell_service.cpp",
@@ -595,7 +661,7 @@ cc_test {
         "libmdnssd",
         "libselinux",
     ],
-    test_suites: ["device-tests"],
+    test_suites: ["device-tests", "mts"],
     require_root: true,
 }
 
@@ -678,7 +744,6 @@ cc_library_host_static {
         "libziparchive",
         "libz",
     ],
-    stl: "libc++_static",
     proto: {
         type: "lite",
         export_proto_headers: true,
@@ -728,40 +793,4 @@ cc_test_host {
         "fastdeploy/testdata/sample.apk",
         "fastdeploy/testdata/sample.cd",
     ],
-}
-
-prebuilt_etc {
-    name: "com.android.adbd.ld.config.txt",
-    src: "apex/ld.config.txt",
-    filename: "ld.config.txt",
-    installable: false,
-}
-
-apex {
-    name: "com.android.adbd",
-    manifest: "apex/apex_manifest.json",
-
-    binaries: ["adbd"],
-    prebuilts: ["com.android.adbd.init.rc", "com.android.adbd.ld.config.txt"],
-
-    key: "com.android.adbd.key",
-    certificate: ":com.android.adbd.certificate",
-}
-
-apex_key {
-    name: "com.android.adbd.key",
-    public_key: "apex/com.android.adbd.avbpubkey",
-    private_key: "apex/com.android.adbd.pem",
-}
-
-android_app_certificate {
-    name: "com.android.adbd.certificate",
-    certificate: "apex/com.android.adbd",
-}
-
-prebuilt_etc {
-    name: "com.android.adbd.init.rc",
-    src: "apex/adbd.rc",
-    filename: "init.rc",
-    installable: false,
 }

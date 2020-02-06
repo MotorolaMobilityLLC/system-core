@@ -86,6 +86,7 @@ static const struct fs_path_config android_dirs[] = {
     { 00751, AID_ROOT,         AID_SHELL,        0, "system/xbin" },
     { 00751, AID_ROOT,         AID_SHELL,        0, "system/apex/*/bin" },
     { 00751, AID_ROOT,         AID_SHELL,        0, "system_ext/bin" },
+    { 00751, AID_ROOT,         AID_SHELL,        0, "system_ext/apex/*/bin" },
     { 00751, AID_ROOT,         AID_SHELL,        0, "vendor/bin" },
     { 00755, AID_ROOT,         AID_SHELL,        0, "vendor" },
     { 00755, AID_ROOT,         AID_ROOT,         0, 0 },
@@ -195,10 +196,7 @@ static const struct fs_path_config android_files[] = {
     { 00750, AID_ROOT,      AID_SHELL,     CAP_MASK_LONG(CAP_SETUID) |
                                            CAP_MASK_LONG(CAP_SETGID),
                                               "system/bin/simpleperf_app_runner" },
-
-    // Support FIFO scheduling mode in SurfaceFlinger.
-    { 00755, AID_SYSTEM,    AID_GRAPHICS,  CAP_MASK_LONG(CAP_SYS_NICE),
-                                              "system/bin/surfaceflinger" },
+    { 00755, AID_ROOT,      AID_ROOT,      0, "first_stage_ramdisk/system/bin/e2fsck" },
     // generic defaults
     { 00755, AID_ROOT,      AID_ROOT,      0, "bin/*" },
     { 00640, AID_ROOT,      AID_SHELL,     0, "fstab.*" },
@@ -209,6 +207,7 @@ static const struct fs_path_config android_files[] = {
     { 00755, AID_ROOT,      AID_SHELL,     0, "system/xbin/*" },
     { 00755, AID_ROOT,      AID_SHELL,     0, "system/apex/*/bin/*" },
     { 00755, AID_ROOT,      AID_SHELL,     0, "system_ext/bin/*" },
+    { 00755, AID_ROOT,      AID_SHELL,     0, "system_ext/apex/*/bin/*" },
     { 00755, AID_ROOT,      AID_SHELL,     0, "vendor/bin/*" },
     { 00755, AID_ROOT,      AID_SHELL,     0, "vendor/xbin/*" },
     { 00644, AID_ROOT,      AID_ROOT,      0, 0 },

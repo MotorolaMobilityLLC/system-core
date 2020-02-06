@@ -852,7 +852,7 @@ std::unique_ptr<LpMetadata> MetadataBuilder::Export() {
             return nullptr;
         }
 
-        if (partition->attributes() & LP_PARTITION_ATTR_UPDATED) {
+        if (partition->attributes() & LP_PARTITION_ATTRIBUTE_MASK_V1) {
             static const uint16_t kMinVersion = LP_METADATA_VERSION_FOR_UPDATED_ATTR;
             metadata->header.minor_version = std::max(metadata->header.minor_version, kMinVersion);
         }
@@ -1123,6 +1123,11 @@ bool MetadataBuilder::ImportPartition(const LpMetadata& metadata,
 
 void MetadataBuilder::SetAutoSlotSuffixing() {
     auto_slot_suffixing_ = true;
+}
+
+void MetadataBuilder::SetVirtualABDeviceFlag() {
+    RequireExpandedMetadataHeader();
+    header_.flags |= LP_HEADER_FLAG_VIRTUAL_AB_DEVICE;
 }
 
 bool MetadataBuilder::IsABDevice() {
