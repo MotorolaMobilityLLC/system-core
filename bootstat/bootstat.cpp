@@ -44,7 +44,6 @@
 #include <android/log.h>
 #include <cutils/android_reboot.h>
 #include <cutils/properties.h>
-#include <metricslogger/metrics_logger.h>
 #include <statslog.h>
 
 #include "boot_event_record_store.h"
@@ -57,9 +56,10 @@ void LogBootEvents() {
   BootEventRecordStore boot_event_store;
 
   auto events = boot_event_store.GetAllBootEvents();
-  for (auto i = events.cbegin(); i != events.cend(); ++i) {
-    android::metricslogger::LogHistogram(i->first, i->second);
-  }
+  // TODO(b/148575354): Replace with statsd.
+  // for (auto i = events.cbegin(); i != events.cend(); ++i) {
+  //   android::metricslogger::LogHistogram(i->first, i->second);
+  // }
 }
 
 // Records the named boot |event| to the record store. If |value| is non-empty
@@ -312,6 +312,11 @@ const std::map<std::string, int32_t> kBootReasonMap = {
     {"reboot,unknown[0-9]*", 183},
     {"reboot,longkey,.*", 184},
     {"reboot,boringssl-self-check-failed", 185},
+    {"reboot,userspace_failed,shutdown_aborted", 186},
+    {"reboot,userspace_failed,watchdog_triggered", 187},
+    {"reboot,userspace_failed,watchdog_fork", 188},
+    {"reboot,userspace_failed,*", 189},
+    {"reboot,mount_userdata_failed", 190},
 };
 
 // Converts a string value representing the reason the system booted to an
@@ -1207,13 +1212,17 @@ void RecordBootReason() {
   const auto reason = android::base::GetProperty(bootloader_reboot_reason_property, "");
 
   if (reason.empty()) {
+    // TODO(b/148575354): Replace with statsd.
     // Log an empty boot reason value as '<EMPTY>' to ensure the value is intentional
     // (and not corruption anywhere else in the reporting pipeline).
-    android::metricslogger::LogMultiAction(android::metricslogger::ACTION_BOOT,
-                                           android::metricslogger::FIELD_PLATFORM_REASON, "<EMPTY>");
+    // android::metricslogger::LogMultiAction(android::metricslogger::ACTION_BOOT,
+    //                                        android::metricslogger::FIELD_PLATFORM_REASON,
+    //                                        "<EMPTY>");
   } else {
-    android::metricslogger::LogMultiAction(android::metricslogger::ACTION_BOOT,
-                                           android::metricslogger::FIELD_PLATFORM_REASON, reason);
+    // TODO(b/148575354): Replace with statsd.
+    // android::metricslogger::LogMultiAction(android::metricslogger::ACTION_BOOT,
+    //                                        android::metricslogger::FIELD_PLATFORM_REASON,
+    //                                        reason);
   }
 
   // Log the raw bootloader_boot_reason property value.
@@ -1241,9 +1250,11 @@ void RecordFactoryReset() {
   time_t current_time_utc = time(nullptr);
 
   if (current_time_utc < 0) {
+    // TODO(b/148575354): Replace with statsd.
     // UMA does not display negative values in buckets, so convert to positive.
-    android::metricslogger::LogHistogram("factory_reset_current_time_failure",
-                                         std::abs(current_time_utc));
+    // Logging via BootEventRecordStore.
+    // android::metricslogger::LogHistogram("factory_reset_current_time_failure",
+    //                                      std::abs(current_time_utc));
 
     // Logging via BootEventRecordStore to see if using android::metricslogger::LogHistogram
     // is losing records somehow.
@@ -1251,7 +1262,8 @@ void RecordFactoryReset() {
                                            std::abs(current_time_utc));
     return;
   } else {
-    android::metricslogger::LogHistogram("factory_reset_current_time", current_time_utc);
+    // TODO(b/148575354): Replace with statsd.
+    // android::metricslogger::LogHistogram("factory_reset_current_time", current_time_utc);
 
     // Logging via BootEventRecordStore to see if using android::metricslogger::LogHistogram
     // is losing records somehow.
@@ -1271,7 +1283,8 @@ void RecordFactoryReset() {
   // Calculate and record the difference in time between now and the
   // factory_reset time.
   time_t factory_reset_utc = record.second;
-  android::metricslogger::LogHistogram("factory_reset_record_value", factory_reset_utc);
+  // TODO(b/148575354): Replace with statsd.
+  // android::metricslogger::LogHistogram("factory_reset_record_value", factory_reset_utc);
 
   // Logging via BootEventRecordStore to see if using android::metricslogger::LogHistogram
   // is losing records somehow.

@@ -26,6 +26,7 @@
 #include <vector>
 
 #include <android-base/unique_fd.h>
+#include <android/snapshot/snapshot.pb.h>
 #include <fs_mgr_dm_linear.h>
 #include <libdm/dm.h>
 #include <libfiemap/image_manager.h>
@@ -34,6 +35,7 @@
 #include <update_engine/update_metadata.pb.h>
 
 #include <libsnapshot/auto_device.h>
+#include <libsnapshot/return.h>
 
 #ifndef FRIEND_TEST
 #define FRIEND_TEST(test_set_name, individual_test) \
@@ -74,34 +76,11 @@ static constexpr const std::string_view kCowGroupName = "cow";
 
 bool SourceCopyOperationIsClone(const chromeos_update_engine::InstallOperation& operation);
 
-enum class UpdateState : unsigned int {
-    // No update or merge is in progress.
-    None,
-
-    // An update is applying; snapshots may already exist.
-    Initiated,
-
-    // An update is pending, but has not been successfully booted yet.
-    Unverified,
-
-    // The kernel is merging in the background.
-    Merging,
-
-    // Post-merge cleanup steps could not be completed due to a transient
-    // error, but the next reboot will finish any pending operations.
-    MergeNeedsReboot,
-
-    // Merging is complete, and needs to be acknowledged.
-    MergeCompleted,
-
-    // Merging failed due to an unrecoverable error.
-    MergeFailed,
-
-    // The update was implicitly cancelled, either by a rollback or a flash
-    // operation via fastboot. This state can only be returned by WaitForMerge.
-    Cancelled
+enum class CreateResult : unsigned int {
+    ERROR,
+    CREATED,
+    NOT_CREATED,
 };
-std::ostream& operator<<(std::ostream& os, UpdateState state);
 
 class SnapshotManager final {
     using CreateLogicalPartitionParams = android::fs_mgr::CreateLogicalPartitionParams;
@@ -110,6 +89,7 @@ class SnapshotManager final {
     using MetadataBuilder = android::fs_mgr::MetadataBuilder;
     using DeltaArchiveManifest = chromeos_update_engine::DeltaArchiveManifest;
     using MergeStatus = android::hardware::boot::V1_1::MergeStatus;
+    using FiemapStatus = android::fiemap::FiemapStatus;
 
   public:
     // Dependency injection for testing.
@@ -201,9 +181,11 @@ class SnapshotManager final {
     // Wait for the merge if rebooted into the new slot. Does NOT initiate a
     // merge. If the merge has not been initiated (but should be), wait.
     // Returns:
-    //   - true there is no merge or merge finishes
-    //   - false indicating an error has occurred
-    bool WaitForMerge();
+    //   - Return::Ok(): there is no merge or merge finishes
+    //   - Return::NeedsReboot(): merge finishes but need a reboot before
+    //     applying the next update.
+    //   - Return::Error(): other irrecoverable errors
+    Return WaitForMerge();
 
     // Find the status of the current update, if any.
     //
@@ -216,7 +198,7 @@ class SnapshotManager final {
     // Create necessary COW device / files for OTA clients. New logical partitions will be added to
     // group "cow" in target_metadata. Regions of partitions of current_metadata will be
     // "write-protected" and snapshotted.
-    bool CreateUpdateSnapshots(const DeltaArchiveManifest& manifest);
+    Return CreateUpdateSnapshots(const DeltaArchiveManifest& manifest);
 
     // Map a snapshotted partition for OTA clients to write to. Write-protected regions are
     // determined previously in CreateSnapshots.
@@ -231,7 +213,8 @@ class SnapshotManager final {
 
     // Perform first-stage mapping of snapshot targets. This replaces init's
     // call to CreateLogicalPartitions when snapshots are present.
-    bool CreateLogicalAndSnapshotPartitions(const std::string& super_device);
+    bool CreateLogicalAndSnapshotPartitions(const std::string& super_device,
+                                            const std::chrono::milliseconds& timeout_ms = {});
 
     // This method should be called preceding any wipe or flash of metadata or
     // userdata. It is only valid in recovery or fastbootd, and it ensures that
@@ -245,6 +228,17 @@ class SnapshotManager final {
     // Returns true on success (or nothing to do), false on failure. The
     // optional callback fires periodically to query progress via GetUpdateState.
     bool HandleImminentDataWipe(const std::function<void()>& callback = {});
+
+    // This method is only allowed in recovery and is used as a helper to
+    // initialize the snapshot devices as a requirement to mount a snapshotted
+    // /system in recovery.
+    // This function returns:
+    // - CreateResult::CREATED if snapshot devices were successfully created;
+    // - CreateResult::NOT_CREATED if it was not necessary to create snapshot
+    // devices;
+    // - CreateResult::ERROR if a fatal error occurred, mounting /system should
+    // be aborted.
+    CreateResult RecoveryCreateSnapshotDevices();
 
     // Dump debug information.
     bool Dump(std::ostream& os);
@@ -342,7 +336,7 @@ class SnapshotManager final {
 
     // |name| should be the base partition name (e.g. "system_a"). Create the
     // backing COW image using the size previously passed to CreateSnapshot().
-    bool CreateCowImage(LockedFile* lock, const std::string& name);
+    Return CreateCowImage(LockedFile* lock, const std::string& name);
 
     // Map a snapshot device that was previously created with CreateSnapshot.
     // If a merge was previously initiated, the device-mapper table will have a
@@ -394,7 +388,9 @@ class SnapshotManager final {
 
     // Interact with /metadata/ota/state.
     UpdateState ReadUpdateState(LockedFile* file);
+    SnapshotUpdateStatus ReadSnapshotUpdateStatus(LockedFile* file);
     bool WriteUpdateState(LockedFile* file, UpdateState state);
+    bool WriteSnapshotUpdateStatus(LockedFile* file, const SnapshotUpdateStatus& status);
     std::string GetStateFilePath() const;
 
     // Helpers for merging.
@@ -482,14 +478,14 @@ class SnapshotManager final {
 
     // Helper for CreateUpdateSnapshots.
     // Creates all underlying images, COW partitions and snapshot files. Does not initialize them.
-    bool CreateUpdateSnapshotsInternal(LockedFile* lock, const DeltaArchiveManifest& manifest,
-                                       PartitionCowCreator* cow_creator,
-                                       AutoDeviceList* created_devices,
-                                       std::map<std::string, SnapshotStatus>* all_snapshot_status);
+    Return CreateUpdateSnapshotsInternal(
+            LockedFile* lock, const DeltaArchiveManifest& manifest,
+            PartitionCowCreator* cow_creator, AutoDeviceList* created_devices,
+            std::map<std::string, SnapshotStatus>* all_snapshot_status);
 
     // Initialize snapshots so that they can be mapped later.
     // Map the COW partition and zero-initialize the header.
-    bool InitializeUpdateSnapshots(
+    Return InitializeUpdateSnapshots(
             LockedFile* lock, MetadataBuilder* target_metadata,
             const LpMetadata* exported_target_metadata, const std::string& target_suffix,
             const std::map<std::string, SnapshotStatus>& all_snapshot_status);

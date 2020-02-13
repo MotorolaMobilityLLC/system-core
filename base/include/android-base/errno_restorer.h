@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2013 The Android Open Source Project
+ * Copyright (C) 2020 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,21 +16,27 @@
 
 #pragma once
 
-#include <sys/types.h>
+#include "errno.h"
 
-#include "log_portability.h"
-#include "uio.h"
+#include "android-base/macros.h"
 
-struct iovec;
+namespace android {
+namespace base {
 
-__BEGIN_DECLS
+class ErrnoRestorer {
+ public:
+  ErrnoRestorer() : saved_errno_(errno) {}
 
-int fakeLogOpen(const char* pathName);
-int fakeLogClose(int fd);
-ssize_t fakeLogWritev(int fd, const struct iovec* vector, int count);
+  ~ErrnoRestorer() { errno = saved_errno_; }
 
-int __android_log_is_loggable(int prio, const char*, int def);
-int __android_log_is_loggable_len(int prio, const char*, size_t, int def);
-int __android_log_is_debuggable();
+  // Allow this object to be used as part of && operation.
+  operator bool() const { return true; }
 
-__END_DECLS
+ private:
+  const int saved_errno_;
+
+  DISALLOW_COPY_AND_ASSIGN(ErrnoRestorer);
+};
+
+}  // namespace base
+}  // namespace android

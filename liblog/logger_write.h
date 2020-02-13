@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2016 The Android Open Source Project
+ * Copyright (C) 2020 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,15 +14,11 @@
  * limitations under the License.
  */
 
-#include "metricslogger/metrics_logger.h"
+#pragma once
 
-#include <gtest/gtest.h>
+#include <string>
 
-TEST(MetricsLoggerTest, AddSingleBootEvent) {
-    android::metricslogger::LogHistogram("test_event", 42);
-    // TODO(jhawkins): Verify the EventLog is updated.
-}
+#include "rwlock.h"
 
-TEST(MetricsLoggerTest, AddCounterVal) {
-    android::metricslogger::LogCounter("test_count", 10);
-}
+std::string& GetDefaultTag();  // Must read lock default_tag_lock
+extern RwLock default_tag_lock;

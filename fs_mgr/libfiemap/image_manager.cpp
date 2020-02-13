@@ -26,6 +26,7 @@
 #include <fs_mgr_dm_linear.h>
 #include <libdm/loop_control.h>
 #include <libfiemap/split_fiemap_writer.h>
+#include <libgsi/libgsi.h>
 
 #include "metadata.h"
 #include "utility.h"
@@ -34,6 +35,7 @@ namespace android {
 namespace fiemap {
 
 using namespace std::literals;
+using android::base::ReadFileToString;
 using android::base::unique_fd;
 using android::dm::DeviceMapper;
 using android::dm::DmDeviceState;
@@ -53,6 +55,11 @@ static constexpr char kTestImageMetadataDir[] = "/metadata/gsi/test";
 std::unique_ptr<ImageManager> ImageManager::Open(const std::string& dir_prefix) {
     auto metadata_dir = "/metadata/gsi/" + dir_prefix;
     auto data_dir = "/data/gsi/" + dir_prefix;
+    auto install_dir_file = gsi::DsuInstallDirFile(gsi::GetDsuSlot(dir_prefix));
+    std::string path;
+    if (ReadFileToString(install_dir_file, &path)) {
+        data_dir = path;
+    }
     return Open(metadata_dir, data_dir);
 }
 
@@ -117,7 +124,7 @@ std::vector<std::string> ImageManager::GetAllBackingImages() {
     return images;
 }
 
-bool ImageManager::PartitionExists(const std::string& name) {
+bool ImageManager::BackingImageExists(const std::string& name) {
     if (!MetadataExists(metadata_dir_)) {
         return false;
     }
@@ -128,32 +135,25 @@ bool ImageManager::PartitionExists(const std::string& name) {
     return !!FindPartition(*metadata.get(), name);
 }
 
-bool ImageManager::BackingImageExists(const std::string& name) {
-    auto header_file = GetImageHeaderPath(name);
-    return access(header_file.c_str(), F_OK) == 0;
-}
-
-bool ImageManager::CreateBackingImage(const std::string& name, uint64_t size, int flags) {
-    return CreateBackingImage(name, size, flags, nullptr);
-}
-
 static bool IsUnreliablePinningAllowed(const std::string& path) {
     return android::base::StartsWith(path, "/data/gsi/dsu/") ||
            android::base::StartsWith(path, "/data/gsi/test/") ||
            android::base::StartsWith(path, "/data/gsi/ota/test/");
 }
 
-bool ImageManager::CreateBackingImage(const std::string& name, uint64_t size, int flags,
-                                      std::function<bool(uint64_t, uint64_t)>&& on_progress) {
+FiemapStatus ImageManager::CreateBackingImage(
+        const std::string& name, uint64_t size, int flags,
+        std::function<bool(uint64_t, uint64_t)>&& on_progress) {
     auto data_path = GetImageHeaderPath(name);
-    auto fw = SplitFiemap::Create(data_path, size, 0, on_progress);
-    if (!fw) {
-        return false;
+    std::unique_ptr<SplitFiemap> fw;
+    auto status = SplitFiemap::Create(data_path, size, 0, &fw, on_progress);
+    if (!status.is_ok()) {
+        return status;
     }
 
     bool reliable_pinning;
     if (!FilesystemHasReliablePinning(data_path, &reliable_pinning)) {
-        return false;
+        return FiemapStatus::Error();
     }
     if (!reliable_pinning && !IsUnreliablePinningAllowed(data_path)) {
         // For historical reasons, we allow unreliable pinning for certain use
@@ -164,7 +164,7 @@ bool ImageManager::CreateBackingImage(const std::string& name, uint64_t size, in
         // proper pinning.
         LOG(ERROR) << "File system does not have reliable block pinning";
         SplitFiemap::RemoveSplitFiles(data_path);
-        return false;
+        return FiemapStatus::Error();
     }
 
     // Except for testing, we do not allow persisting metadata that references
@@ -180,24 +180,25 @@ bool ImageManager::CreateBackingImage(const std::string& name, uint64_t size, in
 
         fw = {};
         SplitFiemap::RemoveSplitFiles(data_path);
-        return false;
+        return FiemapStatus::Error();
     }
 
     bool readonly = !!(flags & CREATE_IMAGE_READONLY);
     if (!UpdateMetadata(metadata_dir_, name, fw.get(), size, readonly)) {
-        return false;
+        return FiemapStatus::Error();
     }
 
     if (flags & CREATE_IMAGE_ZERO_FILL) {
-        if (!ZeroFillNewImage(name, 0)) {
+        auto res = ZeroFillNewImage(name, 0);
+        if (!res.is_ok()) {
             DeleteBackingImage(name);
-            return false;
+            return res;
         }
     }
-    return true;
+    return FiemapStatus::Ok();
 }
 
-bool ImageManager::ZeroFillNewImage(const std::string& name, uint64_t bytes) {
+FiemapStatus ImageManager::ZeroFillNewImage(const std::string& name, uint64_t bytes) {
     auto data_path = GetImageHeaderPath(name);
 
     // See the comment in MapImageDevice() about how this works.
@@ -205,13 +206,13 @@ bool ImageManager::ZeroFillNewImage(const std::string& name, uint64_t bytes) {
     bool can_use_devicemapper;
     if (!FiemapWriter::GetBlockDeviceForFile(data_path, &block_device, &can_use_devicemapper)) {
         LOG(ERROR) << "Could not determine block device for " << data_path;
-        return false;
+        return FiemapStatus::Error();
     }
 
     if (!can_use_devicemapper) {
         // We've backed with loop devices, and since we store files in an
         // unencrypted folder, the initial zeroes we wrote will suffice.
-        return true;
+        return FiemapStatus::Ok();
     }
 
     // data is dm-crypt, or FBE + dm-default-key. This means the zeroes written
@@ -219,7 +220,7 @@ bool ImageManager::ZeroFillNewImage(const std::string& name, uint64_t bytes) {
     // this.
     auto device = MappedDevice::Open(this, 10s, name);
     if (!device) {
-        return false;
+        return FiemapStatus::Error();
     }
 
     static constexpr size_t kChunkSize = 4096;
@@ -232,7 +233,7 @@ bool ImageManager::ZeroFillNewImage(const std::string& name, uint64_t bytes) {
         remaining = get_block_device_size(device->fd());
         if (!remaining) {
             PLOG(ERROR) << "Could not get block device size for " << device->path();
-            return false;
+            return FiemapStatus::FromErrno(errno);
         }
     }
     while (remaining) {
@@ -240,11 +241,11 @@ bool ImageManager::ZeroFillNewImage(const std::string& name, uint64_t bytes) {
         if (!android::base::WriteFully(device->fd(), zeroes.data(),
                                        static_cast<size_t>(to_write))) {
             PLOG(ERROR) << "write failed: " << device->path();
-            return false;
+            return FiemapStatus::FromErrno(errno);
         }
         remaining -= to_write;
     }
-    return true;
+    return FiemapStatus::Ok();
 }
 
 bool ImageManager::DeleteBackingImage(const std::string& name) {
@@ -255,6 +256,10 @@ bool ImageManager::DeleteBackingImage(const std::string& name) {
         return false;
     }
 
+#if defined __ANDROID_RECOVERY__
+    LOG(ERROR) << "Cannot remove images backed by /data in recovery";
+    return false;
+#else
     std::string message;
     auto header_file = GetImageHeaderPath(name);
     if (!SplitFiemap::RemoveSplitFiles(header_file, &message)) {
@@ -268,6 +273,7 @@ bool ImageManager::DeleteBackingImage(const std::string& name) {
         LOG(ERROR) << "Error removing " << status_file << ": " << message;
     }
     return RemoveImageMetadata(metadata_dir_, name);
+#endif
 }
 
 // Create a block device for an image file, using its extents in its
@@ -501,6 +507,7 @@ bool ImageManager::MapImageDevice(const std::string& name,
 
     auto image_header = GetImageHeaderPath(name);
 
+#if !defined __ANDROID_RECOVERY__
     // If there is a device-mapper node wrapping the block device, then we're
     // able to create another node around it; the dm layer does not carry the
     // exclusion lock down the stack when a mount occurs.
@@ -524,6 +531,13 @@ bool ImageManager::MapImageDevice(const std::string& name,
     } else if (!MapWithLoopDevice(name, timeout_ms, path)) {
         return false;
     }
+#else
+    // In recovery, we can *only* use device-mapper, since partitions aren't
+    // mounted. That also means we cannot call GetBlockDeviceForFile.
+    if (!MapWithDmLinear(*partition_opener_.get(), name, timeout_ms, path)) {
+        return false;
+    }
+#endif
 
     // Set a property so we remember this is mapped.
     auto prop_name = GetStatusPropertyName(name);

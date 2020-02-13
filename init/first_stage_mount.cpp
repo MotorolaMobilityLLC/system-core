@@ -58,7 +58,6 @@ using android::fs_mgr::ReadDefaultFstab;
 using android::fs_mgr::ReadFstabFromDt;
 using android::fs_mgr::SkipMountingPartitions;
 using android::fs_mgr::TransformFstabForDsu;
-using android::init::WriteFile;
 using android::snapshot::SnapshotManager;
 
 using namespace std::literals;
@@ -558,6 +557,14 @@ bool FirstStageMount::MountPartitions() {
             continue;
         }
 
+        // Skip raw partition entries such as boot, dtbo, etc.
+        // Having emmc fstab entries allows us to probe current->vbmeta_partition
+        // in InitDevices() when they are AVB chained partitions.
+        if (current->fs_type == "emmc") {
+            ++current;
+            continue;
+        }
+
         Fstab::iterator end;
         if (!MountPartition(current, false /* erase_same_mounts */, &end)) {
             if (current->fs_mgr_flags.no_fail) {
@@ -584,14 +591,18 @@ bool FirstStageMount::MountPartitions() {
     }
 
     // heads up for instantiating required device(s) for overlayfs logic
-    const auto devices = fs_mgr_overlayfs_required_devices(&fstab_);
-    for (auto const& device : devices) {
-        if (android::base::StartsWith(device, "/dev/block/by-name/")) {
-            InitRequiredDevices({basename(device.c_str())});
-        } else {
-            InitMappedDevice(device);
+    auto init_devices = [this](std::set<std::string> devices) -> bool {
+        for (auto iter = devices.begin(); iter != devices.end();) {
+            if (android::base::StartsWith(*iter, "/dev/block/dm-")) {
+                if (!InitMappedDevice(*iter)) return false;
+                iter = devices.erase(iter);
+            } else {
+                iter++;
+            }
         }
-    }
+        return InitRequiredDevices(std::move(devices));
+    };
+    MapScratchPartitionIfNeeded(&fstab_, init_devices);
 
     fs_mgr_overlayfs_mount_all(&fstab_);
 
@@ -612,7 +623,13 @@ void FirstStageMount::UseDsuIfPresent() {
         }
         return InitRequiredDevices(std::move(devices));
     };
-    auto images = IImageManager::Open("dsu", 0ms);
+    std::string active_dsu;
+    if (!gsi::GetActiveDsu(&active_dsu)) {
+        LOG(ERROR) << "Failed to GetActiveDsu";
+        return;
+    }
+    LOG(INFO) << "DSU slot: " << active_dsu;
+    auto images = IImageManager::Open("dsu/" + active_dsu, 0ms);
     if (!images || !images->MapAllImages(init_devices)) {
         LOG(ERROR) << "DSU partition layout could not be instantiated";
         return;

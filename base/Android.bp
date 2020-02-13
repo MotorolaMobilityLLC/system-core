@@ -33,6 +33,7 @@ cc_defaults {
 cc_library_headers {
     name: "libbase_headers",
     vendor_available: true,
+    ramdisk_available: true,
     recovery_available: true,
     host_supported: true,
     native_bridge_supported: true,
@@ -56,6 +57,7 @@ cc_defaults {
         "chrono_utils.cpp",
         "cmsg.cpp",
         "file.cpp",
+        "liblog_symbols.cpp",
         "logging.cpp",
         "mapped_file.cpp",
         "parsebool.cpp",
@@ -67,6 +69,10 @@ cc_defaults {
         "threads.cpp",
         "test_utils.cpp",
     ],
+
+    static: {
+        cflags: ["-DNO_LIBLOG_DLSYM"],
+    },
 
     cppflags: ["-Wexit-time-destructors"],
     shared_libs: ["liblog"],
@@ -107,6 +113,7 @@ cc_library {
     name: "libbase",
     defaults: ["libbase_defaults"],
     vendor_available: true,
+    ramdisk_available: true,
     recovery_available: true,
     host_supported: true,
     native_bridge_supported: true,

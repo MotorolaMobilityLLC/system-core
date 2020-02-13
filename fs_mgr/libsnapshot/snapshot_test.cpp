@@ -47,6 +47,7 @@ namespace snapshot {
 using android::base::unique_fd;
 using android::dm::DeviceMapper;
 using android::dm::DmDeviceState;
+using android::fiemap::FiemapStatus;
 using android::fiemap::IImageManager;
 using android::fs_mgr::BlockDeviceInfo;
 using android::fs_mgr::CreateLogicalPartitionParams;
@@ -77,7 +78,9 @@ void MountMetadata();
 
 class SnapshotTest : public ::testing::Test {
   public:
-    SnapshotTest() : dm_(DeviceMapper::Instance()) {}
+    SnapshotTest() : dm_(DeviceMapper::Instance()) {
+        is_virtual_ab_ = android::base::GetBoolProperty("ro.virtual_ab.enabled", false);
+    }
 
     // This is exposed for main.
     void Cleanup() {
@@ -87,6 +90,8 @@ class SnapshotTest : public ::testing::Test {
 
   protected:
     void SetUp() override {
+        if (!is_virtual_ab_) GTEST_SKIP() << "Test for Virtual A/B devices only";
+
         SnapshotTestPropertyFetcher::SetUp();
         InitializeState();
         CleanupTestArtifacts();
@@ -96,6 +101,8 @@ class SnapshotTest : public ::testing::Test {
     }
 
     void TearDown() override {
+        if (!is_virtual_ab_) return;
+
         lock_ = nullptr;
 
         CleanupTestArtifacts();
@@ -328,6 +335,7 @@ class SnapshotTest : public ::testing::Test {
         return AssertionSuccess();
     }
 
+    bool is_virtual_ab_;
     DeviceMapper& dm_;
     std::unique_ptr<SnapshotManager::LockedFile> lock_;
     android::fiemap::IImageManager* image_manager_ = nullptr;
@@ -753,6 +761,8 @@ INSTANTIATE_TEST_SUITE_P(
 class SnapshotUpdateTest : public SnapshotTest {
   public:
     void SetUp() override {
+        if (!is_virtual_ab_) GTEST_SKIP() << "Test for Virtual A/B devices only";
+
         SnapshotTest::SetUp();
         Cleanup();
 
@@ -783,6 +793,7 @@ class SnapshotUpdateTest : public SnapshotTest {
 
         // Initialize source partition metadata using |manifest_|.
         src_ = MetadataBuilder::New(*opener_, "super", 0);
+        ASSERT_NE(src_, nullptr);
         ASSERT_TRUE(FillFakeMetadata(src_.get(), manifest_, "_a"));
         // Add sys_b which is like system_other.
         ASSERT_TRUE(src_->AddGroup("group_b", kGroupSize));
@@ -812,6 +823,8 @@ class SnapshotUpdateTest : public SnapshotTest {
         }
     }
     void TearDown() override {
+        if (!is_virtual_ab_) return;
+
         Cleanup();
         SnapshotTest::TearDown();
     }
@@ -975,6 +988,7 @@ TEST_F(SnapshotUpdateTest, FullUpdateFlow) {
 
     // Test that partitions prioritize using space in super.
     auto tgt = MetadataBuilder::New(*opener_, "super", 1);
+    ASSERT_NE(tgt, nullptr);
     ASSERT_NE(nullptr, tgt->FindPartition("sys_b-cow"));
     ASSERT_NE(nullptr, tgt->FindPartition("vnd_b-cow"));
     ASSERT_EQ(nullptr, tgt->FindPartition("prd_b-cow"));
@@ -998,7 +1012,7 @@ TEST_F(SnapshotUpdateTest, FullUpdateFlow) {
     auto init = SnapshotManager::NewForFirstStageMount(new TestDeviceInfo(fake_super, "_b"));
     ASSERT_NE(init, nullptr);
     ASSERT_TRUE(init->NeedSnapshotsInFirstStageMount());
-    ASSERT_TRUE(init->CreateLogicalAndSnapshotPartitions("super"));
+    ASSERT_TRUE(init->CreateLogicalAndSnapshotPartitions("super", 1s));
 
     // Check that the target partitions have the same content.
     for (const auto& name : {"sys_b", "vnd_b", "prd_b"}) {
@@ -1126,7 +1140,7 @@ TEST_F(SnapshotUpdateTest, TestRollback) {
     auto init = SnapshotManager::NewForFirstStageMount(new TestDeviceInfo(fake_super, "_b"));
     ASSERT_NE(init, nullptr);
     ASSERT_TRUE(init->NeedSnapshotsInFirstStageMount());
-    ASSERT_TRUE(init->CreateLogicalAndSnapshotPartitions("super"));
+    ASSERT_TRUE(init->CreateLogicalAndSnapshotPartitions("super", 1s));
 
     // Check that the target partitions have the same content.
     for (const auto& name : {"sys_b", "vnd_b", "prd_b"}) {
@@ -1138,7 +1152,7 @@ TEST_F(SnapshotUpdateTest, TestRollback) {
     init = SnapshotManager::NewForFirstStageMount(new TestDeviceInfo(fake_super, "_a"));
     ASSERT_NE(init, nullptr);
     ASSERT_FALSE(init->NeedSnapshotsInFirstStageMount());
-    ASSERT_TRUE(init->CreateLogicalAndSnapshotPartitions("super"));
+    ASSERT_TRUE(init->CreateLogicalAndSnapshotPartitions("super", 1s));
 
     // Assert that the source partitions aren't affected.
     for (const auto& name : {"sys_a", "vnd_a", "prd_a"}) {
@@ -1188,7 +1202,9 @@ TEST_F(SnapshotUpdateTest, ReclaimCow) {
 
     // Check that the old COW space is reclaimed and does not occupy space of mapped partitions.
     auto src = MetadataBuilder::New(*opener_, "super", 1);
+    ASSERT_NE(src, nullptr);
     auto tgt = MetadataBuilder::New(*opener_, "super", 0);
+    ASSERT_NE(tgt, nullptr);
     for (const auto& cow_part_name : {"sys_a-cow", "vnd_a-cow", "prd_a-cow"}) {
         auto* cow_part = tgt->FindPartition(cow_part_name);
         ASSERT_NE(nullptr, cow_part) << cow_part_name << " does not exist in target metadata";
@@ -1279,6 +1295,7 @@ TEST_F(SnapshotUpdateTest, MergeCannotRemoveCow) {
     SetSize(vnd_, 5_MiB);
     SetSize(prd_, 5_MiB);
     src_ = MetadataBuilder::New(*opener_, "super", 0);
+    ASSERT_NE(src_, nullptr);
     src_->RemoveGroupAndPartitions(group_->name() + "_a");
     src_->RemoveGroupAndPartitions(group_->name() + "_b");
     ASSERT_TRUE(FillFakeMetadata(src_.get(), manifest_, "_a"));
@@ -1515,7 +1532,7 @@ TEST_F(SnapshotUpdateTest, Hashtree) {
     auto init = SnapshotManager::NewForFirstStageMount(new TestDeviceInfo(fake_super, "_b"));
     ASSERT_NE(init, nullptr);
     ASSERT_TRUE(init->NeedSnapshotsInFirstStageMount());
-    ASSERT_TRUE(init->CreateLogicalAndSnapshotPartitions("super"));
+    ASSERT_TRUE(init->CreateLogicalAndSnapshotPartitions("super", 1s));
 
     // Check that the target partition have the same content. Hashtree and FEC extents
     // should be accounted for.
@@ -1585,6 +1602,29 @@ TEST_F(SnapshotUpdateTest, WaitForMerge) {
     ASSERT_THAT(merger.get(), AnyOf(UpdateState::None, UpdateState::MergeCompleted));
 }
 
+TEST_F(SnapshotUpdateTest, LowSpace) {
+    static constexpr auto kMaxFree = 10_MiB;
+    auto userdata = std::make_unique<LowSpaceUserdata>();
+    ASSERT_TRUE(userdata->Init(kMaxFree));
+
+    // Grow all partitions to 5_MiB, total 15_MiB. This requires 15 MiB of CoW space. After
+    // using the empty space in super (< 1 MiB), it uses at least 14 MiB of /userdata space.
+    constexpr uint64_t partition_size = 5_MiB;
+    SetSize(sys_, partition_size);
+    SetSize(vnd_, partition_size);
+    SetSize(prd_, partition_size);
+
+    AddOperationForPartitions();
+
+    // Execute the update.
+    ASSERT_TRUE(sm->BeginUpdate());
+    auto res = sm->CreateUpdateSnapshots(manifest_);
+    ASSERT_FALSE(res);
+    ASSERT_EQ(Return::ErrorCode::NO_SPACE, res.error_code());
+    ASSERT_GE(res.required_size(), 14_MiB);
+    ASSERT_LT(res.required_size(), 15_MiB);
+}
+
 class FlashAfterUpdateTest : public SnapshotUpdateTest,
                              public WithParamInterface<std::tuple<uint32_t, bool>> {
   public:
@@ -1601,6 +1641,8 @@ class FlashAfterUpdateTest : public SnapshotUpdateTest,
 };
 
 TEST_P(FlashAfterUpdateTest, FlashSlotAfterUpdate) {
+    if (!is_virtual_ab_) GTEST_SKIP() << "Test for Virtual A/B devices only";
+
     // OTA client blindly unmaps all partitions that are possibly mapped.
     for (const auto& name : {"sys_b", "vnd_b", "prd_b"}) {
         ASSERT_TRUE(sm->UnmapUpdateSnapshot(name));
@@ -1615,7 +1657,8 @@ TEST_P(FlashAfterUpdateTest, FlashSlotAfterUpdate) {
     // Simulate shutting down the device.
     ASSERT_TRUE(UnmapAll());
 
-    if (std::get<1>(GetParam()) /* merge */) {
+    bool after_merge = std::get<1>(GetParam());
+    if (after_merge) {
         ASSERT_TRUE(InitiateMerge("_b"));
         // Simulate shutting down the device after merge has initiated.
         ASSERT_TRUE(UnmapAll());
@@ -1626,6 +1669,7 @@ TEST_P(FlashAfterUpdateTest, FlashSlotAfterUpdate) {
 
     // Simulate flashing |flashed_slot|. This clears the UPDATED flag.
     auto flashed_builder = MetadataBuilder::New(*opener_, "super", flashed_slot);
+    ASSERT_NE(flashed_builder, nullptr);
     flashed_builder->RemoveGroupAndPartitions(group_->name() + flashed_slot_suffix);
     flashed_builder->RemoveGroupAndPartitions(kCowGroupName);
     ASSERT_TRUE(FillFakeMetadata(flashed_builder.get(), manifest_, flashed_slot_suffix));
@@ -1664,21 +1708,11 @@ TEST_P(FlashAfterUpdateTest, FlashSlotAfterUpdate) {
     auto init = SnapshotManager::NewForFirstStageMount(
             new TestDeviceInfo(fake_super, flashed_slot_suffix));
     ASSERT_NE(init, nullptr);
-    if (init->NeedSnapshotsInFirstStageMount()) {
-        ASSERT_TRUE(init->CreateLogicalAndSnapshotPartitions("super"));
-    } else {
-        for (const auto& name : {"sys", "vnd"}) {
-            ASSERT_TRUE(CreateLogicalPartition(
-                    CreateLogicalPartitionParams{
-                            .block_device = fake_super,
-                            .metadata_slot = flashed_slot,
-                            .partition_name = name + flashed_slot_suffix,
-                            .timeout_ms = 1s,
-                            .partition_opener = opener_.get(),
-                    },
-                    &path));
-        }
+
+    if (flashed_slot && after_merge) {
+        ASSERT_TRUE(init->NeedSnapshotsInFirstStageMount());
     }
+    ASSERT_TRUE(init->CreateLogicalAndSnapshotPartitions("super", 1s));
 
     // Check that the target partitions have the same content.
     for (const auto& name : {"sys", "vnd"}) {
@@ -1699,6 +1733,59 @@ INSTANTIATE_TEST_SUITE_P(Snapshot, FlashAfterUpdateTest, Combine(Values(0, 1), B
                                     "Slot"s + (std::get<1>(info.param) ? "After"s : "Before"s) +
                                     "Merge"s;
                          });
+
+// Test behavior of ImageManager::Create on low space scenario. These tests assumes image manager
+// uses /data as backup device.
+class ImageManagerTest : public SnapshotTest, public WithParamInterface<uint64_t> {
+  protected:
+    void SetUp() override {
+        if (!is_virtual_ab_) GTEST_SKIP() << "Test for Virtual A/B devices only";
+
+        SnapshotTest::SetUp();
+        userdata_ = std::make_unique<LowSpaceUserdata>();
+        ASSERT_TRUE(userdata_->Init(GetParam()));
+    }
+    void TearDown() override {
+        if (!is_virtual_ab_) return;
+
+        EXPECT_TRUE(!image_manager_->BackingImageExists(kImageName) ||
+                    image_manager_->DeleteBackingImage(kImageName));
+    }
+    static constexpr const char* kImageName = "my_image";
+    std::unique_ptr<LowSpaceUserdata> userdata_;
+};
+
+TEST_P(ImageManagerTest, CreateImageEnoughAvailSpace) {
+    if (userdata_->available_space() == 0) {
+        GTEST_SKIP() << "/data is full (" << userdata_->available_space()
+                     << " bytes available), skipping";
+    }
+    ASSERT_TRUE(image_manager_->CreateBackingImage(kImageName, userdata_->available_space(),
+                                                   IImageManager::CREATE_IMAGE_DEFAULT))
+            << "Should be able to create image with size = " << userdata_->available_space()
+            << " bytes";
+    ASSERT_TRUE(image_manager_->DeleteBackingImage(kImageName))
+            << "Should be able to delete created image";
+}
+
+TEST_P(ImageManagerTest, CreateImageNoSpace) {
+    uint64_t to_allocate = userdata_->free_space() + userdata_->bsize();
+    auto res = image_manager_->CreateBackingImage(kImageName, to_allocate,
+                                                  IImageManager::CREATE_IMAGE_DEFAULT);
+    ASSERT_FALSE(res) << "Should not be able to create image with size = " << to_allocate
+                      << " bytes because only " << userdata_->free_space() << " bytes are free";
+    ASSERT_EQ(FiemapStatus::ErrorCode::NO_SPACE, res.error_code()) << res.string();
+}
+
+std::vector<uint64_t> ImageManagerTestParams() {
+    std::vector<uint64_t> ret;
+    for (uint64_t size = 1_MiB; size <= 512_MiB; size *= 2) {
+        ret.push_back(size);
+    }
+    return ret;
+}
+
+INSTANTIATE_TEST_SUITE_P(ImageManagerTest, ImageManagerTest, ValuesIn(ImageManagerTestParams()));
 
 }  // namespace snapshot
 }  // namespace android
