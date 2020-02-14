@@ -19,11 +19,7 @@
 // ==========================================================
 cc_library_shared {
     name: "libstatspull",
-    aidl: {
-        include_dirs: ["frameworks/base/core/java"],
-    },
     srcs: [
-        ":statsd_aidl",
         "stats_pull_atom_callback.cpp",
     ],
     cflags: [
@@ -32,13 +28,25 @@ cc_library_shared {
     ],
     export_include_dirs: ["include"],
     shared_libs: [
-        //TODO: use libbinder_ndk.
-        "libbinder",
-        "libstatssocket",
-        "libservices",
+        "libbinder_ndk",
+        "liblog",
+        "statsd-aidl-ndk_platform",
     ],
     static_libs: [
-        "liblog",
         "libutils",
-    ]
+        // TODO(b/149340100): Clean this up when libstatssocket is moved to the apex.
+        "libstatssocket",
+        "libcutils",
+    ],
+    // enumerate stable entry points for APEX use
+    stubs: {
+        symbol_file: "libstatspull.map.txt",
+        versions: [
+            "30",
+        ],
+    },
+    apex_available: [
+        "com.android.os.statsd",
+        "test_com.android.os.statsd",
+    ],
 }

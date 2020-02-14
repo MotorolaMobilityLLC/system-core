@@ -252,7 +252,7 @@ static std::optional<boot_clock::time_point> HandleProcessActions() {
 
         auto restart_time = s->time_started() + s->restart_period();
         if (boot_clock::now() > restart_time) {
-            if (auto result = s->Start(); !result) {
+            if (auto result = s->Start(); !result.ok()) {
                 LOG(ERROR) << "Could not restart process '" << s->name() << "': " << result.error();
             }
         } else {
@@ -348,7 +348,7 @@ bool HandleControlMessage(const std::string& msg, const std::string& name, pid_t
         return false;
     }
 
-    if (auto result = function.action(svc); !result) {
+    if (auto result = function.action(svc); !result.ok()) {
         LOG(ERROR) << "Control message: Could not ctl." << msg << " for '" << name
                    << "' from pid: " << pid << " (" << process_cmdline << "): " << result.error();
         return false;
@@ -493,7 +493,7 @@ static void InstallSignalFdHandler(Epoll* epoll) {
         PLOG(FATAL) << "failed to create signalfd";
     }
 
-    if (auto result = epoll->RegisterHandler(signal_fd, HandleSignalFd); !result) {
+    if (auto result = epoll->RegisterHandler(signal_fd, HandleSignalFd); !result.ok()) {
         LOG(FATAL) << result.error();
     }
 }
@@ -514,7 +514,7 @@ void HandleKeychord(const std::vector<int>& keycodes) {
             found = true;
             LOG(INFO) << "Starting service '" << svc->name() << "' from keychord "
                       << android::base::Join(keycodes, ' ');
-            if (auto result = svc->Start(); !result) {
+            if (auto result = svc->Start(); !result.ok()) {
                 LOG(ERROR) << "Could not start service '" << svc->name() << "' from keychord "
                            << android::base::Join(keycodes, ' ') << ": " << result.error();
             }
@@ -573,7 +573,7 @@ static void RecordStageBoottimes(const boot_clock::time_point& second_stage_star
 void SendLoadPersistentPropertiesMessage() {
     auto init_message = InitMessage{};
     init_message.set_load_persistent_properties(true);
-    if (auto result = SendMessage(property_fd, init_message); !result) {
+    if (auto result = SendMessage(property_fd, init_message); !result.ok()) {
         LOG(ERROR) << "Failed to send load persistent properties message: " << result.error();
     }
 }
@@ -581,7 +581,7 @@ void SendLoadPersistentPropertiesMessage() {
 void SendStopSendingMessagesMessage() {
     auto init_message = InitMessage{};
     init_message.set_stop_sending_messages(true);
-    if (auto result = SendMessage(property_fd, init_message); !result) {
+    if (auto result = SendMessage(property_fd, init_message); !result.ok()) {
         LOG(ERROR) << "Failed to send 'stop sending messages' message: " << result.error();
     }
 }
@@ -589,14 +589,14 @@ void SendStopSendingMessagesMessage() {
 void SendStartSendingMessagesMessage() {
     auto init_message = InitMessage{};
     init_message.set_start_sending_messages(true);
-    if (auto result = SendMessage(property_fd, init_message); !result) {
+    if (auto result = SendMessage(property_fd, init_message); !result.ok()) {
         LOG(ERROR) << "Failed to send 'start sending messages' message: " << result.error();
     }
 }
 
 static void HandlePropertyFd() {
     auto message = ReadMessage(property_fd);
-    if (!message) {
+    if (!message.ok()) {
         LOG(ERROR) << "Could not read message from property service: " << message.error();
         return;
     }
@@ -665,7 +665,7 @@ int SecondStageMain(int argc, char** argv) {
     // Set init and its forked children's oom_adj.
     if (auto result =
                 WriteFile("/proc/1/oom_score_adj", StringPrintf("%d", DEFAULT_OOM_SCORE_ADJUST));
-        !result) {
+        !result.ok()) {
         LOG(ERROR) << "Unable to write " << DEFAULT_OOM_SCORE_ADJUST
                    << " to /proc/1/oom_score_adj: " << result.error();
     }
@@ -732,14 +732,14 @@ int SecondStageMain(int argc, char** argv) {
     SelinuxRestoreContext();
 
     Epoll epoll;
-    if (auto result = epoll.Open(); !result) {
+    if (auto result = epoll.Open(); !result.ok()) {
         PLOG(FATAL) << result.error();
     }
 
     InstallSignalFdHandler(&epoll);
 
     StartPropertyService(&property_fd);
-    if (auto result = epoll.RegisterHandler(property_fd, HandlePropertyFd); !result) {
+    if (auto result = epoll.RegisterHandler(property_fd, HandlePropertyFd); !result.ok()) {
         LOG(FATAL) << "Could not register epoll handler for property fd: " << result.error();
     }
 
@@ -850,7 +850,7 @@ int SecondStageMain(int argc, char** argv) {
         }
 
         auto pending_functions = epoll.Wait(epoll_timeout);
-        if (!pending_functions) {
+        if (!pending_functions.ok()) {
             LOG(ERROR) << pending_functions.error();
         } else if (!pending_functions->empty()) {
             // We always reap children before responding to the other pending functions. This is to

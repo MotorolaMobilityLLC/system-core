@@ -45,9 +45,15 @@ cc_library {
     stubs: {
         symbol_file: "libstatssocket.map.txt",
         versions: [
-            "1",
+            "30",
         ],
-    }
+    },
+    apex_available: [
+        "com.android.os.statsd",
+        "test_com.android.os.statsd",
+        //TODO(b/149340100): Remove this once libstatssocket is only linked as shared.
+        "//apex_available:platform",
+    ],
 }
 
 cc_library_headers {
@@ -92,5 +98,5 @@ cc_test {
         "liblog",
         "libutils",
     ],
-    test_suites: ["device_tests"],
+    test_suites: ["device-tests"],
 }
