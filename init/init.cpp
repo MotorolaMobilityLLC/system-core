@@ -867,9 +867,21 @@ int SecondStageMain(int argc, char** argv) {
         int log_ms = _LogReap();//PropSetLogReap();
         if (log_ms > -1 && (!epoll_timeout || epoll_timeout->count() > log_ms))
             epoll_timeout = std::chrono::milliseconds(log_ms);
-#endif
+
+        if (!Getwhilepiggybacketed(1) && Getwhileepduration(1) > 1999) {
+            LOG(INFO) << "Lastest epoll wait tooks " << Getwhileepduration(1) << "ms";
+        }
+
+        android::base::Timer t;
 
         auto pending_functions = epoll.Wait(epoll_timeout);
+
+        uint64_t duration = t.duration().count();
+        uint64_t nowms = std::chrono::duration_cast<std::chrono::milliseconds>(boot_clock::now().time_since_epoch()).count();
+        Setwhiletime(1, duration, nowms);
+#else
+        auto pending_functions = epoll.Wait(epoll_timeout);
+#endif
         if (!pending_functions.ok()) {
             LOG(ERROR) << pending_functions.error();
         } else if (!pending_functions->empty()) {

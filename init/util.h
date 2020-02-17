@@ -98,6 +98,10 @@ int isPropServThrStart(void);
 
 void PropServThrSetTid(pid_t);
 pid_t PropServThrGetTid(void);
+
+void Setwhiletime(int target, uint64_t duration, uint64_t nowms);
+bool Getwhilepiggybacketed(int target);
+uint64_t Getwhileepduration(int target);
 #endif
 
 #ifdef MTK_TRACE

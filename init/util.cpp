@@ -684,6 +684,11 @@ static int log_printed[__MAXLOGFD__] = {0};
 static int inited[__MAXLOGFD__] = {0};
 static boot_clock::time_point *plog_time[__MAXLOGFD__] = {NULL};
 
+static bool while_flag[__MAXLOGFD__] = {false};
+static uint64_t while_nowms[__MAXLOGFD__] = {0};
+static uint64_t while_ep_duration[__MAXLOGFD__] = {0};
+static bool while_log_piggybacked[__MAXLOGFD__] = {false};
+
 #define _SPLIT_PROPSET_ 0
 #define _SPLIT_OTHER_ 1
 
@@ -699,6 +704,7 @@ static std::queue<PropSetLogInfo> propsetlog_children;
 static size_t propsetlog_len = 0;
 static constexpr uint32_t kNanosecondsPerMicrosecond = 1e3;
 static constexpr uint32_t kMicrosecondsPerSecond = 1e6;
+static constexpr uint32_t kMillisecondsPerMicrosecond = 1e3;
 
 static void _KernelLogger_split_final(int fd, int level,
                   const char* tag, const char* msg);
@@ -762,10 +768,10 @@ int PropSetHook(const char* msg) {
     LogInfo.log_time = boot_clock::now();
     uint64_t log_us = LogInfo.log_time.time_since_epoch().count() / kNanosecondsPerMicrosecond;
 
-    LogInfo.log.append(StringPrintf("%s%llu.%llu",
+    LogInfo.log.append(StringPrintf("%s%llu.%03llu",
                        msg + 8,
                        (unsigned long long) (log_us / kMicrosecondsPerSecond),
-                       (unsigned long long) (log_us % kMicrosecondsPerSecond)));
+                       (unsigned long long) (log_us % kMicrosecondsPerSecond) / kMillisecondsPerMicrosecond));
 
     propsetlog_len += LogInfo.log.length();
     propsetlog_children.push(LogInfo);
@@ -847,7 +853,20 @@ static void _KernelLogger_split_final(int fd, int level,
   // TODO: should we automatically break up long lines into multiple lines?
   // Or we could log but with something like "..." at the end?
   char buf[1024];
-  size_t size = snprintf(buf, sizeof(buf), "<%d>%s %d: %s\n", level, tag, fd, msg);
+  size_t size;
+
+  if (PropServThrGetTid() != gettid() && while_flag[_SPLIT_OTHER_]) {
+    size = snprintf(buf, sizeof(buf), "<%d>%s %d: [%llu][%llu]%s\n", level, tag, fd,
+      while_nowms[_SPLIT_OTHER_], while_ep_duration[_SPLIT_OTHER_], msg);
+    while_log_piggybacked[_SPLIT_OTHER_] = true;
+  } else if (PropServThrGetTid() == gettid() && while_flag[_SPLIT_PROPSET_]) {
+    size = snprintf(buf, sizeof(buf), "<%d>%s %d: [%llu][%llu]%s\n", level, tag, fd,
+      while_nowms[_SPLIT_PROPSET_], while_ep_duration[_SPLIT_PROPSET_], msg);
+    while_log_piggybacked[_SPLIT_PROPSET_] = true;
+  } else {
+    size = snprintf(buf, sizeof(buf), "<%d>%s %d: %s\n", level, tag, fd, msg);
+  }
+
   if (size > sizeof(buf)) {
     size = snprintf(buf, sizeof(buf), "<%d>%s: %zu-byte message too long for printk\n",
                     level, tag, size);
@@ -944,6 +963,34 @@ void PropServThrSetTid(pid_t newtid) {
 
 pid_t PropServThrGetTid(void) {
     return PropServThrTid;
+}
+
+void Setwhiletime(int target, uint64_t duration, uint64_t nowms) {
+
+    if (target != _SPLIT_OTHER_ && target != _SPLIT_PROPSET_)
+        return;
+
+    while_nowms[target] = nowms;
+    while_ep_duration[target] = duration;
+
+    if (!while_flag[target])
+        while_flag[target] = true;
+
+    while_log_piggybacked[target] = false;
+}
+
+bool Getwhilepiggybacketed(int target) {
+    if (target != _SPLIT_OTHER_ && target != _SPLIT_PROPSET_)
+        return true;
+
+    return while_log_piggybacked[target];
+}
+
+uint64_t Getwhileepduration(int target) {
+    if (target != _SPLIT_OTHER_ && target != _SPLIT_PROPSET_)
+        return 0;
+
+    return while_ep_duration[target];
 }
 #endif
 

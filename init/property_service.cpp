@@ -1278,10 +1278,26 @@ static void PropertyServiceThread() {
         auto epoll_timeout = std::optional<std::chrono::milliseconds>{};
         int log_ms = _LogReap();//PropSetLogReap();
 
+        if (!Getwhilepiggybacketed(0) && Getwhileepduration(0) > 1999) {
+            if (log_ms == -1)
+                LOG(INFO) << "Lastest epoll wait tooks " << Getwhileepduration(0) << "ms";
+            else {
+                PropSetLogReap(1);
+                log_ms = _LogReap();
+            }
+        }
+
         if (log_ms > -1)
             epoll_timeout = std::chrono::milliseconds(log_ms);
 
+        android::base::Timer t;
+
         auto pending_functions = epoll.Wait(epoll_timeout);
+
+        uint64_t duration = t.duration().count();
+        uint64_t nowms = std::chrono::duration_cast<std::chrono::milliseconds>(boot_clock::now().time_since_epoch()).count();
+
+        Setwhiletime(0, duration, nowms);
 #else
         auto pending_functions = epoll.Wait(std::nullopt);
 #endif
