@@ -40,7 +40,7 @@ Result<void> RunBuiltinFunction(const BuiltinFunction& function,
     builtin_arguments.args[0] = args[0];
     for (std::size_t i = 1; i < args.size(); ++i) {
         auto expanded_arg = ExpandProps(args[i]);
-        if (!expanded_arg) {
+        if (!expanded_arg.ok()) {
             return expanded_arg.error();
         }
         builtin_arguments.args[i] = std::move(*expanded_arg);
@@ -63,7 +63,7 @@ Result<void> Command::InvokeFunc(Subcontext* subcontext) const {
         }
 
         auto expanded_args = subcontext->ExpandArgs(args_);
-        if (!expanded_args) {
+        if (!expanded_args.ok()) {
             return expanded_args.error();
         }
         return RunBuiltinFunction(func_, *expanded_args, subcontext->context());
@@ -79,7 +79,7 @@ Result<void> Command::CheckCommand() const {
     builtin_arguments.args[0] = args_[0];
     for (size_t i = 1; i < args_.size(); ++i) {
         auto expanded_arg = ExpandProps(args_[i]);
-        if (!expanded_arg) {
+        if (!expanded_arg.ok()) {
             if (expanded_arg.error().message().find("doesn't exist while expanding") !=
                 std::string::npos) {
                 // If we failed because we won't have a property, use an empty string, which is
@@ -118,7 +118,7 @@ Result<void> Action::AddCommand(std::vector<std::string>&& args, int line) {
     }
 
     auto map_result = function_map_->Find(args);
-    if (!map_result) {
+    if (!map_result.ok()) {
         return Error() << map_result.error();
     }
 
@@ -138,7 +138,7 @@ std::size_t Action::NumCommands() const {
 size_t Action::CheckAllCommands() const {
     size_t failures = 0;
     for (const auto& command : commands_) {
-        if (auto result = command.CheckCommand(); !result) {
+        if (auto result = command.CheckCommand(); !result.ok()) {
             LOG(ERROR) << "Command '" << command.BuildCommandString() << "' (" << filename_ << ":"
                        << command.line() << ") failed: " << result.error();
             ++failures;
@@ -194,7 +194,7 @@ void Action::ExecuteCommand(const Command& command) const {
 #endif
         LOG(INFO) << "Command '" << cmd_str << "' action=" << trigger_name << " (" << filename_
                   << ":" << command.line() << ") took " << duration.count() << "ms and "
-                  << (result ? "succeeded" : "failed: " + result.error().message());
+                  << (result.ok() ? "succeeded" : "failed: " + result.error().message());
     }
 }
 
