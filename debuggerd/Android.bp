@@ -83,6 +83,14 @@ cc_library_static {
         "libdebuggerd",
     ],
 
+    product_variables: {
+        debuggable: {
+            cflags: [
+                "-DDIRECT_COREDUMP",
+            ],
+        },
+    },
+
     export_header_lib_headers: ["libdebuggerd_common_headers"],
     export_include_dirs: ["include"],
 }

@@ -114,19 +114,20 @@ class CrashQueue {
 
   std::pair<std::string, unique_fd> get_output() {
     std::string path;
-    unique_fd result(openat(dir_fd_, ".", O_WRONLY | O_APPEND | O_TMPFILE | O_CLOEXEC, 0640));
-    if (result == -1) {
+    //unique_fd result(openat(dir_fd_, ".", O_WRONLY | O_APPEND | O_TMPFILE | O_CLOEXEC, 0640));
+    //if (result == -1) {
       // We might not have O_TMPFILE. Try creating with an arbitrary filename instead.
       static size_t counter = 0;
       std::string tmp_filename = StringPrintf(".temporary%zu", counter++);
-      result.reset(openat(dir_fd_, tmp_filename.c_str(),
+      //result.reset(openat(dir_fd_, tmp_filename.c_str(),
+      unique_fd result(openat(dir_fd_, tmp_filename.c_str(),
                           O_WRONLY | O_APPEND | O_CREAT | O_TRUNC | O_CLOEXEC, 0640));
       if (result == -1) {
         PLOG(FATAL) << "failed to create temporary tombstone in " << dir_path_;
       }
 
       path = StringPrintf("%s/%s", dir_path_.c_str(), tmp_filename.c_str());
-    }
+    //}
     return std::make_pair(std::move(path), std::move(result));
   }
 

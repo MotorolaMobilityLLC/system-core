@@ -22,6 +22,10 @@
 #include <sys/cdefs.h>
 #include <sys/types.h>
 
+#if defined(DIRECT_COREDUMP)
+#include <stdlib.h>
+#endif
+
 __BEGIN_DECLS
 
 // These callbacks are called in a signal handler, and thus must be async signal safe.
@@ -41,6 +45,29 @@ void debuggerd_init(debuggerd_callbacks_t* callbacks);
 #define DEBUGGER_SIGNAL BIONIC_SIGNAL_DEBUGGER
 
 static void __attribute__((__unused__)) debuggerd_register_handlers(struct sigaction* action) {
+#if defined(DIRECT_COREDUMP)
+  bool direct = 0;
+  const char *DEBUG_DIRECT_COREDUMP = getenv("DEBUG_DIRECT_COREDUMP");
+
+  if (DEBUG_DIRECT_COREDUMP != NULL) {
+    direct = atoi(DEBUG_DIRECT_COREDUMP);
+  }
+
+  if (direct == 1) {
+    signal(SIGABRT, SIG_DFL);
+    signal(SIGBUS, SIG_DFL);
+    signal(SIGFPE, SIG_DFL);
+    signal(SIGILL, SIG_DFL);
+    signal(SIGSEGV, SIG_DFL);
+#if defined(SIGSTKFLT)
+    signal(SIGSTKFLT, SIG_DFL);
+#endif
+    signal(SIGSYS, SIG_DFL);
+    signal(SIGTRAP, SIG_DFL);
+    return;
+  }
+#endif
+
   sigaction(SIGABRT, action, nullptr);
   sigaction(SIGBUS, action, nullptr);
   sigaction(SIGFPE, action, nullptr);
@@ -53,5 +80,4 @@ static void __attribute__((__unused__)) debuggerd_register_handlers(struct sigac
   sigaction(SIGTRAP, action, nullptr);
   sigaction(BIONIC_SIGNAL_DEBUGGER, action, nullptr);
 }
-
 __END_DECLS
