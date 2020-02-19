@@ -857,11 +857,13 @@ static void _KernelLogger_split_final(int fd, int level,
 
   if (PropServThrGetTid() != gettid() && while_flag[_SPLIT_OTHER_]) {
     size = snprintf(buf, sizeof(buf), "<%d>%s %d: [%llu][%llu]%s\n", level, tag, fd,
-      while_nowms[_SPLIT_OTHER_], while_ep_duration[_SPLIT_OTHER_], msg);
+      (unsigned long long) while_nowms[_SPLIT_OTHER_],
+      (unsigned long long) while_ep_duration[_SPLIT_OTHER_], msg);
     while_log_piggybacked[_SPLIT_OTHER_] = true;
   } else if (PropServThrGetTid() == gettid() && while_flag[_SPLIT_PROPSET_]) {
     size = snprintf(buf, sizeof(buf), "<%d>%s %d: [%llu][%llu]%s\n", level, tag, fd,
-      while_nowms[_SPLIT_PROPSET_], while_ep_duration[_SPLIT_PROPSET_], msg);
+      (unsigned long long) while_nowms[_SPLIT_PROPSET_],
+      (unsigned long long) while_ep_duration[_SPLIT_PROPSET_], msg);
     while_log_piggybacked[_SPLIT_PROPSET_] = true;
   } else {
     size = snprintf(buf, sizeof(buf), "<%d>%s %d: %s\n", level, tag, fd, msg);
