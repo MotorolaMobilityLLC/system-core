@@ -27,6 +27,7 @@ bool isProductNameFijiReteu(std::string carrier_ontim);
 bool isProductNameFijiLnv(std::string carrier_ontim);
 bool isProductNameBlackjackReteu(std::string carrier_ontim);
 bool isProductNameBlackjackLnv(std::string carrier_ontim);
+bool isProductNameBlackjackRetru(std::string carrier_ontim);
 bool changeSystemProperty(std::string key);
 std::string get_fingerprint_property(std::string value);
 std::string get_version_property(std::string value);
