@@ -830,6 +830,10 @@ int SecondStageMain(int argc, char** argv) {
     std::string bootmode = GetProperty("ro.bootmode", "");
     if (bootmode == "charger") {
         am.QueueEventTrigger("charger");
+    }else if (bootmode == "cali"){
+        am.QueueEventTrigger("cali");
+    } else if (bootmode == "factorytest"){
+        am.QueueEventTrigger("factorytest");
     } else {
         am.QueueEventTrigger("late-init");
     }
