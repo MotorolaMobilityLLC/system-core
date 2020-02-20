@@ -204,6 +204,11 @@ void set_system_properties(){
             }
             property_set(prop_amclient, prop_client_value);
             property_set(prop_msclient, prop_clientrev_value);
+        } else if (isProductNameBlackjackRetru(carrier_ontim)) {
+            prop_product_value = "blackjack_retru";
+            prop_carrier_value = "retru";
+            property_set(prop_amclient, prop_client_value);
+            property_set(prop_msclient, prop_clientrev_value);
         } else {
             prop_product_value = "blackjack";
             if (carrier_ontim == "openmx_retmx" || carrier_ontim == "amxmx_amxmx"
@@ -301,6 +306,11 @@ bool isProductNameBlackjackLnv(std::string carrier_ontim) {
     if (carrier_ontim == "retapac_reteusa") return true;
     if (carrier_ontim == "retapac_reteuuae") return true;
     if (carrier_ontim == "retapac_rettld") return true;
+    return false;
+}
+
+bool isProductNameBlackjackRetru(std::string carrier_ontim) {
+    if (carrier_ontim == "retru_retru") return true;
     return false;
 }
 
