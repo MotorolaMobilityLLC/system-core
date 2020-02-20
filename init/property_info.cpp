@@ -245,6 +245,10 @@ void set_system_properties(){
         if (carrier_ontim == "attmx_attmx") {
              property_set(prop_amazon_partnerid,carrier_value);
         }
+        if (carrier_ontim == "retru_retru") {
+              property_set("ro.product.locale","ru-RU");
+        }
+
         // END EKBLACKJ-178
     }
 
