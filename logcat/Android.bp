@@ -40,6 +40,19 @@ cc_binary {
     ],
 }
 
+cc_binary {
+    name: "ylogkat",
+
+    defaults: ["logcat_defaults"],
+    srcs: [
+        "logcat.cpp",
+    ],
+  cflags: [
+        "-DLIBYLOG",
+    ],
+    static_libs: ["libylog"],
+}
+
 sh_binary {
     name: "logcatd",
     src: "logcatd",
