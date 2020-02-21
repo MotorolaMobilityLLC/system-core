@@ -23,7 +23,7 @@
 
 #include <log/log.h>
 #include <sysutils/SocketClient.h>
-
+class YLogBuffer;
 class LogBuffer;
 
 #define EXPIRE_HOUR_THRESHOLD 24  // Only expire chatty UID logs to preserve
@@ -34,7 +34,7 @@ class LogBuffer;
 
 class __attribute__((packed)) LogBufferElement {
     friend LogBuffer;
-
+    friend YLogBuffer;
     // sized to match reality of incoming log packets
     const uint32_t mUid;
     const uint32_t mPid;
