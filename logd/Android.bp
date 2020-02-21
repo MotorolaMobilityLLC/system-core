@@ -46,6 +46,7 @@ cc_library_static {
         "LogAudit.cpp",
         "LogKlog.cpp",
         "LogTags.cpp",
+        "YLogBuffer.cpp",
     ],
     logtags: ["event.logtags"],
 

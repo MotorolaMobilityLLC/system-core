@@ -131,6 +131,77 @@ cc_library {
     ],
 }
 
+cc_library {
+    name: "libylog",
+    host_supported: true,
+    ramdisk_available: true,
+    recovery_available: true,
+    native_bridge_supported: true,
+    srcs: liblog_sources,
+
+    target: {
+        android: {
+            version_script: "liblog.map.txt",
+            srcs: liblog_target_sources,
+            // AddressSanitizer runtime library depends on liblog.
+            sanitize: {
+                address: false,
+            },
+        },
+        android_arm: {
+            // TODO: This is to work around b/24465209. Remove after root cause is fixed
+            pack_relocations: false,
+            ldflags: ["-Wl,--hash-style=both"],
+        },
+        windows: {
+            enabled: true,
+        },
+        not_windows: {
+            srcs: ["event_tag_map.cpp"],
+        },
+        linux_bionic: {
+            enabled: true,
+        },
+    },
+
+    header_libs: [
+        "libbase_headers",
+        "liblog_headers",
+    ],
+    export_header_lib_headers: ["liblog_headers"],
+
+    stubs: {
+        symbol_file: "liblog.map.txt",
+        versions: ["29", "30"],
+    },
+
+    // TODO(tomcherry): Renable this before release branch is cut
+    header_abi_checker: {
+        enabled: false,
+    },
+
+    cflags: [
+        "-Wall",
+        "-Werror",
+        "-Wextra",
+        // This is what we want to do:
+        //  liblog_cflags := $(shell \
+        //   sed -n \
+        //       's/^\([0-9]*\)[ \t]*liblog[ \t].*/-DLIBLOG_LOG_TAG=\1/p' \
+        //       $(LOCAL_PATH)/event.logtags)
+        // so make sure we do not regret hard-coding it as follows:
+        "-DLIBLOG_LOG_TAG=1006",
+        "-DSNET_EVENT_LOG_TAG=1397638484",
+        "-DLIBYLOG",
+    ],
+    logtags: ["event.logtags"],
+    compile_multilib: "both",
+    apex_available: [
+        "//apex_available:anyapex",
+        "//apex_available:platform",
+    ],
+}
+
 ndk_headers {
     name: "liblog_ndk_headers",
     from: "include/android",
