@@ -1223,3 +1223,19 @@ std::string LogBuffer::formatStatistics(uid_t uid, pid_t pid,
 
     return ret;
 }
+
+int LogBuffer::copy2ylogbuffer(INSERT_YLOGBUFFER_CALLBACK callback) {
+    int count=0;
+
+    rdlock();
+    LogBufferElementCollection::iterator it = mLogElements.begin();
+    while (it != mLogElements.end()) {
+        LogBufferElement* element = *it;
+        callback(element->getLogId() ,element->getRealTime(),element->getUid(),element->getPid(),element->getTid(),element->getMsg(),element->getMsgLen());
+        count++;
+        ++it;
+    }
+    unlock();
+
+    return count;
+}

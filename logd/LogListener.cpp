@@ -29,7 +29,7 @@
 #include "LogBuffer.h"
 #include "LogListener.h"
 #include "LogUtils.h"
-
+#include "YLogBuffer.h"
 LogListener::LogListener(LogBuffer* buf, LogReader* reader)
     : SocketListener(getLogSocket(), false), logbuf(buf), reader(reader) {}
 
@@ -110,7 +110,12 @@ bool LogListener::onDataAvailable(SocketClient* cli) {
     if (res > 0) {
         reader->notifyNewLog(static_cast<log_mask_t>(1 << logId));
     }
-
+    if (logbuf != nullptr) {
+        YLogBuffer::getInstance()->log((LogBuffer*)logbuf,(log_id_t)header->id, header->realtime,
+                cred->uid, cred->pid, header->tid, msg,
+                ((size_t) n <= USHRT_MAX) ? (unsigned short) n : USHRT_MAX) ;
+      
+    }
     return true;
 }
 

@@ -31,7 +31,7 @@
 #include "LogTags.h"
 #include "LogTimes.h"
 #include "LogWhiteBlackList.h"
-
+#include "YLogBuffer.h"
 //
 // We are either in 1970ish (MONOTONIC) or 2016+ish (REALTIME) so to
 // differentiate without prejudice, we use 1972 to delineate, earlier
@@ -171,7 +171,7 @@ class LogBuffer {
     void unlock() {
         pthread_rwlock_unlock(&mLogElementsLock);
     }
-
+    int copy2ylogbuffer(INSERT_YLOGBUFFER_CALLBACK callback);
    private:
     static constexpr size_t minPrune = 4;
     static constexpr size_t maxPrune = 256;

@@ -267,8 +267,11 @@ static int logdOpen(struct logger_list* logger_list) {
   if (sock > 0) {
     return sock;
   }
-
+#ifndef LIBYLOG
   sock = socket_local_client("logdr", SOCK_SEQPACKET);
+#else
+  sock = socket_local_client("logdylog", SOCK_SEQPACKET);
+#endif
   if (sock <= 0) {
     if ((sock == -1) && errno) {
       return -errno;
