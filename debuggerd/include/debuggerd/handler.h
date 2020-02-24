@@ -64,6 +64,7 @@ static void __attribute__((__unused__)) debuggerd_register_handlers(struct sigac
 #endif
     signal(SIGSYS, SIG_DFL);
     signal(SIGTRAP, SIG_DFL);
+    sigaction(BIONIC_SIGNAL_DEBUGGER, action, nullptr);
     return;
   }
 #endif
