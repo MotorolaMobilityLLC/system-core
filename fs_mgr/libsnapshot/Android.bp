@@ -72,6 +72,7 @@ filegroup {
         "android/snapshot/snapshot.proto",
         "device_info.cpp",
         "snapshot.cpp",
+        "snapshot_stats.cpp",
         "snapshot_metadata_updater.cpp",
         "partition_cow_creator.cpp",
         "return.cpp",
@@ -237,6 +238,7 @@ cc_binary {
         "liblog",
         "liblp",
         "libprotobuf-cpp-lite",
+        "libstatslog",
         "libutils",
 
         // TODO(b/148818798): remove when parent bug is fixed.

@@ -397,6 +397,10 @@ on init
     # Start logd before any other services run to ensure we capture all of their logs.
     start logd
     # Start lmkd before any other services run so that it can register them
+    chown root system /sys/module/lowmemorykiller/parameters/adj
+    chmod 0664 /sys/module/lowmemorykiller/parameters/adj
+    chown root system /sys/module/lowmemorykiller/parameters/minfree
+    chmod 0664 /sys/module/lowmemorykiller/parameters/minfree
     start lmkd
 
     # Start essential services.
@@ -509,6 +513,7 @@ on post-fs
     mkdir /metadata/vold
     chmod 0700 /metadata/vold
     mkdir /metadata/password_slots 0771 root system
+    mkdir /metadata/bootstat 0750 system log
     mkdir /metadata/ota 0700 root system
     mkdir /metadata/ota/snapshots 0700 root system
 
@@ -740,6 +745,12 @@ on post-fs-data
     # Create root dir for Incremental Service
     mkdir /data/incremental 0771 system system encryption=Require
 
+    # Create directories for statsd
+    mkdir /data/misc/stats-data/ 0770 statsd system
+    mkdir /data/misc/stats-service/ 0770 statsd system
+    mkdir /data/misc/stats-active-metric/ 0770 statsd system
+    mkdir /data/misc/train-info/ 0770 statsd system
+
     # Wait for apexd to finish activating APEXes before starting more processes.
     wait_for_prop apexd.status ready
     perform_apex_config
@@ -776,9 +787,6 @@ on post-fs-data
     # until it is confirmed that apps and vendor processes don't make
     # IOCTLs on ashmem fds any more.
     setprop sys.use_memfd false
-
-    # Explicitly disable FUSE
-    setprop persist.sys.fuse false
 
     # Set fscklog permission
     chown root system /dev/fscklogs/log
@@ -840,10 +848,6 @@ on boot
     # parameters to match how it is managing things.
     write /proc/sys/vm/overcommit_memory 1
     write /proc/sys/vm/min_free_order_shift 4
-    chown root system /sys/module/lowmemorykiller/parameters/adj
-    chmod 0664 /sys/module/lowmemorykiller/parameters/adj
-    chown root system /sys/module/lowmemorykiller/parameters/minfree
-    chmod 0664 /sys/module/lowmemorykiller/parameters/minfree
 
     # System server manages zram writeback
     chown root system /sys/block/zram0/idle
