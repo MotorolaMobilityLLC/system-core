@@ -471,12 +471,6 @@ void LogBuffer::maybePrune(log_id_t id) {
     }
 }
 
-void LogBuffer::poison(
-        LogBufferElementCollection::iterator it) {
-    unsigned long *it_addr = (unsigned long *)((unsigned long)&(*it));
-    memset(it_addr, 0x6b, sizeof(unsigned long));
-}
-
 LogBufferElementCollection::iterator LogBuffer::erase(
     LogBufferElementCollection::iterator it, bool coalesce) {
     LogBufferElement* element = *it;
@@ -518,7 +512,6 @@ LogBufferElementCollection::iterator LogBuffer::erase(
                   ? element->getTag()
                   : element->getUid();
 #endif
-    poison(it);
     it = mLogElements.erase(it);
     if (doSetLast) {
         log_id_for_each(i) {
@@ -1125,7 +1118,6 @@ log_time LogBuffer::flushTo(SocketClient* reader, const log_time& start,
                             void* arg) {
     LogBufferElementCollection::iterator it;
     uid_t uid = reader->getUid();
-    unsigned long oldit_value;
 
     rdlock();
 
@@ -1162,7 +1154,6 @@ log_time LogBuffer::flushTo(SocketClient* reader, const log_time& start,
     size_t skip = maxSkip;
     for (; it != mLogElements.end(); ++it) {
         LogBufferElement* element = *it;
-        oldit_value = (unsigned long)*it;
 
         if (!--skip) {
             android::prdebug("reader.per: too many elements skipped");
@@ -1216,12 +1207,6 @@ log_time LogBuffer::flushTo(SocketClient* reader, const log_time& start,
 
         skip = maxSkip;
         rdlock();
-
-        if (oldit_value != (unsigned long)*it) {
-            unlock();
-            return curr;
-        }
-
     }
     unlock();
 
