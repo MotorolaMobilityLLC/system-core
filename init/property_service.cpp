@@ -789,7 +789,7 @@ static void load_override_properties() {
  *      prop_val set to prop_val + ro.product.<name>.suffix
  *
  *      And ro.product.<name>.suffix is a concat of
- *      ro.product.<source>.<name>.suffix.
+ *      ro.<source>.product.<name>.suffix.
  *
  */
 static void mmi_append_ro_product_prop_suffix(const std::string& name, std::string& prop_val, const std::string& ro_product_props_sources) {
@@ -805,7 +805,7 @@ static void mmi_append_ro_product_prop_suffix(const std::string& name, std::stri
     if (suffix_prop_val.empty()) {
         // aggregate all the ro.product.<source>.<name> properties into a single string
         for (const auto& source : Split(ro_product_props_sources, ",")) {
-            std::string source_suffix_prop = "ro.product." + source + "." + name + ".suffix";
+            std::string source_suffix_prop = "ro." + source + ".product." + name + ".suffix";
 
             std::string source_suffix_val = GetProperty(source_suffix_prop, EMPTY);
             suffix_prop_val += source_suffix_val;
