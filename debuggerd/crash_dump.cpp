@@ -637,7 +637,7 @@ int main(int argc, char** argv) {
   std::string amfd_data;
 
   bool need_notify_aee = false;
-  char tombstone_path[PATH_MAX];
+  char tombstone_path[PATH_MAX] = {};
   if (fatal_signal && is_debuggerd_register_signal(signo)) {
     ssize_t ret = -1;
     char buf[256];
