@@ -60,6 +60,7 @@
 #include "client/file_sync_client.h"
 #include "commandline.h"
 #include "fastdeploy.h"
+#include "incremental_server.h"
 #include "services.h"
 #include "shell_protocol.h"
 #include "sysdeps/chrono.h"
@@ -352,7 +353,8 @@ static void stdinout_raw_epilogue(int inFd, int outFd, int old_stdin_mode, int o
 #endif
 }
 
-void copy_to_file(int inFd, int outFd) {
+bool copy_to_file(int inFd, int outFd) {
+    bool result = true;
     std::vector<char> buf(64 * 1024);
     int len;
     long total = 0;
@@ -375,6 +377,7 @@ void copy_to_file(int inFd, int outFd) {
         }
         if (len < 0) {
             D("copy_to_file(): read failed: %s", strerror(errno));
+            result = false;
             break;
         }
         if (outFd == STDOUT_FILENO) {
@@ -388,7 +391,8 @@ void copy_to_file(int inFd, int outFd) {
 
     stdinout_raw_epilogue(inFd, outFd, old_stdin_mode, old_stdout_mode);
 
-    D("copy_to_file() finished after %lu bytes", total);
+    D("copy_to_file() finished with %s after %lu bytes", result ? "success" : "failure", total);
+    return result;
 }
 
 static void send_window_size_change(int fd, std::unique_ptr<ShellProtocol>& shell) {
@@ -1956,6 +1960,18 @@ int adb_commandline(int argc, const char** argv) {
                 error_exit("usage: adb reconnect [device|offline]");
             }
         }
+    } else if (!strcmp(argv[0], "inc-server")) {
+        if (argc < 3) {
+            error_exit("usage: adb inc-server FD FILE1 FILE2 ...");
+        }
+        int fd = atoi(argv[1]);
+        if (fd < 3) {
+            // Disallow invalid FDs and stdin/out/err as well.
+            error_exit("Invalid fd number given: %d", fd);
+        }
+        fd = adb_register_socket(fd);
+        close_on_exec(fd);
+        return incremental::serve(fd, argc - 2, argv + 2);
     }
 
     error_exit("unknown command %s", argv[0]);

@@ -72,6 +72,7 @@ filegroup {
         "android/snapshot/snapshot.proto",
         "device_info.cpp",
         "snapshot.cpp",
+        "snapshot_stats.cpp",
         "snapshot_metadata_updater.cpp",
         "partition_cow_creator.cpp",
         "return.cpp",
@@ -94,6 +95,16 @@ cc_library_static {
     srcs: [":libsnapshot_sources"],
     static_libs: [
         "libfs_mgr_binder"
+    ],
+
+    shared_libs: [
+        // TODO(b/148818798): remove when parent bug is fixed
+        "libutilscallstack",
+    ],
+    cflags: [
+        "-g",
+        "-O0",
+        "-DLIBSNAPSHOT_USE_CALLSTACK",
     ],
 }
 
@@ -150,8 +161,8 @@ cc_library_static {
     ],
 }
 
-cc_test {
-    name: "libsnapshot_test",
+cc_defaults {
+    name: "libsnapshot_test_defaults",
     defaults: ["libsnapshot_defaults"],
     srcs: [
         "partition_cow_creator_test.cpp",
@@ -163,24 +174,46 @@ cc_test {
         "android.hardware.boot@1.1",
         "libbinder",
         "libcrypto",
-        "libfs_mgr",
-        "libgsi",
         "libhidlbase",
-        "liblp",
         "libprotobuf-cpp-lite",
         "libsparse",
         "libutils",
         "libz",
+
+        // TODO(b/148818798): remove when parent bug is fixed
+        "libutilscallstack",
     ],
     static_libs: [
+        "libfs_mgr",
+        "libgsi",
         "libgmock",
+        "liblp",
         "libsnapshot",
         "libsnapshot_test_helpers",
     ],
     header_libs: [
         "libstorage_literals_headers",
     ],
+    test_suites: [
+        "vts-core",
+        "device-tests"
+    ],
+    test_min_api_level: 29,
+    auto_gen_config: true,
     require_root: true,
+}
+
+cc_test {
+    name: "vts_libsnapshot_test",
+    defaults: ["libsnapshot_test_defaults"],
+}
+
+cc_test {
+    name: "vts_libsnapshot_test_presubmit",
+    defaults: ["libsnapshot_test_defaults"],
+    cppflags: [
+        "-DSKIP_TEST_IN_PRESUBMIT",
+    ],
 }
 
 cc_binary {
@@ -198,7 +231,6 @@ cc_binary {
         "android.hardware.boot@1.1",
         "libbase",
         "libbinder",
-        "libbinderthreadstate",
         "libext2_uuid",
         "libext4_utils",
         "libfs_mgr_binder",
@@ -206,7 +238,11 @@ cc_binary {
         "liblog",
         "liblp",
         "libprotobuf-cpp-lite",
+        "libstatslog",
         "libutils",
+
+        // TODO(b/148818798): remove when parent bug is fixed.
+        "libutilscallstack",
     ],
     init_rc: [
         "snapshotctl.rc",

@@ -21,6 +21,7 @@
 #include <sys/unistd.h>
 
 #include <optional>
+#include <sstream>
 #include <thread>
 #include <unordered_set>
 
@@ -37,10 +38,15 @@
 #include <libfiemap/image_manager.h>
 #include <liblp/liblp.h>
 
+#ifdef LIBSNAPSHOT_USE_CALLSTACK
+#include <utils/CallStack.h>
+#endif
+
 #include <android/snapshot/snapshot.pb.h>
 #include "device_info.h"
 #include "partition_cow_creator.h"
 #include "snapshot_metadata_updater.h"
+#include "snapshot_stats.h"
 #include "utility.h"
 
 namespace android {
@@ -183,11 +189,19 @@ bool SnapshotManager::TryCancelUpdate(bool* needs_merge) {
     return true;
 }
 
-SnapshotManager::Slot SnapshotManager::GetCurrentSlot() {
+std::string SnapshotManager::ReadUpdateSourceSlotSuffix() {
     auto boot_file = GetSnapshotBootIndicatorPath();
     std::string contents;
     if (!android::base::ReadFileToString(boot_file, &contents)) {
         PLOG(WARNING) << "Cannot read " << boot_file;
+        return {};
+    }
+    return contents;
+}
+
+SnapshotManager::Slot SnapshotManager::GetCurrentSlot() {
+    auto contents = ReadUpdateSourceSlotSuffix();
+    if (contents.empty()) {
         return Slot::Unknown;
     }
     if (device_->GetSlotSuffix() == contents) {
@@ -196,13 +210,49 @@ SnapshotManager::Slot SnapshotManager::GetCurrentSlot() {
     return Slot::Target;
 }
 
+static bool RemoveFileIfExists(const std::string& path) {
+    std::string message;
+    if (!android::base::RemoveFileIfExists(path, &message)) {
+        LOG(ERROR) << "Remove failed: " << path << ": " << message;
+        return false;
+    }
+    return true;
+}
+
 bool SnapshotManager::RemoveAllUpdateState(LockedFile* lock) {
+    LOG(INFO) << "Removing all update state.";
+
+#ifdef LIBSNAPSHOT_USE_CALLSTACK
+    LOG(WARNING) << "Logging stack; see b/148818798.";
+    // Do not use CallStack's log functions because snapshotctl relies on
+    // android-base/logging to save log to files.
+    // TODO(b/148818798): remove this before we ship.
+    CallStack callstack;
+    callstack.update();
+    auto callstack_str = callstack.toString();
+    LOG(WARNING) << callstack_str.c_str();
+    std::stringstream path;
+    path << "/data/misc/snapshotctl_log/libsnapshot." << Now() << ".log";
+    std::string path_str = path.str();
+    android::base::WriteStringToFile(callstack_str.c_str(), path_str);
+    if (chmod(path_str.c_str(), 0644) == -1) {
+        PLOG(WARNING) << "Unable to chmod 0644 "
+                      << ", file maybe dropped from bugreport:" << path_str;
+    }
+#endif
+
     if (!RemoveAllSnapshots(lock)) {
         LOG(ERROR) << "Could not remove all snapshots";
         return false;
     }
 
-    RemoveSnapshotBootIndicator();
+    // It's okay if these fail - first-stage init performs a deeper check after
+    // reading the indicator file, so it's not a problem if it still exists
+    // after the update completes.
+    std::vector<std::string> files = {GetSnapshotBootIndicatorPath(), GetRollbackIndicatorPath()};
+    for (const auto& file : files) {
+        RemoveFileIfExists(file);
+    }
 
     // If this fails, we'll keep trying to remove the update state (as the
     // device reboots or starts a new update) until it finally succeeds.
@@ -226,6 +276,13 @@ bool SnapshotManager::FinishedSnapshotWrites() {
 
     if (!EnsureNoOverflowSnapshot(lock.get())) {
         LOG(ERROR) << "Cannot ensure there are no overflow snapshots.";
+        return false;
+    }
+
+    // This file is written on boot to detect whether a rollback occurred. It
+    // MUST NOT exist before rebooting, otherwise, we're at risk of deleting
+    // snapshots too early.
+    if (!RemoveFileIfExists(GetRollbackIndicatorPath())) {
         return false;
     }
 
@@ -945,14 +1002,8 @@ std::string SnapshotManager::GetSnapshotBootIndicatorPath() {
     return metadata_dir_ + "/" + android::base::Basename(kBootIndicatorPath);
 }
 
-void SnapshotManager::RemoveSnapshotBootIndicator() {
-    // It's okay if this fails - first-stage init performs a deeper check after
-    // reading the indicator file, so it's not a problem if it still exists
-    // after the update completes.
-    auto boot_file = GetSnapshotBootIndicatorPath();
-    if (unlink(boot_file.c_str()) == -1 && errno != ENOENT) {
-        PLOG(ERROR) << "unlink " << boot_file;
-    }
+std::string SnapshotManager::GetRollbackIndicatorPath() {
+    return metadata_dir_ + "/rollback-indicator";
 }
 
 void SnapshotManager::AcknowledgeMergeSuccess(LockedFile* lock) {
@@ -1123,25 +1174,18 @@ bool SnapshotManager::HandleCancelledUpdate(LockedFile* lock) {
     if (slot == Slot::Unknown) {
         return false;
     }
-    if (slot == Slot::Target) {
-        // We're booted into the target slot, which means we just rebooted
-        // after applying the update.
-        if (!HandleCancelledUpdateOnNewSlot(lock)) {
-            return false;
-        }
+
+    // If all snapshots were reflashed, then cancel the entire update.
+    if (AreAllSnapshotsCancelled(lock)) {
+        RemoveAllUpdateState(lock);
+        return true;
     }
 
-    // The only way we can get here is if:
-    //  (1) The device rolled back to the previous slot.
-    //  (2) This function was called prematurely before rebooting the device.
-    //  (3) fastboot set_active was used.
-    //  (4) The device updates to the new slot but re-flashed *all* partitions
-    //      in the new slot.
-    //
-    // In any case, delete the snapshots. It may be worth using the boot_control
-    // HAL to differentiate case (2).
-    RemoveAllUpdateState(lock);
-    return true;
+    // This unverified update might be rolled back, or it might not (b/147347110
+    // comment #77). Take no action, as update_engine is responsible for deciding
+    // whether to cancel.
+    LOG(ERROR) << "Update state is being processed before reboot, taking no action.";
+    return false;
 }
 
 std::unique_ptr<LpMetadata> SnapshotManager::ReadCurrentMetadata() {
@@ -1166,7 +1210,7 @@ SnapshotManager::MetadataPartitionState SnapshotManager::GetMetadataPartitionSta
     return MetadataPartitionState::Flashed;
 }
 
-bool SnapshotManager::HandleCancelledUpdateOnNewSlot(LockedFile* lock) {
+bool SnapshotManager::AreAllSnapshotsCancelled(LockedFile* lock) {
     std::vector<std::string> snapshots;
     if (!ListSnapshots(lock, &snapshots)) {
         LOG(WARNING) << "Failed to list snapshots to determine whether device has been flashed "
@@ -1175,35 +1219,45 @@ bool SnapshotManager::HandleCancelledUpdateOnNewSlot(LockedFile* lock) {
         return true;
     }
 
+    auto source_slot_suffix = ReadUpdateSourceSlotSuffix();
+    if (source_slot_suffix.empty()) {
+        return false;
+    }
+    uint32_t source_slot = SlotNumberForSlotSuffix(source_slot_suffix);
+    uint32_t target_slot = (source_slot == 0) ? 1 : 0;
+
     // Attempt to detect re-flashing on each partition.
     // - If all partitions are re-flashed, we can proceed to cancel the whole update.
     // - If only some of the partitions are re-flashed, snapshots for re-flashed partitions are
     //   deleted. Caller is responsible for merging the rest of the snapshots.
     // - If none of the partitions are re-flashed, caller is responsible for merging the snapshots.
-    auto metadata = ReadCurrentMetadata();
-    if (!metadata) return false;
-    bool all_snapshot_cancelled = true;
+    //
+    // Note that we use target slot metadata, since if an OTA has been applied
+    // to the target slot, we can detect the UPDATED flag. Any kind of flash
+    // operation against dynamic partitions ensures that all copies of the
+    // metadata are in sync, so flashing all partitions on the source slot will
+    // remove the UPDATED flag on the target slot as well.
+    const auto& opener = device_->GetPartitionOpener();
+    auto super_device = device_->GetSuperDevice(target_slot);
+    auto metadata = android::fs_mgr::ReadMetadata(opener, super_device, target_slot);
+    if (!metadata) {
+        return false;
+    }
+
+    bool all_snapshots_cancelled = true;
     for (const auto& snapshot_name : snapshots) {
         if (GetMetadataPartitionState(*metadata, snapshot_name) ==
             MetadataPartitionState::Updated) {
-            LOG(WARNING) << "Cannot cancel update because snapshot" << snapshot_name
-                         << " is in use.";
-            all_snapshot_cancelled = false;
+            all_snapshots_cancelled = false;
             continue;
         }
         // Delete snapshots for partitions that are re-flashed after the update.
-        LOG(INFO) << "Detected re-flashing of partition " << snapshot_name << ".";
-        if (!DeleteSnapshot(lock, snapshot_name)) {
-            // This is an error, but it is okay to leave the snapshot in the short term.
-            // However, if all_snapshot_cancelled == false after exiting the loop, caller may
-            // initiate merge for this unused snapshot, which is likely to fail.
-            LOG(WARNING) << "Failed to delete snapshot for re-flashed partition " << snapshot_name;
-        }
+        LOG(WARNING) << "Detected re-flashing of partition " << snapshot_name << ".";
     }
-    if (!all_snapshot_cancelled) return false;
-
-    LOG(INFO) << "All partitions are re-flashed after update, removing all update states.";
-    return true;
+    if (all_snapshots_cancelled) {
+        LOG(WARNING) << "All partitions are re-flashed after update, removing all update states.";
+    }
+    return all_snapshots_cancelled;
 }
 
 bool SnapshotManager::RemoveAllSnapshots(LockedFile* lock) {
@@ -1323,7 +1377,16 @@ bool SnapshotManager::NeedSnapshotsInFirstStageMount() {
     // the reason be clearer? Because the indicator file still exists, and
     // if this was FATAL, reverting to the old slot would be broken.
     auto slot = GetCurrentSlot();
+
     if (slot != Slot::Target) {
+        if (slot == Slot::Source && !device_->IsRecovery()) {
+            // Device is rebooting into the original slot, so mark this as a
+            // rollback.
+            auto path = GetRollbackIndicatorPath();
+            if (!android::base::WriteStringToFile("1", path)) {
+                PLOG(ERROR) << "Unable to write rollback indicator: " << path;
+            }
+        }
         LOG(INFO) << "Not booting from new slot. Will not mount snapshots.";
         return false;
     }
@@ -1675,6 +1738,10 @@ SnapshotManager::LockedFile::~LockedFile() {
 
 std::string SnapshotManager::GetStateFilePath() const {
     return metadata_dir_ + "/state"s;
+}
+
+std::string SnapshotManager::GetMergeStateFilePath() const {
+    return metadata_dir_ + "/merge_state"s;
 }
 
 std::string SnapshotManager::GetLockPath() const {
@@ -2321,7 +2388,7 @@ std::unique_ptr<AutoDevice> SnapshotManager::EnsureMetadataMounted() {
     return AutoUnmountDevice::New(device_->GetMetadataDir());
 }
 
-UpdateState SnapshotManager::InitiateMergeAndWait() {
+UpdateState SnapshotManager::InitiateMergeAndWait(SnapshotMergeReport* stats_report) {
     {
         auto lock = LockExclusive();
         // Sync update state from file with bootloader.
@@ -2330,6 +2397,8 @@ UpdateState SnapshotManager::InitiateMergeAndWait() {
                          << "reject / accept wipes incorrectly!";
         }
     }
+
+    SnapshotMergeStats merge_stats(*this);
 
     unsigned int last_progress = 0;
     auto callback = [&]() -> void {
@@ -2343,12 +2412,23 @@ UpdateState SnapshotManager::InitiateMergeAndWait() {
 
     LOG(INFO) << "Waiting for any previous merge request to complete. "
               << "This can take up to several minutes.";
+    merge_stats.Resume();
     auto state = ProcessUpdateState(callback);
+    merge_stats.set_state(state);
     if (state == UpdateState::None) {
         LOG(INFO) << "Can't find any snapshot to merge.";
         return state;
     }
     if (state == UpdateState::Unverified) {
+        if (GetCurrentSlot() != Slot::Target) {
+            LOG(INFO) << "Cannot merge until device reboots.";
+            return state;
+        }
+
+        // This is the first snapshot merge that is requested after OTA. We can
+        // initialize the merge duration statistics.
+        merge_stats.Start();
+
         if (!InitiateMerge()) {
             LOG(ERROR) << "Failed to initiate merge.";
             return state;
@@ -2357,9 +2437,13 @@ UpdateState SnapshotManager::InitiateMergeAndWait() {
         LOG(INFO) << "Waiting for merge to complete. This can take up to several minutes.";
         last_progress = 0;
         state = ProcessUpdateState(callback);
+        merge_stats.set_state(state);
     }
 
     LOG(INFO) << "Merge finished with state \"" << state << "\".";
+    if (stats_report) {
+        *stats_report = merge_stats.GetReport();
+    }
     return state;
 }
 
