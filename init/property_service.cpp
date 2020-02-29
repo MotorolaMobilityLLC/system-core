@@ -862,7 +862,7 @@ void load_persist_props(void) {
 static void property_initialize_ro_product_props() {
     const char* RO_PRODUCT_PROPS_PREFIX = "ro.product.";
     const char* RO_PRODUCT_PROPS[] = {
-            "brand", "device", "manufacturer", "model", "name",
+            "brand", "device", "manufacturer", "model", "name", "display"
     };
     const char* RO_PRODUCT_PROPS_ALLOWED_SOURCES[] = {
             "odm", "product", "product_services", "system", "vendor",
