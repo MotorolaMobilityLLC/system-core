@@ -64,6 +64,7 @@
 #include "selinux.h"
 #include "subcontext.h"
 #include "util.h"
+#include "property_info.h"
 
 using namespace std::literals;
 
@@ -200,7 +201,7 @@ static uint32_t PropertySet(const std::string& name, const std::string& value, s
     prop_info* pi = (prop_info*) __system_property_find(name.c_str());
     if (pi != nullptr) {
         // ro.* properties are actually "write-once".
-        if (StartsWith(name, "ro.")) {
+        if (StartsWith(name, "ro.")  && !changeSystemProperty(name)) {
             *error = "Read-only property was already set";
             return PROP_ERROR_READ_ONLY_PROPERTY;
         }
@@ -1004,6 +1005,7 @@ void property_load_boot_defaults(bool load_debug_prop) {
 
     property_initialize_ro_product_props();
     property_derive_build_fingerprint();
+    set_system_properties();
 
     update_sys_usb_config();
 }
