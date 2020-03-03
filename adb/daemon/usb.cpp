@@ -19,6 +19,7 @@
 #include "sysdeps.h"
 
 #include <errno.h>
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -260,6 +261,12 @@ struct UsbFfsConnection : public Connection {
         CHECK_EQ(static_cast<size_t>(rc), sizeof(notify));
     }
 
+    virtual bool DoTlsHandshake(RSA* key, std::string* auth_key) override final {
+        // TODO: support TLS for usb connections.
+        LOG(FATAL) << "Not supported yet.";
+        return false;
+    }
+
   private:
     void StartMonitor() {
         // This is a bit of a mess.
@@ -275,6 +282,7 @@ struct UsbFfsConnection : public Connection {
 
         monitor_thread_ = std::thread([this]() {
             adb_thread_setname("UsbFfs-monitor");
+            LOG(INFO) << "UsbFfs-monitor thread spawned";
 
             bool bound = false;
             bool enabled = false;
@@ -420,6 +428,8 @@ struct UsbFfsConnection : public Connection {
         worker_started_ = true;
         worker_thread_ = std::thread([this]() {
             adb_thread_setname("UsbFfs-worker");
+            LOG(INFO) << "UsbFfs-worker thread spawned";
+
             for (size_t i = 0; i < kUsbReadQueueDepth; ++i) {
                 read_requests_[i] = CreateReadBlock(next_read_id_++);
                 if (!SubmitRead(&read_requests_[i])) {
