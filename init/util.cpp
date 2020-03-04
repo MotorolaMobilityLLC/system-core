@@ -994,6 +994,56 @@ uint64_t Getwhileepduration(int target) {
 
     return while_ep_duration[target];
 }
+
+static android::base::Timer _PropertyFlowTraceTimer;
+static std::queue<std::string> _PropertyFlowTraceQueue;
+static bool _isInPropertyFlowTrace = false;
+
+void StartPropertyFlowTraceLog(void) {
+    android::base::Timer t;
+    _PropertyFlowTraceTimer = t;
+
+    while (!_PropertyFlowTraceQueue.empty())
+        _PropertyFlowTraceQueue.pop();
+
+    _isInPropertyFlowTrace = true;
+}
+
+void SnapshotPropertyFlowTraceLog(const std::string& log) {
+    std::string s;
+
+    if (!_isInPropertyFlowTrace)
+        return;
+
+    uint64_t nowms = std::chrono::duration_cast<std::chrono::milliseconds>(boot_clock::now().time_since_epoch()).count();
+
+    s.append(log);
+    s.append("[");
+    s.append(StringPrintf("%llu", (unsigned long long) nowms));
+    s.append("] ");
+
+    _PropertyFlowTraceQueue.push(s);
+}
+
+void EndPropertyFlowTraceLog(void) {
+    std::string s;
+    auto duration = _PropertyFlowTraceTimer.duration();
+
+    if (_isInPropertyFlowTrace && duration > 2000ms) {
+        s.append(StringPrintf("PropertyFlow took %llu ms, ", (unsigned long long) duration.count()));
+        while (!_PropertyFlowTraceQueue.empty()) {
+            s.append(_PropertyFlowTraceQueue.front());
+            _PropertyFlowTraceQueue.pop();
+        }
+
+        LOG(INFO) << s;
+    }
+
+    while (!_PropertyFlowTraceQueue.empty())
+        _PropertyFlowTraceQueue.pop();
+
+    _isInPropertyFlowTrace = false;
+}
 #endif
 
 #ifdef MTK_TRACE

@@ -173,6 +173,7 @@ static int PropSetFilter(const std::string& name)
     if (0
 #endif
         || android::base::StartsWith(name, "persist.log.tag")
+        || android::base::StartsWith(name, "cache_key.")
         // || android::base::StartsWith(name, "ro.")
         // || android::base::StartsWith(name, "vold.encrypt_")
         // || android::base::StartsWith(name, "vendor.debug.mtk.aee")
@@ -227,7 +228,9 @@ static uint32_t PropertySet(const std::string& name, const std::string& value, s
         *error = result.error().message();
         return PROP_ERROR_INVALID_VALUE;
     }
-
+#ifdef MTK_LOG
+    SnapshotPropertyFlowTraceLog("_spf");
+#endif
     prop_info* pi = (prop_info*) __system_property_find(name.c_str());
     if (pi != nullptr) {
         // ro.* properties are actually "write-once".
@@ -236,8 +239,14 @@ static uint32_t PropertySet(const std::string& name, const std::string& value, s
             return PROP_ERROR_READ_ONLY_PROPERTY;
         }
 
+#ifdef MTK_LOG
+        SnapshotPropertyFlowTraceLog("_spu");
+#endif
         __system_property_update(pi, value.c_str(), valuelen);
     } else {
+#ifdef MTK_LOG
+        SnapshotPropertyFlowTraceLog("_spa");
+#endif
         int rc = __system_property_add(name.c_str(), name.size(), value.c_str(), valuelen);
         if (rc < 0) {
             *error = "__system_property_add failed";
@@ -256,6 +265,9 @@ static uint32_t PropertySet(const std::string& name, const std::string& value, s
     if (accept_messages) {
 #else
     if (accept_messages && init_watched_properties.count(name) > 0) {
+#endif
+#ifdef MTK_LOG
+        SnapshotPropertyFlowTraceLog("SPC");
 #endif
         SendPropertyChanged(name, value);
     }
@@ -541,6 +553,9 @@ uint32_t CheckPermissions(const std::string& name, const std::string& value,
 uint32_t HandlePropertySet(const std::string& name, const std::string& value,
                            const std::string& source_context, const ucred& cr,
                            SocketConnection* socket, std::string* error) {
+#ifdef MTK_LOG
+    SnapshotPropertyFlowTraceLog("CPs");
+#endif
     if (auto ret = CheckPermissions(name, value, source_context, cr, error); ret != PROP_SUCCESS) {
         return ret;
     }
@@ -580,6 +595,9 @@ uint32_t HandlePropertySet(const std::string& name, const std::string& value,
 static void handle_property_set_fd() {
     static constexpr uint32_t kDefaultSocketTimeout = 2000; /* ms */
 
+#ifdef MTK_LOG
+    SnapshotPropertyFlowTraceLog("accept4");
+#endif
     int s = accept4(property_set_fd, nullptr, nullptr, SOCK_CLOEXEC);
     if (s == -1) {
         return;
@@ -668,6 +686,10 @@ static void handle_property_set_fd() {
         socket.SendUint32(PROP_ERROR_INVALID_CMD);
         break;
     }
+
+#ifdef MTK_LOG
+    SnapshotPropertyFlowTraceLog("hpsfE");
+#endif
 }
 
 uint32_t InitPropertySet(const std::string& name, const std::string& value) {
@@ -1307,7 +1329,13 @@ static void PropertyServiceThread() {
             LOG(ERROR) << pending_functions.error();
         } else {
             for (const auto& function : *pending_functions) {
+#ifndef MTK_LOG
                 (*function)();
+#else
+                StartPropertyFlowTraceLog();
+                (*function)();
+                EndPropertyFlowTraceLog();
+#endif
             }
         }
     }

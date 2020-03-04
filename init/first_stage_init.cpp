@@ -240,6 +240,7 @@ int FirstStageMain(int argc, char** argv) {
 
 #ifdef MTK_LOG
     LOG(INFO) << "Modprobe /lib/modules starting!";
+    android::base::Timer t;
 #endif
     Modprobe m({"/lib/modules"});
     auto want_console = ALLOW_FIRST_STAGE_CONSOLE && FirstStageConsole(cmdline);
@@ -251,7 +252,7 @@ int FirstStageMain(int argc, char** argv) {
         }
     }
 #ifdef MTK_LOG
-    LOG(INFO) << "Modprobe /lib/modules exited!";
+    LOG(INFO) << "Modprobe /lib/modules exited! It took " << t.duration().count() << "ms.";
 #endif
 
     if (want_console) {

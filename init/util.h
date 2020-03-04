@@ -102,6 +102,10 @@ pid_t PropServThrGetTid(void);
 void Setwhiletime(int target, uint64_t duration, uint64_t nowms);
 bool Getwhilepiggybacketed(int target);
 uint64_t Getwhileepduration(int target);
+
+void StartPropertyFlowTraceLog(void);
+void SnapshotPropertyFlowTraceLog(const std::string&);
+void EndPropertyFlowTraceLog(void);
 #endif
 
 #ifdef MTK_TRACE
