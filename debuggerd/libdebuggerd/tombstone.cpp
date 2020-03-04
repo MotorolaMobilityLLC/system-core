@@ -68,6 +68,7 @@ using android::base::unique_fd;
 using namespace std::literals::string_literals;
 
 #define STACK_WORDS 16
+int avc_signal_flag;
 
 static void dump_header_info(log_t* log) {
   auto fingerprint = GetProperty("ro.build.fingerprint", "unknown");
@@ -619,9 +620,6 @@ void engrave_tombstone(unique_fd output_fd, unwindstack::Unwinder* unwinder,
   log.tfd = output_fd.get();
   log.amfd_data = amfd_data;
 
-  _LOG(&log, logtype::HEADER, "*** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***\n");
-  dump_header_info(&log);
-  dump_timestamp(&log, time(nullptr));
 
   auto it = threads.find(target_thread);
   if (it == threads.end()) {
@@ -631,6 +629,25 @@ void engrave_tombstone(unique_fd output_fd, unwindstack::Unwinder* unwinder,
   GwpAsanCrashData gwp_asan_crash_data(unwinder->GetProcessMemory().get(),
                                        gwp_asan_state_ptr,
                                        gwp_asan_metadata_ptr, it->second);
+
+  if (it->second.siginfo->si_code == SI_KERNEL_AVC) {
+      avc_signal_flag = 1;
+    dump_thread_info(&log, it->second);
+  if (it->second.siginfo) {
+        dump_signal_info(&log, it->second, unwinder->GetProcessMemory().get());
+        dump_probable_cause(&log, it->second.siginfo, unwinder->GetMaps(), it->second.registers.get());
+  }
+
+  std::unique_ptr<unwindstack::Regs> regs_copy(it->second.registers->Clone());
+    unwinder->SetRegs(regs_copy.get());
+    unwinder->Unwind();
+  if (unwinder->NumFrames() != 0) {
+      log_backtrace(&log, unwinder, "    ");
+  }
+  } else {
+  _LOG(&log, logtype::HEADER, "*** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***\n");
+  dump_header_info(&log);
+  dump_timestamp(&log, time(nullptr));
 
   dump_thread(&log, unwinder, it->second, abort_msg_address, true,
               gwp_asan_crash_data);
@@ -654,5 +671,6 @@ void engrave_tombstone(unique_fd output_fd, unwindstack::Unwinder* unwinder,
 
   if (want_logs) {
     dump_logs(&log, it->second.pid, 0);
+  }
   }
 }
