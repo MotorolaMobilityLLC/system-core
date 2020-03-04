@@ -551,8 +551,10 @@ int main(int argc, char** argv) {
   {
     ATRACE_NAME("tombstoned_connect");
     LOG(INFO) << "obtaining output fd from tombstoned, type: " << dump_type;
+    if (thread_info[g_target_thread].siginfo->si_code != SI_KERNEL_AVC) {
     g_tombstoned_connected =
         tombstoned_connect(g_target_thread, &g_tombstoned_socket, &g_output_fd, dump_type);
+    }
   }
 
   if (g_tombstoned_connected) {
