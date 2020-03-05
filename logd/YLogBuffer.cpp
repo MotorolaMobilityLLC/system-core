@@ -70,7 +70,7 @@
 #include "LogReader.h"
 #include "YLogBuffer.h"
 
-#define DO_LOG_LASTANDROID
+//#define DO_LOG_LASTANDROID
 
 
 #define log2kernel(...)  {char buff[1024]={0};snprintf(buff,sizeof(buff)-1,__VA_ARGS__);android::prdebug("logd: %s ",buff);}
@@ -108,6 +108,7 @@ int YLogBuffer::log(LogBuffer* logbuf, log_id_t log_id, log_time realtime,
         uid_t uid, pid_t pid, pid_t tid,
         const char *msg, unsigned short len) {
     uid;
+    logbuf;
     static int ofe_count = 0;
     LogBufferElement *element = new LogBufferElement(log_id, realtime, mLogUID++, pid, tid, msg, len);
 
@@ -211,7 +212,7 @@ void * YLogBuffer::handelBuffer() {
     listen(lsocket, 5);
     log2kernel("listening.......");
     struct sockaddr addr;
-    socklen_t alen;
+    socklen_t alen=sizeof(addr);
     unsigned long lastSendStartTime = 0;
     mYlogRunning = false;
     int reConnectCount = 0;
