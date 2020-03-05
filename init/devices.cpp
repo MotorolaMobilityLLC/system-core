@@ -34,6 +34,8 @@
 #include <private/android_filesystem_config.h>
 #include <selinux/android.h>
 #include <selinux/selinux.h>
+#include <string.h>
+#include <stdio.h>
 
 #include "selabel.h"
 #include "util.h"
@@ -79,6 +81,24 @@ static bool FindPciDevicePrefix(const std::string& path, std::string* result) {
     }
 
     *result = path.substr(start, length);
+    return true;
+}
+
+static bool FindMdiskDevicePartition(const std::string& path, std::string* result) {
+    result->clear();
+
+    if (!StartsWith(path, "/devices/virtual/block/memdisk")) return false;
+
+    std::string::size_type start = 23;
+
+    auto end = path.find('/', start);
+    if (end == std::string::npos) return false;
+
+    auto length = end - start;
+    if (length == 0) return false;
+
+    *result = path.substr(start, length);
+
     return true;
 }
 
@@ -340,6 +360,9 @@ std::vector<std::string> DeviceHandler::GetBlockDeviceSymlinks(const Uevent& uev
             symlinks.emplace_back("/dev/block/mapper/by-uuid/" + uuid);
         }
         return symlinks;
+    } else if (FindMdiskDevicePartition(uevent.path, &device)) {
+        type = "vmd";
+        LOG(ERROR) << "found " << type << " device " << device;
     } else {
         return {};
     }
