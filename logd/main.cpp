@@ -53,6 +53,7 @@
 #include "LogKlog.h"
 #include "LogListener.h"
 #include "LogUtils.h"
+#include "YLogBuffer.h"
 
 #define KMSG_PRIORITY(PRI)                                 \
     '<', '0' + LOG_MAKEPRI(LOG_DAEMON, LOG_PRI(PRI)) / 10, \
@@ -354,6 +355,8 @@ int main(int argc, char* argv[]) {
         }
         pthread_attr_destroy(&attr);
     }
+
+    YLogBuffer::getInstance()->init();
 
     // Serves the purpose of managing the last logs times read on a
     // socket connection, and as a reader lock on a range of log

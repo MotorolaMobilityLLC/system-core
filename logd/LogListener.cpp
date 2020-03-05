@@ -111,9 +111,9 @@ bool LogListener::onDataAvailable(SocketClient* cli) {
         reader->notifyNewLog(static_cast<log_mask_t>(1 << logId));
     }
     if (logbuf != nullptr) {
-        YLogBuffer::getInstance()->log((LogBuffer*)logbuf,(log_id_t)header->id, header->realtime,
+        YLogBuffer::getInstance()->log((LogBuffer*)logbuf,logId, header->realtime,
                 cred->uid, cred->pid, header->tid, msg,
-                ((size_t) n <= USHRT_MAX) ? (unsigned short) n : USHRT_MAX) ;
+                ((size_t)n <= UINT16_MAX) ? (uint16_t)n : UINT16_MAX) ;
       
     }
     return true;
