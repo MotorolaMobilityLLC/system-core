@@ -25,18 +25,9 @@
 #include "adb_utils.h"
 #include "sysdeps.h"
 
-#ifndef _WIN32
-#include <endian.h>
-#else
-#define be64toh(x) _byteswap_uint64(x)
-#define be32toh(x) _byteswap_ulong(x)
-#define be16toh(x) _byteswap_ushort(x)
-#define htobe64(x) _byteswap_uint64(x)
-#define htobe32(x) _byteswap_ulong(x)
-#define htobe16(x) _byteswap_ushort(x)
-#endif
-
+#include <android-base/endian.h>
 #include <android-base/strings.h>
+#include <inttypes.h>
 #include <lz4.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -156,7 +147,7 @@ class File {
     const unique_fd& RawFd() const { return fd_; }
 
     std::vector<bool> sentBlocks;
-    NumBlocks sentBlocksCount;
+    NumBlocks sentBlocksCount = 0;
 
     const char* const filepath;
     const FileId id;
@@ -268,7 +259,7 @@ bool IncrementalServer::SkipToRequest(void* buffer, size_t* size, bool blocking)
 
         if (r == -1) {
             fprintf(stderr, "Failed to read from fd %d: %d. Exit\n", adb_fd_.get(), errno);
-            return true;
+            return false;
         }
 
         // socket is closed
