@@ -299,7 +299,6 @@ bool open_functionfs(android::base::unique_fd* out_control, android::base::uniqu
         }
         // Signal only when writing the descriptors to ffs
         android::base::SetProperty("sys.usb.ffs.ready", "1");
-
         *out_control = std::move(control);
     }
 
