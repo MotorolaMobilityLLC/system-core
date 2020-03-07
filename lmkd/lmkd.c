@@ -2112,6 +2112,7 @@ static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_
 
     /* Skip while still killing a process */
     if (is_kill_pending()) {
+        if (debug_process_killing) ALOGW("kill is pending, skip");
         goto no_kill;
     }
     /*
@@ -2162,6 +2163,7 @@ static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_
         reclaim = KSWAPD_RECLAIM;
     } else {
         in_reclaim = false;
+        if (debug_process_killing) ALOGW("system is not reclaiming, skip");
         /* Skip if system is not reclaiming */
         goto no_kill;
     }
@@ -2245,6 +2247,14 @@ static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_
         cut_thrashing_limit = true;
         /* Do not kill perceptible apps because of thrashing */
         min_score_adj = PERCEPTIBLE_APP_ADJ;
+    }
+
+    if (debug_process_killing) {
+        ALOGW("%s stall, swap free %d%%(%d), wmark %s, thrashing %" PRId64 "%%(%d)",
+            level == VMPRESS_LEVEL_CRITICAL ? "COMPLETE" : "PARTIAL",
+            (int)(mi.field.free_swap*100/mi.field.total_swap), swap_free_low_percentage,
+            wmark < WMARK_HIGH ? (wmark > WMARK_LOW ? "min" : "low") : "high",
+            thrashing, thrashing_limit);
     }
 
     /* Kill a process if necessary */
@@ -2950,6 +2960,22 @@ int main(int argc __unused, char **argv __unused) {
     ctx = create_android_logger(KILLINFO_LOG_TAG);
 
     statslog_init();
+
+    // Moto huangzq2: override configs on dev build for tuning.
+    if (!property_get_bool("ro.product.is_production", true)) {
+        debug_process_killing = property_get_bool("persist.lmk.debug", debug_process_killing);
+        kill_heaviest_task = property_get_bool("persist.lmk.kill_heaviest_task", kill_heaviest_task);
+        swap_free_low_percentage = property_get_int32("persist.lmk.swap_free_low_percentage", swap_free_low_percentage);
+        psi_partial_stall_ms = property_get_int32("persist.lmk.psi_partial_stall_ms", psi_partial_stall_ms);
+        psi_complete_stall_ms = property_get_int32("persist.lmk.psi_complete_stall_ms", psi_complete_stall_ms);
+        thrashing_limit_pct = property_get_int32("persist.lmk.thrashing_limit", thrashing_limit_pct);
+        thrashing_limit_decay_pct = property_get_int32("persist.lmk.thrashing_limit_decay", thrashing_limit_decay_pct);
+
+        ALOGW("PSI CONFIG - partial_stall:%d, full_stall:%d, thrashing:%d, thrashing_decay:%d, kill_heavy:%d, swap_low:%d",
+            psi_partial_stall_ms, psi_complete_stall_ms,
+            thrashing_limit_pct, thrashing_limit_decay_pct,
+            kill_heaviest_task, swap_free_low_percentage);
+    }
 
     if (!init()) {
         if (!use_inkernel_interface) {
