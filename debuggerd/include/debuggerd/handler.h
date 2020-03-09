@@ -19,12 +19,10 @@
 #include <bionic/reserved_signals.h>
 #include <signal.h>
 #include <stdint.h>
+#include <string.h>
 #include <sys/cdefs.h>
+#include <sys/system_properties.h>
 #include <sys/types.h>
-
-#if defined(DIRECT_COREDUMP)
-#include <stdlib.h>
-#endif
 
 __BEGIN_DECLS
 
@@ -54,40 +52,22 @@ void debuggerd_init(debuggerd_callbacks_t* callbacks);
 #define DEBUGGER_SIGNAL BIONIC_SIGNAL_DEBUGGER
 
 static void __attribute__((__unused__)) debuggerd_register_handlers(struct sigaction* action) {
-#if defined(DIRECT_COREDUMP)
-  bool direct = 0;
-  const char *DEBUG_DIRECT_COREDUMP = getenv("DEBUG_DIRECT_COREDUMP");
-
-  if (DEBUG_DIRECT_COREDUMP != NULL) {
-    direct = atoi(DEBUG_DIRECT_COREDUMP);
+  char value[PROP_VALUE_MAX] = "";
+  bool enabled =
+      !(__system_property_get("ro.debuggable", value) > 0 && !strcmp(value, "1") &&
+        __system_property_get("debug.debuggerd.disable", value) > 0 && !strcmp(value, "1"));
+  if (enabled) {
+    sigaction(SIGABRT, action, nullptr);
+    sigaction(SIGBUS, action, nullptr);
+    sigaction(SIGFPE, action, nullptr);
+    sigaction(SIGILL, action, nullptr);
+    sigaction(SIGSEGV, action, nullptr);
+    sigaction(SIGSTKFLT, action, nullptr);
+    sigaction(SIGSYS, action, nullptr);
+    sigaction(SIGTRAP, action, nullptr);
   }
 
-  if (direct == 1) {
-    signal(SIGABRT, SIG_DFL);
-    signal(SIGBUS, SIG_DFL);
-    signal(SIGFPE, SIG_DFL);
-    signal(SIGILL, SIG_DFL);
-    signal(SIGSEGV, SIG_DFL);
-#if defined(SIGSTKFLT)
-    signal(SIGSTKFLT, SIG_DFL);
-#endif
-    signal(SIGSYS, SIG_DFL);
-    signal(SIGTRAP, SIG_DFL);
-    sigaction(BIONIC_SIGNAL_DEBUGGER, action, nullptr);
-    return;
-  }
-#endif
-
-  sigaction(SIGABRT, action, nullptr);
-  sigaction(SIGBUS, action, nullptr);
-  sigaction(SIGFPE, action, nullptr);
-  sigaction(SIGILL, action, nullptr);
-  sigaction(SIGSEGV, action, nullptr);
-#if defined(SIGSTKFLT)
-  sigaction(SIGSTKFLT, action, nullptr);
-#endif
-  sigaction(SIGSYS, action, nullptr);
-  sigaction(SIGTRAP, action, nullptr);
   sigaction(BIONIC_SIGNAL_DEBUGGER, action, nullptr);
 }
+
 __END_DECLS
