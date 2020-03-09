@@ -40,10 +40,10 @@ std::string prop_carrier_ontim = "ro.carrier.ontim";
 std::string prop_carrier = "ro.carrier";
 std::string prop_amclient = "ro.com.google.clientidbase.am";
 std::string prop_msclient = "ro.com.google.clientidbase.ms";
-std::string prop_product = "ro.product.name";
-std::string prop_product_device = "ro.product.device";
-std::string prop_build_fingerprint = "ro.bootimage.build.fingerprint";
 std::string prop_fingerprint = "ro.build.fingerprint";
+std::string prop_bootimage_fingerprint = "ro.bootimage.build.fingerprint";
+std::string prop_system_fingerprint = "ro.system.build.fingerprint";
+std::string prop_odm_fingerprint = "ro.odm.build.fingerprint";
 std::string prop_vendor_fingerprint = "ro.vendor.build.fingerprint";
 std::string prop_product_fingerprint = "ro.product.build.fingerprint";
 std::string prop_client_value = "android-motorola";
@@ -67,8 +67,16 @@ std::string prop_amazon_partnerid = "ro.csc.amazon.partnerid";
 std::string prop_build_name = "ro.build.name";
 std::string prop_build_product = "ro.build.product";
 std::string prop_product_board = "ro.product.board";
+std::string prop_product = "ro.product.name";
+std::string prop_product_device = "ro.product.device";
 std::string prop_product_vendor_device = "ro.product.vendor.device";
 std::string prop_product_vendor_name = "ro.product.vendor.name";
+std::string prop_product_odm_device = "ro.product.odm.device";
+std::string prop_product_odm_name = "ro.product.odm.name";
+std::string prop_product_system_device = "ro.product.system.device";
+std::string prop_product_system_name = "ro.product.system.name";
+std::string prop_product_product_device = "ro.product.product.device";
+std::string prop_product_product_name = "ro.product.product.name";
 std::string prop_boot_bootloader = "ro.boot.bootloader";
 std::string prop_bootloader = "ro.bootloader";
 std::string prop_build_description = "ro.build.description";
@@ -96,19 +104,17 @@ void set_system_properties(){
     std::string  build_name = android::base::GetProperty(prop_build_name, "");
 
     if (prop_product_value == "blackjack" || prop_product_value == "blackjack_64") {
-        property_set(prop_product_device, "blackjack");
+        set_product_device("blackjack");
         set_some_vendor_properties("blackjack");
 
         if(build_name == "lenovo") {
             prop_product_value = "blackjack_lnv";
-            property_set(prop_product_vendor_name, prop_product_value);
             property_set(prop_amclient, prop_client_value);
             property_set(prop_msclient, prop_clientrev_value);
-            property_set(prop_product, prop_product_value);
-            property_set(prop_build_fingerprint, get_fingerprint_property(prop_product_value));
-            property_set(prop_fingerprint, get_fingerprint_property(prop_product_value));
-            property_set(prop_vendor_fingerprint, get_fingerprint_property(prop_product_value));
-            property_set(prop_product_fingerprint, get_fingerprint_property(prop_product_value));
+            set_product_name(prop_product_value);
+
+            std::string fingerprint = get_fingerprint_property(prop_product_value);
+            set_fingerprint(fingerprint);
             property_set("persist.vendor.normal", "1");//表示正常版本，非 VTS 版本，prop 正常设置.
             property_set(prop_build_fullversion, get_version_property(prop_version_value));
             property_set(prop_build_customerid, prop_carrier_value);
@@ -165,12 +171,9 @@ void set_system_properties(){
             }
         }
 
-        property_set(prop_product, prop_product_value);
-        property_set(prop_build_fingerprint, get_fingerprint_property(prop_product_value));
-        property_set(prop_fingerprint, get_fingerprint_property(prop_product_value));
-        property_set(prop_vendor_fingerprint, get_fingerprint_property(prop_product_value));
-        property_set(prop_product_fingerprint, get_fingerprint_property(prop_product_value));
-        property_set(prop_product_vendor_name, prop_product_value);
+        set_product_name(prop_product_value);
+        std::string fingerprint = get_fingerprint_property(prop_product_value);
+        set_fingerprint(fingerprint);
 
         // BEGIN Ontim, maqing, 20/11/2019, EKBLACKJ-178 , St-result :PASS,[BJ][Europe Requirement][Fiji Features]FEATURE-5963
         if (carrier_ontim == "timit_timit") {
@@ -195,15 +198,37 @@ void set_system_properties(){
 }
 
 void set_some_vendor_properties(std::string prop_product_value) {
+    property_set(prop_build_product, prop_product_value);
+    property_set(prop_product_board, prop_product_value);
+    property_set(prop_boot_bootloader, get_product_property(prop_boot_bootloader,prop_product_value));
+    property_set(prop_bootloader, get_product_property(prop_bootloader,prop_product_value));
+    property_set(prop_build_description, get_product_property(prop_build_description,prop_product_value));
+    property_set(prop_build_flavor, get_product_property(prop_build_flavor,prop_product_value));
+}
 
-        property_set(prop_build_product, prop_product_value);
-        property_set(prop_product_board, prop_product_value);
-        property_set(prop_product_vendor_device, prop_product_value);
-        property_set(prop_boot_bootloader, get_product_property(prop_boot_bootloader,prop_product_value));
-        property_set(prop_bootloader, get_product_property(prop_bootloader,prop_product_value));
-        property_set(prop_build_description, get_product_property(prop_build_description,prop_product_value));
-        property_set(prop_build_flavor, get_product_property(prop_build_flavor,prop_product_value));
+void set_product_name(std::string product_name) {
+    property_set(prop_product, product_name);
+    property_set(prop_product_vendor_name, product_name);
+    property_set(prop_product_system_name, product_name);
+    property_set(prop_product_product_name, product_name);
+    property_set(prop_product_odm_name, product_name);
+}
 
+void set_product_device(std::string product_device) {
+    property_set(prop_product_device, product_device);
+    property_set(prop_product_vendor_device, product_device);
+    property_set(prop_product_system_device, product_device);
+    property_set(prop_product_odm_device, product_device);
+    property_set(prop_product_product_device, product_device);
+}
+
+void set_fingerprint(std::string fingerprint) {
+    property_set(prop_bootimage_fingerprint, fingerprint);
+    property_set(prop_fingerprint, fingerprint);
+    property_set(prop_vendor_fingerprint, fingerprint);
+    property_set(prop_product_fingerprint, fingerprint);
+    property_set(prop_system_fingerprint, fingerprint);
+    property_set(prop_odm_fingerprint, fingerprint);
 }
 
 bool isProductNameBlackjackReteu(std::string carrier_ontim) {
@@ -237,12 +262,16 @@ bool isProductNameBlackjackRetru(std::string carrier_ontim) {
 }
 
 bool changeSystemProperty(std::string key) {
-    if (key == prop_product || key == prop_build_fingerprint
+    if (key == prop_product || key == prop_product_device
       || key == prop_fingerprint || key == prop_vendor_fingerprint
-      || key == prop_carrier || key == prop_product_device
-      || key == prop_product_fingerprint || key == prop_build_product
-      || key == prop_product_board || key == prop_product_vendor_device
-      || key == prop_product_vendor_name || key == prop_boot_bootloader
+      || key == prop_odm_fingerprint || key == prop_system_fingerprint
+      || key == prop_product_fingerprint || key == prop_bootimage_fingerprint
+      || key == prop_product_system_name || key == prop_product_system_device
+      || key == prop_product_odm_name || key == prop_product_odm_device
+      || key == prop_product_product_name || key == prop_product_product_device
+      || key == prop_product_vendor_device || key == prop_product_vendor_name
+      || key == prop_carrier || key == prop_build_product
+      || key == prop_product_board ||  key == prop_boot_bootloader
       || key == prop_bootloader|| key == prop_build_description
       || key == prop_build_flavor) {
         return true;
@@ -252,9 +281,13 @@ bool changeSystemProperty(std::string key) {
 
 std::string get_fingerprint_property(std::string value) {
     std::string  buildFingerprint = android::base::GetProperty(prop_fingerprint, "");
-    std::vector<std::string> fingerprint = android::base::Split(buildFingerprint, "/");
-    fingerprint[1] = value;
-    return android::base::Join(fingerprint, "/");
+    std::vector<std::string> fingerprint = android::base::Split(buildFingerprint, ":");
+
+    std::vector<std::string> name = android::base::Split(fingerprint[0], "/");
+    name[1] = value;
+    name[2] = "blackjack";
+    fingerprint[0] = android::base::Join(name, "/");
+    return android::base::Join(fingerprint, ":");
 }
 
 std::string get_product_property(std::string prop_name, std::string value) {
