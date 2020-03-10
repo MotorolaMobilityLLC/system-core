@@ -21,7 +21,7 @@
 #include <android-base/properties.h>
 #include <android-base/strings.h>
 
-#if defined(__ANDROID__)
+#if INIT_FULL_SOURCES
 #ifdef G1122717
 #include "init.h"
 #endif

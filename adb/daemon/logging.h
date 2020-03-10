@@ -16,23 +16,18 @@
 
 #pragma once
 
-#include <sys/socket.h>
+#include <android-base/logging.h>
 
-#include <string>
+namespace adb {
+enum class LogType {
+    Connection,
+    Service,
+    Shell,
+    COUNT,
+};
 
-#include "epoll.h"
+bool is_logging_enabled(LogType type);
 
-namespace android {
-namespace init {
+#define ADB_LOG(type) ::adb::is_logging_enabled(::adb::LogType::type) && LOG(INFO)
 
-static constexpr const char kRestoreconProperty[] = "selinux.restorecon_recursive";
-
-bool CanReadProperty(const std::string& source_context, const std::string& name);
-
-void PropertyInit();
-void StartPropertyService(int* epoll_socket);
-void ResumePropertyService();
-void PausePropertyService();
-
-}  // namespace init
-}  // namespace android
+}  // namespace adb
