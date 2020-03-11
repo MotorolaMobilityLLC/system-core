@@ -65,6 +65,7 @@
 #include "subcontext.h"
 #include "util.h"
 #include "property_info.h"
+#include "cutils/log.h"
 
 using namespace std::literals;
 
@@ -854,7 +855,40 @@ void load_persist_props(void) {
         property_set(persistent_property_record.name(), persistent_property_record.value());
     }
     persistent_properties_loaded = true;
+
+    SLOGE("FC.adb start ... ");
+    std::string fcreseted = android::base::GetProperty("persist.sys.usb.fc.reseted", "");
+    std::string buildtype = android::base::GetProperty("ro.build.type", "");
+
+    if (buildtype == "user"){
+        SLOGE("FC.adb USER start to judge the FC ...");
+        if(is_cache_file_exists()){
+            property_set("persist.sys.usb.fc.reseted", "1");
+            property_set("persist.sys.usb.config", "adb");
+            SLOGE("FC.adb cache_file_exists set reseted to 1");
+        } else if (!is_cache_file_exists() && fcreseted == ""){
+            property_set("persist.sys.usb.fc.reseted", "2");
+            property_set("persist.sys.usb.config", "none");
+            SLOGE("FC.adb !cache_file_exists close adb set reseted 2 ");
+        }
+     }
+    SLOGE("FC.adb end ... ");
+
     property_set("ro.persistent_properties.ready", "true");
+}
+
+bool is_cache_file_exists() {
+    SLOGE("FC.adb  enter is_cache_file_exists ...before open .. only return true ");
+    int fd = open("/data/adb_enable", O_RDONLY);
+    if (fd == -1) {
+        SLOGE("FC.adb open /data/adb_enable failed");
+        close(fd);
+        return false;
+    } else {
+        SLOGE("FC.adb open /data/adb_enable success");
+        close(fd);
+        return true;
+    }
 }
 
 // If the ro.product.[brand|device|manufacturer|model|name] properties have not been explicitly
