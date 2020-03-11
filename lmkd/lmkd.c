@@ -148,6 +148,9 @@
 #define DEF_PARTIAL_STALL 70
 /* ro.lmk.psi_complete_stall_ms property defaults */
 #define DEF_COMPLETE_STALL 700
+/* ro.lmk.max_adj0_process_num property defaults */
+#define DEF_MAX_ADJ0_PROCESS_NUM_LOWRAM  3
+#define DEF_MAX_ADJ0_PROCESS_NUM 5
 /* ro.lmk.kill_timeout_ms property defaults */
 #define DEF_KILL_TIMEOUT  5000
 
@@ -221,6 +224,7 @@ static bool use_psi_vmpressure;
 static unsigned long vmpressure_interval_ms;
 static struct timespec last_psi_events_tm;
 static unsigned long psi_delay_timeout_ms;
+static int max_adj0_process_num;
 static struct psi_threshold psi_thresholds[VMPRESS_LEVEL_COUNT] = {
     { PSI_SOME, 70 },    /* 70ms out of 1sec for partial stall */
     { PSI_SOME, 100 },   /* 100ms out of 1sec for partial stall */
@@ -698,6 +702,16 @@ static struct adjslot_list *adjslot_tail(struct adjslot_list *head) {
     struct adjslot_list *asl = head->prev;
 
     return asl == head ? NULL : asl;
+}
+
+static int adjslot_length(struct adjslot_list *head) {
+    struct adjslot_list *asl = head->prev;
+    int length = 0;
+
+    for(; asl != head; asl=asl->prev)
+        length ++ ;
+
+    return length;
 }
 
 static struct adjslot_list *adjslot_skip(struct adjslot_list *head)
@@ -2511,7 +2525,11 @@ static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_
             min_score_adj = min_score_adj_adjust;
         }
 
-        if (do_multi_kill) {
+        if (adjslot_length(&procadjslot_list[ADJTOSLOT(0)]) > max_adj0_process_num) {
+            /* kill multi apps */
+            strcat(kill_desc, " <adj0 processes too many>");
+            pages_freed = find_and_kill_multi_processes(min_score_adj, kill_desc, true);
+        } else if (do_multi_kill) {
             do_multi_kill = false;
             if (NOT_RESPONDING == kill_reason) {
                 min_score_adj = swap_is_low ? 0 : min_score_adj;
@@ -3403,6 +3421,8 @@ int main(int argc __unused, char **argv __unused) {
     use_psi_vmpressure = property_get_bool("ro.lmk.use_psi_vmpressure", low_ram_device ? true : false);
     vmpressure_interval_ms = (unsigned long)property_get_int32("ro.lmk.vmpressure_interval_time", 0);
     psi_delay_timeout_ms = (unsigned long)property_get_int32("ro.lmk.psi_delay_timeout_ms", 0);
+    max_adj0_process_num = property_get_int32("ro.lmk.max_adj0_process_num",
+        low_ram_device ? DEF_MAX_ADJ0_PROCESS_NUM_LOWRAM : DEF_MAX_ADJ0_PROCESS_NUM);
 
     ctx = create_android_logger(MEMINFO_LOG_TAG);
 
