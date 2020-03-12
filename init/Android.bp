@@ -96,6 +96,7 @@ cc_defaults {
         "-DMTK_TRACE=1",
         "-DMTK_UMOUNT_RETRY=1",
         "-DG1122717=1",
+        "-DMTK_PPS_CUT=1",
     ],
     product_variables: {
         debuggable: {

@@ -245,6 +245,12 @@ void WritePersistentProperty(const std::string& name, const std::string& value) 
                            persistent_properties->mutable_properties()->end(),
                            [&name](const auto& record) { return record.name() == name; });
     if (it != persistent_properties->mutable_properties()->end()) {
+#ifdef MTK_PPS_CUT
+        if (it->has_value() && it->value() == value) {
+            //LOG(INFO) << "WritePersistentProperty shortcut " << name << "=" << value;
+            return;
+        }
+#endif
         it->set_name(name);
         it->set_value(value);
     } else {

@@ -57,6 +57,7 @@
 #include <sys/uio.h>
 #endif
 
+#include <mutex>
 #include <queue>
 #include <android-base/stringprintf.h>
 #include <android-base/chrono_utils.h>
@@ -674,15 +675,15 @@ bool IsRecoveryMode() {
 
 #ifdef MTK_LOG
 #if defined(__linux__)
-#define DEFAULT_RATELIMIT_INTERVALMS 5100
+#define DEFAULT_RATELIMIT_INTERVALMS 5000
 #define DEFAULT_RATELIMIT_BURST 9
 
 #define __MAXLOGFD__ 2
 static int klogfd[__MAXLOGFD__] = {-1};
-static boot_clock::time_point log_time[__MAXLOGFD__];
+static uint64_t log_time[__MAXLOGFD__];
 static int log_printed[__MAXLOGFD__] = {0};
 static int inited[__MAXLOGFD__] = {0};
-static boot_clock::time_point *plog_time[__MAXLOGFD__] = {NULL};
+static uint64_t *plog_time[__MAXLOGFD__] = {NULL};
 
 static bool while_flag[__MAXLOGFD__] = {false};
 static uint64_t while_nowms[__MAXLOGFD__] = {0};
@@ -705,6 +706,8 @@ static size_t propsetlog_len = 0;
 static constexpr uint32_t kNanosecondsPerMicrosecond = 1e3;
 static constexpr uint32_t kMicrosecondsPerSecond = 1e6;
 static constexpr uint32_t kMillisecondsPerMicrosecond = 1e3;
+
+static std::mutex _log_lock;
 
 static void _KernelLogger_split_final(int fd, int level,
                   const char* tag, const char* msg);
@@ -805,23 +808,19 @@ static int OpenKmsg() {
 
 static int _GetSplitFD(int idx)
 {
+  if (idx < 0 || idx >= __MAXLOGFD__)
+    return -1;
+
   if (!inited[idx]) {
     klogfd[idx] = TEMP_FAILURE_RETRY(open("/dev/kmsg", O_WRONLY | O_CLOEXEC));
     inited[idx] = 1;
   }
 
+  uint64_t nowms = std::chrono::duration_cast<std::chrono::milliseconds>(boot_clock::now().time_since_epoch()).count();
+
   if (plog_time[idx] == NULL) {
-    log_time[idx] = boot_clock::now();
+    log_time[idx] = nowms;
     plog_time[idx] = &log_time[idx];
-  }
-
-  auto exec_duration = boot_clock::now() - *plog_time[idx];
-  auto exec_duration_ms =
-         std::chrono::duration_cast<std::chrono::milliseconds>(exec_duration).count();
-
-  if (exec_duration_ms >= DEFAULT_RATELIMIT_INTERVALMS) {
-    *plog_time[idx] = boot_clock::now();
-    log_printed[idx] = 0;
   }
 
   if (log_printed[idx] >= DEFAULT_RATELIMIT_BURST) {
@@ -831,9 +830,13 @@ static int _GetSplitFD(int idx)
     if (newfd >= 0) {
        close(klogfd[idx]);
        klogfd[idx] = newfd;
-       *plog_time[idx] = boot_clock::now();
+       *plog_time[idx] = nowms;
        log_printed[idx] = 0;
     }
+  }
+  if (nowms >= *plog_time[idx] + DEFAULT_RATELIMIT_INTERVALMS) {
+    *plog_time[idx] = nowms;
+    log_printed[idx] = 0;
   }
 
   log_printed[idx]++;
@@ -855,7 +858,7 @@ static void _KernelLogger_split_final(int fd, int level,
   char buf[1024];
   size_t size;
 
-  if (PropServThrGetTid() != gettid() && while_flag[_SPLIT_OTHER_]) {
+  if (gettid() == 1 && while_flag[_SPLIT_OTHER_]) {
     size = snprintf(buf, sizeof(buf), "<%d>%s %d: [%llu][%llu]%s\n", level, tag, fd,
       (unsigned long long) while_nowms[_SPLIT_OTHER_],
       (unsigned long long) while_ep_duration[_SPLIT_OTHER_], msg);
@@ -873,6 +876,9 @@ static void _KernelLogger_split_final(int fd, int level,
     size = snprintf(buf, sizeof(buf), "<%d>%s: %zu-byte message too long for printk\n",
                     level, tag, size);
   }
+
+  if (size <= 0)
+    return;
 
   iovec iov[1];
   iov[0].iov_base = buf;
@@ -904,16 +910,25 @@ void KernelLogger_split(android::base::LogId, android::base::LogSeverity severit
       return;
   }
 
-  if (PropServThrGetTid() == gettid())
+  if (PropServThrGetTid() == gettid()) {
     fklog_fd = _GetSplitFD(_SPLIT_PROPSET_);
-  else
+
+    if (fklog_fd == -1) return;
+
+    int level = kLogSeverityToKernelLogLevel[severity];
+
+    _KernelLogger_split_final(fklog_fd, level, tag, msg);
+  } else {
+    auto lock = std::lock_guard{_log_lock};
+
     fklog_fd = _GetSplitFD(_SPLIT_OTHER_);
 
-  if (fklog_fd == -1) return;
+    if (fklog_fd == -1) return;
 
-  int level = kLogSeverityToKernelLogLevel[severity];
+    int level = kLogSeverityToKernelLogLevel[severity];
 
-  _KernelLogger_split_final(fklog_fd, level, tag, msg);
+    _KernelLogger_split_final(fklog_fd, level, tag, msg);
+  }
 }
 #endif // #if defined(__linux__)
 
