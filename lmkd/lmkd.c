@@ -337,10 +337,14 @@ enum vmstat_field {
     VS_PGSCAN_KSWAPD,
     VS_PGSCAN_DIRECT,
     VS_PGSCAN_DIRECT_THROTTLE,
+    VS_PGSKIP_DMA,
+    VS_PGSKIP_NORMAL,
+    VS_PGSKIP_HIGH,
+    VS_PGSKIP_MOVABLE,
     VS_FIELD_COUNT
 };
 
-static const char* const vmstat_field_names[MI_FIELD_COUNT] = {
+static const char* const vmstat_field_names[VS_FIELD_COUNT] = {
     "nr_free_pages",
     "nr_inactive_file",
     "nr_active_file",
@@ -348,6 +352,10 @@ static const char* const vmstat_field_names[MI_FIELD_COUNT] = {
     "pgscan_kswapd",
     "pgscan_direct",
     "pgscan_direct_throttle",
+    "pgskip_dma32",
+    "pgskip_normal",
+    "pgskip_high",
+    "pgskip_movable",
 };
 
 union vmstat {
@@ -359,6 +367,10 @@ union vmstat {
         int64_t pgscan_kswapd;
         int64_t pgscan_direct;
         int64_t pgscan_direct_throttle;
+	int64_t pgskip_dma;
+	int64_t pgskip_normal;
+	int64_t pgskip_high;
+	int64_t pgskip_movable;
     } field;
     int64_t arr[VS_FIELD_COUNT];
 };
@@ -1374,6 +1386,12 @@ static int vmstat_parse(union vmstat *vs)
     char *save_ptr;
     char *line;
     memset(vs, 0, sizeof(union vmstat));
+    /*
+     * Per-zone related info need not present. Prefill them.
+     * If exist, they can be overridden. This change helps
+     * us to check which all zone info we can look into.
+     */
+    vs->field.pgskip_dma = vs->field.pgskip_high = -EINVAL;
     if (reread_file(&file_data, buf, sizeof(buf)) < 0) {
         return -1;
     }
@@ -1570,8 +1588,9 @@ static int zone_watermarks_ok(enum vmpressure_level level)
     };
     char buf[2 * PAGE_SIZE];
     char *offset;
-    struct watermark_info w;
-    int zone_id, i, nr;
+    struct watermark_info w[MAX_NR_ZONES];
+    static union vmstat vs1, vs2;
+    int zone_id, i, nr, present_zones = 0;
     bool lowmem_reserve_ok[MAX_NR_ZONES];
     int nr_file = 0;
     int min_score_adj = OOM_SCORE_ADJ_MAX + 1;
@@ -1583,36 +1602,63 @@ static int zone_watermarks_ok(enum vmpressure_level level)
     memset(&w, 0, sizeof(w));
     memset(&lowmem_reserve_ok, 0, sizeof(lowmem_reserve_ok));
     offset = buf;
-    for (zone_id = 0; zone_id < MAX_NR_ZONES; zone_id++) {
+
+    /* Parse complete zone info. */
+    for (zone_id = 0; zone_id < MAX_NR_ZONES; zone_id++, present_zones++) {
+	    nr = parse_one_zone_watermark(offset, &w[zone_id]);
+	    if (!nr)
+		    break;
+	    offset += nr;
+    }
+    if (!present_zones)
+	    goto out;
+
+    if (vmstat_parse(&vs1) < 0) {
+	    ULMK_LOG(E, "Failed to parse vmstat!");
+	    goto out;
+    }
+
+    for (zone_id = 0, i = VS_PGSKIP_DMA;
+		 i <= VS_PGSKIP_MOVABLE && zone_id < present_zones; ++i) {
+	    if (vs1.arr[i] == -EINVAL)
+		    continue;
+	    /*
+	     * If no page is skipped while reclaiming, then consider this
+	     * zone file cache stats.
+	     */
+	    if (!(vs1.arr[i] - vs2.arr[i]))
+		    nr_file += w[zone_id].inactive_file + w[zone_id].active_file;
+
+	    ++zone_id;
+    }
+
+    vs2 = vs1;
+    for (zone_id = 0; zone_id < present_zones; zone_id++) {
         int margin;
 
-        nr = parse_one_zone_watermark(offset, &w);
-        if (!nr)
-            break;
-
-        offset += nr;
         ULMK_LOG(D, "Zone %s: free:%d high:%d cma:%d reserve:(%d %d %d) anon:(%d %d) file:(%d %d)\n",
-                w.name, w.free, w.high, w.cma,
-                w.lowmem_reserve[0], w.lowmem_reserve[1], w.lowmem_reserve[2],
-                w.inactive_anon, w.active_anon, w.inactive_file, w.active_file);
+                w[zone_id].name, w[zone_id].free, w[zone_id].high, w[zone_id].cma,
+                w[zone_id].lowmem_reserve[0], w[zone_id].lowmem_reserve[1],
+		w[zone_id].lowmem_reserve[2],
+                w[zone_id].inactive_anon, w[zone_id].active_anon,
+		w[zone_id].inactive_file, w[zone_id].active_file);
 
         /* Zone is empty */
-        if (!w.present)
+        if (!w[zone_id].present)
             continue;
 
-        nr_file += w.inactive_file + w.active_file;
-
-        margin = w.free - w.cma - w.high;
-        for (i = 0; i < MAX_NR_ZONES; i++)
-            if (w.lowmem_reserve[i] && (margin > w.lowmem_reserve[i]))
+        margin = w[zone_id].free - w[zone_id].cma - w[zone_id].high;
+        for (i = 0; i < present_zones; i++)
+            if (w[zone_id].lowmem_reserve[i] && (margin > w[zone_id].lowmem_reserve[i]))
                 lowmem_reserve_ok[i] = true;
 
         if (!s_crit_event && (margin >= 0 || lowmem_reserve_ok[zone_id]))
             continue;
 
-        return file_cache_to_adj(level, w.free, nr_file);
+        return file_cache_to_adj(level, w[zone_id].free, nr_file);
     }
 
+out:
     if (offset == buf)
         ALOGE("Parsing watermarks failed in %s", file_data.filename);
 
