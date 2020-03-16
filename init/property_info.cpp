@@ -74,6 +74,7 @@ std::string prop_boot_bootloader = "ro.boot.bootloader";
 std::string prop_bootloader = "ro.bootloader";
 std::string prop_build_description = "ro.build.description";
 std::string prop_build_flavor = "ro.build.flavor";
+std::string prop_build_base_os = "ro.build.version.base_os";
 
 void set_system_properties(){
     std::ifstream stream_product(product_version_file);
@@ -123,6 +124,7 @@ void set_system_properties(){
         }
         if (isProductNameFijiReteu(carrier_ontim)) {
             prop_product_value = "fiji_reteu";
+            property_set(prop_build_base_os, get_base_os_property(prop_product_value));
             if (carrier_ontim == "eegb_uksl") {
                 property_set(prop_msclient, prop_clientuk_value);
             } else if (carrier_ontim == "timit_timit") {
@@ -176,6 +178,7 @@ void set_system_properties(){
 
         if (isProductNameFiji64Reteu(carrier_ontim)) {
             prop_product_value = "fiji_reteu_64";
+            property_set(prop_build_base_os, get_base_os_property(prop_product_value));
             property_set(prop_amclient, prop_client_value);
             property_set(prop_msclient, prop_clientrev_value);
         } else {
@@ -385,7 +388,7 @@ bool changeSystemProperty(std::string key) {
       || key == prop_product_board || key == prop_product_vendor_device
       || key == prop_product_vendor_name || key == prop_boot_bootloader
       || key == prop_bootloader|| key == prop_build_description
-      || key == prop_build_flavor) {
+      || key == prop_build_flavor || key == prop_build_base_os) {
         return true;
     }
     return false;
@@ -403,6 +406,13 @@ std::string get_product_property(std::string prop_name, std::string value) {
     std::vector<std::string> product = android::base::Split(product_name, "-");
     product[0] = value;
     return android::base::Join(product, "-");
+}
+
+std::string get_base_os_property(std::string value) {
+    std::string  build_base_os = android::base::GetProperty(prop_build_base_os, "");
+    std::vector<std::string> base_os = android::base::Split(build_base_os, "/");
+    base_os[1] = value;
+    return android::base::Join(base_os, "/");
 }
 
 std::string get_version_property(std::string value) {
