@@ -58,6 +58,7 @@ std::string prop_clientit_value = "android-tim-it-revc";
 std::string prop_clientor_value = "android-orange-{country}-revc";
 std::string prop_clienttmobile_value = "android-tmobile-{country}";
 std::string prop_clientdt_value = "android-dt-{country}-revc";
+std::string prop_cliento2_value = "android-tef-{country}-revc";
 std::string prop_product_value = "fiji";
 std::string prop_carrier_value = "retail";
 std::string prop_version_value;
@@ -121,6 +122,8 @@ void set_system_properties(){
             } else if (carrier_ontim == "windit_windds") {
                 property_set(prop_msclient, prop_clientwindit_value);
                 property_set(prop_amazon_partnerid, "3it");
+            } else if (carrier_ontim == "o2gb_teluk") {
+                property_set(prop_msclient, prop_cliento2_value);
             } else {
                 property_set(prop_amclient, prop_client_value);
                 property_set(prop_msclient, prop_clientrev_value);
@@ -191,6 +194,8 @@ void set_system_properties(){
                 property_set(prop_msclient, prop_clientor_value);
             } else if (carrier_ontim == "eegb_uksl") {
                 property_set(prop_msclient, prop_clientuk_value);
+            } else if (carrier_ontim == "o2gb_teluk") {
+                property_set(prop_msclient, prop_cliento2_value);
             } else {
                 property_set(prop_amclient, prop_client_value);
                 property_set(prop_msclient, prop_clientrev_value);
@@ -303,6 +308,7 @@ bool isProductNameBlackjackReteu(std::string carrier_ontim) {
     if (carrier_ontim == "eegb_uksl") return true;
     if (carrier_ontim == "vfeu_vfeu") return true;
     if (carrier_ontim == "reteu_dtag") return true;
+    if (carrier_ontim == "o2gb_teluk") return true;
     return false;
 }
 
