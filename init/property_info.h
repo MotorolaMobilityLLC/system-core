@@ -33,6 +33,7 @@ bool changeSystemProperty(std::string key);
 std::string get_fingerprint_property(std::string value);
 std::string get_version_property(std::string value);
 std::string get_product_property(std::string prop_name,std::string value);
+std::string get_base_os_property(std::string value);
 void set_some_vendor_properties(std::string prop_product_value);
 }  // namespace init
 }  // namespace android
