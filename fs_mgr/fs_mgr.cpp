@@ -79,7 +79,11 @@
 #define F2FS_FSCK_BIN   "/system/bin/fsck.f2fs"
 #define MKSWAP_BIN      "/system/bin/mkswap"
 #define TUNE2FS_BIN     "/system/bin/tune2fs"
-#define RESIZE2FS_BIN "/system/bin/resize2fs"
+#ifdef MTK_FSTAB_FLAGS
+#include "cryptfs.h"
+#define RESIZE2FS_BIN   "/system/bin/resize2fs"
+#define RESIZEF2FS_BIN  "/system/bin/resize.f2fs"
+#endif
 
 #define FSCK_LOG_FILE   "/dev/fscklogs/log"
 
@@ -603,32 +607,159 @@ static void tune_metadata_csum(const std::string& blk_device, const FstabEntry& 
 // false.  If it's not an f2fs filesystem, also set FS_STAT_INVALID_MAGIC.
 #define F2FS_BLKSIZE 4096
 #define F2FS_SUPER_OFFSET 1024
-static bool read_f2fs_superblock(const std::string& blk_device, int* fs_stat) {
+static bool read_f2fs_superblock(const std::string& blk_device, struct f2fs_super_block* sb, int* fs_stat) {
     android::base::unique_fd fd(TEMP_FAILURE_RETRY(open(blk_device.c_str(), O_RDONLY | O_CLOEXEC)));
-    __le32 sb1, sb2;
 
     if (fd < 0) {
         PERROR << "Failed to open '" << blk_device << "'";
         return false;
     }
 
-    if (TEMP_FAILURE_RETRY(pread(fd, &sb1, sizeof(sb1), F2FS_SUPER_OFFSET)) != sizeof(sb1)) {
+    if (TEMP_FAILURE_RETRY(pread(fd, sb, sizeof(*sb), F2FS_SUPER_OFFSET)) != sizeof(*sb)) {
         PERROR << "Can't read '" << blk_device << "' superblock1";
         return false;
     }
-    if (TEMP_FAILURE_RETRY(pread(fd, &sb2, sizeof(sb2), F2FS_BLKSIZE + F2FS_SUPER_OFFSET)) !=
-        sizeof(sb2)) {
+    if (sb->magic == cpu_to_le32(F2FS_SUPER_MAGIC))
+        return true;
+
+    if (TEMP_FAILURE_RETRY(pread(fd, sb, sizeof(*sb), F2FS_BLKSIZE + F2FS_SUPER_OFFSET)) !=
+        sizeof(*sb)) {
         PERROR << "Can't read '" << blk_device << "' superblock2";
         return false;
     }
+    if (sb->magic == cpu_to_le32(F2FS_SUPER_MAGIC))
+        return true;
 
-    if (sb1 != cpu_to_le32(F2FS_SUPER_MAGIC) && sb2 != cpu_to_le32(F2FS_SUPER_MAGIC)) {
-        LINFO << "Invalid f2fs superblock on '" << blk_device << "'";
-        *fs_stat |= FS_STAT_INVALID_MAGIC;
+    LINFO << "Invalid f2fs superblock on '" << blk_device << "'";
+    *fs_stat |= FS_STAT_INVALID_MAGIC;
+    return false;
+}
+
+#ifdef MTK_FSTAB_FLAGS
+static bool fs_match(const std::string& in1, const std::string& in2);
+static void resize_fs(const std::string& blk_device, const std::string& fs_type,
+                     const std::string& key_loc) {
+    uint64_t device_sz;
+    uint32_t device_ss;
+    uint64_t device_sn;
+    int status = 0;
+    int ret = 0;
+
+    android::base::unique_fd fd(TEMP_FAILURE_RETRY(open(blk_device.c_str(), O_RDONLY | O_CLOEXEC)));
+
+    if (fd < 0) {
+        PERROR << "Failed to open '" << blk_device << "'";
+        return;
+    }
+
+    /* Cannot use BLKGETSIZE to get the number of sectors,
+    * because need to do device_sz -= CRYPT_FOOTER_OFFSET
+    */
+    if ((ioctl(fd, BLKGETSIZE64, &device_sz)) == -1) {
+        PERROR << "(BLKGETSIZE64) Can't get '" << blk_device << "' size";
+        return;
+    }
+
+    if ((ioctl(fd, BLKSSZGET, &device_ss)) == -1) {
+        PERROR << "(BLKSSZGET) Can't get '" << blk_device << "' size";
+        return;
+    }
+
+    /* Format the partition using the calculated length */
+    if (fs_match(key_loc, KEY_IN_FOOTER))
+        device_sz -= CRYPT_FOOTER_OFFSET;
+
+    if (is_extfs(fs_type)) {
+        if (access(RESIZE2FS_BIN, X_OK)) {
+            LINFO << "Not running " << RESIZE2FS_BIN << " on " << blk_device
+            << " (executable not in system image)";
+        } else {
+            std::string size_kb_str(android::base::StringPrintf("%" PRIu64 "K", device_sz / 1024));
+
+            LINFO << "Running " << RESIZE2FS_BIN << " on " << blk_device;
+
+            /* extX cmd */
+            const char* resize2fs_argv[] = {RESIZE2FS_BIN, "-f", blk_device.c_str(),
+                                       size_kb_str.c_str()};
+            ret = logwrap_fork_execvp(ARRAY_SIZE(resize2fs_argv),
+                                      resize2fs_argv, &status,
+                                      false, LOG_KLOG | LOG_FILE,
+                                      false, FSCK_LOG_FILE);
+
+            if (ret < 0) {
+                /* No need to check for error in fork, we can't really handle it now */
+                LERROR << "Failed trying to run " << RESIZE2FS_BIN;
+                return;
+            }
+        }
+    } else if (is_f2fs(fs_type)) {
+        if (access(RESIZEF2FS_BIN, X_OK)) {
+            LINFO << "Not running " << RESIZEF2FS_BIN << " on " << blk_device
+            << " (executable not in system image)";
+        } else {
+            device_sn = device_sz / device_ss;
+
+            std::string size_kb_str(android::base::StringPrintf("%" PRIu64, device_sn));
+
+            LINFO << "Running " << RESIZE2FS_BIN << " on " << blk_device;
+            LINFO << "F2FS total size is " << device_sz << "  sector size is " << device_ss;
+
+            /* F2FS cmd */
+            const char* resizef2fs_argv[] = {RESIZEF2FS_BIN, "-t", size_kb_str.c_str(),
+                                        blk_device.c_str()};
+            ret = logwrap_fork_execvp(ARRAY_SIZE(resizef2fs_argv),
+                                      resizef2fs_argv, &status, false,
+                                      LOG_KLOG | LOG_FILE, false, FSCK_LOG_FILE);
+
+            if (ret < 0) {
+                /* No need to check for error in fork, we can't really handle it now */
+                LERROR << "F2FS Failed trying to run " << RESIZEF2FS_BIN;
+                return;
+            }
+        }
+    }
+}
+
+static bool is_need_resize(const std::string& blk_device, const FstabEntry& entry, const void *sb) {
+    uint64_t device_sz;
+    struct ext4_super_block *ext4_sb;
+    struct f2fs_super_block *f2fs_sb;
+
+    /* Get block device size */
+    android::base::unique_fd fd(TEMP_FAILURE_RETRY(open(blk_device.c_str(), O_RDONLY | O_CLOEXEC)));
+
+    if (fd < 0) {
+        PERROR << "Failed to open '" << blk_device << "' in is_need_resize";
         return false;
     }
-    return true;
+    if ((ioctl(fd, BLKGETSIZE64, &device_sz)) == -1) {
+        PERROR << "(BLKGETSIZE64) Can't get '" << blk_device << "' size in is_need_resize";
+        return false;
+    }
+
+    /* ext4/f2fs's total size compare with block device size */
+    if (is_extfs(entry.fs_type)) {
+        /* we suppose block size is 4KB */
+        uint32_t device_bc = (device_sz / 4096) & ((1ULL << 32) - 1);
+        ext4_sb = (struct ext4_super_block *)sb;
+        if (device_bc < ext4_sb->s_blocks_count_lo)
+            return false;
+        /* >1GB, do resize */
+        return ((device_bc - ext4_sb->s_blocks_count_lo) > 262144) ? 1 : 0;
+    } else if (is_f2fs(entry.fs_type)) {
+        f2fs_sb = (struct f2fs_super_block *)sb;
+        /* NOTE: F2FS used segment count  */
+        uint32_t device_sc = (device_sz / ((1 << f2fs_sb->log_blocks_per_seg) * 4096))
+                              & ((1ULL << 32) - 1);
+        if (device_sc < f2fs_sb->segment_count)
+            return false;
+        /* >1GB, do resize */
+        return ((device_sc - f2fs_sb->segment_count) > 512) ? 1 : 0;
+    }
+    return false;
 }
+#endif
+
 
 // exported silent version of the above that just answer the question is_f2fs
 bool fs_mgr_is_f2fs(const std::string& blk_device) {
@@ -668,26 +799,26 @@ static int prepare_fs_for_mount(const std::string& blk_device, const FstabEntry&
     mkdir(mount_point.c_str(), 0755);
 
     int fs_stat = 0;
+    struct ext4_super_block ext4_sb;
+    struct f2fs_super_block f2fs_sb;
 
     if (is_extfs(entry.fs_type)) {
-        struct ext4_super_block sb;
-
-        if (read_ext4_superblock(blk_device, &sb, &fs_stat)) {
-            if ((sb.s_feature_incompat & EXT4_FEATURE_INCOMPAT_RECOVER) != 0 ||
-                (sb.s_state & EXT4_VALID_FS) == 0) {
+        if (read_ext4_superblock(blk_device, &ext4_sb, &fs_stat)) {
+            if ((ext4_sb.s_feature_incompat & EXT4_FEATURE_INCOMPAT_RECOVER) != 0 ||
+                (ext4_sb.s_state & EXT4_VALID_FS) == 0) {
                 LINFO << "Filesystem on " << blk_device << " was not cleanly shutdown; "
-                      << "state flags: 0x" << std::hex << sb.s_state << ", "
-                      << "incompat feature flags: 0x" << std::hex << sb.s_feature_incompat;
+                      << "state flags: 0x" << std::hex << ext4_sb.s_state << ", "
+                      << "incompat feature flags: 0x" << std::hex << ext4_sb.s_feature_incompat;
                 fs_stat |= FS_STAT_UNCLEAN_SHUTDOWN;
             }
 
             // Note: quotas should be enabled before running fsck.
-            tune_quota(blk_device, entry, &sb, &fs_stat);
+            tune_quota(blk_device, entry, &ext4_sb, &fs_stat);
         } else {
             return fs_stat;
         }
     } else if (is_f2fs(entry.fs_type)) {
-        if (!read_f2fs_superblock(blk_device, &fs_stat)) {
+        if (!read_f2fs_superblock(blk_device, &f2fs_sb, &fs_stat)) {
             return fs_stat;
         }
     }
@@ -696,6 +827,27 @@ static int prepare_fs_for_mount(const std::string& blk_device, const FstabEntry&
         (fs_stat & (FS_STAT_UNCLEAN_SHUTDOWN | FS_STAT_QUOTA_ENABLED))) {
         check_fs(blk_device, entry.fs_type, mount_point, &fs_stat);
     }
+
+#ifdef MTK_FSTAB_FLAGS
+    if (entry.fs_mgr_flags.resize) {
+        if (fs_match(blk_device, entry.blk_device)) {
+            if (is_extfs(entry.fs_type) && is_need_resize(blk_device, entry, (void *)&ext4_sb)) {
+                LINFO << "ext4 do resize!!!!";
+                goto resize;
+            } else if (is_f2fs(entry.fs_type) && is_need_resize(blk_device, entry, (void *)&f2fs_sb)) {
+                LINFO << "f2fs do resize!!!!";
+                goto resize;
+            }
+        }
+        LINFO << "do not resize!!!!";
+        goto no_resize;
+
+resize:
+        resize_fs(blk_device, entry.fs_type, entry.key_loc);
+        check_fs(blk_device, entry.fs_type, entry.mount_point, &fs_stat);
+     }
+no_resize:
+#endif
 
     if (is_extfs(entry.fs_type) &&
         (entry.reserved_size != 0 || entry.fs_mgr_flags.file_encryption ||

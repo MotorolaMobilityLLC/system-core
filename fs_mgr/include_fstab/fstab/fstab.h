@@ -84,6 +84,7 @@ struct FstabEntry {
         bool fs_verity : 1;
         bool ext_meta_csum : 1;
         bool fs_compress : 1;
+        bool resize : 1;
     } fs_mgr_flags = {};
 
     bool is_encryptable() const {
