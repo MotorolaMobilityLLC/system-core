@@ -27,6 +27,7 @@
 #include <android/set_abort_message.h>
 #endif
 
+#include <atomic>
 #include <shared_mutex>
 
 #include <android-base/errno_restorer.h>
@@ -148,14 +149,12 @@ void __android_log_set_default_tag(const char* tag) {
   GetDefaultTag().assign(tag, 0, LOGGER_ENTRY_MAX_PAYLOAD);
 }
 
-static int minimum_log_priority = ANDROID_LOG_DEFAULT;
-int __android_log_set_minimum_priority(int priority) {
-  int old_minimum_log_priority = minimum_log_priority;
-  minimum_log_priority = priority;
-  return old_minimum_log_priority;
+static std::atomic_int32_t minimum_log_priority = ANDROID_LOG_DEFAULT;
+int32_t __android_log_set_minimum_priority(int32_t priority) {
+  return minimum_log_priority.exchange(priority, std::memory_order_relaxed);
 }
 
-int __android_log_get_minimum_priority() {
+int32_t __android_log_get_minimum_priority() {
   return minimum_log_priority;
 }
 
@@ -268,7 +267,7 @@ void __android_log_stderr_logger(const struct __android_logger_data* logger_data
   static const char log_characters[] = "XXVDIWEF";
   static_assert(arraysize(log_characters) - 1 == ANDROID_LOG_SILENT,
                 "Mismatch in size of log_characters and values in android_LogPriority");
-  int priority =
+  int32_t priority =
       logger_data->priority > ANDROID_LOG_SILENT ? ANDROID_LOG_FATAL : logger_data->priority;
   char priority_char = log_characters[priority];
   uint64_t tid = GetThreadId();

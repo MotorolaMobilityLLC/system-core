@@ -737,15 +737,33 @@ static int __mount(const std::string& source, const std::string& target, const F
     unsigned long mountflags = entry.flags;
     int ret = 0;
     int save_errno = 0;
+    int gc_allowance = 0;
+    std::string opts;
+    bool try_f2fs_gc_allowance = is_f2fs(entry.fs_type) && entry.fs_checkpoint_opts.length() > 0;
+    Timer t;
+
     do {
+        if (save_errno == EINVAL && try_f2fs_gc_allowance) {
+            PINFO << "Kernel does not support checkpoint=disable:[n]%, trying without.";
+            try_f2fs_gc_allowance = false;
+        }
+        if (try_f2fs_gc_allowance) {
+            opts = entry.fs_options + entry.fs_checkpoint_opts + ":" +
+                   std::to_string(gc_allowance) + "%";
+        } else {
+            opts = entry.fs_options;
+        }
         if (save_errno == EAGAIN) {
             PINFO << "Retrying mount (source=" << source << ",target=" << target
-                  << ",type=" << entry.fs_type << ")=" << ret << "(" << save_errno << ")";
+                  << ",type=" << entry.fs_type << ", gc_allowance=" << gc_allowance << "%)=" << ret
+                  << "(" << save_errno << ")";
         }
         ret = mount(source.c_str(), target.c_str(), entry.fs_type.c_str(), mountflags,
-                    entry.fs_options.c_str());
+                    opts.c_str());
         save_errno = errno;
-    } while (ret && save_errno == EAGAIN);
+        if (try_f2fs_gc_allowance) gc_allowance += 10;
+    } while ((ret && save_errno == EAGAIN && gc_allowance <= 100) ||
+             (ret && save_errno == EINVAL && try_f2fs_gc_allowance));
     const char* target_missing = "";
     const char* source_missing = "";
     if (save_errno == ENOENT) {
@@ -761,6 +779,8 @@ static int __mount(const std::string& source, const std::string& target, const F
     if ((ret == 0) && (mountflags & MS_RDONLY) != 0) {
         fs_mgr_set_blk_ro(source);
     }
+    android::base::SetProperty("ro.boottime.init.mount." + Basename(target),
+                               std::to_string(t.duration().count()));
     errno = save_errno;
     return ret;
 }
@@ -1075,7 +1095,7 @@ class CheckpointManager {
     bool UpdateCheckpointPartition(FstabEntry* entry, const std::string& block_device) {
         if (entry->fs_mgr_flags.checkpoint_fs) {
             if (is_f2fs(entry->fs_type)) {
-                entry->fs_options += ",checkpoint=disable";
+                entry->fs_checkpoint_opts = ",checkpoint=disable";
             } else {
                 LERROR << entry->fs_type << " does not implement checkpoints.";
             }
@@ -1589,76 +1609,58 @@ static bool fs_mgr_unmount_all_data_mounts(const std::string& block_device) {
     }
 }
 
-static std::string ResolveBlockDevice(const std::string& block_device) {
+static bool UnwindDmDeviceStack(const std::string& block_device,
+                                std::vector<std::string>* dm_stack) {
     if (!StartsWith(block_device, "/dev/block/")) {
         LWARNING << block_device << " is not a block device";
-        return block_device;
+        return false;
     }
-    std::string name = block_device.substr(5);
-    if (!StartsWith(name, "block/dm-")) {
-        // Not a dm-device, but might be a symlink. Optimistically try to readlink.
-        std::string result;
-        if (Readlink(block_device, &result)) {
-            return result;
-        } else if (errno == EINVAL) {
-            // After all, it wasn't a symlink.
-            return block_device;
-        } else {
-            LERROR << "Failed to readlink " << block_device;
-            return "";
-        }
-    }
-    // It's a dm-device, let's find what's inside!
-    std::string sys_dir = "/sys/" + name;
+    std::string current = block_device;
+    DeviceMapper& dm = DeviceMapper::Instance();
     while (true) {
-        std::string slaves_dir = sys_dir + "/slaves";
-        std::unique_ptr<DIR, decltype(&closedir)> dir(opendir(slaves_dir.c_str()), closedir);
-        if (!dir) {
-            LERROR << "Failed to open " << slaves_dir;
-            return "";
+        dm_stack->push_back(current);
+        if (!dm.IsDmBlockDevice(current)) {
+            break;
         }
-        std::string sub_device_name = "";
-        for (auto entry = readdir(dir.get()); entry; entry = readdir(dir.get())) {
-            if (entry->d_type != DT_LNK) continue;
-            if (!sub_device_name.empty()) {
-                LERROR << "Too many slaves in " << slaves_dir;
-                return "";
-            }
-            sub_device_name = entry->d_name;
+        auto parent = dm.GetParentBlockDeviceByPath(current);
+        if (!parent) {
+            return false;
         }
-        if (sub_device_name.empty()) {
-            LERROR << "No slaves in " << slaves_dir;
-            return "";
-        }
-        if (!StartsWith(sub_device_name, "dm-")) {
-            // Not a dm-device! We can stop now.
-            return "/dev/block/" + sub_device_name;
-        }
-        // Still a dm-device, keep digging.
-        sys_dir = "/sys/block/" + sub_device_name;
+        current = *parent;
     }
+    return true;
 }
 
 FstabEntry* fs_mgr_get_mounted_entry_for_userdata(Fstab* fstab, const FstabEntry& mounted_entry) {
-    std::string resolved_block_device = ResolveBlockDevice(mounted_entry.blk_device);
-    if (resolved_block_device.empty()) {
+    if (mounted_entry.mount_point != "/data") {
+        LERROR << mounted_entry.mount_point << " is not /data";
         return nullptr;
     }
-    LINFO << "/data is mounted on " << resolved_block_device;
+    std::vector<std::string> dm_stack;
+    if (!UnwindDmDeviceStack(mounted_entry.blk_device, &dm_stack)) {
+        LERROR << "Failed to unwind dm-device stack for " << mounted_entry.blk_device;
+        return nullptr;
+    }
     for (auto& entry : *fstab) {
         if (entry.mount_point != "/data") {
             continue;
         }
         std::string block_device;
-        if (!Readlink(entry.blk_device, &block_device)) {
-            LWARNING << "Failed to readlink " << entry.blk_device;
+        if (entry.fs_mgr_flags.logical) {
+            if (!fs_mgr_update_logical_partition(&entry)) {
+                LERROR << "Failed to update logic partition " << entry.blk_device;
+                continue;
+            }
+            block_device = entry.blk_device;
+        } else if (!Readlink(entry.blk_device, &block_device)) {
+            PWARNING << "Failed to read link " << entry.blk_device;
             block_device = entry.blk_device;
         }
-        if (block_device == resolved_block_device) {
+        if (std::find(dm_stack.begin(), dm_stack.end(), block_device) != dm_stack.end()) {
             return &entry;
         }
     }
-    LERROR << "Didn't find entry that was used to mount /data";
+    LERROR << "Didn't find entry that was used to mount /data onto " << mounted_entry.blk_device;
     return nullptr;
 }
 
