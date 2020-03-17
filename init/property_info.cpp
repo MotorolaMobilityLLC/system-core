@@ -313,7 +313,6 @@ bool isProductNameBlackjackReteu(std::string carrier_ontim) {
 }
 
 bool isProductNameBlackjackLnv(std::string carrier_ontim) {
-    if (carrier_ontim == "retapac_reteusa") return true;
     if (carrier_ontim == "retapac_reteuuae") return true;
     if (carrier_ontim == "retapac_rettld") return true;
     return false;
