@@ -16,6 +16,11 @@ on early-init
     # Disable sysrq from keyboard
     write /proc/sys/kernel/sysrq 0
 
+    # Android doesn't need kernel module autoloading, and it causes SELinux
+    # denials.  So disable it by setting modprobe to the empty string.  Note: to
+    # explicitly set a sysctl to an empty string, a trailing newline is needed.
+    write /proc/sys/kernel/modprobe \n
+
     # Set the security context of /adb_keys if present.
     restorecon /adb_keys
 
@@ -330,7 +335,7 @@ on init
     chown system system /dev/freezer/frozen/freezer.state
     chown system system /dev/freezer/frozen/cgroup.procs
 
-    chmod 0444 /dev/freezer/frozen/freezer.state
+    chmod 0664 /dev/freezer/frozen/freezer.state
 
     # make the PSI monitor accessible to others
     chown system system /proc/pressure/memory
