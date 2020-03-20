@@ -14,12 +14,13 @@
  * limitations under the License.
  */
 
-#include "service_lock.h"
+#pragma once
 
-namespace android {
-namespace init {
+#include <stdint.h>
 
-RecursiveMutex service_lock;
+#include <string>
+#include <vector>
 
-}  // namespace init
-}  // namespace android
+namespace incremental {
+std::vector<int32_t> PriorityBlocksForFile(const std::string& filepath, int fd, int64_t fileSize);
+}  // namespace incremental

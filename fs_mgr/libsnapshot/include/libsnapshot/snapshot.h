@@ -74,7 +74,8 @@ class SnapshotStatus;
 
 static constexpr const std::string_view kCowGroupName = "cow";
 
-bool SourceCopyOperationIsClone(const chromeos_update_engine::InstallOperation& operation);
+bool OptimizeSourceCopyOperation(const chromeos_update_engine::InstallOperation& operation,
+                                 chromeos_update_engine::InstallOperation* optimized);
 
 enum class CreateResult : unsigned int {
     ERROR,
@@ -125,6 +126,9 @@ class SnapshotManager final {
     // might be needed to perform first-stage mounts.
     static bool IsSnapshotManagerNeeded();
 
+    // Helper function for second stage init to restorecon on the rollback indicator.
+    static std::string GetGlobalRollbackIndicatorPath();
+
     // Begin an update. This must be called before creating any snapshots. It
     // will fail if GetUpdateState() != None.
     bool BeginUpdate();
@@ -174,16 +178,6 @@ class SnapshotManager final {
     // progress with GetUpdateState().
     UpdateState ProcessUpdateState(const std::function<bool()>& callback = {},
                                    const std::function<bool()>& before_cancel = {});
-
-    // Initiate the merge if necessary, then wait for the merge to finish.
-    // See InitiateMerge() and ProcessUpdateState() for details.
-    // Returns:
-    //   - None if no merge to initiate
-    //   - Unverified if called on the source slot
-    //   - MergeCompleted if merge is completed
-    //   - other states indicating an error has occurred
-    UpdateState InitiateMergeAndWait(SnapshotMergeReport* report = nullptr,
-                                     const std::function<bool()>& before_cancel = {});
 
     // Find the status of the current update, if any.
     //
