@@ -44,9 +44,6 @@
 #include <mutex>
 #include <optional>
 #include <queue>
-#ifdef G1122717
-#include <set>
-#endif
 #include <thread>
 #include <vector>
 
@@ -98,13 +95,10 @@ static int property_set_fd = -1;
 static int from_init_socket = -1;
 static int init_socket = -1;
 static bool accept_messages = false;
+static std::mutex accept_messages_lock;
 static std::thread property_service_thread;
 
 static PropertyInfoAreaFile property_info_area;
-
-#ifdef G1122717
-std::set<std::string> init_watched_properties;
-#endif
 
 struct PropertyAuditData {
     const ucred* cr;
@@ -122,6 +116,16 @@ static int PropertyAuditCallback(void* data, security_class_t /*cls*/, char* buf
     snprintf(buf, len, "property=%s pid=%d uid=%d gid=%d", d->name, d->cr->pid, d->cr->uid,
              d->cr->gid);
     return 0;
+}
+
+void StartSendingMessages() {
+    auto lock = std::lock_guard{accept_messages_lock};
+    accept_messages = true;
+}
+
+void StopSendingMessages() {
+    auto lock = std::lock_guard{accept_messages_lock};
+    accept_messages = true;
 }
 
 bool CanReadProperty(const std::string& source_context, const std::string& name) {
@@ -252,11 +256,8 @@ static uint32_t PropertySet(const std::string& name, const std::string& value, s
     }
     // If init hasn't started its main loop, then it won't be handling property changed messages
     // anyway, so there's no need to try to send them.
-#ifndef G1122717
+    auto lock = std::lock_guard{accept_messages_lock};
     if (accept_messages) {
-#else
-    if (accept_messages && init_watched_properties.count(name) > 0) {
-#endif
 #ifdef MTK_LOG
         SnapshotPropertyFlowTraceLog("SPC");
 #endif
@@ -271,131 +272,41 @@ static uint32_t PropertySet(const std::string& name, const std::string& value, s
     return PROP_SUCCESS;
 }
 
-template <typename T>
-class SingleThreadExecutor {
+class AsyncRestorecon {
   public:
-    virtual ~SingleThreadExecutor() {}
-
-    template <typename F = T>
-    void Run(F&& item) {
+    void TriggerRestorecon(const std::string& path) {
         auto guard = std::lock_guard{mutex_};
-        items_.emplace(std::forward<F>(item));
+        paths_.emplace(path);
 
-        if (thread_state_ == ThreadState::kRunning || thread_state_ == ThreadState::kStopped) {
-            return;
-        }
-
-        if (thread_state_ == ThreadState::kPendingJoin) {
-            thread_.join();
-        }
-
-        StartThread();
-    }
-
-    void StopAndJoin() {
-        auto lock = std::unique_lock{mutex_};
-        if (thread_state_ == ThreadState::kPendingJoin) {
-            thread_.join();
-        } else if (thread_state_ == ThreadState::kRunning) {
-            thread_state_ = ThreadState::kStopped;
-            lock.unlock();
-            thread_.join();
-            lock.lock();
-        }
-
-        thread_state_ = ThreadState::kStopped;
-    }
-
-    void Restart() {
-        auto guard = std::lock_guard{mutex_};
-        if (items_.empty()) {
-            thread_state_ = ThreadState::kNotStarted;
-        } else {
-            StartThread();
-        }
-    }
-
-    void MaybeJoin() {
-        auto guard = std::lock_guard{mutex_};
-        if (thread_state_ == ThreadState::kPendingJoin) {
-            thread_.join();
-            thread_state_ = ThreadState::kNotStarted;
+        if (!thread_started_) {
+            thread_started_ = true;
+            std::thread{&AsyncRestorecon::ThreadFunction, this}.detach();
         }
     }
 
   private:
-    virtual void Execute(T&& item) = 0;
-
-    void StartThread() {
-        thread_state_ = ThreadState::kRunning;
-        auto thread = std::thread{&SingleThreadExecutor::ThreadFunction, this};
-        std::swap(thread_, thread);
-    }
-
     void ThreadFunction() {
         auto lock = std::unique_lock{mutex_};
 
-        while (!items_.empty()) {
-            auto item = items_.front();
-            items_.pop();
+        while (!paths_.empty()) {
+            auto path = paths_.front();
+            paths_.pop();
 
             lock.unlock();
-            Execute(std::move(item));
+            if (selinux_android_restorecon(path.c_str(), SELINUX_ANDROID_RESTORECON_RECURSE) != 0) {
+                LOG(ERROR) << "Asynchronous restorecon of '" << path << "' failed'";
+            }
+            android::base::SetProperty(kRestoreconProperty, path);
             lock.lock();
         }
 
-        if (thread_state_ != ThreadState::kStopped) {
-            thread_state_ = ThreadState::kPendingJoin;
-        }
+        thread_started_ = false;
     }
 
     std::mutex mutex_;
-    std::queue<T> items_;
-    enum class ThreadState {
-        kNotStarted,  // Initial state when starting the program or when restarting with no items to
-                      // process.
-        kRunning,     // The thread is running and is in a state that it will process new items if
-                      // are run.
-        kPendingJoin,  // The thread has run to completion and is pending join().  A new thread must
-                       // be launched for new items to be processed.
-        kStopped,  // This executor has stopped and will not process more items until Restart() is
-                   // called.  Currently pending items will be processed and the thread will be
-                   // joined.
-    };
-    ThreadState thread_state_ = ThreadState::kNotStarted;
-    std::thread thread_;
+    std::queue<std::string> paths_;
+    bool thread_started_ = false;
 };
-
-class RestoreconThread : public SingleThreadExecutor<std::string> {
-    virtual void Execute(std::string&& path) override {
-        if (selinux_android_restorecon(path.c_str(), SELINUX_ANDROID_RESTORECON_RECURSE) != 0) {
-            LOG(ERROR) << "Asynchronous restorecon of '" << path << "' failed'";
-        }
-        android::base::SetProperty(kRestoreconProperty, path);
-    }
-};
-
-struct ControlMessageInfo {
-    std::string message;
-    std::string name;
-    pid_t pid;
-    int fd;
-};
-
-class ControlMessageThread : public SingleThreadExecutor<ControlMessageInfo> {
-    virtual void Execute(ControlMessageInfo&& info) override {
-        bool success = HandleControlMessage(info.message, info.name, info.pid);
-
-        uint32_t response = success ? PROP_SUCCESS : PROP_ERROR_HANDLE_CONTROL_MESSAGE;
-        if (info.fd != -1) {
-            TEMP_FAILURE_RETRY(send(info.fd, &response, sizeof(response), 0));
-            close(info.fd);
-        }
-    }
-};
-
-static RestoreconThread restorecon_thread;
-static ControlMessageThread control_message_thread;
 
 class SocketConnection {
   public:
@@ -533,22 +444,25 @@ class SocketConnection {
 
 static uint32_t SendControlMessage(const std::string& msg, const std::string& name, pid_t pid,
                                    SocketConnection* socket, std::string* error) {
+    auto lock = std::lock_guard{accept_messages_lock};
     if (!accept_messages) {
         *error = "Received control message after shutdown, ignoring";
         return PROP_ERROR_HANDLE_CONTROL_MESSAGE;
     }
 
-    // We must release the fd before spawning the thread, otherwise there will be a race with the
-    // thread. If the thread calls close() before this function calls Release(), then fdsan will see
-    // the wrong tag and abort().
+    // We must release the fd before sending it to init, otherwise there will be a race with init.
+    // If init calls close() before Release(), then fdsan will see the wrong tag and abort().
     int fd = -1;
     if (socket != nullptr && SelinuxGetVendorAndroidVersion() > __ANDROID_API_Q__) {
         fd = socket->Release();
     }
 
-    // Handling a control message likely calls SetProperty, which we must synchronously handle,
-    // therefore we must fork a thread to handle it.
-    control_message_thread.Run({msg, name, pid, fd});
+    bool queue_success = QueueControlMessage(msg, name, pid, fd);
+    if (!queue_success && fd != -1) {
+        uint32_t response = PROP_ERROR_HANDLE_CONTROL_MESSAGE;
+        TEMP_FAILURE_RETRY(send(fd, &response, sizeof(response), 0));
+        close(fd);
+    }
 
     return PROP_SUCCESS;
 }
@@ -653,7 +567,8 @@ uint32_t HandlePropertySet(const std::string& name, const std::string& value,
     // We use a thread to do this restorecon operation to prevent holding up init, as it may take
     // a long time to complete.
     if (name == kRestoreconProperty && cr.pid != 1 && !value.empty()) {
-        restorecon_thread.Run(value);
+        static AsyncRestorecon async_restorecon;
+        async_restorecon.TriggerRestorecon(value);
         return PROP_SUCCESS;
     }
 
@@ -1286,8 +1201,6 @@ void PropertyInit() {
     PropertyLoadBootDefaults();
 }
 
-static bool pause_property_service = false;
-
 static void HandleInitSocket() {
     auto message = ReadMessage(init_socket);
     if (!message.ok()) {
@@ -1317,24 +1230,6 @@ static void HandleInitSocket() {
             persistent_properties_loaded = true;
             break;
         }
-        case InitMessage::kStopSendingMessages: {
-            accept_messages = false;
-            break;
-        }
-        case InitMessage::kStartSendingMessages: {
-            accept_messages = true;
-            break;
-        }
-        case InitMessage::kPausePropertyService: {
-            pause_property_service = true;
-            break;
-        }
-#ifdef G1122717
-        case InitMessage::kStartWatchingProperty: {
-            init_watched_properties.emplace(init_message.start_watching_property());
-            break;
-        }
-#endif
         default:
             LOG(ERROR) << "Unknown message type from init: " << init_message.msg_case();
     }
@@ -1370,7 +1265,7 @@ static void PropertyServiceThread() {
     LOG(INFO) << "PropertyServiceThread start pid:" << getpid() << ", tid:" << gettid();
 #endif
 
-    while (!pause_property_service) {
+    while (true) {
 
 #ifdef MTK_LOG
         auto epoll_timeout = std::optional<std::chrono::milliseconds>{};
@@ -1412,32 +1307,7 @@ static void PropertyServiceThread() {
 #endif
             }
         }
-        control_message_thread.MaybeJoin();
-        restorecon_thread.MaybeJoin();
     }
-}
-
-void SendStopPropertyServiceMessage() {
-    auto init_message = InitMessage{};
-    init_message.set_pause_property_service(true);
-    if (auto result = SendMessage(from_init_socket, init_message); !result.ok()) {
-        LOG(ERROR) << "Failed to send stop property service message: " << result.error();
-    }
-}
-
-void PausePropertyService() {
-    control_message_thread.StopAndJoin();
-    restorecon_thread.StopAndJoin();
-    SendStopPropertyServiceMessage();
-    property_service_thread.join();
-}
-
-void ResumePropertyService() {
-    pause_property_service = false;
-    auto new_thread = std::thread{PropertyServiceThread};
-    property_service_thread.swap(new_thread);
-    restorecon_thread.Restart();
-    control_message_thread.Restart();
 }
 
 void StartPropertyService(int* epoll_socket) {
@@ -1449,7 +1319,7 @@ void StartPropertyService(int* epoll_socket) {
     }
     *epoll_socket = from_init_socket = sockets[0];
     init_socket = sockets[1];
-    accept_messages = true;
+    StartSendingMessages();
 
     if (auto result = CreateSocket(PROP_SERVICE_NAME, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK,
                                    false, 0666, 0, 0, {});

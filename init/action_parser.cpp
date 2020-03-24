@@ -22,9 +22,6 @@
 #include <android-base/strings.h>
 
 #ifdef INIT_FULL_SOURCES
-#ifdef G1122717
-#include "init.h"
-#endif
 #include "property_service.h"
 #include "selinux.h"
 #else
@@ -156,7 +153,7 @@ Result<void> ActionParser::ParseSection(std::vector<std::string>&& args,
 
 #ifdef G1122717
     for (const auto& [property, _] : property_triggers) {
-        SendStartWatchingPropertyMessage(property);
+        action_manager_->StartWatchingProperty(property);
     }
 #endif
 
@@ -170,7 +167,7 @@ Result<void> ActionParser::ParseSection(std::vector<std::string>&& args,
 Result<void> ActionParser::ParseLineSection(std::vector<std::string>&& args, int line) {
 #ifdef G1122717
     if (args.size() >= 2 && args[0] == "wait_for_prop") {
-        SendStartWatchingPropertyMessage(args[1]);
+        action_manager_->StartWatchingProperty(args[1]);
     }
 #endif
     return action_ ? action_->AddCommand(std::move(args), line) : Result<void>{};

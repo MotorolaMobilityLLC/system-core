@@ -41,8 +41,7 @@ using Size = int64_t;
 
 static inline int32_t read_int32(borrowed_fd fd) {
     int32_t result;
-    ReadFully(fd, &result, sizeof(result));
-    return result;
+    return ReadFdExactly(fd, &result, sizeof(result)) ? result : -1;
 }
 
 static inline void append_int(borrowed_fd fd, std::vector<char>* bytes) {
@@ -54,11 +53,14 @@ static inline void append_int(borrowed_fd fd, std::vector<char>* bytes) {
 
 static inline void append_bytes_with_size(borrowed_fd fd, std::vector<char>* bytes) {
     int32_t le_size = read_int32(fd);
+    if (le_size < 0) {
+        return;
+    }
     int32_t size = int32_t(le32toh(le_size));
     auto old_size = bytes->size();
     bytes->resize(old_size + sizeof(le_size) + size);
     memcpy(bytes->data() + old_size, &le_size, sizeof(le_size));
-    ReadFully(fd, bytes->data() + old_size + sizeof(le_size), size);
+    ReadFdExactly(fd, bytes->data() + old_size + sizeof(le_size), size);
 }
 
 static inline std::pair<std::vector<char>, int32_t> read_id_sig_headers(borrowed_fd fd) {
@@ -193,20 +195,72 @@ std::optional<Process> install(std::vector<std::string> files) {
     auto fd_param = std::to_string(osh);
 #endif
 
+    // pipe for child process to write output
+    int print_fds[2];
+    if (adb_socketpair(print_fds) != 0) {
+        fprintf(stderr, "Failed to create socket pair for child to print to parent\n");
+        return {};
+    }
+    auto [pipe_read_fd, pipe_write_fd] = print_fds;
+    auto pipe_write_fd_param = std::to_string(intptr_t(adb_get_os_handle(pipe_write_fd)));
+    close_on_exec(pipe_read_fd);
+
     std::vector<std::string> args(std::move(files));
-    args.insert(args.begin(), {"inc-server", fd_param});
-    auto child = adb_launch_process(adb_path, std::move(args), {connection_fd.get()});
+    args.insert(args.begin(), {"inc-server", fd_param, pipe_write_fd_param});
+    auto child =
+            adb_launch_process(adb_path, std::move(args), {connection_fd.get(), pipe_write_fd});
     if (!child) {
         fprintf(stderr, "adb: failed to fork: %s\n", strerror(errno));
         return {};
     }
 
+    adb_close(pipe_write_fd);
+
     auto killOnExit = [](Process* p) { p->kill(); };
     std::unique_ptr<Process, decltype(killOnExit)> serverKiller(&child, killOnExit);
-    // TODO: Terminate server process if installation fails.
-    serverKiller.release();
 
+    Result result = wait_for_installation(pipe_read_fd);
+    adb_close(pipe_read_fd);
+
+    if (result == Result::Success) {
+        // adb client exits now but inc-server can continue
+        serverKiller.release();
+    }
     return child;
+}
+
+Result wait_for_installation(int read_fd) {
+    static constexpr int maxMessageSize = 256;
+    std::vector<char> child_stdout(CHUNK_SIZE);
+    int bytes_read;
+    int buf_size = 0;
+    // TODO(b/150865433): optimize child's output parsing
+    while ((bytes_read = adb_read(read_fd, child_stdout.data() + buf_size,
+                                  child_stdout.size() - buf_size)) > 0) {
+        // print to parent's stdout
+        fprintf(stdout, "%.*s", bytes_read, child_stdout.data() + buf_size);
+
+        buf_size += bytes_read;
+        const std::string_view stdout_str(child_stdout.data(), buf_size);
+        // wait till installation either succeeds or fails
+        if (stdout_str.find("Success") != std::string::npos) {
+            return Result::Success;
+        }
+        // on failure, wait for full message
+        static constexpr auto failure_msg_head = "Failure ["sv;
+        if (const auto begin_itr = stdout_str.find(failure_msg_head);
+            begin_itr != std::string::npos) {
+            if (buf_size >= maxMessageSize) {
+                return Result::Failure;
+            }
+            const auto end_itr = stdout_str.rfind("]");
+            if (end_itr != std::string::npos && end_itr >= begin_itr + failure_msg_head.size()) {
+                return Result::Failure;
+            }
+        }
+        child_stdout.resize(buf_size + CHUNK_SIZE);
+    }
+    return Result::None;
 }
 
 }  // namespace incremental

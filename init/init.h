@@ -38,15 +38,9 @@ void DumpState();
 void ResetWaitForProp();
 
 void SendLoadPersistentPropertiesMessage();
-void SendStopSendingMessagesMessage();
-void SendStartSendingMessagesMessage();
 
 void PropertyChanged(const std::string& name, const std::string& value);
-bool HandleControlMessage(const std::string& msg, const std::string& name, pid_t from_pid);
-
-#ifdef G1122717
-void SendStartWatchingPropertyMessage(const std::string& property);
-#endif
+bool QueueControlMessage(const std::string& message, const std::string& name, pid_t pid, int fd);
 
 int SecondStageMain(int argc, char** argv);
 

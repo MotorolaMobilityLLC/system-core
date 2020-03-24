@@ -14,6 +14,10 @@
  * limitations under the License.
  */
 
+#ifdef G1122717
+#include <set>
+#endif
+
 #include "action_manager.h"
 
 #include <android-base/logging.h>
@@ -126,6 +130,21 @@ void ActionManager::ClearQueue() {
     event_queue_ = {};
     current_command_ = 0;
 }
+
+#ifdef G1122717
+void ActionManager::StartWatchingProperty(const std::string& property) {
+    auto lock = std::lock_guard{event_queue_lock_};
+    init_watched_properties.emplace(property);
+}
+
+bool ActionManager::WatchingPropertyCount(const std::string& property) {
+    auto lock = std::lock_guard{event_queue_lock_};
+    if (init_watched_properties.count(property))
+        return true;
+
+    return false;
+}
+#endif
 
 }  // namespace init
 }  // namespace android

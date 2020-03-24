@@ -27,14 +27,12 @@
 #include <vector>
 
 #include <android-base/chrono_utils.h>
-#include <android-base/thread_annotations.h>
 #include <cutils/iosched_policy.h>
 
 #include "action.h"
 #include "capabilities.h"
 #include "keyword_map.h"
 #include "parser.h"
-#include "service_lock.h"
 #include "service_utils.h"
 #include "subcontext.h"
 
@@ -79,17 +77,17 @@ class Service {
 
     bool IsRunning() { return (flags_ & SVC_RUNNING) != 0; }
     bool IsEnabled() { return (flags_ & SVC_DISABLED) == 0; }
-    Result<void> ExecStart() REQUIRES(service_lock);
-    Result<void> Start() REQUIRES(service_lock);
-    Result<void> StartIfNotDisabled() REQUIRES(service_lock);
-    Result<void> StartIfPostData() REQUIRES(service_lock);
-    Result<void> Enable() REQUIRES(service_lock);
+    Result<void> ExecStart();
+    Result<void> Start();
+    Result<void> StartIfNotDisabled();
+    Result<void> StartIfPostData();
+    Result<void> Enable();
     void Reset();
     void ResetIfPostData();
     void Stop();
     void Terminate();
     void Timeout();
-    void Restart() REQUIRES(service_lock);
+    void Restart();
     void Reap(const siginfo_t& siginfo);
     void DumpState() const;
     void SetShutdownCritical() { flags_ |= SVC_SHUTDOWN_CRITICAL; }
@@ -139,6 +137,13 @@ class Service {
     bool is_updatable() const { return updatable_; }
     bool is_post_data() const { return post_data_; }
     bool is_from_apex() const { return from_apex_; }
+    void set_oneshot(bool value) {
+        if (value) {
+            flags_ |= SVC_ONESHOT;
+        } else {
+            flags_ &= ~SVC_ONESHOT;
+        }
+    }
 
   private:
     void NotifyStateChange(const std::string& new_state) const;
