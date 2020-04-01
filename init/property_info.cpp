@@ -161,6 +161,19 @@ void set_system_properties(){
         property_set(prop_fingerprint, get_fingerprint_property(prop_product_value));
         property_set(prop_vendor_fingerprint, get_fingerprint_property(prop_product_value));
         property_set(prop_product_fingerprint, get_fingerprint_property(prop_product_value));
+    } else if (prop_product_value == "fiji_64") {
+        property_set(prop_product_device, "fiji");
+        set_some_vendor_properties("fiji");
+        prop_product_value = "fiji";
+        property_set(prop_amclient, prop_client_value);
+        property_set(prop_msclient, prop_clientrev_value);
+
+        property_set(prop_product_vendor_name, prop_product_value);
+        property_set(prop_product, prop_product_value);
+        property_set(prop_build_fingerprint, get_fingerprint_property(prop_product_value));
+        property_set(prop_fingerprint, get_fingerprint_property(prop_product_value));
+        property_set(prop_vendor_fingerprint, get_fingerprint_property(prop_product_value));
+        property_set(prop_product_fingerprint, get_fingerprint_property(prop_product_value));
     } else if (prop_product_value == "blackjack" || prop_product_value == "blackjack_64") {
         property_set(prop_product_device, "blackjack");
         set_some_vendor_properties("blackjack");
