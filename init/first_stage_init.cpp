@@ -229,6 +229,7 @@ int FirstStageMain(int argc, char** argv) {
             LOG(FATAL) << "Could not bind mount /first_stage_ramdisk to itself";
         }
         SwitchRoot("/first_stage_ramdisk");
+        android::mboot::mdb("Switch root to /first_stage_ramdisk now...");
     }
 
     // If this file is present, the second-stage init will use a userdebug sepolicy
@@ -274,7 +275,7 @@ int FirstStageMain(int argc, char** argv) {
     dup2(fd, STDERR_FILENO);
     close(fd);
     if (android::mboot::IsMboot()) {
-        android::mboot::mdb("Switch root to /system ...", "mboot_first_stage", "ready");
+        android::mboot::mdb("Switch root to /system later ...", "mboot_first_stage", "ready");
         SwitchRoot("/system");
     }
     execv(path, const_cast<char**>(args));
