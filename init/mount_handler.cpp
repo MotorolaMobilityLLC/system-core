@@ -82,16 +82,7 @@ void SetMountProperty(const MountHandlerEntry& entry, bool add) {
         }
         auto queue = "/sys/block/" + value + "/queue";
         struct stat sb;
-        if (android::base::StartsWith(value, "mmcblk")) {
-            queue = "/sys/block/mmcblk0/queue";
-            auto real_block = "/sys/block/mmcblk0/" + value;
-            if (stat(queue.c_str(), &sb) || !S_ISDIR(sb.st_mode) ||
-                stat(real_block.c_str(), &sb) || !S_ISDIR(sb.st_mode)) {
-                value = "";
-            }
-        } else {
-            if (stat(queue.c_str(), &sb) || !S_ISDIR(sb.st_mode)) value = "";
-        }
+        if (stat(queue.c_str(), &sb) || !S_ISDIR(sb.st_mode)) value = "";
         if (stat(entry.mount_point.c_str(), &sb) || !S_ISDIR(sb.st_mode)) value = "";
         // Clear the noise associated with loopback and APEX.
         if (android::base::StartsWith(value, "loop")) value = "";
