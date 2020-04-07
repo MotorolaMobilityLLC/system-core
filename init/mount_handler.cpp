@@ -74,8 +74,7 @@ void SetMountProperty(const MountHandlerEntry& entry, bool add) {
     std::string value;
     if (add) {
         value = entry.blk_device.substr(strlen(devblock));
-        auto is_sda = android::base::StartsWith(value, "sda");
-        if (android::base::StartsWith(value, "sd") && !is_sda) {
+        if (android::base::StartsWith(value, "sd")) {
             // All sd partitions inherit their queue characteristics
             // from the whole device reference.  Strip partition number.
             auto it = std::find_if(value.begin(), value.end(), [](char c) { return isdigit(c); });
@@ -86,13 +85,6 @@ void SetMountProperty(const MountHandlerEntry& entry, bool add) {
         if (android::base::StartsWith(value, "mmcblk")) {
             queue = "/sys/block/mmcblk0/queue";
             auto real_block = "/sys/block/mmcblk0/" + value;
-            if (stat(queue.c_str(), &sb) || !S_ISDIR(sb.st_mode) ||
-                stat(real_block.c_str(), &sb) || !S_ISDIR(sb.st_mode)) {
-                value = "";
-            }
-        } else if (is_sda) {
-            queue = "/sys/block/sda/queue";
-            auto real_block = "/sys/block/sda/" + value;
             if (stat(queue.c_str(), &sb) || !S_ISDIR(sb.st_mode) ||
                 stat(real_block.c_str(), &sb) || !S_ISDIR(sb.st_mode)) {
                 value = "";
