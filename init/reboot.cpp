@@ -78,6 +78,7 @@ using android::base::StringPrintf;
 
 using android::base::boot_clock;
 using android::base::GetBoolProperty;
+using android::base::GetUintProperty;
 using android::base::SetProperty;
 using android::base::Split;
 using android::base::Timer;
@@ -107,7 +108,15 @@ static void PersistRebootReason(const char* reason, bool write_to_property) {
     if (write_to_property) {
         SetProperty(LAST_REBOOT_REASON_PROPERTY, reason);
     }
-    WriteStringToFile(reason, LAST_REBOOT_REASON_FILE);
+    auto fd = unique_fd(TEMP_FAILURE_RETRY(open(
+            LAST_REBOOT_REASON_FILE, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC | O_BINARY, 0666)));
+    if (!fd.ok()) {
+        PLOG(ERROR) << "Could not open '" << LAST_REBOOT_REASON_FILE
+                    << "' to persist reboot reason";
+        return;
+    }
+    WriteStringToFd(reason, fd);
+    fsync(fd.get());
 }
 
 // represents umount status during reboot / shutdown.
@@ -322,9 +331,9 @@ void RebootMonitorThread(unsigned int cmd, const std::string& reboot_target,
                          bool* reboot_monitor_run) {
     unsigned int remaining_shutdown_time = 0;
 
-    // 30 seconds more than the timeout passed to the thread as there is a final Umount pass
+    // 300 seconds more than the timeout passed to the thread as there is a final Umount pass
     // after the timeout is reached.
-    constexpr unsigned int shutdown_watchdog_timeout_default = 30;
+    constexpr unsigned int shutdown_watchdog_timeout_default = 300;
     auto shutdown_watchdog_timeout = android::base::GetUintProperty(
             "ro.build.shutdown.watchdog.timeout", shutdown_watchdog_timeout_default);
     remaining_shutdown_time = shutdown_watchdog_timeout + shutdown_timeout.count() / 1000;
@@ -655,26 +664,6 @@ static void DoReboot(unsigned int cmd, const std::string& reason, const std::str
     Timer t;
     LOG(INFO) << "Reboot start, reason: " << reason << ", reboot_target: " << reboot_target;
 
-    // Ensure last reboot reason is reduced to canonical
-    // alias reported in bootloader or system boot reason.
-    size_t skip = 0;
-    std::vector<std::string> reasons = Split(reason, ",");
-    if (reasons.size() >= 2 && reasons[0] == "reboot" &&
-        (reasons[1] == "recovery" || reasons[1] == "bootloader" || reasons[1] == "cold" ||
-         reasons[1] == "hard" || reasons[1] == "warm")) {
-        skip = strlen("reboot,");
-    }
-    PersistRebootReason(reason.c_str() + skip, true);
-    sync();
-
-    // If /data isn't mounted then we can skip the extra reboot steps below, since we don't need to
-    // worry about unmounting it.
-    if (!IsDataMounted()) {
-        sync();
-        RebootSystem(cmd, reboot_target);
-        abort();
-    }
-
     bool is_thermal_shutdown = cmd == ANDROID_RB_THERMOFF;
 
     auto shutdown_timeout = 0ms;
@@ -706,6 +695,25 @@ static void DoReboot(unsigned int cmd, const std::string& reason, const std::str
 
     // Start reboot monitor thread
     sem_post(&reboot_semaphore);
+
+    // Ensure last reboot reason is reduced to canonical
+    // alias reported in bootloader or system boot reason.
+    size_t skip = 0;
+    std::vector<std::string> reasons = Split(reason, ",");
+    if (reasons.size() >= 2 && reasons[0] == "reboot" &&
+        (reasons[1] == "recovery" || reasons[1] == "bootloader" || reasons[1] == "cold" ||
+         reasons[1] == "hard" || reasons[1] == "warm")) {
+        skip = strlen("reboot,");
+    }
+    PersistRebootReason(reason.c_str() + skip, true);
+
+    // If /data isn't mounted then we can skip the extra reboot steps below, since we don't need to
+    // worry about unmounting it.
+    if (!IsDataMounted()) {
+        sync();
+        RebootSystem(cmd, reboot_target);
+        abort();
+    }
 
     // watchdogd is a vendor specific component but should be alive to complete shutdown safely.
     const std::set<std::string> to_starts{"watchdogd"};
@@ -849,6 +857,12 @@ static Result<void> UnmountAllApexes() {
     return Error() << "'/system/bin/apexd --unmount-all' failed : " << status;
 }
 
+static std::chrono::milliseconds GetMillisProperty(const std::string& name,
+                                                   std::chrono::milliseconds default_value) {
+    auto value = GetUintProperty(name, static_cast<uint64_t>(default_value.count()));
+    return std::chrono::milliseconds(std::move(value));
+}
+
 static Result<void> DoUserspaceReboot() {
     LOG(INFO) << "Userspace reboot initiated";
     auto guard = android::base::make_scope_guard([] {
@@ -886,10 +900,13 @@ static Result<void> DoUserspaceReboot() {
         sync();
         LOG(INFO) << "sync() took " << sync_timer;
     }
-    // TODO(b/135984674): do we need shutdown animation for userspace reboot?
-    // TODO(b/135984674): control userspace timeout via read-only property?
-    StopServicesAndLogViolations(stop_first, 10s, true /* SIGTERM */);
-    if (int r = StopServicesAndLogViolations(stop_first, 20s, false /* SIGKILL */); r > 0) {
+    auto sigterm_timeout = GetMillisProperty("init.userspace_reboot.sigterm.timeoutmillis", 5s);
+    auto sigkill_timeout = GetMillisProperty("init.userspace_reboot.sigkill.timeoutmillis", 10s);
+    LOG(INFO) << "Timeout to terminate services : " << sigterm_timeout.count() << "ms"
+              << "Timeout to kill services: " << sigkill_timeout.count() << "ms";
+    StopServicesAndLogViolations(stop_first, sigterm_timeout, true /* SIGTERM */);
+    if (int r = StopServicesAndLogViolations(stop_first, sigkill_timeout, false /* SIGKILL */);
+        r > 0) {
         // TODO(b/135984674): store information about offending services for debugging.
         return Error() << r << " post-data services are still running";
     }
@@ -899,8 +916,8 @@ static Result<void> DoUserspaceReboot() {
     if (auto result = CallVdc("volume", "reset"); !result.ok()) {
         return result;
     }
-    if (int r = StopServicesAndLogViolations(GetDebuggingServices(true /* only_post_data */), 5s,
-                                             false /* SIGKILL */);
+    if (int r = StopServicesAndLogViolations(GetDebuggingServices(true /* only_post_data */),
+                                             sigkill_timeout, false /* SIGKILL */);
         r > 0) {
         // TODO(b/135984674): store information about offending services for debugging.
         return Error() << r << " debugging services are still running";
@@ -944,8 +961,8 @@ static void UserspaceRebootWatchdogThread() {
         return;
     }
     LOG(INFO) << "Starting userspace reboot watchdog";
-    // TODO(b/135984674): this should be configured via a read-only sysprop.
-    std::chrono::milliseconds timeout = 60s;
+    auto timeout = GetMillisProperty("init.userspace_reboot.watchdog.timeoutmillis", 5min);
+    LOG(INFO) << "UserspaceRebootWatchdog timeout: " << timeout.count() << "ms";
     if (!WaitForProperty("sys.boot_completed", "1", timeout)) {
         LOG(ERROR) << "Failed to boot in " << timeout.count() << "ms. Switching to full reboot";
         // In this case device is in a boot loop. Only way to recover is to do dirty reboot.

@@ -81,6 +81,8 @@ const char* const kFeatureAbb = "abb";
 const char* const kFeatureFixedPushSymlinkTimestamp = "fixed_push_symlink_timestamp";
 const char* const kFeatureAbbExec = "abb_exec";
 const char* const kFeatureRemountShell = "remount_shell";
+const char* const kFeatureSendRecv2 = "sendrecv_v2";
+const char* const kFeatureSendRecv2Brotli = "sendrecv_v2_brotli";
 
 namespace {
 
@@ -497,12 +499,18 @@ bool FdConnection::DoTlsHandshake(RSA* key, std::string* auth_key) {
     auto x509 = GenerateX509Certificate(evp_pkey.get());
     auto x509_str = X509ToPEMString(x509.get());
     auto evp_str = Key::ToPEMString(evp_pkey.get());
+#ifdef _WIN32
+    int osh = cast_handle_to_int(adb_get_os_handle(fd_));
+#else
+    int osh = adb_get_os_handle(fd_);
+#endif
+
 #if ADB_HOST
     tls_ = TlsConnection::Create(TlsConnection::Role::Client,
 #else
     tls_ = TlsConnection::Create(TlsConnection::Role::Server,
 #endif
-                                 x509_str, evp_str, fd_);
+                                 x509_str, evp_str, osh);
     CHECK(tls_);
 #if ADB_HOST
     // TLS 1.3 gives the client no message if the server rejected the
@@ -1175,6 +1183,8 @@ const FeatureSet& supported_features() {
             kFeatureFixedPushSymlinkTimestamp,
             kFeatureAbbExec,
             kFeatureRemountShell,
+            kFeatureSendRecv2,
+            kFeatureSendRecv2Brotli,
             // Increment ADB_SERVER_VERSION when adding a feature that adbd needs
             // to know about. Otherwise, the client can be stuck running an old
             // version of the server even after upgrading their copy of adb.
@@ -1444,6 +1454,7 @@ void kick_all_tcp_devices() {
 
 #endif
 
+#if ADB_HOST
 void register_usb_transport(usb_handle* usb, const char* serial, const char* devpath,
                             unsigned writeable) {
     atransport* t = new atransport(writeable ? kCsOffline : kCsNoPerm);
@@ -1465,6 +1476,7 @@ void register_usb_transport(usb_handle* usb, const char* serial, const char* dev
 
     register_transport(t);
 }
+#endif
 
 #if ADB_HOST
 // This should only be used for transports with connection_state == kCsNoPerm.
