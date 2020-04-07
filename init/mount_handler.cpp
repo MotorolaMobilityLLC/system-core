@@ -78,6 +78,10 @@ void SetMountProperty(const MountHandlerEntry& entry, bool add) {
             // from the whole device reference.  Strip partition number.
             auto it = std::find_if(value.begin(), value.end(), [](char c) { return isdigit(c); });
             if (it != value.end()) value.erase(it, value.end());
+        } else if (android::base::StartsWith(value, "mmcblk")) {
+            auto pos = value.find_last_of('p');
+            if (pos != std::string::npos)
+                value = value.substr(0, pos);
         }
         auto queue = "/sys/block/" + value + "/queue";
         struct stat sb;
