@@ -83,7 +83,7 @@
 #define MEMINFO_PATH "/proc/meminfo"
 #define VMSTAT_PATH "/proc/vmstat"
 #define PROC_STATUS_TGID_FIELD  "Tgid"
-#define LINE_MAX 128
+#define LINE_MAX 256
 
 #define CACHED_APP_MIN_ADJ    900
 #define HOME_APP_ADJ  600
@@ -149,8 +149,8 @@
 /* ro.lmk.psi_complete_stall_ms property defaults */
 #define DEF_COMPLETE_STALL 700
 /* ro.lmk.max_adj0_process_num property defaults */
-#define DEF_MAX_ADJ0_PROCESS_NUM_LOWRAM  3
-#define DEF_MAX_ADJ0_PROCESS_NUM 5
+#define DEF_MAX_ADJ0_PROCESS_NUM_LOWRAM 5
+#define DEF_MAX_ADJ0_PROCESS_NUM 8
 /* ro.lmk.kill_timeout_ms property defaults */
 #define DEF_KILL_TIMEOUT  5000
 
@@ -2320,6 +2320,7 @@ static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_
     bool cut_thrashing_limit = false;
     int min_score_adj = 0;
     bool do_multi_kill = false;
+    bool has_abundant_adj0 = false;
 
     if (clock_gettime(CLOCK_MONOTONIC_COARSE, &curr_tm) != 0) {
         ALOGE("Failed to get current time");
@@ -2528,8 +2529,10 @@ static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_
         if (adjslot_length(&procadjslot_list[ADJTOSLOT(0)]) > max_adj0_process_num) {
             /* kill multi apps */
             strcat(kill_desc, " <adj0 processes too many>");
-            pages_freed = find_and_kill_multi_processes(min_score_adj, kill_desc, true);
-        } else if (do_multi_kill) {
+            has_abundant_adj0 = true;
+        }
+
+        if (do_multi_kill) {
             do_multi_kill = false;
             if (NOT_RESPONDING == kill_reason) {
                 min_score_adj = swap_is_low ? 0 : min_score_adj;
@@ -2545,8 +2548,21 @@ static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_
         } else if (fast_kill_enabled) {
             fast_kill_enabled = false;
             pages_freed = find_and_kill_multi_processes(min_score_adj, kill_desc, true);
-        } else
+        } else if (has_abundant_adj0) {
+            strcat(kill_desc, " <kill group processes>");
+            pages_freed = find_and_kill_multi_processes(min_score_adj, kill_desc, swap_is_low ? true : false);
+        } else {
             pages_freed = find_and_kill_process(min_score_adj, kill_desc);
+        }
+
+        // second chance to reclaim memory
+        if (0 == pages_freed) {
+            if (NOT_RESPONDING == kill_reason || (has_abundant_adj0 && swap_is_low)) {
+                min_score_adj = 0;
+                strcat(kill_desc, "<second chance>");
+                pages_freed = find_and_kill_process(min_score_adj, kill_desc);
+            }
+        }
 
         if (pages_freed > 0) {
             killing = true;
