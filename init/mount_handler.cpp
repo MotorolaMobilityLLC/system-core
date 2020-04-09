@@ -101,6 +101,9 @@ void SetMountProperty(const MountHandlerEntry& entry, bool add) {
     // Goal is reduction of empty properties and associated triggers.
     if (value.empty() && android::base::GetProperty(mount_prop, "").empty()) return;
     property_set(mount_prop, value);
+
+    if (entry.mount_point == "/data")
+        property_set("dev.mnt.partition.data", entry.blk_device.substr(strlen(devblock)));
 }
 
 }  // namespace
