@@ -704,7 +704,6 @@ struct PropSetLogInfo {
 static std::queue<PropSetLogInfo> propsetlog_children;
 static size_t propsetlog_len = 0;
 static constexpr uint32_t kNanosecondsPerMicrosecond = 1e3;
-static constexpr uint32_t kMicrosecondsPerSecond = 1e6;
 static constexpr uint32_t kMillisecondsPerMicrosecond = 1e3;
 
 static std::mutex _log_lock;
@@ -771,10 +770,9 @@ int PropSetHook(const char* msg) {
     LogInfo.log_time = boot_clock::now();
     uint64_t log_us = LogInfo.log_time.time_since_epoch().count() / kNanosecondsPerMicrosecond;
 
-    LogInfo.log.append(StringPrintf("%s%llu.%03llu",
+    LogInfo.log.append(StringPrintf("%s%llu",
                        msg + 8,
-                       (unsigned long long) (log_us / kMicrosecondsPerSecond),
-                       (unsigned long long) (log_us % kMicrosecondsPerSecond) / kMillisecondsPerMicrosecond));
+                       (unsigned long long) (log_us / kMillisecondsPerMicrosecond)));
 
     propsetlog_len += LogInfo.log.length();
     propsetlog_children.push(LogInfo);
@@ -886,6 +884,20 @@ static void _KernelLogger_split_final(int fd, int level,
   TEMP_FAILURE_RETRY(writev(fd, iov, 1));
 }
 
+static void _KernelLogger_split_lock(int level,
+                  const char* tag, const char* msg) {
+    _log_lock.lock();
+
+    int fklog_fd = _GetSplitFD(_SPLIT_OTHER_);
+    if (fklog_fd == -1) {
+        _log_lock.unlock();
+        return;
+    }
+
+    _KernelLogger_split_final(fklog_fd, level, tag, msg);
+    _log_lock.unlock();
+}
+
 void KernelLogger_split(android::base::LogId, android::base::LogSeverity severity,
                   const char* tag, const char*, unsigned int, const char* msg) {
   // clang-format off
@@ -910,7 +922,12 @@ void KernelLogger_split(android::base::LogId, android::base::LogSeverity severit
       return;
   }
 
-  if (PropServThrGetTid() == gettid()) {
+  if (getpid() != 1) {
+    int klog_fd = _GetSplitFD(_SPLIT_OTHER_);
+    if (klog_fd == -1) return;
+    int level = kLogSeverityToKernelLogLevel[severity];
+    _KernelLogger_split_final(klog_fd, level, tag, msg);
+  } else if (PropServThrGetTid() == gettid()) {
     fklog_fd = _GetSplitFD(_SPLIT_PROPSET_);
 
     if (fklog_fd == -1) return;
@@ -919,15 +936,9 @@ void KernelLogger_split(android::base::LogId, android::base::LogSeverity severit
 
     _KernelLogger_split_final(fklog_fd, level, tag, msg);
   } else {
-    auto lock = std::lock_guard{_log_lock};
-
-    fklog_fd = _GetSplitFD(_SPLIT_OTHER_);
-
-    if (fklog_fd == -1) return;
-
     int level = kLogSeverityToKernelLogLevel[severity];
 
-    _KernelLogger_split_final(fklog_fd, level, tag, msg);
+    _KernelLogger_split_lock(level, tag, msg);
   }
 }
 #endif // #if defined(__linux__)
@@ -1051,7 +1062,7 @@ void EndPropertyFlowTraceLog(void) {
             _PropertyFlowTraceQueue.pop();
         }
 
-        LOG(INFO) << s;
+        KernelLogger_split(android::base::MAIN, android::base::INFO, "init", nullptr, 0, s.c_str());
     }
 
     while (!_PropertyFlowTraceQueue.empty())

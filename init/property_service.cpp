@@ -209,7 +209,15 @@ static void PropSetLog(const std::string& name, const std::string& value, std::s
 
     PropSetMask(name, new_value);
 
-    LOG(INFO) << "PropSet [" << name << "]=[" << new_value << "]";
+    std::string s;
+
+    s.append("PropSet [");
+    s.append(name);
+    s.append("]=[");
+    s.append(new_value);
+    s.append("]");
+
+    KernelLogger_split(android::base::MAIN, android::base::INFO, "init", nullptr, 0, s.c_str());
 }
 #endif
 
@@ -1278,9 +1286,15 @@ static void PropertyServiceThread() {
         int log_ms = _LogReap();//PropSetLogReap();
 
         if (!Getwhilepiggybacketed(0) && Getwhileepduration(0) > 1999) {
-            if (log_ms == -1)
-                LOG(INFO) << "Lastest epoll wait tooks " << Getwhileepduration(0) << "ms";
-            else {
+            if (log_ms == -1) {
+                std::string s;
+
+                s.append("Lastest epoll wait tooks ");
+                s.append(StringPrintf("%llu", (unsigned long long) Getwhileepduration(0)));
+                s.append("ms");
+
+                KernelLogger_split(android::base::MAIN, android::base::INFO, "init", nullptr, 0, s.c_str());
+            } else {
                 PropSetLogReap(1);
                 log_ms = _LogReap();
             }
