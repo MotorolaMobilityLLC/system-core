@@ -845,6 +845,7 @@ void load_persist_props(void) {
         if (++num_calls == 1) return;
     }
 
+    property_set("ro.vendor.aosp.ver", "no");
     load_override_properties();
 #ifdef MTK_RSC
     LoadRscRwProps();
