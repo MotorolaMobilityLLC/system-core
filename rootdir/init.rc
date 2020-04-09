@@ -874,9 +874,9 @@ on boot
     # to avoid power consumption when system becomes mostly idle. Be careful
     # to make it too large, since it may bring userdata loss, if they
     # are not aware of using fsync()/sync() to prepare sudden power-cut.
-    write /sys/fs/f2fs/${dev.mnt.blk.data}/cp_interval 200
-    write /sys/fs/f2fs/${dev.mnt.blk.data}/gc_urgent_sleep_time 50
-    write /sys/fs/f2fs/${dev.mnt.blk.data}/iostat_enable 1
+    write /sys/fs/f2fs/${dev.mnt.partition.data}/cp_interval 200
+    write /sys/fs/f2fs/${dev.mnt.partition.data}/gc_urgent_sleep_time 50
+    write /sys/fs/f2fs/${dev.mnt.partition.data}/iostat_enable 1
 
     # limit discard size to 128MB in order to avoid long IO latency
     # for filesystem tuning first (dm or sda)
