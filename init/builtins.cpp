@@ -678,7 +678,7 @@ static Result<void> do_mount_all(const BuiltinArguments& args) {
 
     /*bug1086339, in unisoc cali mode, no need to trigger queue_fs_event */
     std::string bootmode = base::GetProperty("ro.bootmode", "");
-    if (bootmode == "cali"){
+    if (bootmode == "cali" || bootmode == "factorytest"){
         queue_event = false;
     }
 
