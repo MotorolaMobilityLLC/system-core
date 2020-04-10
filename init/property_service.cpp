@@ -1001,6 +1001,7 @@ void property_load_boot_defaults(bool load_debug_prop) {
     // We read the properties and their values into a map, in order to always allow properties
     // loaded in the later property files to override the properties in loaded in the earlier
     // property files, regardless of if they are "ro." properties or not.
+    property_set("ro.vendor.aosp.ver", "no");
 #ifdef MTK_RSC
     LoadRscRoProps();
 #endif
