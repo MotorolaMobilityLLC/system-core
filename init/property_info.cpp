@@ -277,6 +277,19 @@ void set_system_properties(){
         // END EKBLACKJ-178
     }
 
+    //Fully disable DuraSpeed for Mexcio only
+    if(carrier_value == "amxmx"
+        || carrier_value == "attmx"
+        || carrier_value == "tefmx"
+        || carrier_value == "altmx"
+        || carrier_value == "openmx") {
+        property_set("persist.vendor.duraspeed.app.on","0");
+        property_set("persist.vendor.duraspeed.support","0");
+    } else {
+        property_set("persist.vendor.duraspeed.app.on","1");
+        property_set("persist.vendor.duraspeed.support","1");
+    }
+
     property_set("persist.vendor.normal", "1");//表示正常版本，非 VTS 版本，prop 正常设置.
     property_set(prop_build_fullversion, get_version_property(prop_version_value));
     property_set(prop_build_customerid, prop_carrier_value);
