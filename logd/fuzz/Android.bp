@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 cc_fuzz {
+    defaults: ["mtk_logdEnhance_simple"],
     name: "log_buffer_log_fuzzer",
     srcs: [
         "log_buffer_log_fuzzer.cpp",
@@ -27,4 +28,8 @@ cc_fuzz {
         "libcutils",
     ],
     cflags: ["-Werror"],
+}
+
+mtk_logdEnhance_simple {
+    name: "mtk_logdEnhance_simple",
 }

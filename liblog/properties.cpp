@@ -277,6 +277,16 @@ static int __android_log_level(const char* tag, size_t len) {
 }
 
 int __android_log_is_loggable_len(int prio, const char* tag, size_t len, int default_prio) {
+#if defined(MTK_LOGD_ENHANCE) && defined(ANDROID_LOG_MUCH_COUNT)
+  if (tag != NULL) {
+      const char* ptr = strstr(tag, "-0x");
+      if (ptr != NULL) {
+          tag = ptr + 3;
+          len = strlen(tag);
+      }
+  }
+#endif
+
   int minimum_log_priority = __android_log_get_minimum_priority();
   int property_log_level = __android_log_level(tag, len);
 
@@ -292,6 +302,16 @@ int __android_log_is_loggable_len(int prio, const char* tag, size_t len, int def
 }
 
 int __android_log_is_loggable(int prio, const char* tag, int default_prio) {
+#if defined(MTK_LOGD_ENHANCE) && defined(ANDROID_LOG_MUCH_COUNT)
+  if (tag != NULL) {
+      const char* ptr = strstr(tag, "-0x");
+      if (ptr != NULL) {
+          tag = ptr + 3;
+      }
+  }
+
+#endif
+
   auto len = tag ? strlen(tag) : 0;
   return __android_log_is_loggable_len(prio, tag, len, default_prio);
 }

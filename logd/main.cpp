@@ -62,9 +62,32 @@
 // has a 'sigstop' feature that sends SIGSTOP to a service immediately before calling exec().  This
 // allows debuggers, etc to be attached to logd at the very beginning, while still having init
 // handle the user, groups, capabilities, files, etc setup.
+#ifdef MTK_LOGD_ENHANCE
+int logd_adjust(const char* cmdStr);
+#if defined(MSSI_HAVE_AEE_FEATURE) && defined(ANDROID_LOG_MUCH_COUNT)
+void logmuch_control_init();
+#endif
+#if defined(MTK_LOGD_FILTER)
+void loglevel_control_init();
+#endif
+#if defined(LOGD_FORCE_DIRECTCOREDUMP)
+void directcoredump_init();
+#endif
+#endif
 static int drop_privs(bool klogd, bool auditd) {
     sched_param param = {};
 
+#ifdef MTK_LOGD_ENHANCE
+    if (set_sched_policy(0, SP_FOREGROUND) < 0) {
+        android::prdebug("failed to set forground scheduling policy");
+        return -1;
+    }
+
+    if (setpriority(PRIO_PROCESS, 0, ANDROID_PRIORITY_FOREGROUND) < 0) {
+        android::prdebug("failed to set forground cgroup");
+        return -1;
+    }
+#else
     if (set_sched_policy(0, SP_BACKGROUND) < 0) {
         android::prdebug("failed to set background scheduling policy");
         return -1;
@@ -75,12 +98,21 @@ static int drop_privs(bool klogd, bool auditd) {
         return -1;
     }
 
+#endif
+#if defined(MTK_LOGD_ENHANCE) && defined(LOGD_FORCE_DIRECTCOREDUMP)
+    if (!__android_logger_property_get_bool("ro.debuggable",
+                                            BOOL_DEFAULT_TRUE) &&
+        prctl(PR_SET_DUMPABLE, 1) < 0) {
+        android::prdebug("failed to set PR_SET_DUMPABLE\n");
+    }
+#else
     if (!__android_logger_property_get_bool("ro.debuggable",
                                             BOOL_DEFAULT_FALSE) &&
         prctl(PR_SET_DUMPABLE, 0) == -1) {
         android::prdebug("failed to clear PR_SET_DUMPABLE");
         return -1;
     }
+#endif
 
     std::unique_ptr<struct _cap_struct, int (*)(void*)> caps(cap_init(), cap_free);
     if (cap_clear(caps.get()) < 0) {
@@ -310,6 +342,18 @@ int main(int argc, char* argv[]) {
     if ((argc > 1) && argv[1] && !strcmp(argv[1], "--reinit")) {
         return issueReinit();
     }
+#ifdef MTK_LOGD_ENHANCE
+#if defined(MSSI_HAVE_AEE_FEATURE) && defined(ANDROID_LOG_MUCH_COUNT)
+    else if ((argc > 1) && argv[1] && !strcmp(argv[1], "--logmuch")) {
+        return logd_adjust("logmuch");
+    }
+#endif
+#if defined(MTK_LOGD_FILTER)
+    else if ((argc > 1) && argv[1] && !strcmp(argv[1], "--loglevel")) {
+        return logd_adjust("loglevel");
+    }
+#endif
+#endif
 
     static const char dev_kmsg[] = "/dev/kmsg";
     fdDmesg = android_get_control_file(dev_kmsg);
@@ -331,6 +375,11 @@ int main(int argc, char* argv[]) {
         if (fdPmesg < 0) android::prdebug("Failed to open %s\n", proc_kmsg);
     }
 
+#ifdef MTK_LOGD_ENHANCE
+#if defined(LOGD_FORCE_DIRECTCOREDUMP)
+    directcoredump_init();
+#endif
+#endif
     bool auditd = __android_logger_property_get_bool("ro.logd.auditd", BOOL_DEFAULT_TRUE);
     if (drop_privs(klogd, auditd) != 0) {
         return EXIT_FAILURE;
@@ -355,6 +404,15 @@ int main(int argc, char* argv[]) {
         pthread_attr_destroy(&attr);
     }
 
+#ifdef MTK_LOGD_ENHANCE
+#if defined(MSSI_HAVE_AEE_FEATURE) && defined(ANDROID_LOG_MUCH_COUNT)
+    logmuch_control_init();
+#endif
+#if defined(MTK_LOGD_FILTER)
+    loglevel_control_init();
+#endif
+
+#endif
     // Serves the purpose of managing the last logs times read on a
     // socket connection, and as a reader lock on a range of log
     // entries.

@@ -41,16 +41,77 @@
 #include "rwlock.h"
 #include "uio.h"
 
+#if defined(MTK_LOGD_ENHANCE) && defined(ANDROID_LOG_MUCH_COUNT)
+#include "mtk_enhance.h"
+#endif
+
+#if defined(MTK_LOGD_ENHANCE) && defined(CONFIG_MT_DEBUG_BUILD) && defined(MTK_LOGDW_SOCK_BLOCK)
+#define SOCKET_TIME_OUT 2
+#endif
+
 static int logd_socket;
 static RwLock logd_socket_lock;
 
 static void OpenSocketLocked() {
-  logd_socket = TEMP_FAILURE_RETRY(socket(PF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0));
+#if defined(MTK_LOGD_ENHANCE) && defined(CONFIG_MT_DEBUG_BUILD) && defined(MTK_LOGDW_SOCK_BLOCK)
+    /*
+      *  Mtk enhance: create BLOCK mode socket and set Timeout.
+      *  But filter out  process 'android.hardware.configstore@1.0-service' which
+      *  does not has 'setsockopt' privilege.
+      */
+    int skip_thread = 0;
+    FILE *fp;
+    char path[PATH_MAX];
+    char threadnamebuf[1024];
+    char* threadname = NULL;
+#if !defined(CONFIG_MT_ENG_BUILD)
+    const char* key_camera = "camerahalserver";
+#else
+   const char* key_configstore = "android.hardware.configstore";
+#endif
+
+    snprintf(path, PATH_MAX, "/proc/%d/cmdline", getpid());
+    if ((fp = fopen(path, "r"))) {
+      threadname = fgets(threadnamebuf, sizeof(threadnamebuf), fp);
+      fclose(fp);
+    }
+#if !defined(CONFIG_MT_ENG_BUILD)  // userdebug load
+    skip_thread = 1;  // default skip block mode
+    if (threadname && strstr(threadname, key_camera))
+      skip_thread = 0;  // use block mode
+#else  // eng load
+    if (threadname && strstr(threadname, key_configstore))
+      skip_thread = 1;  // set filter flag
+#endif
+
+    if (skip_thread == 0) {  // no need filter, create BLOCK mode socket
+      logd_socket = TEMP_FAILURE_RETRY(
+        socket(PF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC, 0));
+    } else {
+      logd_socket = TEMP_FAILURE_RETRY(
+        socket(PF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0));
+    }
+#else
+    logd_socket = TEMP_FAILURE_RETRY(socket(PF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0));
+#endif
   if (logd_socket <= 0) {
     return;
   }
 
   sockaddr_un un = {};
+#if defined(MTK_LOGD_ENHANCE) && defined(CONFIG_MT_DEBUG_BUILD) && defined(MTK_LOGDW_SOCK_BLOCK)
+      if (skip_thread == 0) {
+        struct timeval tm;
+
+        tm.tv_sec = SOCKET_TIME_OUT;
+        tm.tv_usec = 0;
+        if (setsockopt(logd_socket, SOL_SOCKET, SO_RCVTIMEO, &tm, sizeof(tm)) == -1 ||
+          setsockopt(logd_socket, SOL_SOCKET, SO_SNDTIMEO, &tm, sizeof(tm)) == -1) {
+          close(logd_socket);
+          return;
+        }
+      }
+#endif
   un.sun_family = AF_UNIX;
   strcpy(un.sun_path, "/dev/socket/logdw");
 
@@ -109,6 +170,14 @@ int LogdWrite(log_id_t logId, struct timespec* ts, struct iovec* vec, size_t nr)
   if (logd_socket <= 0) {
     return -EBADF;
   }
+#if defined(MTK_LOGD_ENHANCE) && defined(ANDROID_LOG_MUCH_COUNT)
+  bool tag_add = false;
+
+  if ((logId != LOG_ID_EVENTS) && (nr == 3) && strstr((char*)vec[1].iov_base, "-0x")) {
+      tag_add = true;
+  }
+
+#endif
 
   /* logd, after initialization and priv drop */
   if (getuid() == AID_LOGD) {
@@ -168,7 +237,23 @@ int LogdWrite(log_id_t logId, struct timespec* ts, struct iovec* vec, size_t nr)
   for (payloadSize = 0, i = headerLength; i < nr + headerLength; i++) {
     newVec[i].iov_base = vec[i - headerLength].iov_base;
     payloadSize += newVec[i].iov_len = vec[i - headerLength].iov_len;
-
+#if defined(MTK_LOGD_ENHANCE) && defined(ANDROID_LOG_MUCH_COUNT)
+    if (tag_add == true) {
+      if (payloadSize > (size_t)(LOGGER_ENTRY_MAX_PAYLOAD + tag_add_size)) {
+        newVec[i].iov_len -= payloadSize - (size_t)(LOGGER_ENTRY_MAX_PAYLOAD + tag_add_size);
+        if (newVec[i].iov_len) {
+          ++i;
+        }
+        break;
+      }
+    } else if (payloadSize > LOGGER_ENTRY_MAX_PAYLOAD) {
+      newVec[i].iov_len -= payloadSize - LOGGER_ENTRY_MAX_PAYLOAD;
+      if (newVec[i].iov_len) {
+        ++i;
+      }
+      break;
+    }
+#else
     if (payloadSize > LOGGER_ENTRY_MAX_PAYLOAD) {
       newVec[i].iov_len -= payloadSize - LOGGER_ENTRY_MAX_PAYLOAD;
       if (newVec[i].iov_len) {
@@ -176,6 +261,7 @@ int LogdWrite(log_id_t logId, struct timespec* ts, struct iovec* vec, size_t nr)
       }
       break;
     }
+#endif
   }
 
   // The write below could be lost, but will never block.
@@ -191,6 +277,12 @@ int LogdWrite(log_id_t logId, struct timespec* ts, struct iovec* vec, size_t nr)
     ret = TEMP_FAILURE_RETRY(writev(logd_socket, newVec, i));
   }
 
+#if defined(MTK_LOGD_ENHANCE) && defined(CONFIG_MT_DEBUG_BUILD) && defined(MTK_LOGDW_SOCK_BLOCK)
+  if (ret == -EAGAIN) {
+      ret = TEMP_FAILURE_RETRY(writev(logd_socket, newVec, i));
+  }
+#endif
+
   if (ret < 0) {
     ret = -errno;
   }
@@ -203,6 +295,10 @@ int LogdWrite(log_id_t logId, struct timespec* ts, struct iovec* vec, size_t nr)
       atomic_fetch_add_explicit(&droppedSecurity, 1, memory_order_relaxed);
     }
   }
-
+#if defined(MTK_LOGD_ENHANCE) && defined(ANDROID_LOG_MUCH_COUNT)
+  if (tag_add) {
+    ret -= tag_add_size;
+  }
+#endif
   return ret;
 }

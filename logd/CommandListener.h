@@ -26,6 +26,15 @@
 // See main.cpp for implementation
 void reinit_signal_handler(int /*signal*/);
 
+#ifdef MTK_LOGD_ENHANCE
+#if defined(MSSI_HAVE_AEE_FEATURE) && defined(ANDROID_LOG_MUCH_COUNT)
+void trigger_logmuch_adjust();
+#endif
+#if defined(MTK_LOGD_FILTER)
+void trigger_loglevel_adjust();
+#endif
+#endif
+
 class CommandListener : public FrameworkListener {
    public:
     CommandListener(LogBuffer* buf, LogReader* reader, LogListener* swl);
@@ -76,6 +85,14 @@ class CommandListener : public FrameworkListener {
     }
 
     LogCmd(Reinit);
+#ifdef MTK_LOGD_ENHANCE
+#if defined(MSSI_HAVE_AEE_FEATURE) && defined(ANDROID_LOG_MUCH_COUNT)
+    LogCmd(Logmuch);
+#endif
+#if defined(MTK_LOGD_FILTER)
+    LogCmd(Loglevel);
+#endif
+#endif
 
 #define LogParentCmd(name)                                      \
     class name##Cmd : public LogCommand {                       \

@@ -44,6 +44,9 @@
 #ifdef __ANDROID__
 #include "logd_writer.h"
 #include "pmsg_writer.h"
+#if defined(MTK_LOGD_ENHANCE) && defined(ANDROID_LOG_MUCH_COUNT)
+#include "mtk_enhance.h"
+#endif
 #endif
 
 #if defined(__APPLE__)
@@ -168,6 +171,9 @@ static RwLock logger_function_lock;
 void __android_log_set_logger(__android_logger_function logger) {
   auto lock = std::unique_lock{logger_function_lock};
   logger_function = logger;
+#if defined(MTK_LOGD_ENHANCE) && defined(ANDROID_LOG_MUCH_COUNT)
+  pre_tag = 0;
+#endif
 }
 
 void __android_log_default_aborter(const char* abort_message) {
@@ -286,11 +292,43 @@ void __android_log_logd_logger(const struct __android_log_message* log_message) 
   int buffer_id = log_message->buffer_id == LOG_ID_DEFAULT ? LOG_ID_MAIN : log_message->buffer_id;
 
   struct iovec vec[3];
+
+#if defined(MTK_LOGD_ENHANCE) && defined(ANDROID_LOG_MUCH_COUNT)
+  char new_tag[LOG_BUF_SIZE];
+  void* caller = NULL;
+  int size;
+
+  if (pre_tag == 0)
+    pre_tag = 1;
+
+  if ((log_message->tag == NULL || ((log_message->tag != NULL) && (strlen(log_message->tag) < LOG_BUF_SIZE))) &&
+      strstr(log_message->tag, "-0x") == NULL) {
+    caller = __builtin_return_address(0);
+    size = sprintf(new_tag, "%p", caller);
+    new_tag[size - 1] = 'x';
+    new_tag[size - 2] = '0';
+    new_tag[size - 3] = '-';
+
+    if (log_message->tag != NULL)
+      snprintf(new_tag + size, sizeof(new_tag) - size, "%s", log_message->tag);
+    if (tag_add_size != size)
+      tag_add_size = size;
+  vec[1].iov_base = const_cast<void*>(static_cast<const void*>(new_tag));
+  vec[1].iov_len = strlen(new_tag) + 1;
+  } else {
+    vec[1].iov_base = const_cast<void*>(static_cast<const void*>(log_message->tag));
+    vec[1].iov_len = strlen(log_message->tag) + 1;
+}
+#endif
+
   vec[0].iov_base =
       const_cast<unsigned char*>(reinterpret_cast<const unsigned char*>(&log_message->priority));
   vec[0].iov_len = 1;
+#if defined(MTK_LOGD_ENHANCE) && defined(ANDROID_LOG_MUCH_COUNT)
+#else
   vec[1].iov_base = const_cast<void*>(static_cast<const void*>(log_message->tag));
   vec[1].iov_len = strlen(log_message->tag) + 1;
+#endif
   vec[2].iov_base = const_cast<void*>(static_cast<const void*>(log_message->message));
   vec[2].iov_len = strlen(log_message->message) + 1;
 
@@ -298,6 +336,27 @@ void __android_log_logd_logger(const struct __android_log_message* log_message) 
 }
 
 int __android_log_write(int prio, const char* tag, const char* msg) {
+#if defined(MTK_LOGD_ENHANCE) && defined(ANDROID_LOG_MUCH_COUNT)
+  char new_tag[LOG_BUF_SIZE];
+  void* caller = NULL;
+  int size;
+
+  if ((pre_tag == 1) && (tag == NULL || ((tag != NULL) && (strlen(tag) < LOG_BUF_SIZE))) &&
+      strstr(tag, "-0x") == NULL) {
+    caller = __builtin_return_address(0);
+    size = sprintf(new_tag, "%p", caller);
+    new_tag[size - 1] = 'x';
+    new_tag[size - 2] = '0';
+    new_tag[size - 3] = '-';
+
+    if (tag != NULL)
+      snprintf(new_tag + size, sizeof(new_tag) - size, "%s", tag);
+    tag = new_tag;
+    if (tag_add_size != size)
+      tag_add_size = size;
+  }
+#endif
+
   return __android_log_buf_write(LOG_ID_MAIN, prio, tag, msg);
 }
 
@@ -315,6 +374,27 @@ void __android_log_write_log_message(__android_log_message* log_message) {
     tag_lock.lock();
     log_message->tag = GetDefaultTag().c_str();
   }
+#if defined(MTK_LOGD_ENHANCE) && defined(ANDROID_LOG_MUCH_COUNT)
+    char new_tag[LOG_BUF_SIZE];
+    void* caller = NULL;
+    int size;
+
+  if ((pre_tag == 1) && (log_message->tag == NULL || ((log_message->tag != NULL) &&
+      (strlen(log_message->tag) < LOG_BUF_SIZE))) &&  strstr(log_message->tag, "-0x") == NULL) {
+    caller = __builtin_return_address(0);
+    size = sprintf(new_tag, "%p", caller);
+    new_tag[size - 1] = 'x';
+    new_tag[size - 2] = '0';
+    new_tag[size - 3] = '-';
+
+
+    if (log_message->tag != NULL)
+      snprintf(new_tag + size, sizeof(new_tag) - size, "%s", log_message->tag);
+    log_message->tag = new_tag;
+    if (tag_add_size != size)
+      tag_add_size = size;
+  }
+#endif
 
 #if __BIONIC__
   if (log_message->priority == ANDROID_LOG_FATAL) {
@@ -333,6 +413,27 @@ int __android_log_buf_write(int bufID, int prio, const char* tag, const char* ms
     return 0;
   }
 
+#if defined(MTK_LOGD_ENHANCE) && defined(ANDROID_LOG_MUCH_COUNT)
+  char new_tag[LOG_BUF_SIZE];
+  void* caller = NULL;
+  int size;
+
+  if ((pre_tag == 1) && (tag == NULL || ((tag != NULL) && (strlen(tag) < LOG_BUF_SIZE))) &&
+      strstr(tag, "-0x") == NULL) {
+    caller = __builtin_return_address(0);
+    size = sprintf(new_tag, "%p", caller);
+    new_tag[size - 1] = 'x';
+    new_tag[size - 2] = '0';
+    new_tag[size - 3] = '-';
+
+    if (tag != NULL)
+      snprintf(new_tag + size, sizeof(new_tag) - size, "%s", tag);
+    tag = new_tag;
+    if (tag_add_size != size)
+      tag_add_size = size;
+  }
+#endif
+
   __android_log_message log_message = {
       sizeof(__android_log_message), bufID, prio, tag, nullptr, 0, msg};
   __android_log_write_log_message(&log_message);
@@ -349,6 +450,26 @@ int __android_log_vprint(int prio, const char* tag, const char* fmt, va_list ap)
   char buf[LOG_BUF_SIZE];
 
   vsnprintf(buf, LOG_BUF_SIZE, fmt, ap);
+#if defined(MTK_LOGD_ENHANCE) && defined(ANDROID_LOG_MUCH_COUNT)
+  char new_tag[LOG_BUF_SIZE];
+  void* caller = NULL;
+  int size;
+
+  if ((pre_tag == 1) && (tag == NULL || ((tag != NULL) && (strlen(tag) < LOG_BUF_SIZE))) &&
+      strstr(tag, "-0x") == NULL) {
+    caller = __builtin_return_address(0);
+    size = sprintf(new_tag, "%p", caller);
+    new_tag[size - 1] = 'x';
+    new_tag[size - 2] = '0';
+    new_tag[size - 3] = '-';
+
+    if (tag != NULL)
+      snprintf(new_tag + size, sizeof(new_tag) - size, "%s", tag);
+    tag = new_tag;
+    if (tag_add_size != size)
+      tag_add_size = size;
+  }
+#endif
 
   __android_log_message log_message = {
       sizeof(__android_log_message), LOG_ID_MAIN, prio, tag, nullptr, 0, buf};
@@ -365,10 +486,32 @@ int __android_log_print(int prio, const char* tag, const char* fmt, ...) {
 
   va_list ap;
   char buf[LOG_BUF_SIZE];
+#if defined(MTK_LOGD_ENHANCE) && defined(ANDROID_LOG_MUCH_COUNT)
+  char new_tag[LOG_BUF_SIZE];
+  void* caller = NULL;
+  int size;
+#endif
 
   va_start(ap, fmt);
   vsnprintf(buf, LOG_BUF_SIZE, fmt, ap);
   va_end(ap);
+
+#if defined(MTK_LOGD_ENHANCE) && defined(ANDROID_LOG_MUCH_COUNT)
+  if ((pre_tag == 1) && (tag == NULL || ((tag != NULL) && (strlen(tag) < LOG_BUF_SIZE))) &&
+      strstr(tag, "-0x") == NULL) {
+    caller = __builtin_return_address(0);
+    size = sprintf(new_tag, "%p", caller);
+    new_tag[size - 1] = 'x';
+    new_tag[size - 2] = '0';
+    new_tag[size - 3] = '-';
+
+    if (tag != NULL)
+      snprintf(new_tag + size, sizeof(new_tag) - size, "%s", tag);
+    tag = new_tag;
+    if (tag_add_size != size)
+      tag_add_size = size;
+  }
+#endif
 
   __android_log_message log_message = {
       sizeof(__android_log_message), LOG_ID_MAIN, prio, tag, nullptr, 0, buf};
@@ -382,6 +525,11 @@ int __android_log_buf_print(int bufID, int prio, const char* tag, const char* fm
   if (!__android_log_is_loggable(prio, tag, ANDROID_LOG_VERBOSE)) {
     return 0;
   }
+#if defined(MTK_LOGD_ENHANCE) && defined(ANDROID_LOG_MUCH_COUNT)
+  char new_tag[LOG_BUF_SIZE];
+  void* caller = NULL;
+  int size;
+#endif
 
   va_list ap;
   char buf[LOG_BUF_SIZE];
@@ -389,6 +537,24 @@ int __android_log_buf_print(int bufID, int prio, const char* tag, const char* fm
   va_start(ap, fmt);
   vsnprintf(buf, LOG_BUF_SIZE, fmt, ap);
   va_end(ap);
+
+#if defined(MTK_LOGD_ENHANCE) && defined(ANDROID_LOG_MUCH_COUNT)
+  if ((pre_tag == 1) && (tag == NULL || ((tag != NULL) && (strlen(tag) < LOG_BUF_SIZE))) &&
+      strstr(tag, "-0x") == NULL) {
+    caller = __builtin_return_address(0);
+    size = sprintf(new_tag, "%p", caller);
+    new_tag[size - 1] = 'x';
+    new_tag[size - 2] = '0';
+    new_tag[size - 3] = '-';
+
+    if (tag != NULL)
+      snprintf(new_tag + size, sizeof(new_tag) - size, "%s", tag);
+    tag = new_tag;
+    if (tag_add_size != size)
+      tag_add_size = size;
+  }
+#endif
+
 
   __android_log_message log_message = {
       sizeof(__android_log_message), bufID, prio, tag, nullptr, 0, buf};
