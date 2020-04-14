@@ -582,6 +582,17 @@ static void debuggerd_signal_handler(int signal_number, siginfo_t* info, void* c
   // and then wait for it to terminate.
   futex_wait(&thread_info.pseudothread_tid, child_pid);
 
+  // For sprd, don't restore PR_SET_DUMPABLE to 0 when the property "persist.zygote.core_dump" equaled 1,
+  // so that some processes can coredump, for example zygote and surfaceflinger.
+  char debuggable[PROPERTY_VALUE_MAX];
+  property_get("persist.zygote.core_dump", debuggable, "0");
+  if (strcmp(debuggable,"1") == 0) {
+    async_safe_format_log(ANDROID_LOG_INFO, "DEBUG","Crash thread dumpable");
+    orig_dumpable = 1;
+  } else {
+    async_safe_format_log(ANDROID_LOG_INFO, "DEBUG","Crash thread undumpable");
+    orig_dumpable = 0;
+  }
   // Restore PR_SET_DUMPABLE to its original value.
   if (prctl(PR_SET_DUMPABLE, orig_dumpable) != 0) {
     fatal_errno("failed to restore dumpable");
