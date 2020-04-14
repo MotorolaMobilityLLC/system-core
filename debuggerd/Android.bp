@@ -171,6 +171,7 @@ cc_library_static {
         "libdebuggerd/open_files_list.cpp",
         "libdebuggerd/tombstone.cpp",
         "libdebuggerd/utility.cpp",
+        "libdebuggerd/sprd_tombstone.cpp",
     ],
 
     local_include_dirs: ["libdebuggerd/include"],
