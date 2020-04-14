@@ -56,6 +56,7 @@
 #include "libdebuggerd/gwp_asan.h"
 #include "libdebuggerd/open_files_list.h"
 #include "libdebuggerd/utility.h"
+#include "libdebuggerd/sprd_tombstone.h"
 
 #include "gwp_asan/common.h"
 #include "gwp_asan/crash_handler.h"
@@ -646,6 +647,7 @@ void engrave_tombstone(unique_fd output_fd, unwindstack::Unwinder* unwinder,
   }
   } else {
   _LOG(&log, logtype::HEADER, "*** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***\n");
+  dump_elapsedRealtime(&log);
   dump_header_info(&log);
   dump_timestamp(&log, time(nullptr));
 
