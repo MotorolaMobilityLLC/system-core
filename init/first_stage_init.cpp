@@ -107,7 +107,7 @@ void StartConsole() {
         return;
     }
     int fd = -1;
-    int tries = 10;
+    int tries = 50; // should timeout after 5s
     // The device driver for console may not be ready yet so retry for a while in case of failure.
     while (tries--) {
         fd = open("/dev/console", O_RDWR);
@@ -234,7 +234,16 @@ int FirstStageMain(int argc, char** argv) {
         old_root_dir.reset();
     }
 
-    Modprobe m({"/lib/modules"});
+    std::string module_load_file = "modules.load";
+    if (IsRecoveryMode() && !ForceNormalBoot(cmdline)) {
+        struct stat fileStat;
+        std::string recovery_load_path = "/lib/modules/modules.load.recovery";
+        if (!stat(recovery_load_path.c_str(), &fileStat)) {
+            module_load_file = "modules.load.recovery";
+        }
+    }
+
+    Modprobe m({"/lib/modules"}, module_load_file);
     auto want_console = ALLOW_FIRST_STAGE_CONSOLE && FirstStageConsole(cmdline);
     if (!m.LoadListedModules(!want_console)) {
         if (want_console) {
