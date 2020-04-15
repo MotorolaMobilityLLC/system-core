@@ -41,6 +41,7 @@ void load_persist_props(void);
 void load_system_props(void);
 void StartPropertyService(Epoll* epoll);
 bool is_cache_file_exists();
+void set_properties_from_hwinfo();
 
 }  // namespace init
 }  // namespace android

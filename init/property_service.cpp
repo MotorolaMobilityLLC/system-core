@@ -1072,6 +1072,26 @@ void property_load_boot_defaults(bool load_debug_prop) {
     set_system_properties();
 
     update_sys_usb_config();
+    set_properties_from_hwinfo();
+}
+
+void set_properties_from_hwinfo() {
+    std::string cmdline_path = "/sys/hwinfo/band_id";
+    std::string file_content;
+    std::string file_band;
+    int len = strlen("band_id=");
+    std::string prop_sku_value = android::base::GetProperty("ro.build.name", "");
+    if (prop_sku_value == "lenovo") {
+        property_set("ro.boot.hardware.sku","XT2053-3");
+        property_set("ro.vendor.hardware.sku","XT2053-3");
+    } else if (ReadFileToString(cmdline_path, &file_content)) {
+        file_band = file_content.substr(len,8);
+        property_set("ro.boot.hardware.sku",file_band);
+        property_set("ro.vendor.hardware.sku",file_band);
+    } else {
+        PLOG(ERROR) << "Could not read properties from '" << cmdline_path << "'";
+    }
+
 }
 
 static int SelinuxAuditCallback(void* data, security_class_t /*cls*/, char* buf, size_t len) {
