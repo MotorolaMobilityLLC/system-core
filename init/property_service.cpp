@@ -36,6 +36,10 @@
 #include <unistd.h>
 #include <wchar.h>
 
+#ifdef MTK_PROP_WDOG
+#include <sys/eventfd.h>
+#endif
+
 #define _REALLY_INCLUDE_SYS__SYSTEM_PROPERTIES_H_
 #include <sys/_system_properties.h>
 
@@ -59,6 +63,10 @@
 #include <selinux/android.h>
 #include <selinux/label.h>
 #include <selinux/selinux.h>
+
+#ifdef MTK_PROP_WDOG
+#include <backtrace/Backtrace.h>
+#endif
 
 #include "debug_ramdisk.h"
 #include "epoll.h"
@@ -101,6 +109,168 @@ static std::mutex accept_messages_lock;
 static std::thread property_service_thread;
 
 static PropertyInfoAreaFile property_info_area;
+
+#ifdef MTK_PROP_WDOG
+static std::mutex pending_wd_messages_lock;
+static std::queue<std::string> pending_wd_messages;
+
+static std::thread props_wd_thread;
+
+static int wake_wd_thread_fd = -1;
+static uint64_t wd_wait_time = 0;
+
+enum class WDThreadState {
+    kNotStarted,  // Initial state when starting the program or when restarting with no items to
+                  // process.
+    kWaiting_1,   // The thread is running and is in a state that it will process new items if
+                  // are run.
+};
+
+WDThreadState wd_thread_state_ = WDThreadState::kNotStarted;
+
+static void UnwindPropertythreadStack() {
+    std::unique_ptr<Backtrace> backtrace(Backtrace::Create(BACKTRACE_CURRENT_PROCESS, PropServThrGetTid()));
+    if (!backtrace->Unwind(0)) {
+        LOG(ERROR) << __FUNCTION__ << ": Failed to unwind callstack.";
+    }
+
+    LOG(ERROR) << "Dump Stack of Property Thread TID " << PropServThrGetTid();
+    for (size_t i = 0; i < backtrace->NumFrames(); i++) {
+        LOG(ERROR) << backtrace->FormatFrameData(i);
+    }
+}
+
+static void UnwindPropertythreadKernelStack() {
+    std::string stack;
+
+    android::base::ReadFileToString(StringPrintf("/proc/%d/stack", PropServThrGetTid()), &stack);
+
+    LOG(ERROR) << "Dump Kernel Stack of Property Thread TID " << PropServThrGetTid();
+    LOG(ERROR) << stack;
+}
+
+static void DebugPropertyThreadLogging() {
+    UnwindPropertythreadKernelStack();
+    UnwindPropertythreadStack();
+}
+
+static void DropWDSocket() {
+    uint64_t counter;
+    TEMP_FAILURE_RETRY(read(wake_wd_thread_fd, &counter, sizeof(counter)));
+}
+
+static void HandleWDSocket() {
+    auto lock = std::unique_lock{pending_wd_messages_lock};
+
+    uint64_t nowms = std::chrono::duration_cast<std::chrono::milliseconds>(boot_clock::now().time_since_epoch()).count();
+
+    while (!pending_wd_messages.empty()) {
+        auto wd_message = pending_wd_messages.front();
+        pending_wd_messages.pop();
+
+        switch (wd_thread_state_) {
+            case WDThreadState::kNotStarted:
+                if (wd_message == "start") {
+                    wd_thread_state_ = WDThreadState::kWaiting_1;
+                    wd_wait_time = nowms + 500;
+                }
+                break;
+            case WDThreadState::kWaiting_1:
+                if (wd_message == "end") {
+                    wd_thread_state_ = WDThreadState::kNotStarted;
+                    wd_wait_time = 0;
+                }
+                break;
+            default:
+                break;
+        }
+    }
+}
+
+static void HandleWDSocket_wrap() {
+    DropWDSocket();
+    HandleWDSocket();
+}
+
+static void CheckWDTimeout(uint64_t nowms) {
+    auto lock = std::unique_lock{pending_wd_messages_lock};
+    bool dump_stack = false;
+
+    switch (wd_thread_state_) {
+        case WDThreadState::kWaiting_1:
+            if (nowms >= wd_wait_time) {
+                dump_stack = true;
+                wd_wait_time = nowms + 500;
+            }
+            break;
+        default:
+            break;
+    }
+
+    if (dump_stack) {
+        lock.unlock();
+        DebugPropertyThreadLogging();
+        lock.lock();
+    }
+}
+
+static void InstallWDNotifier(Epoll* epoll) {
+    wake_wd_thread_fd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
+    if (wake_wd_thread_fd == -1) {
+        PLOG(FATAL) << "Failed to create eventfd for waking property watchdog.";
+    }
+
+    if (auto result = epoll->RegisterHandler(wake_wd_thread_fd, HandleWDSocket_wrap); !result.ok()) {
+        LOG(FATAL) << result.error();
+    }
+}
+
+static void WakePROPWDThread() {
+    uint64_t counter = 1;
+    TEMP_FAILURE_RETRY(write(wake_wd_thread_fd, &counter, sizeof(counter)));
+}
+
+static void QueuePropWDMessage(const std::string& msg) {
+    auto lock = std::lock_guard{pending_wd_messages_lock};
+
+    pending_wd_messages.push(msg);
+    WakePROPWDThread();
+}
+
+static void PropWDThread() {
+    Epoll epoll;
+    if (auto result = epoll.Open(); !result.ok()) {
+        LOG(FATAL) << result.error();
+    }
+
+    InstallWDNotifier(&epoll);
+
+    while (true) {
+        auto epoll_timeout = std::optional<std::chrono::milliseconds>{};
+
+        uint64_t nowms = std::chrono::duration_cast<std::chrono::milliseconds>(boot_clock::now().time_since_epoch()).count();
+
+        CheckWDTimeout(nowms);
+
+        if (wd_wait_time) {
+            epoll_timeout = 0ms;
+
+            if (nowms < wd_wait_time)
+                epoll_timeout = std::chrono::milliseconds(wd_wait_time - nowms);
+        }
+
+        auto pending_functions = epoll.Wait(epoll_timeout);
+
+        if (!pending_functions.ok()) {
+            LOG(ERROR) << pending_functions.error();
+        } else {
+            for (const auto& function : *pending_functions) {
+                (*function)();
+            }
+        }
+    }
+}
+#endif
 
 struct PropertyAuditData {
     const ucred* cr;
@@ -689,6 +859,16 @@ static void handle_property_set_fd() {
 #endif
 }
 
+#ifdef MTK_PROP_WDOG
+static void handle_property_set_fd_wrap() {
+    QueuePropWDMessage("start");
+
+    handle_property_set_fd();
+
+    QueuePropWDMessage("end");
+}
+#endif
+
 uint32_t InitPropertySet(const std::string& name, const std::string& value) {
     uint32_t result = 0;
     ucred cr = {.pid = 1, .uid = 0, .gid = 0};
@@ -1265,7 +1445,11 @@ static void PropertyServiceThread() {
         LOG(FATAL) << result.error();
     }
 
+#ifndef MTK_PROP_WDOG
     if (auto result = epoll.RegisterHandler(property_set_fd, handle_property_set_fd);
+#else
+    if (auto result = epoll.RegisterHandler(property_set_fd, handle_property_set_fd_wrap);
+#endif
         !result.ok()) {
         LOG(FATAL) << result.error();
     }
@@ -1353,6 +1537,11 @@ void StartPropertyService(int* epoll_socket) {
 
 #ifdef MTK_LOG
     SetPropServThrStart(1);
+#endif
+
+#ifdef MTK_PROP_WDOG
+    auto new_wd_thread = std::thread{PropWDThread};
+    props_wd_thread.swap(new_wd_thread);
 #endif
 
     auto new_thread = std::thread{PropertyServiceThread};

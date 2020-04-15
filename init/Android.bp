@@ -113,6 +113,7 @@ cc_defaults {
                 "-DWORLD_WRITABLE_KMSG=1",
                 "-UDUMP_ON_UMOUNT_FAILURE",
                 "-DDUMP_ON_UMOUNT_FAILURE=1",
+                "-DMTK_PROP_WDOG=1",
             ],
         },
         eng: {
@@ -264,7 +265,7 @@ cc_test {
     test_suites: [
         "cts",
         "device-tests",
-        "vts",
+        "vts10",
     ],
 }
 
