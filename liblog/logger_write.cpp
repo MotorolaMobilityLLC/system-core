@@ -301,8 +301,8 @@ void __android_log_logd_logger(const struct __android_log_message* log_message) 
   if (pre_tag == 0)
     pre_tag = 1;
 
-  if ((log_message->tag == NULL || ((log_message->tag != NULL) && (strlen(log_message->tag) < LOG_BUF_SIZE))) &&
-      strstr(log_message->tag, "-0x") == NULL) {
+  if (log_message->tag == NULL || ((strlen(log_message->tag) < LOG_BUF_SIZE) &&
+      strstr(log_message->tag, "-0x") == NULL)) {
     caller = __builtin_return_address(0);
     size = sprintf(new_tag, "%p", caller);
     new_tag[size - 1] = 'x';
@@ -341,8 +341,8 @@ int __android_log_write(int prio, const char* tag, const char* msg) {
   void* caller = NULL;
   int size;
 
-  if ((pre_tag == 1) && (tag == NULL || ((tag != NULL) && (strlen(tag) < LOG_BUF_SIZE))) &&
-      strstr(tag, "-0x") == NULL) {
+  if ((pre_tag == 1) && (tag == NULL || ((strlen(tag) < LOG_BUF_SIZE) &&
+      strstr(tag, "-0x") == NULL))) {
     caller = __builtin_return_address(0);
     size = sprintf(new_tag, "%p", caller);
     new_tag[size - 1] = 'x';
@@ -379,8 +379,8 @@ void __android_log_write_log_message(__android_log_message* log_message) {
     void* caller = NULL;
     int size;
 
-  if ((pre_tag == 1) && (log_message->tag == NULL || ((log_message->tag != NULL) &&
-      (strlen(log_message->tag) < LOG_BUF_SIZE))) &&  strstr(log_message->tag, "-0x") == NULL) {
+  if ((pre_tag == 1) && (log_message->tag == NULL || (strlen(log_message->tag) < LOG_BUF_SIZE &&
+  	  strstr(log_message->tag, "-0x") == NULL))) {
     caller = __builtin_return_address(0);
     size = sprintf(new_tag, "%p", caller);
     new_tag[size - 1] = 'x';
@@ -418,8 +418,8 @@ int __android_log_buf_write(int bufID, int prio, const char* tag, const char* ms
   void* caller = NULL;
   int size;
 
-  if ((pre_tag == 1) && (tag == NULL || ((tag != NULL) && (strlen(tag) < LOG_BUF_SIZE))) &&
-      strstr(tag, "-0x") == NULL) {
+  if ((pre_tag == 1) && (tag == NULL || (strlen(tag) < LOG_BUF_SIZE &&
+      strstr(tag, "-0x") == NULL))) {
     caller = __builtin_return_address(0);
     size = sprintf(new_tag, "%p", caller);
     new_tag[size - 1] = 'x';
@@ -455,8 +455,8 @@ int __android_log_vprint(int prio, const char* tag, const char* fmt, va_list ap)
   void* caller = NULL;
   int size;
 
-  if ((pre_tag == 1) && (tag == NULL || ((tag != NULL) && (strlen(tag) < LOG_BUF_SIZE))) &&
-      strstr(tag, "-0x") == NULL) {
+  if ((pre_tag == 1) && (tag == NULL || (strlen(tag) < LOG_BUF_SIZE &&
+      strstr(tag, "-0x") == NULL))) {
     caller = __builtin_return_address(0);
     size = sprintf(new_tag, "%p", caller);
     new_tag[size - 1] = 'x';
@@ -497,8 +497,8 @@ int __android_log_print(int prio, const char* tag, const char* fmt, ...) {
   va_end(ap);
 
 #if defined(MTK_LOGD_ENHANCE) && defined(ANDROID_LOG_MUCH_COUNT)
-  if ((pre_tag == 1) && (tag == NULL || ((tag != NULL) && (strlen(tag) < LOG_BUF_SIZE))) &&
-      strstr(tag, "-0x") == NULL) {
+  if ((pre_tag == 1) && (tag == NULL || ((strlen(tag) < LOG_BUF_SIZE) &&
+      strstr(tag, "-0x") == NULL))) {
     caller = __builtin_return_address(0);
     size = sprintf(new_tag, "%p", caller);
     new_tag[size - 1] = 'x';
@@ -539,8 +539,8 @@ int __android_log_buf_print(int bufID, int prio, const char* tag, const char* fm
   va_end(ap);
 
 #if defined(MTK_LOGD_ENHANCE) && defined(ANDROID_LOG_MUCH_COUNT)
-  if ((pre_tag == 1) && (tag == NULL || ((tag != NULL) && (strlen(tag) < LOG_BUF_SIZE))) &&
-      strstr(tag, "-0x") == NULL) {
+  if ((pre_tag == 1) && (tag == NULL || (strlen(tag) < LOG_BUF_SIZE &&
+      strstr(tag, "-0x") == NULL))) {
     caller = __builtin_return_address(0);
     size = sprintf(new_tag, "%p", caller);
     new_tag[size - 1] = 'x';
