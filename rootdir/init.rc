@@ -465,6 +465,9 @@ on early-fs
     # Once metadata has been mounted, we'll need vold to deal with userdata checkpointing
     start vold
 
+on post-fs && property:ro.vendor.build.motfactory=1
+    exec_start ufs_ffu
+
 on post-fs
     exec - system system -- /system/bin/vdc checkpoint markBootAttempt
 
@@ -1034,6 +1037,11 @@ on property:security.perf_harden=1
     write /proc/sys/kernel/perf_cpu_time_max_percent 25
     write /proc/sys/kernel/perf_event_mlock_kb 516
 
+service ufs_ffu /system/bin/ufs_ffu.sh
+    user root
+    class core
+    oneshot
+    disabled
 
 # on shutdown
 # In device's init.rc, this trigger can be used to do device-specific actions
