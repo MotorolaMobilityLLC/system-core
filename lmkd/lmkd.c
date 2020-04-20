@@ -1575,7 +1575,8 @@ static int file_cache_to_adj(enum vmpressure_level lvl, int nr_free,
     }
 
 out:
-    ULMK_LOG(E, "adj:%d file_cache: %d\n", min_score_adj, nr_file);
+    if (debug_process_killing)
+	    ULMK_LOG(E, "adj:%d file_cache: %d\n", min_score_adj, nr_file);
     return min_score_adj;
 }
 
@@ -1638,12 +1639,13 @@ static int zone_watermarks_ok(enum vmpressure_level level)
     for (zone_id = 0; zone_id < present_zones; zone_id++) {
         int margin;
 
-        ULMK_LOG(D, "Zone %s: free:%d high:%d cma:%d reserve:(%d %d %d) anon:(%d %d) file:(%d %d)\n",
-                w[zone_id].name, w[zone_id].free, w[zone_id].high, w[zone_id].cma,
-                w[zone_id].lowmem_reserve[0], w[zone_id].lowmem_reserve[1],
-		w[zone_id].lowmem_reserve[2],
-                w[zone_id].inactive_anon, w[zone_id].active_anon,
-		w[zone_id].inactive_file, w[zone_id].active_file);
+	if (debug_process_killing)
+	        ULMK_LOG(D, "Zone %s: free:%d high:%d cma:%d reserve:(%d %d %d) anon:(%d %d) file:(%d %d)\n",
+		        w[zone_id].name, w[zone_id].free, w[zone_id].high, w[zone_id].cma,
+			w[zone_id].lowmem_reserve[0], w[zone_id].lowmem_reserve[1],
+			w[zone_id].lowmem_reserve[2],
+		        w[zone_id].inactive_anon, w[zone_id].active_anon,
+			w[zone_id].inactive_file, w[zone_id].active_file);
 
         /* Zone is empty */
         if (!w[zone_id].present)
@@ -2425,9 +2427,9 @@ do_kill:
                 min_score_adj = level_oomadj[level];
 	    } else {
                 min_score_adj = zone_watermarks_ok(level);
-                if (min_score_adj == OOM_SCORE_ADJ_MAX + 1)
-		        {
-                    ULMK_LOG(I, "Ignoring pressure since per-zone watermarks ok");
+                if (min_score_adj == OOM_SCORE_ADJ_MAX + 1) {
+			if (debug_process_killing)
+	                    ULMK_LOG(I, "Ignoring pressure since per-zone watermarks ok");
                     return;
                 }
             }
