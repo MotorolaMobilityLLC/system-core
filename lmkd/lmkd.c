@@ -210,6 +210,7 @@ static int psi_partial_stall_ms;
 static int psi_complete_stall_ms;
 static int thrashing_limit_pct;
 static int thrashing_limit_decay_pct;
+static int swap_util_max;
 static bool use_psi_monitors = false;
 static struct kernel_poll_info kpoll_info;
 static struct psi_threshold psi_thresholds[VMPRESS_LEVEL_COUNT] = {
@@ -2111,6 +2112,13 @@ void calc_zone_watermarks(struct zoneinfo *zi, struct zone_watermarks *watermark
     }
 }
 
+static int calc_swap_utilization(union meminfo *mi) {
+    int64_t swap_used = mi->field.total_swap - mi->field.free_swap;
+    int64_t total_swappable = mi->field.active_anon + mi->field.inactive_anon +
+                              mi->field.shmem + swap_used;
+    return total_swappable > 0 ? (swap_used * 100) / total_swappable : 0;
+}
+
 static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_params) {
     enum kill_reasons {
         NONE = -1, /* To denote no kill condition */
@@ -2120,6 +2128,7 @@ static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_
         LOW_MEM_AND_SWAP,
         LOW_MEM_AND_THRASHING,
         DIRECT_RECL_AND_THRASHING,
+        LOW_MEM_AND_SWAP_UTIL,
         KILL_REASON_COUNT
     };
     enum reclaim_state {
@@ -2152,6 +2161,7 @@ static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_
     bool cut_thrashing_limit = false;
     // Moto huangzq2: kill to 100 by default, only kill to adj 0 on critical event.
     int min_score_adj = VISIBLE_APP_ADJ;
+    int swap_util = 0;
 
     /* Skip while still killing a process */
     if (is_kill_pending()) {
@@ -2276,6 +2286,16 @@ static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_
         snprintf(kill_desc, sizeof(kill_desc), "%s watermark is breached and swap is low (%"
             PRId64 "kB < %" PRId64 "kB)", wmark > WMARK_LOW ? "min" : "low",
             mi.field.free_swap * page_k, swap_low_threshold * page_k);
+    } else if (wmark < WMARK_HIGH && swap_util_max < 100 &&
+               (swap_util = calc_swap_utilization(&mi)) > swap_util_max) {
+        /*
+         * Too much anon memory is swapped out but swap is not low.
+         * Non-swappable allocations created memory pressure.
+         */
+        kill_reason = LOW_MEM_AND_SWAP_UTIL;
+        snprintf(kill_desc, sizeof(kill_desc), "%s watermark is breached and swap utilization"
+           " is high (%d%% > %d%%)", wmark > WMARK_LOW ? "min" : "low",
+            swap_util, swap_util_max);
     } else if (wmark < WMARK_HIGH && thrashing > thrashing_limit) {
         /* Page cache is thrashing while memory is low */
         kill_reason = LOW_MEM_AND_THRASHING;
@@ -3013,6 +3033,7 @@ int main(int argc __unused, char **argv __unused) {
         low_ram_device ? DEF_THRASHING_LOWRAM : DEF_THRASHING));
     thrashing_limit_decay_pct = clamp(0, 100, property_get_int32("ro.lmk.thrashing_limit_decay",
         low_ram_device ? DEF_THRASHING_DECAY_LOWRAM : DEF_THRASHING_DECAY));
+    swap_util_max = clamp(0, 100, property_get_int32("ro.lmk.swap_util_max", 100));
 
     ctx = create_android_logger(KILLINFO_LOG_TAG);
 
