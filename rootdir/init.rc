@@ -743,7 +743,7 @@ on post-fs-data
     mkdir /data/misc/train-info/ 0770 statsd system
 
     # Wait for apexd to finish activating APEXes before starting more processes.
-    wait_for_prop apexd.status ready
+    wait_for_prop apexd.status activated
     perform_apex_config
 
     # Special-case /data/media/obb per b/64566063
@@ -758,7 +758,7 @@ on post-fs-data
     # Allow apexd to snapshot and restore device encrypted apex data in the case
     # of a rollback. This should be done immediately after DE_user data keys
     # are loaded. APEXes should not access this data until this has been
-    # completed.
+    # completed and apexd.status becomes "ready".
     exec_start apexd-snapshotde
 
     # Set SELinux security contexts on upgrade or policy update.
@@ -856,6 +856,7 @@ on boot
     # are not aware of using fsync()/sync() to prepare sudden power-cut.
     write /sys/fs/f2fs/${dev.mnt.blk.data}/cp_interval 200
     write /sys/fs/f2fs/${dev.mnt.blk.data}/gc_urgent_sleep_time 50
+    write /sys/fs/f2fs/${dev.mnt.blk.data}/iostat_enable 1
 
     # limit discard size to 128MB in order to avoid long IO latency
     # for filesystem tuning first (dm or sda)
