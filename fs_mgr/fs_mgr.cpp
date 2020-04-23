@@ -62,6 +62,7 @@
 #include <fs_mgr_overlayfs.h>
 #include <fscrypt/fscrypt.h>
 #include <libdm/dm.h>
+#include <libdm/loop_control.h>
 #include <liblp/metadata_format.h>
 #include <linux/fs.h>
 #include <linux/loop.h>
@@ -105,6 +106,7 @@ using android::base::unique_fd;
 using android::dm::DeviceMapper;
 using android::dm::DmDeviceState;
 using android::dm::DmTargetLinear;
+using android::dm::LoopControl;
 
 // Realistically, this file should be part of the android::fs_mgr namespace;
 using namespace android::fs_mgr;
@@ -358,7 +360,7 @@ static void tune_quota(const std::string& blk_device, const FstabEntry& entry,
                        const struct ext4_super_block* sb, int* fs_stat) {
     bool has_quota = (sb->s_feature_ro_compat & cpu_to_le32(EXT4_FEATURE_RO_COMPAT_QUOTA)) != 0;
     bool want_quota = entry.fs_mgr_flags.quota;
-    bool want_projid = android::base::GetBoolProperty("ro.emulated_storage.projid", false);
+    bool want_projid = android::base::GetBoolProperty("external_storage.projid.enabled", false);
 
     if (has_quota == want_quota) {
         return;
@@ -521,7 +523,8 @@ static void tune_verity(const std::string& blk_device, const FstabEntry& entry,
 static void tune_casefold(const std::string& blk_device, const struct ext4_super_block* sb,
                           int* fs_stat) {
     bool has_casefold = (sb->s_feature_incompat & cpu_to_le32(EXT4_FEATURE_INCOMPAT_CASEFOLD)) != 0;
-    bool wants_casefold = android::base::GetBoolProperty("ro.emulated_storage.casefold", false);
+    bool wants_casefold =
+            android::base::GetBoolProperty("external_storage.casefold.enabled", false);
 
     if (!wants_casefold || has_casefold) return;
 
@@ -1942,19 +1945,6 @@ static bool PrepareZramBackingDevice(off64_t size) {
     constexpr const char* file_path = "/data/per_boot/zram_swap";
     if (size == 0) return true;
 
-    // Get free loopback
-    unique_fd loop_fd(TEMP_FAILURE_RETRY(open("/dev/loop-control", O_RDWR | O_CLOEXEC)));
-    if (loop_fd.get() == -1) {
-        PERROR << "Cannot open loop-control";
-        return false;
-    }
-
-    int num = ioctl(loop_fd.get(), LOOP_CTL_GET_FREE);
-    if (num == -1) {
-        PERROR << "Cannot get free loop slot";
-        return false;
-    }
-
     // Prepare target path
     unique_fd target_fd(TEMP_FAILURE_RETRY(open(file_path, O_RDWR | O_CREAT | O_CLOEXEC, 0600)));
     if (target_fd.get() == -1) {
@@ -1966,25 +1956,21 @@ static bool PrepareZramBackingDevice(off64_t size) {
         return false;
     }
 
-    // Connect loopback (device_fd) to target path (target_fd)
-    std::string device = android::base::StringPrintf("/dev/block/loop%d", num);
-    unique_fd device_fd(TEMP_FAILURE_RETRY(open(device.c_str(), O_RDWR | O_CLOEXEC)));
-    if (device_fd.get() == -1) {
-        PERROR << "Cannot open /dev/block/loop" << num;
-        return false;
-    }
-
-    if (ioctl(device_fd.get(), LOOP_SET_FD, target_fd.get())) {
-        PERROR << "Cannot set loopback to target path";
+    // Allocate loop device and attach it to file_path.
+    LoopControl loop_control;
+    std::string device;
+    if (!loop_control.Attach(target_fd.get(), 5s, &device)) {
         return false;
     }
 
     // set block size & direct IO
-    if (ioctl(device_fd.get(), LOOP_SET_BLOCK_SIZE, 4096)) {
-        PWARNING << "Cannot set 4KB blocksize to /dev/block/loop" << num;
+    unique_fd device_fd(TEMP_FAILURE_RETRY(open(device.c_str(), O_RDWR | O_CLOEXEC)));
+    if (device_fd.get() == -1) {
+        PERROR << "Cannot open " << device;
+        return false;
     }
-    if (ioctl(device_fd.get(), LOOP_SET_DIRECT_IO, 1)) {
-        PWARNING << "Cannot set direct_io to /dev/block/loop" << num;
+    if (!LoopControl::EnableDirectIo(device_fd.get())) {
+        return false;
     }
 
     return InstallZramDevice(device);
