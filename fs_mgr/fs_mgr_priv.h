@@ -62,7 +62,7 @@ struct f2fs_dev_info {
     __le32 total_segments;
 };
 
-struct f2fs_super_block {
+struct __attribute__((__packed__)) f2fs_super_block {
     __le32 magic;
     __le16 major_ver;
     __le16 minor_ver;
