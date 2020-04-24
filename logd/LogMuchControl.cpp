@@ -39,6 +39,9 @@
 #include "LogUtils.h"
 
 #ifdef MTK_LOGD_ENHANCE
+#ifdef __cplusplus
+extern "C" {
+#endif
 #define INTERVAL      5LL
 #define MAX_COUNT     25
 void prdebug_ratelimit(const char* fmt, ...) {
@@ -86,6 +89,9 @@ void prdebug_ratelimit(const char* fmt, ...) {
         }
     }
 }
+#ifdef __cplusplus
+}
+#endif
 
 // logd related info need to be adjusted.
 int logd_adjust(const char* cmdStr) {
@@ -321,7 +327,8 @@ void directcoredump_init() {
     if (strncmp(value, "disable", sizeof("disable"))) {
         int loop;
         for (loop = 0; loop < SIGNUM; loop++) {
-            signal(sigtype[loop], SIG_DFL);
+            if (SIG_ERR == signal(sigtype[loop], SIG_DFL))
+                android::prdebug("init siginal error\n");
         }
     }
     android::prdebug("init directcoredump done!\n");

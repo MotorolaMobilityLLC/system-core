@@ -25,7 +25,13 @@
 #include <utils/FastStrcmp.h>
 
 #ifdef MTK_LOGD_ENHANCE
+#ifdef __cplusplus
+extern "C" {
+#endif
 void prdebug_ratelimit(const char* fmt, ...) __printflike(1, 2);
+#ifdef __cplusplus
+}
+#endif
 
 #if defined(MSSI_HAVE_AEE_FEATURE) && defined(ANDROID_LOG_MUCH_COUNT)
 extern int log_detect_value;

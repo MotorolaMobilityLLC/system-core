@@ -70,8 +70,8 @@ static void OpenSocketLocked() {
    const char* key_configstore = "android.hardware.configstore";
 #endif
 
-    snprintf(path, PATH_MAX, "/proc/%d/cmdline", getpid());
-    if ((fp = fopen(path, "r"))) {
+    int res = snprintf(path, PATH_MAX, "/proc/%d/cmdline", getpid());
+    if (res >= 0 && res < PATH_MAX && (fp = fopen(path, "r"))) {
       threadname = fgets(threadnamebuf, sizeof(threadnamebuf), fp);
       fclose(fp);
     }
