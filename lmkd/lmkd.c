@@ -1016,7 +1016,7 @@ static void cmd_procpurge() {
 }
 
 static void save_killcnt_to_prop() {
-    int i;
+    int oomadj;
     int slot;
     uint8_t idx;
     char killcnt_str[PROPERTY_VALUE_MAX];
@@ -1024,6 +1024,8 @@ static void save_killcnt_to_prop() {
     char *pend = killcnt_str + sizeof(killcnt_str);
     static struct timespec last_req_tm;
     struct timespec curr_tm;
+    int adj_to_merge = 900;
+    int killcnt_to_merge = 0;
 
     if (clock_gettime(CLOCK_MONOTONIC_COARSE, &curr_tm) != 0) {
         ALOGE("Failed to get current time");
@@ -1036,16 +1038,29 @@ static void save_killcnt_to_prop() {
     last_req_tm = curr_tm;
 
     // don't care killcnt below adj 0.
-    for (i = OOM_SCORE_ADJ_MAX; i >= 0; i--) {
-        slot = ADJTOSLOT(i);
+    for (oomadj = 0; oomadj <= OOM_SCORE_ADJ_MAX; oomadj++) {
+        slot = ADJTOSLOT(oomadj);
         idx = killcnt_idx[slot];
         if (idx != KILLCNT_INVALID_IDX) {
-            pstr += snprintf(pstr, pend - pstr, "%d:%d,", i, killcnt[idx]);
+            // merge killcnt of higher adjs (>=adj_to_merge) into killcnt_to_merge
+            if (oomadj >= adj_to_merge) {
+                killcnt_to_merge += killcnt[idx];
+                continue;
+            }
+            pstr += snprintf(pstr, pend - pstr, "%d:%d,", oomadj, killcnt[idx]);
             if (pstr >= pend) {
                 /* if no more space in the buffer then terminate the loop */
                 pstr = pend;
                 break;
             }
+        }
+    }
+
+    // append killcnt_to_merge to prop.
+    if (killcnt_to_merge > 0) {
+        pstr += snprintf(pstr, pend - pstr, "%d:%d,", adj_to_merge, killcnt_to_merge);
+        if (pstr >= pend) {
+            pstr = pend;
         }
     }
 
