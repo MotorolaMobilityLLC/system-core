@@ -1512,6 +1512,14 @@ static void trace_log(char *fmt, ...)
     static int fd = -1;
     ssize_t len, ret;
 
+    if (fd == -ENOENT)
+	    return;
+
+    if ((fd < 0) && access(TRACE_MARKER_PATH, F_OK)) {
+	    fd = -ENOENT;
+	    return;
+    }
+
     if (fd < 0) {
 	    fd = open(TRACE_MARKER_PATH, O_WRONLY | O_CLOEXEC);
 	    if (fd < 0) {
