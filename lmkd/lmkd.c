@@ -2250,10 +2250,17 @@ static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_
     }
 
     if (debug_process_killing) {
-        ALOGW("%s stall, swap free %d%%(%d), wmark %s, thrashing %" PRId64 "%%(%d)",
+        int64_t other_file = max(mi.field.nr_file_pages - mi.field.shmem - mi.field.unevictable
+                        - mi.field.swap_cached, 0);
+        ALOGW("%s stall, swap free %d%%(%d), file %d%%, anon %d%%, wmark %s %" PRId64 "(%ldm), "
+                "thrashing %" PRId64 "%%(%d)",
             level == VMPRESS_LEVEL_CRITICAL ? "COMPLETE" : "PARTIAL",
             (int)(mi.field.free_swap*100/mi.field.total_swap), swap_free_low_percentage,
+            (int)(other_file*100/mi.field.total_swap),
+            (int)((mi.field.active_anon + mi.field.inactive_anon)*100/mi.field.total_swap),
             wmark < WMARK_HIGH ? (wmark > WMARK_LOW ? "min" : "low") : "high",
+            (mi.field.nr_free_pages - mi.field.cma_free) * page_k / 1024,
+            watermarks.high_wmark * page_k / 1024,
             thrashing, thrashing_limit);
     }
 
