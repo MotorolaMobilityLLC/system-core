@@ -2121,6 +2121,10 @@ static int64_t get_memory_usage(struct reread_data *file_data) {
     int64_t mem_usage;
     char buf[32];
 
+    if (access(file_data->filename, F_OK)) {
+        return -1;
+    }
+
     if (reread_file(file_data, buf, sizeof(buf)) < 0) {
         return -1;
     }
@@ -2399,7 +2403,7 @@ static void mp_event_common(int data, uint32_t events __unused) {
     }
 
 do_kill:
-    if (low_ram_device) {
+    if (low_ram_device && per_app_memcg) {
         /* For Go devices kill only one task */
         if (find_and_kill_process(level_oomadj[level]) == 0) {
             if (debug_process_killing) {
