@@ -45,6 +45,20 @@ bool LinearExtent::AddTo(LpMetadata* out) const {
     return true;
 }
 
+bool LinearExtent::OverlapsWith(const LinearExtent& other) const {
+    if (device_index_ != other.device_index()) {
+        return false;
+    }
+    return physical_sector() < other.end_sector() && other.physical_sector() < end_sector();
+}
+
+bool LinearExtent::OverlapsWith(const Interval& interval) const {
+    if (device_index_ != interval.device_index) {
+        return false;
+    }
+    return physical_sector() < interval.end && interval.start < end_sector();
+}
+
 bool ZeroExtent::AddTo(LpMetadata* out) const {
     out->extents.emplace_back(LpMetadataExtent{num_sectors_, LP_TARGET_TYPE_ZERO, 0, 0});
     return true;
@@ -645,7 +659,7 @@ bool MetadataBuilder::GrowPartition(Partition* partition, uint64_t aligned_size)
     return true;
 }
 
-std::vector<MetadataBuilder::Interval> MetadataBuilder::PrioritizeSecondHalfOfSuper(
+std::vector<Interval> MetadataBuilder::PrioritizeSecondHalfOfSuper(
         const std::vector<Interval>& free_list) {
     const auto& super = block_devices_[0];
     uint64_t first_sector = super.first_logical_sector;
@@ -713,8 +727,7 @@ std::unique_ptr<LinearExtent> MetadataBuilder::ExtendFinalExtent(
 bool MetadataBuilder::IsAnyRegionCovered(const std::vector<Interval>& regions,
                                          const LinearExtent& candidate) const {
     for (const auto& region : regions) {
-        if (region.device_index == candidate.device_index() &&
-            (candidate.OwnsSector(region.start) || candidate.OwnsSector(region.end))) {
+        if (candidate.OverlapsWith(region)) {
             return true;
         }
     }
@@ -725,11 +738,10 @@ bool MetadataBuilder::IsAnyRegionAllocated(const LinearExtent& candidate) const 
     for (const auto& partition : partitions_) {
         for (const auto& extent : partition->extents()) {
             LinearExtent* linear = extent->AsLinearExtent();
-            if (!linear || linear->device_index() != candidate.device_index()) {
+            if (!linear) {
                 continue;
             }
-            if (linear->OwnsSector(candidate.physical_sector()) ||
-                linear->OwnsSector(candidate.end_sector() - 1)) {
+            if (linear->OverlapsWith(candidate)) {
                 return true;
             }
         }

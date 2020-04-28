@@ -37,6 +37,22 @@ class LinearExtent;
 static const uint32_t kDefaultPartitionAlignment = 1024 * 1024;
 static const uint32_t kDefaultBlockSize = 4096;
 
+struct Interval {
+    uint32_t device_index;
+    uint64_t start;
+    uint64_t end;
+
+    Interval(uint32_t device_index, uint64_t start, uint64_t end)
+        : device_index(device_index), start(start), end(end) {}
+    uint64_t length() const { return end - start; }
+
+    // Note: the device index is not included in sorting (intervals are
+    // sorted in per-device lists).
+    bool operator<(const Interval& other) const {
+        return (start == other.start) ? end < other.end : start < other.start;
+    }
+};
+
 // Abstraction around dm-targets that can be encoded into logical partition tables.
 class Extent {
   public:
@@ -66,9 +82,8 @@ class LinearExtent final : public Extent {
     uint64_t end_sector() const { return physical_sector_ + num_sectors_; }
     uint32_t device_index() const { return device_index_; }
 
-    bool OwnsSector(uint64_t sector) const {
-        return sector >= physical_sector_ && sector < end_sector();
-    }
+    bool OverlapsWith(const LinearExtent& other) const;
+    bool OverlapsWith(const Interval& interval) const;
 
   private:
     uint32_t device_index_;
@@ -310,21 +325,6 @@ class MetadataBuilder {
     bool IsRetrofitDevice() const;
     bool ValidatePartitionGroups() const;
 
-    struct Interval {
-        uint32_t device_index;
-        uint64_t start;
-        uint64_t end;
-
-        Interval(uint32_t device_index, uint64_t start, uint64_t end)
-            : device_index(device_index), start(start), end(end) {}
-        uint64_t length() const { return end - start; }
-
-        // Note: the device index is not included in sorting (intervals are
-        // sorted in per-device lists).
-        bool operator<(const Interval& other) const {
-            return (start == other.start) ? end < other.end : start < other.start;
-        }
-    };
     std::vector<Interval> GetFreeRegions() const;
     bool IsAnyRegionCovered(const std::vector<Interval>& regions,
                             const LinearExtent& candidate) const;
