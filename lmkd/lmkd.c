@@ -119,12 +119,14 @@
 #define PSI_WINDOW_SIZE_MS 1000
 /* Polling period after initial PSI signal */
 #define PSI_POLL_PERIOD_MS 10
-/* Poll for the duration of one window after initial PSI signal */
-#define PSI_POLL_COUNT (PSI_WINDOW_SIZE_MS / PSI_POLL_PERIOD_MS)
+/* PSI complete stall for super critical events */
+#define PSI_SCRIT_COMPLETE_STALL_MS (80)
 
 #define min(a, b) (((a) < (b)) ? (a) : (b))
 
 #define FAIL_REPORT_RLIMIT_MS 1000
+
+#define SZ_4G (0x100000000ULL)
 
 #define PSI_PROC_TRAVERSE_DELAY_MS 200
 /* default to old in-kernel interface if no memory pressure events */
@@ -177,11 +179,14 @@ static int swap_free_low_percentage;
 static bool use_psi_monitors = false;
 static bool enable_preferred_apps =  false;
 static unsigned long pa_update_timeout_ms = 60000; /* 1 min */
+/* PSI window related variables */
+static int psi_window_size_ms = PSI_WINDOW_SIZE_MS;
+static int psi_poll_period_ms = PSI_POLL_PERIOD_MS;
 static struct psi_threshold psi_thresholds[VMPRESS_LEVEL_COUNT] = {
     { PSI_SOME, 70 },    /* 70ms out of 1sec for partial stall */
     { PSI_SOME, 100 },   /* 100ms out of 1sec for partial stall */
     { PSI_FULL, 70 },    /* 70ms out of 1sec for complete stall */
-    { PSI_FULL, 80 },    /* 80ms out of 1sec for complete stall */
+    { PSI_FULL, PSI_SCRIT_COMPLETE_STALL_MS }, /* Default 80ms out of 1sec for complete stall */
 };
 
 static android_log_context ctx;
@@ -257,7 +262,8 @@ union zoneinfo {
 
 /* Fields to parse in /proc/meminfo */
 enum meminfo_field {
-    MI_NR_FREE_PAGES = 0,
+    MI_NR_TOTAL_PAGES = 0,
+    MI_NR_FREE_PAGES,
     MI_CACHED,
     MI_SWAP_CACHED,
     MI_BUFFERS,
@@ -280,6 +286,7 @@ enum meminfo_field {
 };
 
 static const char* const meminfo_field_names[MI_FIELD_COUNT] = {
+    "MemTotal:",
     "MemFree:",
     "Cached:",
     "SwapCached:",
@@ -303,6 +310,7 @@ static const char* const meminfo_field_names[MI_FIELD_COUNT] = {
 
 union meminfo {
     struct {
+        int64_t nr_total_pages;
         int64_t nr_free_pages;
         int64_t cached;
         int64_t swap_cached;
@@ -2479,7 +2487,7 @@ do_kill:
 static bool init_mp_psi(enum vmpressure_level level) {
     int fd = init_psi_monitor(psi_thresholds[level].stall_type,
         psi_thresholds[level].threshold_ms * US_PER_MS,
-        PSI_WINDOW_SIZE_MS * US_PER_MS);
+        psi_window_size_ms * US_PER_MS);
 
     if (fd < 0) {
         return false;
@@ -2599,6 +2607,7 @@ err_open_mpfd:
 
 static int init(void) {
     struct epoll_event epev;
+    union meminfo info;
     int i;
     int ret;
 
@@ -2606,6 +2615,19 @@ static int init(void) {
     if (page_k == -1)
         page_k = PAGE_SIZE;
     page_k /= 1024;
+
+    if (!meminfo_parse(&info)) {
+	/*
+	 * Set the optimal settings for lowram targets.
+	 */
+	if (info.field.nr_total_pages < (SZ_4G / PAGE_SIZE)) {
+		    if (psi_window_size_ms > 500) {
+			    psi_window_size_ms = 500;
+			    ULMK_LOG(I, "PSI window size is changed to %dms\n", psi_window_size_ms);
+		    }
+	}
+    } else
+	    ULMK_LOG(E, "Failed to parse the meminfo\n");
 
     epollfd = epoll_create(MAX_EPOLL_EVENTS);
     if (epollfd == -1) {
@@ -2680,6 +2702,7 @@ static void mainloop(void) {
     struct epoll_event *evt;
     union vmstat s_crit_current;
     long delay = -1;
+    int psi_poll_count = psi_window_size_ms / psi_poll_period_ms;
     int polling = 0;
 
     while (1) {
@@ -2770,11 +2793,11 @@ static void mainloop(void) {
 		    }
 
                     /*
-                     * Poll for the duration of PSI_WINDOW_SIZE_MS after the
+                     * Poll for the duration of psi_window_size_ms after the
                      * initial PSI event because psi events are rate-limited
                      * at one per sec.
                      */
-                    polling = PSI_POLL_COUNT;
+                    polling = psi_poll_count;
                     poll_handler = handler_info;
                     clock_gettime(CLOCK_MONOTONIC_COARSE, &last_report_tm);
                 }
@@ -2852,6 +2875,18 @@ int main(int argc __unused, char **argv __unused) {
 			  level_oomadj[VMPRESS_LEVEL_SUPER_CRITICAL]);
 	  strlcpy(property, perf_wait_get_prop("ro.lmk.super_critical", default_value).value, PROPERTY_VALUE_MAX);
 	  level_oomadj[VMPRESS_LEVEL_SUPER_CRITICAL] = strtod(property, NULL);
+
+	  snprintf(default_value, PROPERTY_VALUE_MAX, "%d", PSI_WINDOW_SIZE_MS);
+	  strlcpy(property, perf_wait_get_prop("ro.lmk.psi_window_size_ms", default_value).value, PROPERTY_VALUE_MAX);
+	  psi_window_size_ms = strtod(property, NULL);
+
+	  snprintf(default_value, PROPERTY_VALUE_MAX, "%d", PSI_POLL_PERIOD_MS);
+	  strlcpy(property, perf_wait_get_prop("ro.lmk.psi_poll_period_ms", default_value).value, PROPERTY_VALUE_MAX);
+	  psi_poll_period_ms = strtod(property, NULL);
+
+	  snprintf(default_value, PROPERTY_VALUE_MAX, "%d", PSI_SCRIT_COMPLETE_STALL_MS);
+	  strlcpy(property, perf_wait_get_prop("ro.lmk.psi_scrit_complete_stall_ms", default_value).value, PROPERTY_VALUE_MAX);
+	  psi_thresholds[VMPRESS_LEVEL_SUPER_CRITICAL].threshold_ms = strtod(property, NULL);
 
 	  snprintf(default_value, PROPERTY_VALUE_MAX, "%d", direct_reclaim_pressure);
 	  strlcpy(property, perf_wait_get_prop("ro.lmk.direct_reclaim_pressure", default_value).value, PROPERTY_VALUE_MAX);
