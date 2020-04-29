@@ -1475,6 +1475,22 @@ static std::string next_arg(std::vector<std::string>* args) {
     return result;
 }
 
+static void do_bypass_unlock_command(std::vector<std::string>* args) {
+    if (args->empty()) syntax_error("missing unlock_bootloader request");
+
+    std::string subcmd = next_arg(args);
+    std::string filename = next_arg(args);
+
+    std::vector<char> data;
+    if (!ReadFileToVector(filename, &data)) {
+        die("could not load '%s': %s", filename.c_str(), strerror(errno));
+    }
+    if (data.size() != 512) die("signature must be 512 bytes (got %zu)", data.size());
+
+    fb->Download("unlock_message", data);
+    fb->RawCommand("flashing unlock_bootloader", "unlocking bootloader");
+}
+
 static void do_oem_command(const std::string& cmd, std::vector<std::string>* args) {
     if (args->empty()) syntax_error("empty oem command");
 
@@ -2056,6 +2072,8 @@ int FastBootTool::Main(int argc, char* argv[]) {
                                             args[0] == "lock_critical" ||
                                             args[0] == "get_unlock_ability")) {
                 do_oem_command("flashing", &args);
+            } else if (args.size() == 2 && args[0] == "unlock_bootloader"){
+                do_bypass_unlock_command(&args);
             } else {
                 syntax_error("unknown 'flashing' command %s", args[0].c_str());
             }
