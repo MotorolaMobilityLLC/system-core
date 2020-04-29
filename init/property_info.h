@@ -34,6 +34,7 @@ void set_some_vendor_properties(std::string prop_product_value);
 void set_fingerprint(std::string fingerprint) ;
 void set_product_device(std::string product_device);
 void set_product_name(std::string product_name);
+void setElabelProperty();
 }  // namespace init
 }  // namespace android
 

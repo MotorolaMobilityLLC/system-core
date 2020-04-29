@@ -85,13 +85,9 @@ std::string prop_build_flavor = "ro.build.flavor";
 
 void set_system_properties(){
     std::ifstream stream_product(product_version_file);
-    std::ifstream stream_elabel(elabel_version_file);
     std::stringstream fileStream_product;
-    std::stringstream fileStream_elabel;
     fileStream_product << stream_product.rdbuf();
-    fileStream_elabel << stream_elabel.rdbuf();
     std::string fileContent_product = fileStream_product.str().substr(0,3);
-    std::string fileContent_elabel = fileStream_elabel.str().substr(0,3);
     std::string  carrier_ontim = android::base::GetProperty(prop_carrier_ontim, "");
     size_t position = carrier_ontim.find("_");
     std::string  carrier_value = carrier_ontim.substr(0, position);
@@ -100,8 +96,6 @@ void set_system_properties(){
     property_set("ro.oem.key1",carrier_value);
     property_set("ro.product.ontim.version", fileContent_product);
     property_set("ro.vendor.product.version", fileContent_product);
-    property_set("ro.elabel.ontim.version", fileContent_elabel);
-    property_set("ro.vendor.elabel.version", fileContent_elabel);
     std::string  build_name = android::base::GetProperty(prop_build_name, "");
 
     if (prop_product_value == "blackjack" || prop_product_value == "blackjack_64") {
@@ -322,6 +316,15 @@ std::string get_version_property(std::string value) {
     std::string build_number_value = build_value.erase(0, 3).append(1,'.');
     value = "Blur_Version." + build_number_value + product_value + prop_carrier_value + "." + locale_value;
     return value;
+}
+
+void setElabelProperty() {
+    std::ifstream stream_elabel(elabel_version_file);
+    std::stringstream fileStream_elabel;
+    fileStream_elabel << stream_elabel.rdbuf();
+    std::string fileContent_elabel = fileStream_elabel.str().substr(0,3);
+    property_set("ro.elabel.ontim.version", fileContent_elabel);
+    property_set("ro.vendor.elabel.version", fileContent_elabel);
 }
 
 }  // namespace init

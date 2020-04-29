@@ -66,6 +66,7 @@
 #include "mount_namespace.h"
 #include "parser.h"
 #include "property_service.h"
+#include "property_info.h"
 #include "reboot.h"
 #include "rlimit_parser.h"
 #include "selinux.h"
@@ -701,6 +702,11 @@ static Result<Success> do_swapon_all(const BuiltinArguments& args) {
     return Success();
 }
 
+static Result<Success> do_set_elabel_property(const BuiltinArguments& args) {
+    setElabelProperty();
+    return Success();
+}
+
 static Result<Success> do_setprop(const BuiltinArguments& args) {
     property_set(args[1], args[2]);
     return Success();
@@ -1243,6 +1249,7 @@ const BuiltinFunctionMap::Map& BuiltinFunctionMap::map() const {
         {"restorecon_recursive",    {1,     kMax, {true,   do_restorecon_recursive}}},
         {"rm",                      {1,     1,    {true,   do_rm}}},
         {"rmdir",                   {1,     1,    {true,   do_rmdir}}},
+        {"set_elabel_property",     {0,     0,    {false,  do_set_elabel_property}}},
         {"setprop",                 {2,     2,    {true,   do_setprop}}},
         {"setrlimit",               {3,     3,    {false,  do_setrlimit}}},
         {"start",                   {1,     1,    {false,  do_start}}},
