@@ -460,6 +460,7 @@ static uint32_t killcnt_total = 0;
 /* Super critical event related variables. */
 static union vmstat s_crit_base;
 static bool s_crit_event = false;
+static bool s_crit_event_upgraded = false;
 
 /* PAGE_SIZE / 1024 */
 static long page_k;
@@ -1542,7 +1543,7 @@ static void trace_log(char *fmt, ...)
 		ALOG##X(fmt);  \
 		trace_log(fmt); \
 		})
-static int file_cache_to_adj(enum vmpressure_level lvl, int nr_free,
+static int file_cache_to_adj(enum vmpressure_level __unused lvl, int nr_free,
 			     int nr_file)
 {
     int min_score_adj = OOM_SCORE_ADJ_MAX + 1;
@@ -1572,10 +1573,10 @@ static int file_cache_to_adj(enum vmpressure_level lvl, int nr_free,
 		(lowmem_minfree[lowmem_targets_size - 1] -
 		 lowmem_minfree[lowmem_targets_size - 2]);
     /* Adjust the selected adj in accordance with pressure. */
-    if (s_crit_event && (min_score_adj > s_crit_adj_level)) {
+    if (s_crit_event && !s_crit_event_upgraded && (min_score_adj > s_crit_adj_level)) {
 	    min_score_adj = s_crit_adj_level;
     } else {
-	    if (lvl == VMPRESS_LEVEL_CRITICAL &&
+	    if (s_crit_event_upgraded &&
 		nr_free < lowmem_minfree[lowmem_targets_size -1] &&
 		nr_file < crit_minfree &&
 		min_score_adj > s_crit_adj_level) {
@@ -1584,6 +1585,12 @@ static int file_cache_to_adj(enum vmpressure_level lvl, int nr_free,
     }
 
 out:
+    /*
+     * If event is upgraded, just allow one kill in that window. This
+     * is to avoid the aggressiveness of kills by upgrading the event.
+     */
+    if (s_crit_event_upgraded)
+	    s_crit_event_upgraded = s_crit_event = false;
     if (debug_process_killing)
 	    ULMK_LOG(E, "adj:%d file_cache: %d\n", min_score_adj, nr_file);
     return min_score_adj;
@@ -2207,8 +2214,8 @@ enum vmpressure_level upgrade_vmpressure_event(enum vmpressure_level level)
 {
 	static union vmstat base;
 	union vmstat current;
-	int64_t throttle;
-	int64_t sync, async, pressure;
+	int64_t throttle, pressure;
+	static int64_t sync, async;
 
 	switch (level) {
 		case VMPRESS_LEVEL_LOW:
@@ -2225,14 +2232,20 @@ enum vmpressure_level upgrade_vmpressure_event(enum vmpressure_level level)
 		   }
 		   throttle = current.field.pgscan_direct_throttle -
 			      base.field.pgscan_direct_throttle;
-		   sync = current.field.pgscan_direct -
-			   base.field.pgscan_direct;
-		   async = current.field.pgscan_kswapd -
-			   base.field.pgscan_kswapd;
-		   pressure = ((100 * sync)/(sync + async + 1));
-		   if (throttle || (pressure >= direct_reclaim_pressure)) {
-			   s_crit_event = true;
-			   s_crit_base = current;
+		   sync += (current.field.pgscan_direct -
+			    base.field.pgscan_direct);
+		   async += (current.field.pgscan_kswapd -
+			     base.field.pgscan_kswapd);
+		   /*
+		    * Here scan window size is put at 4MB(=1024 pages).
+		    */
+		   if (throttle || (sync + async) >= 1024) {
+			   pressure = ((100 * sync)/(sync + async + 1));
+			   if (throttle || (pressure >= direct_reclaim_pressure)) {
+				   s_crit_event = s_crit_event_upgraded = true;
+				   s_crit_base = current;
+			   }
+			   sync = async = 0;
 		   }
 		   base = current;
 		   break;
