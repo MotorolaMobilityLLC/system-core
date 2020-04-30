@@ -2707,6 +2707,24 @@ static int init(void) {
     return 0;
 }
 
+static bool have_psi_events(struct epoll_event *evt, int nevents)
+{
+	int i;
+	struct event_handler_info* handler_info;
+
+	for (i = 0; i < nevents; i++, evt++) {
+		if (evt->events & (EPOLLERR | EPOLLHUP))
+			continue;
+		if (evt->data.ptr) {
+			handler_info = (struct event_handler_info*)evt->data.ptr;
+			if (handler_info->handler == mp_event_common)
+				return true;
+		}
+	}
+
+	return false;
+}
+
 static void mainloop(void) {
     struct event_handler_info* handler_info;
     struct event_handler_info* poll_handler = NULL;
@@ -2723,7 +2741,7 @@ static void mainloop(void) {
         int nevents;
 	int poll_period;
         int i;
-	bool skip_handler = false;
+	bool skip_handler = false, s_crit_tmp = false;
 
         if (polling) {
             /* Calculate next timeout */
@@ -2740,9 +2758,10 @@ static void mainloop(void) {
                 polling--;
 		if (s_crit_event) {
 			vmstat_parse(&poll2);
-			if (!(poll2.field.pgscan_direct - poll1.field.pgscan_direct) &&
+			if ((nevents > 0 && have_psi_events(events, nevents)) ||
+			    (!(poll2.field.pgscan_direct - poll1.field.pgscan_direct) &&
 			    !(poll2.field.pgscan_kswapd - poll1.field.pgscan_kswapd) &&
-			    !(poll2.field.pgscan_direct_throttle - poll1.field.pgscan_direct_throttle))
+			    !(poll2.field.pgscan_direct_throttle - poll1.field.pgscan_direct_throttle)))
 				skip_handler = true;
 			poll1 = poll2;
 		}
@@ -2788,11 +2807,33 @@ static void mainloop(void) {
             }
             if (evt->data.ptr) {
                 handler_info = (struct event_handler_info*)evt->data.ptr;
+		/*
+		 * Handle the below cases:
+		 * 1) When a super critical event is generated, the handler
+		 *    don't process it as the s_crit_event is not set thus
+		 *    we can miss a kill.
+		 *
+		 * 2) When a medium/critical event is generated while handling
+		 *    supercritical event and If that generated event can make
+		 *    the s_crit_event = false, still there will be an extra
+		 *    kill.
+		 */
+		if (handler_info->handler == mp_event_common) {
+			if (handler_info->data == VMPRESS_LEVEL_SUPER_CRITICAL)
+				s_crit_event = true;
+			else if(s_crit_event) {
+				s_crit_tmp = s_crit_event;
+				s_crit_event = false;
+			}
+		}
                 handler_info->handler(handler_info->data, evt->events);
+		if (s_crit_tmp) {
+			s_crit_event = s_crit_tmp;
+			s_crit_tmp = false;
+		}
 
                 if (use_psi_monitors && handler_info->handler == mp_event_common) {
 		    if (handler_info->data == VMPRESS_LEVEL_SUPER_CRITICAL) {
-			    s_crit_event = true;
 			    /* Scale the 'polling' accordingly */
 			    if (psi_poll_period_scrit_ms != psi_poll_period_ms)
 				    polling /= (psi_poll_period_scrit_ms / psi_poll_period_ms);
