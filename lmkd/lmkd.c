@@ -2715,6 +2715,7 @@ static void mainloop(void) {
     union vmstat s_crit_current;
     long delay = -1;
     int psi_poll_count = psi_window_size_ms / psi_poll_period_ms;
+    union vmstat poll1 = {{0}}, poll2 = {{0}};
     int polling = 0;
 
     while (1) {
@@ -2722,6 +2723,7 @@ static void mainloop(void) {
         int nevents;
 	int poll_period;
         int i;
+	bool skip_handler = false;
 
         if (polling) {
             /* Calculate next timeout */
@@ -2736,7 +2738,16 @@ static void mainloop(void) {
             clock_gettime(CLOCK_MONOTONIC_COARSE, &curr_tm);
             if (get_time_diff_ms(&last_report_tm, &curr_tm) >= poll_period) {
                 polling--;
-                poll_handler->handler(poll_handler->data, 0);
+		if (s_crit_event) {
+			vmstat_parse(&poll2);
+			if (!(poll2.field.pgscan_direct - poll1.field.pgscan_direct) &&
+			    !(poll2.field.pgscan_kswapd - poll1.field.pgscan_kswapd) &&
+			    !(poll2.field.pgscan_direct_throttle - poll1.field.pgscan_direct_throttle))
+				skip_handler = true;
+			poll1 = poll2;
+		}
+		if (!skip_handler)
+	               poll_handler->handler(poll_handler->data, 0);
                 clock_gettime(CLOCK_MONOTONIC_COARSE, &last_report_tm);
             }
         } else {
