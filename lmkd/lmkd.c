@@ -182,6 +182,7 @@ static unsigned long pa_update_timeout_ms = 60000; /* 1 min */
 /* PSI window related variables */
 static int psi_window_size_ms = PSI_WINDOW_SIZE_MS;
 static int psi_poll_period_ms = PSI_POLL_PERIOD_MS;
+static int psi_poll_period_scrit_ms = PSI_POLL_PERIOD_MS;
 static struct psi_threshold psi_thresholds[VMPRESS_LEVEL_COUNT] = {
     { PSI_SOME, 70 },    /* 70ms out of 1sec for partial stall */
     { PSI_SOME, 100 },   /* 100ms out of 1sec for partial stall */
@@ -2616,18 +2617,29 @@ static int init(void) {
         page_k = PAGE_SIZE;
     page_k /= 1024;
 
+    /*
+     * Set the optimal settings for lowram targets.
+     */
     if (!meminfo_parse(&info)) {
-	/*
-	 * Set the optimal settings for lowram targets.
-	 */
 	if (info.field.nr_total_pages < (SZ_4G / PAGE_SIZE)) {
 		    if (psi_window_size_ms > 500) {
 			    psi_window_size_ms = 500;
 			    ULMK_LOG(I, "PSI window size is changed to %dms\n", psi_window_size_ms);
 		    }
+		    if (psi_poll_period_scrit_ms < 100) {
+			    psi_poll_period_scrit_ms = 100;
+			    ULMK_LOG(I, "PSI poll period for super critical event is changed to %dms\n", psi_poll_period_scrit_ms);
+		    }
 	}
     } else
 	    ULMK_LOG(E, "Failed to parse the meminfo\n");
+
+    /*
+     * Ensure min polling period for supercritical event is no less than
+     * the default polling period.
+     */
+    if (psi_poll_period_scrit_ms < psi_poll_period_ms)
+	    psi_poll_period_scrit_ms = psi_poll_period_ms;
 
     epollfd = epoll_create(MAX_EPOLL_EVENTS);
     if (epollfd == -1) {
@@ -2708,20 +2720,21 @@ static void mainloop(void) {
     while (1) {
         struct epoll_event events[maxevents];
         int nevents;
+	int poll_period;
         int i;
 
         if (polling) {
             /* Calculate next timeout */
             clock_gettime(CLOCK_MONOTONIC_COARSE, &curr_tm);
+	    poll_period = !s_crit_event ? psi_poll_period_ms : psi_poll_period_scrit_ms;
             delay = get_time_diff_ms(&last_report_tm, &curr_tm);
-            delay = (delay < PSI_POLL_PERIOD_MS) ?
-                PSI_POLL_PERIOD_MS - delay : PSI_POLL_PERIOD_MS;
+            delay = (delay < poll_period) ? poll_period - delay : poll_period;
 
             /* Wait for events until the next polling timeout */
             nevents = epoll_wait(epollfd, events, maxevents, delay);
 
             clock_gettime(CLOCK_MONOTONIC_COARSE, &curr_tm);
-            if (get_time_diff_ms(&last_report_tm, &curr_tm) >= PSI_POLL_PERIOD_MS) {
+            if (get_time_diff_ms(&last_report_tm, &curr_tm) >= poll_period) {
                 polling--;
                 poll_handler->handler(poll_handler->data, 0);
                 clock_gettime(CLOCK_MONOTONIC_COARSE, &last_report_tm);
@@ -2769,10 +2782,13 @@ static void mainloop(void) {
                 if (use_psi_monitors && handler_info->handler == mp_event_common) {
 		    if (handler_info->data == VMPRESS_LEVEL_SUPER_CRITICAL) {
 			    s_crit_event = true;
+			    /* Scale the 'polling' accordingly */
+			    if (psi_poll_period_scrit_ms != psi_poll_period_ms)
+				    polling /= (psi_poll_period_scrit_ms / psi_poll_period_ms);
 			    vmstat_parse(&s_crit_base);
 			    continue;
 		    }
-                    if (polling && handler_info->data < poll_handler->data) {
+                    if (polling && (handler_info->data < poll_handler->data || s_crit_event)) {
 			/*
 			 * Override the supercritical event only if the system
 			 * is not in direct reclaim.
@@ -2785,8 +2801,12 @@ static void mainloop(void) {
 					   s_crit_base.field.pgscan_direct_throttle;
 				sync = s_crit_current.field.pgscan_direct -
 				       s_crit_base.field.pgscan_direct;
-				if (!throttle && !sync)
+				if (!throttle && !sync) {
 					s_crit_event = false;
+					/* Reset the scaled polling period. */
+					if (psi_poll_period_scrit_ms != psi_poll_period_ms)
+						polling *= (psi_poll_period_scrit_ms / psi_poll_period_ms);
+				}
 				s_crit_base = s_crit_current;
 			}
                         continue;
@@ -2883,6 +2903,10 @@ int main(int argc __unused, char **argv __unused) {
 	  snprintf(default_value, PROPERTY_VALUE_MAX, "%d", PSI_POLL_PERIOD_MS);
 	  strlcpy(property, perf_wait_get_prop("ro.lmk.psi_poll_period_ms", default_value).value, PROPERTY_VALUE_MAX);
 	  psi_poll_period_ms = strtod(property, NULL);
+
+	  snprintf(default_value, PROPERTY_VALUE_MAX, "%d", PSI_POLL_PERIOD_MS);
+	  strlcpy(property, perf_wait_get_prop("ro.lmk.psi_poll_period_scrit_ms", default_value).value, PROPERTY_VALUE_MAX);
+	  psi_poll_period_scrit_ms = strtod(property, NULL);
 
 	  snprintf(default_value, PROPERTY_VALUE_MAX, "%d", PSI_SCRIT_COMPLETE_STALL_MS);
 	  strlcpy(property, perf_wait_get_prop("ro.lmk.psi_scrit_complete_stall_ms", default_value).value, PROPERTY_VALUE_MAX);
