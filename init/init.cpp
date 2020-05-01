@@ -80,6 +80,7 @@
 #include "service.h"
 #include "service_parser.h"
 #include "sigchld_handler.h"
+#include "subcontext.h"
 #include "system/core/init/property_service.pb.h"
 #include "util.h"
 
@@ -113,8 +114,6 @@ static int property_triggers_enabled = 0;
 
 static int signal_fd = -1;
 static int property_fd = -1;
-
-static std::unique_ptr<Subcontext> subcontext;
 
 struct PendingControlMessage {
     std::string message;
@@ -268,9 +267,8 @@ Parser CreateParser(ActionManager& action_manager, ServiceList& service_list) {
     Parser parser;
 
     parser.AddSectionParser("service", std::make_unique<ServiceParser>(
-                                               &service_list, subcontext.get(), std::nullopt));
-    parser.AddSectionParser("on",
-                            std::make_unique<ActionParser>(&action_manager, subcontext.get()));
+                                               &service_list, GetSubcontext(), std::nullopt));
+    parser.AddSectionParser("on", std::make_unique<ActionParser>(&action_manager, GetSubcontext()));
     parser.AddSectionParser("import", std::make_unique<ImportParser>(&parser));
 
     return parser;
@@ -280,9 +278,9 @@ Parser CreateParser(ActionManager& action_manager, ServiceList& service_list) {
 Parser CreateServiceOnlyParser(ServiceList& service_list, bool from_apex) {
     Parser parser;
 
-    parser.AddSectionParser("service",
-                            std::make_unique<ServiceParser>(&service_list, subcontext.get(),
-                                                            std::nullopt, from_apex));
+    parser.AddSectionParser(
+            "service", std::make_unique<ServiceParser>(&service_list, GetSubcontext(), std::nullopt,
+                                                       from_apex));
     return parser;
 }
 
@@ -836,7 +834,7 @@ int SecondStageMain(int argc, char** argv) {
         PLOG(FATAL) << "SetupMountNamespaces failed";
     }
 
-    subcontext = InitializeSubcontext();
+    InitializeSubcontext();
 
     ActionManager& am = ActionManager::GetInstance();
     ServiceList& sm = ServiceList::GetInstance();
