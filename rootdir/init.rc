@@ -78,6 +78,9 @@ on early-init
     mkdir /dev/boringssl 0755 root root
     mkdir /dev/boringssl/selftest 0755 root root
 
+    # Mount tracefs
+    mount tracefs tracefs /sys/kernel/tracing
+
 # Run boringssl self test for each ABI so that later processes can skip it. http://b/139348610
 on early-init && property:ro.product.cpu.abilist32=*
     exec_start boringssl_self_test32
@@ -544,8 +547,8 @@ on post-fs-data
     enter_default_mount_ns
 
     # /data/apex is now available. Start apexd to scan and activate APEXes.
-    mkdir /data/apex 0750 root system encryption=None
-    mkdir /data/apex/active 0750 root system
+    mkdir /data/apex 0755 root system encryption=None
+    mkdir /data/apex/active 0755 root system
     mkdir /data/apex/backup 0700 root system
     mkdir /data/apex/hashtree 0700 root system
     mkdir /data/apex/sessions 0700 root system
@@ -743,7 +746,7 @@ on post-fs-data
     mkdir /data/misc/train-info/ 0770 statsd system
 
     # Wait for apexd to finish activating APEXes before starting more processes.
-    wait_for_prop apexd.status ready
+    wait_for_prop apexd.status activated
     perform_apex_config
 
     # Special-case /data/media/obb per b/64566063
@@ -758,7 +761,7 @@ on post-fs-data
     # Allow apexd to snapshot and restore device encrypted apex data in the case
     # of a rollback. This should be done immediately after DE_user data keys
     # are loaded. APEXes should not access this data until this has been
-    # completed.
+    # completed and apexd.status becomes "ready".
     exec_start apexd-snapshotde
 
     # Set SELinux security contexts on upgrade or policy update.

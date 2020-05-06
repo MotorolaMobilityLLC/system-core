@@ -85,6 +85,7 @@ cc_library_headers {
     name: "libstatssocket_headers",
     export_include_dirs: ["include"],
     host_supported: true,
+    apex_available: ["com.android.resolv"],
 }
 
 cc_benchmark {
@@ -108,7 +109,10 @@ cc_benchmark {
 
 cc_test {
     name: "libstatssocket_test",
-    srcs: ["tests/stats_event_test.cpp"],
+    srcs: [
+        "tests/stats_event_test.cpp",
+        "tests/stats_writer_test.cpp",
+    ],
     cflags: [
         "-Wall",
         "-Werror",
@@ -121,5 +125,14 @@ cc_test {
         "libcutils",
         "libutils",
     ],
-    test_suites: ["device-tests"],
+    test_suites: ["device-tests", "mts"],
+    //TODO(b/153588990): Remove when the build system properly separates 
+    //32bit and 64bit architectures.
+    compile_multilib: "both",
+    multilib: {
+        lib64: {
+            suffix: "64",
+        }
+    },
+    require_root: true,
 }
