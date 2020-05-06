@@ -451,6 +451,15 @@ static int show_help() {
             " --verbose, -v              Verbose output.\n"
             " --version                  Display version.\n"
             " --help, -h                 Show this message.\n"
+            "\n"
+            "\n"
+            "Unisoc Sysdump Command:\n"
+            " setdump full-enable        Enable fulldump function .\n"
+            " setdump full-disable       Disable fulldump function .\n"
+            " setdump mini-enable        Enable minidump function .\n"
+            " setdump mini-disable       Disable minidump function .\n"
+            " getdump status             Show Enable status of fulldump & minidump function .\n"
+            "\n"
         );
     // clang-format off
     return 0;
@@ -2114,6 +2123,18 @@ int FastBootTool::Main(int argc, char* argv[]) {
                 syntax_error("expected: snapshot-update [cancel|merge]");
             }
             fb->SnapshotUpdateCommand(arg);
+        } else if (command == "setdump") {
+            if ((args.size() == 1 ) && ((args[0] == "full-enable") || (args[0] == "full-disable") || (args[0] == "mini-enable") || (args[0] == "mini-disable"))) {
+                do_oem_command("setdump",&args);
+	    } else {
+	        syntax_error("unknown command %s", command.c_str());
+	    }
+        } else if (command == "getdump") {
+	    if ((args.size() == 1 ) && (args[0] == "status")) {
+	        do_oem_command("getdump",&args);
+	    } else {
+	        syntax_error("unknown command %s", command.c_str());
+	    }
         } else {
             syntax_error("unknown command %s", command.c_str());
         }
