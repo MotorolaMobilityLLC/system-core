@@ -168,7 +168,6 @@ static bool should_force_check(int fs_stat) {
             FS_STAT_E2FSCK_FAILED | FS_STAT_TOGGLE_QUOTAS_FAILED |
             FS_STAT_SET_RESERVED_BLOCKS_FAILED | FS_STAT_ENABLE_ENCRYPTION_FAILED);
 }
-
 static void check_fs(const std::string& blk_device, const std::string& fs_type,
                      const std::string& target, int* fs_stat) {
     int status;
@@ -257,6 +256,26 @@ static void check_fs(const std::string& blk_device, const std::string& fs_type,
                 *fs_stat |= FS_STAT_E2FSCK_FS_FIXED;
             }
         }
+#ifndef FS_MGR_RESIZE_DISABLED
+        if (!strcmp(target.c_str(), "/data")) {
+            const char* resize2fs_argv[] = {RESIZE2FS_BIN, "-f",  blk_device.c_str()};
+            if (access(RESIZE2FS_BIN, X_OK)) {
+                LINFO << "Not running " << RESIZE2FS_BIN << " on " << realpath(blk_device)
+                      << " (executable not in system image)";
+            } else {
+                LINFO << "Running " << RESIZE2FS_BIN << " on " << realpath(blk_device);
+                ret = logwrap_fork_execvp(ARRAY_SIZE(resize2fs_argv), resize2fs_argv,
+                                          &status, false, LOG_KLOG | LOG_FILE, false,
+                                          FSCK_LOG_FILE);
+
+                if (ret < 0) {
+                    /* No need to check for error in fork, we can't really handle it now */
+                    LERROR << "Failed trying to run " << RESIZE2FS_BIN;
+                }
+            }
+        }
+#endif
+
     } else if (is_f2fs(fs_type)) {
         const char* f2fs_fsck_argv[] = {F2FS_FSCK_BIN,     "-a", "-c", "10000", "--debug-cache",
                                         blk_device.c_str()};
