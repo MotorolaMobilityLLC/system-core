@@ -54,7 +54,6 @@ std::string prop_clientwindit_value = "android-h3g-{country}-revc";
 std::string prop_clientmx_value = "android-attmexico-mx-revc";
 std::string prop_clientuk_value = "android-ee-uk-revc";
 std::string prop_clientbr_value = "android-tim-br-revc";
-std::string prop_clientit_value = "android-tim-it-revc";
 std::string prop_clientor_value = "android-orange-{country}-revc";
 std::string prop_clienttmobile_value = "android-tmobile-{country}";
 std::string prop_clientdt_value = "android-dt-{country}-revc";
@@ -118,9 +117,7 @@ void set_system_properties(){
 
         if (isProductNameBlackjackReteu(carrier_ontim)) {
             prop_product_value = "blackjack_reteu";
-            if (carrier_ontim == "timit_timit") {
-                property_set(prop_msclient, prop_clientit_value);
-            } else if (carrier_ontim == "windit_windds") {
+            if (carrier_ontim == "windit_windds") {
                 property_set(prop_msclient, prop_clientwindit_value);
             } else if (carrier_ontim == "dteu_dteu") {
                 property_set(prop_amclient, prop_clienttmobile_value);
@@ -250,7 +247,6 @@ bool isProductNameBlackjackReteu(std::string carrier_ontim) {
     if (carrier_ontim == "dteu_dteu") return true;
     if (carrier_ontim == "reteu_reteuop") return true;
     if (carrier_ontim == "openeu_pluspl") return true;
-    if (carrier_ontim == "timit_timit") return true;
     if (carrier_ontim == "windit_windds") return true;
     if (carrier_ontim == "reteu_retfr") return true;
     if (carrier_ontim == "eegb_uksl") return true;
