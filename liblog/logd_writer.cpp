@@ -52,19 +52,6 @@ static atomic_int logd_socket;
 // function is used to reconnect to logd without requiring a new socket.
 static void LogdConnect() {
   sockaddr_un un = {};
-#if defined(MTK_LOGD_ENHANCE) && defined(CONFIG_MT_DEBUG_BUILD) && defined(MTK_LOGDW_SOCK_BLOCK)
-      if (skip_thread == 0) {
-        struct timeval tm;
-
-        tm.tv_sec = SOCKET_TIME_OUT;
-        tm.tv_usec = 0;
-        if (setsockopt(logd_socket, SOL_SOCKET, SO_RCVTIMEO, &tm, sizeof(tm)) == -1 ||
-          setsockopt(logd_socket, SOL_SOCKET, SO_SNDTIMEO, &tm, sizeof(tm)) == -1) {
-          close(logd_socket);
-          return;
-        }
-      }
-#endif
   un.sun_family = AF_UNIX;
   strcpy(un.sun_path, "/dev/socket/logdw");
   TEMP_FAILURE_RETRY(connect(logd_socket, reinterpret_cast<sockaddr*>(&un), sizeof(sockaddr_un)));
