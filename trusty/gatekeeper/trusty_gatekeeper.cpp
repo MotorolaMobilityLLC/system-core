@@ -71,6 +71,8 @@ Return<void> TrustyGateKeeperDevice::enroll(uint32_t uid,
         return {};
     }
 
+    LOG(INFO) << "TrustyGateKeeper  Enroll =========>>>>>>>>>";
+
     if (desiredPassword.size() == 0) {
         _hidl_cb({GatekeeperStatusCode::ERROR_GENERAL_FAILURE, 0, {}});
         return {};
@@ -84,8 +86,10 @@ Return<void> TrustyGateKeeperDevice::enroll(uint32_t uid,
     if (error != ERROR_NONE) {
         _hidl_cb({GatekeeperStatusCode::ERROR_GENERAL_FAILURE, 0, {}});
     } else if (response.error == ERROR_RETRY) {
+        LOG(INFO) << "TrustyGateKeeper  Enroll timeout:" << response.retry_timeout <<" =========<<<<<<<<<<<<";
         _hidl_cb({GatekeeperStatusCode::ERROR_RETRY_TIMEOUT, response.retry_timeout, {}});
     } else if (response.error != ERROR_NONE) {
+        LOG(INFO) << "TrustyGateKeeper  Enroll return fail:" << response.error <<" =========<<<<<<<<<<<<";
         _hidl_cb({GatekeeperStatusCode::ERROR_GENERAL_FAILURE, 0, {}});
     } else {
         hidl_vec<uint8_t> new_handle(response.enrolled_password_handle.Data<uint8_t>(),
@@ -93,6 +97,7 @@ Return<void> TrustyGateKeeperDevice::enroll(uint32_t uid,
                                              response.enrolled_password_handle.size());
         _hidl_cb({GatekeeperStatusCode::STATUS_OK, response.retry_timeout, new_handle});
     }
+    LOG(INFO) << "TrustyGateKeeper  Enroll =========<<<<<<<<<<<<";
     return {};
 }
 
@@ -104,6 +109,7 @@ Return<void> TrustyGateKeeperDevice::verify(
         _hidl_cb({GatekeeperStatusCode::ERROR_GENERAL_FAILURE, 0, {}});
         return {};
     }
+    LOG(INFO) << "TrustyGateKeeper  Verify =========>>>>>>>>>";
 
     if (enrolledPasswordHandle.size() == 0) {
         _hidl_cb({GatekeeperStatusCode::ERROR_GENERAL_FAILURE, 0, {}});
@@ -118,8 +124,10 @@ Return<void> TrustyGateKeeperDevice::verify(
     if (error != ERROR_NONE) {
         _hidl_cb({GatekeeperStatusCode::ERROR_GENERAL_FAILURE, 0, {}});
     } else if (response.error == ERROR_RETRY) {
+        LOG(INFO) << "TrustyGateKeeper  Verify timeout:" << response.retry_timeout <<"=========<<<<<<<<<<<<";
         _hidl_cb({GatekeeperStatusCode::ERROR_RETRY_TIMEOUT, response.retry_timeout, {}});
     } else if (response.error != ERROR_NONE) {
+        LOG(INFO) << "TrustyGateKeeper  Verify return fail:" << response.error <<" =========<<<<<<<<<<<<";
         _hidl_cb({GatekeeperStatusCode::ERROR_GENERAL_FAILURE, 0, {}});
     } else {
         hidl_vec<uint8_t> auth_token(
@@ -130,6 +138,7 @@ Return<void> TrustyGateKeeperDevice::verify(
                                             : GatekeeperStatusCode::STATUS_OK,
                   response.retry_timeout, auth_token});
     }
+    LOG(INFO) << "TrustyGateKeeper  Verify =========<<<<<<<<<<<<";
     return {};
 }
 
