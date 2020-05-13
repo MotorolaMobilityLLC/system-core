@@ -82,6 +82,7 @@
 #define PROC_STATUS_TGID_FIELD "Tgid:"
 #define LINE_MAX 128
 
+#define VISIBLE_APP_ADJ 100
 #define PERCEPTIBLE_APP_ADJ 200
 
 /* Android Logger event logtags (see event.logtags) */
@@ -137,8 +138,9 @@
 /* ro.lmk.psi_partial_stall_ms property defaults */
 #define DEF_PARTIAL_STALL_LOWRAM 200
 #define DEF_PARTIAL_STALL 70
+// Moto huangzq2: set default full stall threshold to 200ms as 700ms is too high.
 /* ro.lmk.psi_complete_stall_ms property defaults */
-#define DEF_COMPLETE_STALL 700
+#define DEF_COMPLETE_STALL 200
 
 // TODO: To make pidfd compatible to system without pidfd support,
 // we define pidfd syscalls here, this change need to be reverted
@@ -1975,6 +1977,31 @@ static int find_and_kill_process(int min_score_adj, int kill_reason, const char 
     return killed_size;
 }
 
+/*
+ * Moto huangzq2: Dump killable processes with min_score_adj provided,
+ * just for debugging purpose.
+ */
+static void dump_killable_processes(int min_score_adj) {
+    char buf[LINE_MAX];
+    int i;
+
+    ALOGW("dump_killable_processes above adj %d", min_score_adj);
+
+    for (i = OOM_SCORE_ADJ_MAX; i >= min_score_adj; i--) {
+        struct proc *procp;
+        struct adjslot_list *head = &procadjslot_list[ADJTOSLOT(i)];
+        struct adjslot_list *curr = head->next;
+        while (curr != head) {
+            int pid = ((struct proc *)curr)->pid;
+            int tasksize = proc_get_size(pid);
+            char *taskname = proc_get_name(pid, buf, sizeof(buf));
+            procp = (struct proc *)curr;
+            ALOGW("adj %d, %s:%d, %" PRId64 "kb", i, taskname, pid, tasksize*page_k);
+            curr = curr->next;
+        }
+    }
+}
+
 static int64_t get_memory_usage(struct reread_data *file_data) {
     int ret;
     int64_t mem_usage;
@@ -2123,7 +2150,8 @@ static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_
     enum zone_watermark wmark = WMARK_NONE;
     char kill_desc[LINE_MAX];
     bool cut_thrashing_limit = false;
-    int min_score_adj = 0;
+    // Moto huangzq2: kill to 100 by default, only kill to adj 0 on critical event.
+    int min_score_adj = VISIBLE_APP_ADJ;
 
     /* Skip while still killing a process */
     if (is_kill_pending()) {
@@ -2234,6 +2262,8 @@ static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_
          */
         kill_reason = NOT_RESPONDING;
         strncpy(kill_desc, "device is not responding", sizeof(kill_desc));
+        /* Moto huangzq2: only kill to adj 0 on critical event. */
+        min_score_adj = 0;
     } else if (swap_is_low && thrashing > thrashing_limit_pct) {
         /* Page cache is thrashing while swap is low */
         kill_reason = LOW_SWAP_AND_THRASHING;
@@ -2264,11 +2294,12 @@ static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_
         min_score_adj = PERCEPTIBLE_APP_ADJ;
     }
 
+    // Moto huangzq2: add log for debugging.
     if (debug_process_killing) {
         int64_t other_file = max(mi.field.nr_file_pages - mi.field.shmem - mi.field.unevictable
                         - mi.field.swap_cached, 0);
         ALOGW("%s stall, swap free %d%%(%d), file %d%%, anon %d%%, wmark %s %" PRId64 "(%ldm), "
-                "thrashing %" PRId64 "%%(%d)",
+                "thrashing %" PRId64 "%%(%d), kill_reason %d",
             level == VMPRESS_LEVEL_CRITICAL ? "COMPLETE" : "PARTIAL",
             (int)(mi.field.free_swap*100/mi.field.total_swap), swap_free_low_percentage,
             (int)(other_file*100/mi.field.total_swap),
@@ -2276,7 +2307,7 @@ static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_
             wmark < WMARK_HIGH ? (wmark > WMARK_LOW ? "min" : "low") : "high",
             (mi.field.nr_free_pages - mi.field.cma_free) * page_k / 1024,
             watermarks.high_wmark * page_k / 1024,
-            thrashing, thrashing_limit);
+            thrashing, thrashing_limit, kill_reason);
     }
 
     /* Kill a process if necessary */
@@ -2292,6 +2323,10 @@ static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_
                  */
                 thrashing_limit = (thrashing_limit * (100 - thrashing_limit_decay_pct)) / 100;
             }
+        } else if (debug_process_killing) {
+            // Moto huangzq2: dump all processes if we killed nothing.
+            ALOGW("No killable process above oom_adj %d", min_score_adj);
+            dump_killable_processes(0);
         }
     }
 
