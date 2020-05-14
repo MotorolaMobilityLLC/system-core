@@ -169,7 +169,17 @@ int FirstStageMain(int argc, char** argv) {
     // Now that tmpfs is mounted on /dev and we have /dev/kmsg, we can actually
     // talk to the outside world...
 #ifdef MTK_LOG
-    InitKernelLogging_split(argv);
+#ifndef MTK_LOG_DISABLERATELIMIT
+    if (cmdline.find("init.mtklogdrl=1") != std::string::npos)
+        SetMTKLOGDISABLERATELIMIT();
+#else
+    SetMTKLOGDISABLERATELIMIT();
+#endif // MTK_LOG_DISABLERATELIMIT
+
+    if (GetMTKLOGDISABLERATELIMIT())
+        InitKernelLogging_split(argv);
+    else
+        InitKernelLogging(argv);
 #else
     InitKernelLogging(argv);
 #endif

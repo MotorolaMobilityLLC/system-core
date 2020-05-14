@@ -106,6 +106,9 @@ uint64_t Getwhileepduration(int target);
 void StartPropertyFlowTraceLog(void);
 void SnapshotPropertyFlowTraceLog(const std::string&);
 void EndPropertyFlowTraceLog(void);
+
+void SetMTKLOGDISABLERATELIMIT(void);
+int GetMTKLOGDISABLERATELIMIT(void);
 #endif
 
 #ifdef MTK_TRACE

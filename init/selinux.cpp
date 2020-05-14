@@ -595,6 +595,8 @@ static int SelinuxKlogCallback_split(int type, const char* fmt, ...) {
     if (type == SELINUX_AVC) {
         SelinuxAvcLog(buf, sizeof(buf));
     } else {
+        if (buf[length_written - 1] == '\n')
+           buf[length_written - 1] = 0;
         KernelLogger_split(android::base::MAIN, severity, "selinux", nullptr, 0, buf);
     }
     return 0;
@@ -707,7 +709,21 @@ void MountMissingSystemPartitions() {
 int SetupSelinux(char** argv) {
     SetStdioToDevNull(argv);
 #ifdef MTK_LOG
-    InitKernelLogging_split(argv);
+#ifndef MTK_LOG_DISABLERATELIMIT
+    {
+        std::string cmdline;
+        android::base::ReadFileToString("/proc/cmdline", &cmdline);
+
+        if (cmdline.find("init.mtklogdebuggable=1") != std::string::npos)
+            SetMTKLOGDISABLERATELIMIT();
+    }
+#else
+    SetMTKLOGDISABLERATELIMIT();
+#endif // MTK_LOG_DISABLERATELIMIT
+    if (GetMTKLOGDISABLERATELIMIT())
+        InitKernelLogging_split(argv);
+    else
+        InitKernelLogging(argv);
 #else
     InitKernelLogging(argv);
 #endif
@@ -722,7 +738,10 @@ int SetupSelinux(char** argv) {
 
     // Set up SELinux, loading the SELinux policy.
 #ifdef MTK_LOG
-    SelinuxSetupKernelLogging_split();
+    if (GetMTKLOGDISABLERATELIMIT())
+        SelinuxSetupKernelLogging_split();
+    else
+        SelinuxSetupKernelLogging();
 #else
     SelinuxSetupKernelLogging();
 #endif

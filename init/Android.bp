@@ -115,6 +115,7 @@ cc_defaults {
                 "-UDUMP_ON_UMOUNT_FAILURE",
                 "-DDUMP_ON_UMOUNT_FAILURE=1",
                 "-DMTK_PROP_WDOG=1",
+                "-DMTK_LOG_DISABLERATELIMIT=1"
             ],
         },
         eng: {

@@ -36,6 +36,9 @@ init_options += -DLOG_UEVENTS=0 \
     -DSEPOLICY_VERSION=$(POLICYVERS)
 
 init_options += -DMTK_LOG=1
+ifneq (,$(filter userdebug eng,$(TARGET_BUILD_VARIANT)))
+init_options += -DMTK_LOG_DISABLERATELIMIT=1
+endif
 
 init_cflags += \
     $(init_options) \

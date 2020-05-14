@@ -36,7 +36,7 @@
 #include <unistd.h>
 #include <wchar.h>
 
-#ifdef MTK_PROP_WDOG
+#if defined(MTK_LOG) && defined(MTK_PROP_WDOG)
 #include <sys/eventfd.h>
 #endif
 
@@ -64,7 +64,7 @@
 #include <selinux/label.h>
 #include <selinux/selinux.h>
 
-#ifdef MTK_PROP_WDOG
+#if defined(MTK_LOG) && defined(MTK_PROP_WDOG)
 #include <backtrace/Backtrace.h>
 #endif
 
@@ -110,7 +110,7 @@ static std::thread property_service_thread;
 
 static PropertyInfoAreaFile property_info_area;
 
-#ifdef MTK_PROP_WDOG
+#if defined(MTK_LOG) && defined(MTK_PROP_WDOG)
 static std::mutex pending_wd_messages_lock;
 static std::queue<std::string> pending_wd_messages;
 
@@ -387,7 +387,7 @@ static void PropSetLog(const std::string& name, const std::string& value, std::s
     s.append(new_value);
     s.append("]");
 
-    KernelLogger_split(android::base::MAIN, android::base::INFO, "init", nullptr, 0, s.c_str());
+    LOG(INFO) << s;
 }
 #endif
 
@@ -445,8 +445,8 @@ static uint32_t PropertySet(const std::string& name, const std::string& value, s
     }
 
 #ifdef MTK_LOG
-    // MTK add log
-    PropSetLog(name, value, error);
+    if (GetMTKLOGDISABLERATELIMIT()) // MTK add log
+        PropSetLog(name, value, error);
 #endif
 
     return PROP_SUCCESS;
@@ -859,7 +859,7 @@ static void handle_property_set_fd() {
 #endif
 }
 
-#ifdef MTK_PROP_WDOG
+#if defined(MTK_LOG) && defined(MTK_PROP_WDOG)
 static void handle_property_set_fd_wrap() {
     QueuePropWDMessage("start");
 
@@ -1445,10 +1445,10 @@ static void PropertyServiceThread() {
         LOG(FATAL) << result.error();
     }
 
-#ifndef MTK_PROP_WDOG
-    if (auto result = epoll.RegisterHandler(property_set_fd, handle_property_set_fd);
-#else
+#if defined(MTK_LOG) && defined(MTK_PROP_WDOG)
     if (auto result = epoll.RegisterHandler(property_set_fd, handle_property_set_fd_wrap);
+#else
+    if (auto result = epoll.RegisterHandler(property_set_fd, handle_property_set_fd);
 #endif
         !result.ok()) {
         LOG(FATAL) << result.error();
@@ -1467,34 +1467,39 @@ static void PropertyServiceThread() {
 
 #ifdef MTK_LOG
         auto epoll_timeout = std::optional<std::chrono::milliseconds>{};
-        int log_ms = _LogReap();//PropSetLogReap();
 
-        if (!Getwhilepiggybacketed(0) && Getwhileepduration(0) > 1999) {
-            if (log_ms == -1) {
-                std::string s;
+        if (GetMTKLOGDISABLERATELIMIT()) {
+            int log_ms = _LogReap();//PropSetLogReap();
 
-                s.append("Lastest epoll wait tooks ");
-                s.append(StringPrintf("%llu", (unsigned long long) Getwhileepduration(0)));
-                s.append("ms");
+            if (!Getwhilepiggybacketed(0) && Getwhileepduration(0) > 1999) {
+                if (log_ms == -1) {
+                    std::string s;
 
-                KernelLogger_split(android::base::MAIN, android::base::INFO, "init", nullptr, 0, s.c_str());
-            } else {
-                PropSetLogReap(1);
-                log_ms = _LogReap();
+                    s.append("Lastest epoll wait tooks ");
+                    s.append(StringPrintf("%llu", (unsigned long long) Getwhileepduration(0)));
+                    s.append("ms");
+
+                    LOG(INFO) << s;
+                } else {
+                    PropSetLogReap(1);
+                    log_ms = _LogReap();
+                }
             }
-        }
 
-        if (log_ms > -1)
-            epoll_timeout = std::chrono::milliseconds(log_ms);
+            if (log_ms > -1)
+                epoll_timeout = std::chrono::milliseconds(log_ms);
+        }
 
         android::base::Timer t;
 
         auto pending_functions = epoll.Wait(epoll_timeout);
 
-        uint64_t duration = t.duration().count();
-        uint64_t nowms = std::chrono::duration_cast<std::chrono::milliseconds>(boot_clock::now().time_since_epoch()).count();
+        if (GetMTKLOGDISABLERATELIMIT()) {
+            uint64_t duration = t.duration().count();
+            uint64_t nowms = std::chrono::duration_cast<std::chrono::milliseconds>(boot_clock::now().time_since_epoch()).count();
 
-        Setwhiletime(0, duration, nowms);
+            Setwhiletime(0, duration, nowms);
+        }
 #else
         auto pending_functions = epoll.Wait(std::nullopt);
 #endif
@@ -1537,11 +1542,11 @@ void StartPropertyService(int* epoll_socket) {
 
 #ifdef MTK_LOG
     SetPropServThrStart(1);
-#endif
 
 #ifdef MTK_PROP_WDOG
     auto new_wd_thread = std::thread{PropWDThread};
     props_wd_thread.swap(new_wd_thread);
+#endif
 #endif
 
     auto new_thread = std::thread{PropertyServiceThread};

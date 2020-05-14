@@ -709,7 +709,7 @@ static constexpr uint32_t kMillisecondsPerMicrosecond = 1e3;
 static std::mutex _log_lock;
 
 static void _KernelLogger_split_final(int fd, int level,
-                  const char* tag, const char* msg);
+                  const char* tag, const char* msg, int length);
 static int _GetSplitFD(int idx);
 
 int PropSetLogReap(int force) {
@@ -751,7 +751,7 @@ int PropSetLogReap(int force) {
         int fklog_fd = _GetSplitFD(_SPLIT_PROPSET_);
         if (fklog_fd == -1) return -1;
 
-        _KernelLogger_split_final(fklog_fd, 6, "init", reap_log.c_str());
+        _KernelLogger_split_final(fklog_fd, 6, "init", reap_log.c_str(), reap_log.length());
     }
     else {
         return (MTK_LOG_LINE_MAXTIME - duration_ms);
@@ -848,7 +848,7 @@ void PropSetLogReset()
 }
 
 static void _KernelLogger_split_final(int fd, int level,
-                  const char* tag, const char* msg) {
+                  const char* tag, const char* msg, int length) {
 
   // The kernel's printk buffer is only 1024 bytes.
   // TODO: should we automatically break up long lines into multiple lines?
@@ -857,17 +857,17 @@ static void _KernelLogger_split_final(int fd, int level,
   size_t size;
 
   if (gettid() == 1 && while_flag[_SPLIT_OTHER_]) {
-    size = snprintf(buf, sizeof(buf), "<%d>%s %d: [%llu][%llu]%s\n", level, tag, fd,
+    size = snprintf(buf, sizeof(buf), "<%d>%s %d: [%llu][%llu]%.*s\n", level, tag, fd,
       (unsigned long long) while_nowms[_SPLIT_OTHER_],
-      (unsigned long long) while_ep_duration[_SPLIT_OTHER_], msg);
+      (unsigned long long) while_ep_duration[_SPLIT_OTHER_], length, msg);
     while_log_piggybacked[_SPLIT_OTHER_] = true;
   } else if (PropServThrGetTid() == gettid() && while_flag[_SPLIT_PROPSET_]) {
-    size = snprintf(buf, sizeof(buf), "<%d>%s %d: [%llu][%llu]%s\n", level, tag, fd,
+    size = snprintf(buf, sizeof(buf), "<%d>%s %d: [%llu][%llu]%.*s\n", level, tag, fd,
       (unsigned long long) while_nowms[_SPLIT_PROPSET_],
-      (unsigned long long) while_ep_duration[_SPLIT_PROPSET_], msg);
+      (unsigned long long) while_ep_duration[_SPLIT_PROPSET_], length, msg);
     while_log_piggybacked[_SPLIT_PROPSET_] = true;
   } else {
-    size = snprintf(buf, sizeof(buf), "<%d>%s %d: %s\n", level, tag, fd, msg);
+    size = snprintf(buf, sizeof(buf), "<%d>%s %d: %.*s\n", level, tag, fd, length, msg);
   }
 
   if (size > sizeof(buf)) {
@@ -885,7 +885,7 @@ static void _KernelLogger_split_final(int fd, int level,
 }
 
 static void _KernelLogger_split_lock(int level,
-                  const char* tag, const char* msg) {
+                  const char* tag, const char* msg, int length) {
     _log_lock.lock();
 
     int fklog_fd = _GetSplitFD(_SPLIT_OTHER_);
@@ -894,12 +894,26 @@ static void _KernelLogger_split_lock(int level,
         return;
     }
 
-    _KernelLogger_split_final(fklog_fd, level, tag, msg);
+    _KernelLogger_split_final(fklog_fd, level, tag, msg, length);
     _log_lock.unlock();
 }
 
-void KernelLogger_split(android::base::LogId, android::base::LogSeverity severity,
-                  const char* tag, const char*, unsigned int, const char* msg) {
+// This splits the message up line by line, by calling log_function with a pointer to the start of
+// each line and the size up to the newline character.  It sends size = -1 for the final line.
+template <typename F, typename... Args>
+static void SplitByLines(const char* msg, const F& log_function, Args&&... args) {
+  const char* newline = strchr(msg, '\n');
+  while (newline != nullptr) {
+    log_function(msg, newline - msg, args...);
+    msg = newline + 1;
+    newline = strchr(msg, '\n');
+  }
+
+  log_function(msg, -1, args...);
+}
+
+static void KernelLoggerLine_split(const char* msg, int length, android::base::LogSeverity severity,
+                          const char* tag) {
   // clang-format off
   static constexpr int kLogSeverityToKernelLogLevel[] = {
       [android::base::VERBOSE] = 7,              // KERN_DEBUG (there is no verbose kernel log
@@ -926,7 +940,7 @@ void KernelLogger_split(android::base::LogId, android::base::LogSeverity severit
     int klog_fd = _GetSplitFD(_SPLIT_OTHER_);
     if (klog_fd == -1) return;
     int level = kLogSeverityToKernelLogLevel[severity];
-    _KernelLogger_split_final(klog_fd, level, tag, msg);
+    _KernelLogger_split_final(klog_fd, level, tag, msg, length);
   } else if (PropServThrGetTid() == gettid()) {
     fklog_fd = _GetSplitFD(_SPLIT_PROPSET_);
 
@@ -934,12 +948,17 @@ void KernelLogger_split(android::base::LogId, android::base::LogSeverity severit
 
     int level = kLogSeverityToKernelLogLevel[severity];
 
-    _KernelLogger_split_final(fklog_fd, level, tag, msg);
+    _KernelLogger_split_final(fklog_fd, level, tag, msg, length);
   } else {
     int level = kLogSeverityToKernelLogLevel[severity];
 
-    _KernelLogger_split_lock(level, tag, msg);
+    _KernelLogger_split_lock(level, tag, msg, length);
   }
+}
+
+void KernelLogger_split(android::base::LogId, android::base::LogSeverity severity, const char* tag,
+                  const char*, unsigned int, const char* full_message) {
+  SplitByLines(full_message, KernelLoggerLine_split, severity, tag);
 }
 #endif // #if defined(__linux__)
 
@@ -1026,6 +1045,9 @@ static std::queue<std::string> _PropertyFlowTraceQueue;
 static bool _isInPropertyFlowTrace = false;
 
 void StartPropertyFlowTraceLog(void) {
+    if (!GetMTKLOGDISABLERATELIMIT())
+        return;
+
     android::base::Timer t;
     _PropertyFlowTraceTimer = t;
 
@@ -1036,6 +1058,9 @@ void StartPropertyFlowTraceLog(void) {
 }
 
 void SnapshotPropertyFlowTraceLog(const std::string& log) {
+    if (!GetMTKLOGDISABLERATELIMIT())
+        return;
+
     std::string s;
 
     if (!_isInPropertyFlowTrace)
@@ -1052,6 +1077,9 @@ void SnapshotPropertyFlowTraceLog(const std::string& log) {
 }
 
 void EndPropertyFlowTraceLog(void) {
+    if (!GetMTKLOGDISABLERATELIMIT())
+        return;
+
     std::string s;
     auto duration = _PropertyFlowTraceTimer.duration();
 
@@ -1069,6 +1097,16 @@ void EndPropertyFlowTraceLog(void) {
         _PropertyFlowTraceQueue.pop();
 
     _isInPropertyFlowTrace = false;
+}
+
+static int _mtklogdisableratelimit = 0;
+
+void SetMTKLOGDISABLERATELIMIT(void) {
+    _mtklogdisableratelimit = 1;
+}
+
+int GetMTKLOGDISABLERATELIMIT(void) {
+    return _mtklogdisableratelimit;
 }
 #endif
 

@@ -679,7 +679,7 @@ static int _LogReap() {
     else if (wait_ >= 0)
         wait_ = (60 - wait_) * 1000;
 
-    if (!isPropServThrStart()) {
+    if (GetMTKLOGDISABLERATELIMIT() && !isPropServThrStart()) {
         log_ms = PropSetLogReap(0);
 
         if (log_ms == -1)
@@ -758,7 +758,22 @@ int SecondStageMain(int argc, char** argv) {
 
     SetStdioToDevNull(argv);
 #ifdef MTK_LOG
-    InitKernelLogging_split(argv);
+#ifndef MTK_LOG_DISABLERATELIMIT
+    {
+        std::string cmdline;
+        android::base::ReadFileToString("/proc/cmdline", &cmdline);
+
+        if (cmdline.find("init.mtklogdrl=1") != std::string::npos)
+            SetMTKLOGDISABLERATELIMIT();
+    }
+#else
+    SetMTKLOGDISABLERATELIMIT();
+#endif // MTK_LOG_DISABLERATELIMIT
+
+    if (GetMTKLOGDISABLERATELIMIT())
+        InitKernelLogging_split(argv);
+    else
+        InitKernelLogging(argv);
 #else
     InitKernelLogging(argv);
 #endif
@@ -816,7 +831,10 @@ int SecondStageMain(int argc, char** argv) {
 
     // Now set up SELinux for second stage.
 #ifdef MTK_LOG
-    SelinuxSetupKernelLogging_split();
+    if (GetMTKLOGDISABLERATELIMIT())
+        SelinuxSetupKernelLogging_split();
+    else
+        SelinuxSetupKernelLogging();
 #else
     SelinuxSetupKernelLogging();
 #endif
@@ -950,17 +968,20 @@ int SecondStageMain(int argc, char** argv) {
         if (log_ms > -1 && (!epoll_timeout || epoll_timeout->count() > log_ms))
             epoll_timeout = std::chrono::milliseconds(log_ms);
 
-        if (!Getwhilepiggybacketed(1) && Getwhileepduration(1) > 1999) {
-            LOG(INFO) << "Lastest epoll wait tooks " << Getwhileepduration(1) << "ms";
+        if (GetMTKLOGDISABLERATELIMIT()) {
+            if (!Getwhilepiggybacketed(1) && Getwhileepduration(1) > 1999)
+                LOG(INFO) << "Lastest epoll wait tooks " << Getwhileepduration(1) << "ms";
         }
 
         android::base::Timer t;
 
         auto pending_functions = epoll.Wait(epoll_timeout);
 
-        uint64_t duration = t.duration().count();
-        uint64_t nowms = std::chrono::duration_cast<std::chrono::milliseconds>(boot_clock::now().time_since_epoch()).count();
-        Setwhiletime(1, duration, nowms);
+        if (GetMTKLOGDISABLERATELIMIT()) {
+            uint64_t duration = t.duration().count();
+            uint64_t nowms = std::chrono::duration_cast<std::chrono::milliseconds>(boot_clock::now().time_since_epoch()).count();
+            Setwhiletime(1, duration, nowms);
+        }
 #else
         auto pending_functions = epoll.Wait(epoll_timeout);
 #endif
