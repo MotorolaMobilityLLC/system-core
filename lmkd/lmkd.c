@@ -1993,10 +1993,9 @@ static void dump_killable_processes(int min_score_adj) {
         struct adjslot_list *curr = head->next;
         while (curr != head) {
             int pid = ((struct proc *)curr)->pid;
-            int tasksize = proc_get_size(pid);
             char *taskname = proc_get_name(pid, buf, sizeof(buf));
             procp = (struct proc *)curr;
-            ALOGW("adj %d, %s:%d, %" PRId64 "kb", i, taskname, pid, tasksize*page_k);
+            ALOGW("adj %d, %s:%d", i, taskname, pid);
             curr = curr->next;
         }
     }
