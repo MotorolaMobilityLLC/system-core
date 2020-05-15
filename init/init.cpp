@@ -101,6 +101,66 @@ std::vector<std::string> late_import_paths;
 
 static std::vector<Subcontext>* subcontexts;
 
+enum {
+    MEMINFO_TOTAL,
+    MEMINFO_COUNT
+};
+
+void get_mem_info(uint64_t mem[]) {
+    char buffer[1024];
+    unsigned int numFound = 0;
+
+    int fd = open("/proc/meminfo", O_RDONLY);
+
+    if (fd < 0) {
+        printf("Unable to open /proc/meminfo: %s\n", strerror(errno));
+        return;
+    }
+
+    const int len = read(fd, buffer, sizeof(buffer)-1);
+    close(fd);
+
+    if (len < 0) {
+        printf("Empty /proc/meminfo");
+        return;
+    }
+    buffer[len] = 0;
+
+    static const char* const tags[] = {
+            "MemTotal:",
+            NULL
+    };
+    static const int tagsLen[] = {
+            9,
+            0
+    };
+
+    char* p = buffer;
+    while (*p && (numFound < (sizeof(tagsLen) / sizeof(tagsLen[0])))) {
+        int i = 0;
+        while (tags[i]) {
+            if (strncmp(p, tags[i], tagsLen[i]) == 0) {
+                p += tagsLen[i];
+                while (*p == ' ') p++;
+                char* num = p;
+                while (*p >= '0' && *p <= '9') p++;
+                if (*p != 0) {
+                    *p = 0;
+                    p++;
+                }
+                mem[i] = atoll(num);
+                numFound++;
+                break;
+            }
+            i++;
+        }
+        while (*p && *p != '\n') {
+            p++;
+        }
+        if (*p) p++;
+    }
+}
+
 void DumpState() {
     ServiceList::GetInstance().DumpState();
     ActionManager::GetInstance().DumpState();
@@ -432,6 +492,21 @@ static void export_kernel_boot_props() {
     }
 }
 
+static void export_ak57_lowram_props() {
+    std::string value = GetProperty("ro.boot.bootloader", "");
+    PLOG(ERROR) << "export_ak57_lowram_props " << value;
+    if(android::base::StartsWith(value, "AK57")) {//AK57 project
+        uint64_t mem[MEMINFO_COUNT] = { };
+        get_mem_info(mem);
+        if(mem[MEMINFO_TOTAL] != 0) {
+            PLOG(ERROR) << "export_ak57_lowram_props ram: " << mem[MEMINFO_TOTAL];
+            if(mem[MEMINFO_TOTAL] < 2097152l) { //2G
+                property_set("ro.config.low_ram", "true");
+            }
+        }
+    }
+}
+
 static void process_kernel_dt() {
     if (!is_android_dt_value_expected("compatible", "android,firmware")) {
         return;
@@ -705,6 +780,8 @@ int SecondStageMain(int argc, char** argv) {
     // Propagate the kernel variables to internal variables
     // used by init as well as the current required properties.
     export_kernel_boot_props();
+
+    export_ak57_lowram_props();
 
     // Make the time that init started available for bootstat to log.
     property_set("ro.boottime.init", getenv("INIT_STARTED_AT"));
