@@ -442,6 +442,7 @@ static void doLogValues(const HealthInfo& props, const struct healthd_config& he
         len = snprintf(dmesgline, sizeof(dmesgline), "battery none");
     }
 
+    len = strlen(dmesgline);
     snprintf(dmesgline + len, sizeof(dmesgline) - len, " chg=%s%s%s%s",
              props.chargerAcOnline ? "a" : "", props.chargerUsbOnline ? "u" : "",
              props.chargerWirelessOnline ? "w" : "", props.chargerDockOnline ? "d" : "");
