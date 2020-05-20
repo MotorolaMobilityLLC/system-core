@@ -1118,3 +1118,15 @@ on userspace-reboot-resume
 
 on property:sys.boot_completed=1 && property:sys.init.userspace_reboot.in_progress=1
   setprop sys.init.userspace_reboot.in_progress ""
+
+on property:ro.build.type=eng
+    chmod 0777 /data/anr
+    chmod 0777 /data/misc
+
+on property:ro.build.type=userdebug
+    chmod 0777 /data/anr
+    chmod 0777 /data/misc
+
+on property:ro.build.type=user
+    chmod 0771 /data/anr
+    chmod 01771 /data/misc
