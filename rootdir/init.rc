@@ -27,6 +27,7 @@ on early-init
     # Set the security context of /postinstall if present.
     restorecon /postinstall
 
+    chown system system /acct
     mkdir /acct/uid
 
     # memory.pressure_level used by lmkd
