@@ -27,6 +27,7 @@ cc_defaults {
         "modprobe.cpp",
         "setprop.cpp",
         "start.cpp",
+        "sendevent2.c",
     ],
     generated_headers: [
         "toolbox_input_labels",
@@ -46,6 +47,7 @@ cc_defaults {
         "setprop",
         "start",
         "stop",
+        "sendevent2",
     ],
 }
 
