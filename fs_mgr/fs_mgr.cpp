@@ -258,7 +258,7 @@ static void check_fs(const std::string& blk_device, const std::string& fs_type,
         }
 #ifndef FS_MGR_RESIZE_DISABLED
         if (!strcmp(target.c_str(), "/data")) {
-            const char* resize2fs_argv[] = {RESIZE2FS_BIN, "-f",  blk_device.c_str()};
+            const char* resize2fs_argv[] = {RESIZE2FS_BIN, "-f", "-e 16384", blk_device.c_str()};
             if (access(RESIZE2FS_BIN, X_OK)) {
                 LINFO << "Not running " << RESIZE2FS_BIN << " on " << realpath(blk_device)
                       << " (executable not in system image)";
