@@ -170,6 +170,10 @@ int fs_mgr_do_format(const FstabEntry& entry, bool crypt_footer) {
     } else if (entry.fs_type == "ext4") {
         return format_ext4(entry.blk_device, entry.mount_point, crypt_footer, needs_projid,
                            entry.fs_mgr_flags.ext_meta_csum);
+    } else if (entry.fs_type == "vfat") {
+        std::vector<const char*> args = {"/system/bin/newfs_msdos", "-F", "16",
+                                         entry.blk_device.c_str()};
+        return logwrap_fork_execvp(args.size(), args.data(), nullptr, false, LOG_KLOG, false, nullptr);
     } else {
         LERROR << "File system type '" << entry.fs_type << "' is not supported";
         return -EINVAL;

@@ -184,7 +184,14 @@ static void check_fs(const std::string& blk_device, const std::string& fs_type,
 
     Timer t;
     /* Check for the types of filesystems we know how to check */
-    if (is_extfs(fs_type)) {
+    if (fs_type == "vfat") {
+        const char* vfat_fsck_argv[] = {"/system/bin/fsck_msdos", "-y", blk_device.c_str()};
+        ret = logwrap_fork_execvp(ARRAY_SIZE(vfat_fsck_argv), vfat_fsck_argv, &status,
+                false, LOG_KLOG | LOG_FILE, false, FSCK_LOG_FILE);
+        if (ret < 0)
+            LERROR << "Failed running '/system/bin/fsck_msdos' on '" <<  blk_device.c_str()
+                    << "' - " << ret;
+    } else if (is_extfs(fs_type)) {
         /*
          * First try to mount and unmount the filesystem.  We do this because
          * the kernel is more efficient than e2fsck in running the journal and
