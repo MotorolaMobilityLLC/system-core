@@ -1012,6 +1012,7 @@ static void ExportKernelBootProps() {
         { "ro.boot.bootloader", "ro.bootloader", "unknown", },
         { "ro.boot.hardware",   "ro.hardware",   "unknown", },
         { "ro.boot.revision",   "ro.revision",   "0", },
+        { "ro.boot.kb_pad_port_b", "ro.com.google.ime.kb_pad_port_b", UNSET, },
             // clang-format on
     };
     for (const auto& prop : prop_map) {
