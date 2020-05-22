@@ -67,11 +67,66 @@ static void GetSocket() {
     return;
   }
 
+#if defined(MTK_LOGD_ENHANCE) && defined(CONFIG_MT_DEBUG_BUILD) && defined(MTK_LOGDW_SOCK_BLOCK)
+  /*
+    *  Mtk enhance: create BLOCK mode socket and set Timeout.
+    *  But filter out  process 'android.hardware.configstore@1.0-service' which
+    *  does not has 'setsockopt' privilege.
+    */
+  int skip_thread = 0;
+  FILE *fp;
+  char path[PATH_MAX];
+  char threadnamebuf[1024];
+  char* threadname = NULL;
+#if !defined(CONFIG_MT_ENG_BUILD)
+  const char* key_camera = "camerahalserver";
+#else
+  const char* key_configstore = "android.hardware.configstore";
+#endif
+  int new_socket = -1;
+
+  snprintf(path, PATH_MAX, "/proc/%d/cmdline", getpid());
+  if((fp = fopen(path, "r"))) {
+    threadname = fgets(threadnamebuf, sizeof(threadnamebuf), fp);
+    fclose(fp);
+  }
+#if !defined(CONFIG_MT_ENG_BUILD) // userdebug load
+  skip_thread = 1; // default skip block mode
+  if (threadname && strstr(threadname, key_camera))
+    skip_thread = 0; // use block mode
+#else // eng load
+  if (threadname && strstr(threadname, key_configstore))
+    skip_thread = 1; // set filter flag
+#endif
+
+  if (skip_thread == 0) {  // no need filter, create BLOCK mode socket
+    new_socket = TEMP_FAILURE_RETRY(
+      socket(PF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC, 0));
+  } else {
+    new_socket = TEMP_FAILURE_RETRY(
+      socket(PF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0));
+  }
+#else
   int new_socket =
       TEMP_FAILURE_RETRY(socket(PF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0));
+#endif
   if (new_socket <= 0) {
     return;
   }
+
+#if defined(MTK_LOGD_ENHANCE) && defined(CONFIG_MT_DEBUG_BUILD) && defined(MTK_LOGDW_SOCK_BLOCK)
+  if (skip_thread == 0) {
+    struct timeval tm;
+
+    tm.tv_sec = SOCKET_TIME_OUT;
+    tm.tv_usec = 0;
+    if (setsockopt(new_socket, SOL_SOCKET, SO_RCVTIMEO, &tm, sizeof(tm)) == -1 ||
+      setsockopt(new_socket, SOL_SOCKET, SO_SNDTIMEO, &tm, sizeof(tm)) == -1) {
+      close(new_socket);
+      return;
+    }
+  }
+#endif
 
   int uninitialized_value = 0;
   if (!logd_socket.compare_exchange_strong(uninitialized_value, new_socket)) {
