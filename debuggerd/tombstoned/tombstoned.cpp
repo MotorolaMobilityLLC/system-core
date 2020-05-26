@@ -191,6 +191,8 @@ class CrashQueue {
   }
 
   borrowed_fd dir_fd() { return dir_fd_; }
+  // UNISOC: Modify for Bug1328198
+  std::string dir_path() { return dir_path_; }
 
   CrashArtifactPaths get_next_artifact_paths() {
     CrashArtifactPaths result;
@@ -463,6 +465,11 @@ static void crash_completed(borrowed_fd sockfd, std::unique_ptr<Crash> crash) {
       // tombstone associated with a given native crash was written. Any changes
       // to this message must be carefully considered.
       LOG(ERROR) << "Tombstone written to: " << paths.text;
+      // UNISOC: Modify for bug 1328198
+      std::string tombstone_path = StringPrintf("%s/%s", queue->dir_path().c_str(), paths.text.c_str());
+      if (TEMP_FAILURE_RETRY(chmod(tombstone_path.c_str(), 0664)) == -1) {
+        LOG(ERROR) << "Failed to chmod(" << tombstone_path << ", 664) errno:" << strerror(errno);
+      }
     }
   }
 
