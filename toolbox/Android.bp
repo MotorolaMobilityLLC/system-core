@@ -44,6 +44,8 @@ cc_defaults {
         "setprop.cpp",
         "start.cpp",
         "sendevent2.c",
+        "setfattr.c",
+        "getfattr.c",
     ],
     generated_headers: [
         "toolbox_input_labels",
@@ -64,6 +66,8 @@ cc_defaults {
         "start",
         "stop",
         "sendevent2",
+        "setfattr",
+        "getfattr",
     ],
 }
 
