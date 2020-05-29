@@ -1,5 +1,7 @@
 TOOL(getevent)
 TOOL(getprop)
+TOOL(setfattr)
+TOOL(getfattr)
 TOOL(modprobe)
 TOOL(setprop)
 TOOL(start)
