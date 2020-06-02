@@ -1082,8 +1082,8 @@ void set_properties_from_hwinfo() {
     int len = strlen("band_id=");
     std::string prop_sku_value = android::base::GetProperty("ro.build.name", "");
     if (prop_sku_value == "lenovo") {
-        property_set("ro.boot.hardware.sku","XT2053-3");
-        property_set("ro.vendor.hardware.sku","XT2053-3");
+        property_set("ro.boot.hardware.sku","XT2055-3");
+        property_set("ro.vendor.hardware.sku","XT2055-3");
     } else if (ReadFileToString(cmdline_path, &file_content)) {
         file_band = file_content.substr(len,8);
         property_set("ro.boot.hardware.sku",file_band);
