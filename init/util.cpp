@@ -711,5 +711,16 @@ bool IsRecoveryMode() {
     return access("/system/bin/recovery", F_OK) == 0;
 }
 
+bool IsFtMode() {
+    bool isFtMode = false;
+    // The platform may specify a custom Android DT path in kernel cmdline
+    ImportKernelCmdline([&](const std::string& key, const std::string& value) {
+                              if ((key == "androidboot.mode") && (value == "cali" || value == "factorytest")){
+                                  isFtMode = true;
+                              }
+                          });
+    return isFtMode;
+}
+
 }  // namespace init
 }  // namespace android
