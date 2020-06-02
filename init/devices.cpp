@@ -306,6 +306,10 @@ void DeviceHandler::MakeDevice(const std::string& path, bool block, int major, i
 
 out:
     chown(path.c_str(), uid, -1);
+    if (IsFtMode()){
+            chmod(path.c_str(), mode);
+            chown(path.c_str(), uid, gid);
+        }
     if (setegid(AID_ROOT)) {
         PLOG(FATAL) << "setegid(AID_ROOT) failed";
     }
