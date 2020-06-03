@@ -47,7 +47,7 @@ AStatsEvent* AStatsEventList_addStatsEvent(AStatsEventList* pull_data) {
 }
 
 static const int64_t DEFAULT_COOL_DOWN_MILLIS = 1000LL;  // 1 second.
-static const int64_t DEFAULT_TIMEOUT_MILLIS = 10000LL;   // 10 seconds.
+static const int64_t DEFAULT_TIMEOUT_MILLIS = 2000LL;    // 2 seconds.
 
 struct AStatsManager_PullAtomMetadata {
     int64_t cool_down_millis;
@@ -131,7 +131,11 @@ class StatsPullAtomCallbackInternal : public BnPullAtomCallback {
             parcels.push_back(std::move(p));
         }
 
-        resultReceiver->pullFinished(atomTag, success, parcels);
+        Status status = resultReceiver->pullFinished(atomTag, success, parcels);
+        if (!status.isOk()) {
+            std::vector<StatsEventParcel> emptyParcels;
+            resultReceiver->pullFinished(atomTag, /*success=*/false, emptyParcels);
+        }
         for (int i = 0; i < statsEventList.data.size(); i++) {
             AStatsEvent_release(statsEventList.data[i]);
         }
