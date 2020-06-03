@@ -13,25 +13,30 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 #pragma once
 
-#include "adb_unique_fd.h"
+#include <memory>
 
-#include <optional>
-#include <string>
+#include "socket.h"
+#include "transport.h"
 
-#include "sysdeps.h"
+class ClientTcpTransport : public Transport {
+  public:
+    ClientTcpTransport();
+    ~ClientTcpTransport() override = default;
 
-namespace incremental {
+    ssize_t Read(void* data, size_t len) override;
+    ssize_t Write(const void* data, size_t len) override;
+    int Close() override;
+    int Reset() override;
 
-using Files = std::vector<std::string>;
-using Args = std::vector<std::string_view>;
+  private:
+    void ListenFastbootSocket();
 
-bool can_install(const Files& files);
-std::optional<Process> install(const Files& files, const Args& passthrough_args, bool silent);
+    std::unique_ptr<Socket> service_;
+    std::unique_ptr<Socket> socket_;
+    uint64_t message_bytes_left_ = 0;
+    bool downloading_ = false;
 
-enum class Result { Success, Failure, None };
-Result wait_for_installation(int read_fd);
-
-}  // namespace incremental
+    DISALLOW_COPY_AND_ASSIGN(ClientTcpTransport);
+};
