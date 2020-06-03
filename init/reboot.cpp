@@ -1059,6 +1059,11 @@ void HandlePowerctlMessage(const std::string& command) {
                         return;
                     }
                 }
+                // used to debug System boot failure issues
+                if (android::base::GetProperty("ro.boot.init_recovery_mode", "") == "ignore") {
+                    LOG(ERROR) << "Rebooting into recovery,but ignored for debug!";
+                    return;
+                }
             } else if (reboot_target == "quiescent") {
                 bootloader_message boot = {};
                 if (std::string err; !read_bootloader_message(&boot, &err)) {
