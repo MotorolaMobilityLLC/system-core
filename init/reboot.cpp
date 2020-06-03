@@ -1001,6 +1001,12 @@ void HandlePowerctlMessage(const std::string& command) {
                         return;
                     }
                 }
+                // Do not reboot to recovery if ro.boot.init_recovery_mode=ignore
+                // used to debug System boot failure issues
+                if (android::base::GetProperty("ro.boot.init_recovery_mode", "") == "ignore") {
+                    LOG(ERROR) << "Rebooting into recovery,but ignored for debug!";
+                    return;
+                }
             } else if (reboot_target == "sideload" || reboot_target == "sideload-auto-reboot" ||
                        reboot_target == "fastboot") {
                 std::string arg = reboot_target == "sideload-auto-reboot" ? "sideload_auto_reboot"
