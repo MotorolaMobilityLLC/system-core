@@ -177,6 +177,9 @@ on init
     mount binder binder /dev/binderfs stats=global
     chmod 0755 /dev/binderfs
 
+    # Mount fusectl
+    mount fusectl none /sys/fs/fuse/connections
+
     symlink /dev/binderfs/binder /dev/binder
     symlink /dev/binderfs/hwbinder /dev/hwbinder
     symlink /dev/binderfs/vndbinder /dev/vndbinder
@@ -514,6 +517,8 @@ on post-fs
 
     mkdir /metadata/apex 0700 root system
     mkdir /metadata/apex/sessions 0700 root system
+
+    mkdir /metadata/staged-install 0770 root system
 on late-fs
     # Ensure that tracefs has the correct permissions.
     # This does not work correctly if it is called in post-fs.
