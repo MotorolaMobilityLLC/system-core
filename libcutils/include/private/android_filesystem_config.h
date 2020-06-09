@@ -166,6 +166,10 @@
 #define AID_OEM_RESERVED_2_START 5000
 #define AID_OEM_RESERVED_2_END 5999
 
+/* The range 9000-9030 is reserved for moto legacy aid */
+#define AID_OEM_RESERVED_9_START 9000
+#define AID_OEM_RESERVED_9_END 9030
+
 /* The range 6000-6499 is reserved for the system partition. */
 #define AID_SYSTEM_RESERVED_START 6000
 #define AID_SYSTEM_RESERVED_END 6499
