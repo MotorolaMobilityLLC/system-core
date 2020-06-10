@@ -290,6 +290,9 @@ void DeviceHandler::MakeDevice(const std::string& path, bool block, int major, i
     if (mknod(path.c_str(), mode, dev) && (errno == EEXIST) && !secontext.empty()) {
         char* fcon = nullptr;
         int rc = lgetfilecon(path.c_str(), &fcon);
+        /* If the node already exists update its (mode uid gid). */
+        chmod(path.c_str(), mode);
+        chown(path.c_str(), uid, gid);
         if (rc < 0) {
             PLOG(ERROR) << "Cannot get SELinux label on '" << path << "' device";
             goto out;
