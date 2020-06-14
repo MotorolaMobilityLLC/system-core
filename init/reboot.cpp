@@ -1015,6 +1015,11 @@ static void HandleUserspaceReboot() {
     }
     if (pid == 0) {
         // Child
+
+#ifdef MTK_LOG
+        PropSetLogReset();
+#endif
+
         UserspaceRebootWatchdogThread();
         _exit(EXIT_SUCCESS);
     }
