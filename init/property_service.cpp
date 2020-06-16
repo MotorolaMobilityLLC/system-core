@@ -1326,6 +1326,7 @@ static void ExportKernelBootProps() {
         { "ro.boot.kb_pad_port_b", "ro.com.google.ime.kb_pad_port_b", UNSET, },
         { "ro.boot.model", "ro.product.model", UNSET, },
         { "ro.boot.manufacturer", "ro.product.manufacturer", UNSET, },
+        { "ro.boot.carrier",   "ro.carrier",   UNSET, },
             // clang-format on
     };
     for (const auto& prop : prop_map) {
