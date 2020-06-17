@@ -66,6 +66,10 @@
 #include "sigchld_handler.h"
 #include "util.h"
 
+#ifdef MSSI_HAVE_AEE_FEATURE
+#include "aee.h"
+#endif
+
 using namespace std::literals;
 
 #ifdef MTK_UMOUNT_RETRY
@@ -323,6 +327,25 @@ static UmountStat UmountPartitions(std::chrono::milliseconds timeout) {
 static void KillAllProcesses() {
     WriteStringToFile("i", PROC_SYSRQ);
 }
+
+#ifdef MSSI_HAVE_AEE_FEATURE
+void hang_detect_set_reboot() {
+    int fd = open(AE_WDT_DEVICE_PATH, O_RDONLY | O_CLOEXEC);
+    if (fd < 0) {
+        LOG(INFO) << "[HANG_DETECT] ERROR: open hang detect device failed.";
+        return;
+    } else {
+        if (ioctl(fd, AEEIOCTL_SET_HANG_REBOOT) != 0) {
+            LOG(INFO) << "[HANG_DETECT] set hang detect reboot flag failed.";
+            close(fd);
+            return;
+        }
+    }
+    close(fd);
+    LOG(INFO) << "[HANG_DETECT] set hang detect reboot flag.";
+    return;
+}
+#endif
 
 // Create reboot/shutdwon monitor thread
 void RebootMonitorThread(unsigned int cmd, const std::string& reboot_target,
@@ -685,7 +708,13 @@ static void DoReboot(unsigned int cmd, const std::string& reason, const std::str
         }
         shutdown_timeout = std::chrono::seconds(shutdown_timeout_final);
     }
+
+#ifdef MSSI_HAVE_AEE_FEATURE
+    hang_detect_set_reboot();
+    LOG(INFO) << "Shutdown timeout: 90S";
+#else
     LOG(INFO) << "Shutdown timeout: " << shutdown_timeout.count() << " ms";
+#endif
 
     sem_t reboot_semaphore;
     if (sem_init(&reboot_semaphore, false, 0) == -1) {
