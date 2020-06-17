@@ -71,6 +71,11 @@ static bool parse_line(const char* path, size_t line_number, const char* line, p
   int fields =
       sscanf(line, "%ms %lu %d %ms %ms %ms %d %ld", &info->name, &uid, &debuggable, &info->data_dir,
              &info->seinfo, &gid_list, &profileable_from_shell, &info->version_code);
+  if (((unsigned int)((size_t)gid_list) == 0xaaaaaaaa) || ((unsigned int)((size_t)gid_list) == 0xffffffff)) {
+      static const char* error_line = line;
+      ALOGE("[parse_line error]: error_line %s, info_addr %p\n", error_line, info);
+      abort();
+  }
 
   // Handle the more complicated gids field and free the temporary string.
   bool gids_okay = parse_gids(path, line_number, gid_list, info);
