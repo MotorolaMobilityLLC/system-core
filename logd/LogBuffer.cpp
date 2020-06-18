@@ -1409,7 +1409,7 @@ void LogBuffer::logMuchDetect(log_id_t log_id, log_time realtime) {
 #if !defined(_WIN32)
     struct tm tmBuf;
 #endif
-    struct tm* ptm;
+    struct tm* ptm = NULL;
 
     if (log_detect_value == 0) {
         pause_detect = 0;
@@ -1513,7 +1513,7 @@ void LogBuffer::logMuchDetect(log_id_t log_id, log_time realtime) {
 #else
         ptm = localtime(&now_time);
 #endif
-        strftime(buff, BUFF_MAX_SIZE, "%m-%d %H:%M:%S", ptm);
+        if (ptm) strftime(buff, BUFF_MAX_SIZE, "%m-%d %H:%M:%S", ptm);
 
         android::prdebug("android log much:line %d, time %d, %lu.\n",
             line_count, realtime.tv_sec, old_time);

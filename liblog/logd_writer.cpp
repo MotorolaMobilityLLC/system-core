@@ -85,8 +85,8 @@ static void GetSocket() {
 #endif
   int new_socket = -1;
 
-  snprintf(path, PATH_MAX, "/proc/%d/cmdline", getpid());
-  if((fp = fopen(path, "r"))) {
+  int res = snprintf(path, PATH_MAX, "/proc/%d/cmdline", getpid());
+  if (res >= 0 && res < PATH_MAX && (fp = fopen(path, "r"))) {
     threadname = fgets(threadnamebuf, sizeof(threadnamebuf), fp);
     fclose(fp);
   }
