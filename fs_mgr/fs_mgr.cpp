@@ -331,7 +331,7 @@ static bool read_ext4_superblock(const std::string& blk_device, const FstabEntry
             // try backup superblock, if main superblock is corrupted
             for (unsigned int blocksize = EXT4_MIN_BLOCK_SIZE; blocksize <= EXT4_MAX_BLOCK_SIZE;
                  blocksize *= 2) {
-                unsigned int superblock = blocksize * 8;
+                uint64_t superblock = blocksize * 8;
                 if (blocksize == EXT4_MIN_BLOCK_SIZE) superblock++;
 
                 if (TEMP_FAILURE_RETRY(pread(fd, sb, sizeof(*sb), superblock * blocksize)) !=
@@ -1065,7 +1065,8 @@ static bool SupportsCheckpoint(FstabEntry* entry) {
 
 class CheckpointManager {
   public:
-    CheckpointManager(int needs_checkpoint = -1) : needs_checkpoint_(needs_checkpoint) {}
+    CheckpointManager(int needs_checkpoint = -1, bool metadata_encrypted = false)
+        : needs_checkpoint_(needs_checkpoint), metadata_encrypted_(metadata_encrypted) {}
 
     bool NeedsCheckpoint() {
         if (needs_checkpoint_ != UNKNOWN) {
@@ -1083,7 +1084,7 @@ class CheckpointManager {
             return true;
         }
 
-        if (entry->fs_mgr_flags.checkpoint_blk) {
+        if (entry->fs_mgr_flags.checkpoint_blk && !metadata_encrypted_) {
             call_vdc({"checkpoint", "restoreCheckpoint", entry->blk_device}, nullptr);
         }
 
@@ -1192,6 +1193,7 @@ class CheckpointManager {
 
     enum { UNKNOWN = -1, NO = 0, YES = 1 };
     int needs_checkpoint_;
+    bool metadata_encrypted_;
     std::map<std::string, std::string> device_map_;
 };
 
@@ -1841,11 +1843,11 @@ int fs_mgr_do_mount_one(const FstabEntry& entry, const std::string& mount_point)
 // in turn, and stop on 1st success, or no more match.
 static int fs_mgr_do_mount_helper(Fstab* fstab, const std::string& n_name,
                                   const std::string& n_blk_device, const char* tmp_mount_point,
-                                  int needs_checkpoint) {
+                                  int needs_checkpoint, bool metadata_encrypted) {
     int mount_errors = 0;
     int first_mount_errno = 0;
     std::string mount_point;
-    CheckpointManager checkpoint_manager(needs_checkpoint);
+    CheckpointManager checkpoint_manager(needs_checkpoint, metadata_encrypted);
     AvbUniquePtr avb_handle(nullptr);
 
     if (!fstab) {
@@ -1955,12 +1957,13 @@ static int fs_mgr_do_mount_helper(Fstab* fstab, const std::string& n_name,
 }
 
 int fs_mgr_do_mount(Fstab* fstab, const char* n_name, char* n_blk_device, char* tmp_mount_point) {
-    return fs_mgr_do_mount_helper(fstab, n_name, n_blk_device, tmp_mount_point, -1);
+    return fs_mgr_do_mount_helper(fstab, n_name, n_blk_device, tmp_mount_point, -1, false);
 }
 
 int fs_mgr_do_mount(Fstab* fstab, const char* n_name, char* n_blk_device, char* tmp_mount_point,
-                    bool needs_checkpoint) {
-    return fs_mgr_do_mount_helper(fstab, n_name, n_blk_device, tmp_mount_point, needs_checkpoint);
+                    bool needs_checkpoint, bool metadata_encrypted) {
+    return fs_mgr_do_mount_helper(fstab, n_name, n_blk_device, tmp_mount_point, needs_checkpoint,
+                                  metadata_encrypted);
 }
 
 /*
