@@ -116,7 +116,7 @@ static void drop_privileges(int server_port) {
     // Don't listen on a port (default 5037) if running in secure mode.
     // Don't run as root if running in secure mode.
     if (should_drop_privileges()) {
-        const bool should_drop_caps = !__android_log_is_debuggable(); //Modify for bug 1343250
+        const bool should_drop_caps = !__android_log_is_debuggable();
 
         if (should_drop_caps) {
             minijail_use_caps(jail.get(), CAP_TO_MASK(CAP_SETUID) | CAP_TO_MASK(CAP_SETGID));
