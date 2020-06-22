@@ -185,6 +185,18 @@ void set_system_properties(){
 
         property_set(prop_product_vendor_name, prop_product_value);
         property_set(prop_product, prop_product_value);
+        // BEGIN Ontim, maqing, 20/06/2020, EKBLACKJ-178 , St-result :PASS,[BJ][Europe Requirement][Fiji Features]FEATURE-5963
+        if (carrier_ontim == "timit_timit") {
+             property_set(prop_amazon_partnerid, carrier_value);
+        }
+        if (carrier_ontim == "windit_windds") {
+             property_set(prop_amazon_partnerid, "3it");
+        }
+        if (carrier_ontim == "attmx_attmx") {
+             property_set(prop_amazon_partnerid,carrier_value);
+        }
+        // END Ontim, maqing, 20/06/2020,
+
         property_set(prop_build_fingerprint, get_fingerprint_property(prop_product_value));
         property_set(prop_fingerprint, get_fingerprint_property(prop_product_value));
         property_set(prop_vendor_fingerprint, get_fingerprint_property(prop_product_value));
