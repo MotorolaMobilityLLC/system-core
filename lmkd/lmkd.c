@@ -827,7 +827,8 @@ static int proc_get_size(int pid) {
 
     sscanf(line, "%d %d ", &total, &rss);
     close(fd);
-    return rss;
+    /* Motorola-jiayh2, fix not killable of some rss 0 process */
+    return (rss ? rss : total);
 }
 
 static char *proc_get_name(int pid, char *buf, size_t buf_size) {
