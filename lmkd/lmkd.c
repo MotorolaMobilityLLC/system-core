@@ -120,7 +120,7 @@
 /* Polling period after initial PSI signal */
 #define PSI_POLL_PERIOD_MS 10
 /* PSI complete stall for super critical events */
-#define PSI_SCRIT_COMPLETE_STALL_MS (80)
+#define PSI_SCRIT_COMPLETE_STALL_MS (75)
 
 #define min(a, b) (((a) < (b)) ? (a) : (b))
 
@@ -169,6 +169,7 @@ static bool low_ram_device;
 static bool kill_heaviest_task;
 static unsigned long kill_timeout_ms;
 static int direct_reclaim_pressure = 45;
+static int reclaim_scan_threshold = 1024;
 static bool use_minfree_levels;
 static bool per_app_memcg;
 static bool enhance_batch_kill;
@@ -2245,9 +2246,9 @@ enum vmpressure_level upgrade_vmpressure_event(enum vmpressure_level level)
 		   async += (current.field.pgscan_kswapd -
 			     base.field.pgscan_kswapd);
 		   /*
-		    * Here scan window size is put at 4MB(=1024 pages).
+		    * Here scan window size is put at 1024 as default.
 		    */
-		   if (throttle || (sync + async) >= 1024) {
+		   if (throttle || (sync + async) >= reclaim_scan_threshold) {
 			   pressure = ((100 * sync)/(sync + async + 1));
 			   if (throttle || (pressure >= direct_reclaim_pressure)) {
 				   s_crit_event = s_crit_event_upgraded = true;
@@ -2988,6 +2989,10 @@ int main(int argc __unused, char **argv __unused) {
 	  snprintf(default_value, PROPERTY_VALUE_MAX, "%d", direct_reclaim_pressure);
 	  strlcpy(property, perf_wait_get_prop("ro.lmk.direct_reclaim_pressure", default_value).value, PROPERTY_VALUE_MAX);
 	  direct_reclaim_pressure = strtod(property, NULL);
+
+	  snprintf(default_value, PROPERTY_VALUE_MAX, "%d", reclaim_scan_threshold);
+	  strlcpy(property, perf_wait_get_prop("ro.lmk.reclaim_scan_threshold", default_value).value, PROPERTY_VALUE_MAX);
+	  reclaim_scan_threshold = strtod(property, NULL);
 
           strlcpy(default_value, (use_minfree_levels)? "true" : "false", PROPERTY_VALUE_MAX);
           strlcpy(property, perf_wait_get_prop("ro.lmk.use_minfree_levels_dup", default_value).value, PROPERTY_VALUE_MAX);
