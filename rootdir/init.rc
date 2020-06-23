@@ -864,5 +864,5 @@ service adb-remount /system/bin/adb-remount.sh
     class main
     oneshot
 
-on property:ro.build.smt.ver=1&&property:ro.adb.secure=0&&property:ro.secure=0
+on property:ro.odm.build.smt.ver=1&&property:ro.adb.secure=0&&property:ro.secure=0
     start adb-remount
