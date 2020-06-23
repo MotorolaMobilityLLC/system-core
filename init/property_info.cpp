@@ -81,6 +81,8 @@ std::string prop_boot_bootloader = "ro.boot.bootloader";
 std::string prop_bootloader = "ro.bootloader";
 std::string prop_build_description = "ro.build.description";
 std::string prop_build_flavor = "ro.build.flavor";
+std::string prop_secure = "ro.secure";
+std::string prop_adb_secure = "ro.adb.secure";
 
 void set_system_properties(){
     std::ifstream stream_product(product_version_file);
@@ -279,7 +281,8 @@ bool changeSystemProperty(std::string key) {
       || key == prop_carrier || key == prop_build_product
       || key == prop_product_board ||  key == prop_boot_bootloader
       || key == prop_bootloader|| key == prop_build_description
-      || key == prop_build_flavor) {
+      || key == prop_build_flavor
+      || key == prop_adb_secure || key == prop_secure) {
         return true;
     }
     return false;

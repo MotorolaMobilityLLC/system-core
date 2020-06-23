@@ -885,6 +885,14 @@ void load_persist_props(void) {
     }
     persistent_properties_loaded = true;
 
+    std::string isSMT = android::base::GetProperty("ro.odm.build.smt.ver", "");
+    LOG(ERROR) << "CLOSE_SMT_USB get the smt version" << isSMT;
+    if (isSMT == "1") {
+        LOG(ERROR) << "CLOSE_SMT_USB is smt colse the adb secure ... ";
+        property_set("ro.adb.secure", "0" );
+        property_set("ro.secure", "0" );
+    }
+
     SLOGE("FC.adb start ... ");
     std::string fcreseted = android::base::GetProperty("persist.sys.usb.fc.reseted", "");
     std::string buildtype = android::base::GetProperty("ro.build.type", "");
