@@ -165,18 +165,26 @@ void set_system_properties(){
         property_set(prop_product_device, "fiji");
         property_set(prop_product_vendor_device, "fiji");
 
-        if (carrier_ontim == "amxbr_clarobr" || carrier_ontim == "amxar_amxar") {
-            property_set(prop_amclient, prop_clientcountry_value);
-            property_set(prop_msclient, prop_clientrevc_value);
-        } else if (carrier_ontim == "timbr_clarobr") {
-            property_set(prop_msclient, prop_clientbr_value);
-        } else {
+        if (isProductNameFiji64Reteu(carrier_ontim)) {
+            prop_product_value = "fiji_reteu_64";
             property_set(prop_amclient, prop_client_value);
             property_set(prop_msclient, prop_clientrev_value);
+        } else {
+            prop_product_value = "fiji_64";
+            if (carrier_ontim == "amxbr_clarobr" || carrier_ontim == "amxar_amxar") {
+                property_set(prop_amclient, prop_clientcountry_value);
+                property_set(prop_msclient, prop_clientrevc_value);
+            } else if (carrier_ontim == "timbr_clarobr") {
+                property_set(prop_msclient, prop_clientbr_value);
+            } else {
+                property_set(prop_amclient, prop_client_value);
+                property_set(prop_msclient, prop_clientrev_value);
+            }
         }
 
-        //property_set(prop_product_vendor_name, prop_product_value);
-        //property_set(prop_product, prop_product_value);
+
+        property_set(prop_product_vendor_name, prop_product_value);
+        property_set(prop_product, prop_product_value);
         property_set(prop_build_fingerprint, get_fingerprint_property(prop_product_value));
         property_set(prop_fingerprint, get_fingerprint_property(prop_product_value));
         property_set(prop_vendor_fingerprint, get_fingerprint_property(prop_product_value));
@@ -317,6 +325,11 @@ bool isProductNameFijiReteu(std::string carrier_ontim) {
     if (carrier_ontim == "windit_windds") return true;
     if (carrier_ontim == "timit_timit") return true;
     if (carrier_ontim == "reteu_retfr") return true;
+    return false;
+}
+
+bool isProductNameFiji64Reteu(std::string carrier_ontim) {
+    if (carrier_ontim == "reteu_reteu") return true;
     return false;
 }
 
