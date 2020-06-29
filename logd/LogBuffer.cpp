@@ -1614,17 +1614,18 @@ next_log:
 
             memset(aee_string, 0, 70);
             android::prdebug("logmuch file total size %d.\n", log_much_used_size);
-            snprintf(aee_string, sizeof(aee_string), "Android log much: %d, %d.detect time %d.level %d.",
-                line_count, file_count, detect_time, log_detect_value);
-            memset(&param, 0, sizeof(param));
-            pthread_attr_setschedparam(&attr, &param);
-            pthread_attr_setschedpolicy(&attr, SCHED_BATCH);
-            if (!pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED)) {
-                pthread_t thread;
-                log_much_detected  = true;
-                pthread_create(&thread, &attr, logmuchaee_thread_start, NULL);
+            if (snprintf(aee_string, sizeof(aee_string), "Android log much: %d, %d.detect time %d.level %d.",
+                    line_count, file_count, detect_time, log_detect_value) > 0) {
+                memset(&param, 0, sizeof(param));
+                pthread_attr_setschedparam(&attr, &param);
+                pthread_attr_setschedpolicy(&attr, SCHED_BATCH);
+                if (!pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED)) {
+                    pthread_t thread;
+                    log_much_detected  = true;
+                    pthread_create(&thread, &attr, logmuchaee_thread_start, NULL);
+                }
+                pthread_attr_destroy(&attr);
             }
-            pthread_attr_destroy(&attr);
         }
 
         old_time = now_time + DETECT_DELAY_TIME;
