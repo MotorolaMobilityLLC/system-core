@@ -1311,7 +1311,6 @@ class CheckpointManager {
                 // metadata-encrypted device with smaller blocks, we must not change this for
                 // devices shipped with Q or earlier unless they explicitly selected dm-default-key
                 // v2
-                #if 0
                 constexpr unsigned int pre_gki_level = __ANDROID_API_Q__;
                 unsigned int options_format_version = android::base::GetUintProperty<unsigned int>(
                         "ro.crypto.dm_default_key.options_format.version",
@@ -1319,7 +1318,6 @@ class CheckpointManager {
                 if (options_format_version > 1) {
                     bowTarget->SetBlockSize(4096);
                 }
-		#endif
 
                 if (!table.AddTarget(std::move(bowTarget))) {
                     LERROR << "Failed to add bow target";
