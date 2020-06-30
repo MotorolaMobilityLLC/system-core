@@ -54,6 +54,7 @@ std::string prop_clientwindit_value = "android-h3g-{country}-revc";
 std::string prop_clientmx_value = "android-attmexico-mx-revc";
 std::string prop_clientuk_value = "android-ee-uk-revc";
 std::string prop_clientbr_value = "android-tim-br-revc";
+std::string prop_clientit_value = "android-tim-it-revc";
 std::string prop_clientor_value = "android-orange-{country}-revc";
 std::string prop_clienttmobile_value = "android-tmobile-{country}";
 std::string prop_clientdt_value = "android-dt-{country}-revc";
@@ -186,6 +187,44 @@ void set_system_properties(){
         }
 
         // END EKBLACKJ-178
+    } else if(prop_product_value == "malta") {
+        if (isProductNameMaltaReteu(carrier_ontim)) {
+            prop_product_value = "malta_reteu";
+            if (carrier_ontim == "timit_timit") {
+                property_set(prop_msclient, prop_clientit_value);
+            } else if (carrier_ontim == "eegb_uksl") {
+                property_set(prop_msclient, prop_clientuk_value);
+            } else {
+                property_set(prop_amclient, prop_client_value);
+                property_set(prop_msclient, prop_clientrev_value);
+            }
+        } else if (isProductNameMaltaRetru(carrier_ontim)) {
+            prop_product_value = "malta_retru";
+            prop_carrier_value = "retru";
+            property_set(prop_amclient, prop_client_value);
+            property_set(prop_msclient, prop_clientrev_value);
+        } else {
+            prop_product_value = "malta";
+            if (carrier_ontim == "openmx_retmx" || carrier_ontim == "amxmx_amxmx"
+             || carrier_ontim == "amxmx_amxmxsl" || carrier_ontim == "amxpe_claro"
+             || carrier_ontim == "amxco_claro" || carrier_ontim == "amxbr_clarobr"
+             || carrier_ontim == "amxar_amxar" || carrier_ontim == "amxcl_clarosl"
+             || carrier_ontim == "amxla_amxlag") {
+                property_set(prop_amclient, prop_clientcountry_value);
+                property_set(prop_msclient, prop_clientrevc_value);
+            } else if (carrier_ontim == "attmx_attmx") {
+                property_set(prop_msclient, prop_clientmx_value);
+            } else if (carrier_ontim == "timbr_clarobr") {
+                property_set(prop_msclient, prop_clientbr_value);
+            } else {
+                property_set(prop_amclient, prop_client_value);
+                property_set(prop_msclient, prop_clientrev_value);
+            }
+        }
+
+        set_product_name(prop_product_value);
+        std::string fingerprint = get_fingerprint_property_malta(prop_product_value);
+        set_fingerprint(fingerprint);
     }
 
     //Fully disable DuraSpeed for Mexcio only
@@ -269,6 +308,23 @@ bool isProductNameBlackjackRetru(std::string carrier_ontim) {
     return false;
 }
 
+bool isProductNameMaltaRetru(std::string carrier_ontim) {
+    if (carrier_ontim == "retru_retru") return true;
+    return false;
+}
+
+bool isProductNameMaltaReteu(std::string carrier_ontim) {
+    if (carrier_ontim == "reteu_euro") return true;
+    if (carrier_ontim == "retgb_retgbds") return true;
+    if (carrier_ontim == "eegb_uksl") return true;
+    if (carrier_ontim == "tescogb_tescogb") return true;
+    if (carrier_ontim == "reteu_nether") return true;
+    if (carrier_ontim == "reteu_reteu") return true;
+    if (carrier_ontim == "timit_timit") return true;
+    if (carrier_ontim == "reteu_reteuse") return true;
+    return false;
+}
+
 bool changeSystemProperty(std::string key) {
     if (key == prop_product || key == prop_product_device
       || key == prop_fingerprint || key == prop_vendor_fingerprint
@@ -297,6 +353,13 @@ std::string get_fingerprint_property(std::string value) {
     name[2] = "blackjack";
     fingerprint[0] = android::base::Join(name, "/");
     return android::base::Join(fingerprint, ":");
+}
+
+std::string get_fingerprint_property_malta(std::string value) {
+    std::string  buildFingerprint = android::base::GetProperty(prop_fingerprint, "");
+    std::vector<std::string> fingerprint = android::base::Split(buildFingerprint, "/");
+    fingerprint[1] = value;
+    return android::base::Join(fingerprint, "/");
 }
 
 std::string get_product_property(std::string prop_name, std::string value) {
