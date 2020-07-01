@@ -239,6 +239,10 @@ void set_system_properties(){
         }
 
         // END EKMALTA-369
+        if (carrier_ontim == "retru_retru") {
+              property_set("ro.product.locale","ru-RU");
+        }
+
     }
 
     //Fully disable DuraSpeed for Mexcio only
