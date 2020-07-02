@@ -55,7 +55,7 @@
 #include "LogReader.h"
 #include "YLogBuffer.h"
 
-#define DO_LOG_LASTANDROID
+//#define DO_LOG_LASTANDROID
 
 
 #define log2kernel(...)  {char buff[1024]={0};snprintf(buff,sizeof(buff)-1,__VA_ARGS__);android::prdebug("logd: %s ",buff);}
