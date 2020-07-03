@@ -30,6 +30,7 @@ liblog_target_sources = [
     "pmsg_writer.cpp",
     "logd_reader.cpp",
     "logd_writer.cpp",
+    "ylogger.cpp",
 ]
 
 cc_library_headers {
