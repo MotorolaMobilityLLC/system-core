@@ -483,6 +483,7 @@ static void export_kernel_boot_props() {
         { "ro.boot.bootloader", "ro.bootloader", "unknown", },
         { "ro.boot.hardware",   "ro.hardware",   "unknown", },
         { "ro.boot.carrier",    "ro.carrier.ontim",    "unknown", },
+        { "ro.boot.hw.hwrev",   "ro.hw.hwrev",   "unknown", },
         { "ro.boot.revision",   "ro.revision",   "0", },
     };
     for (const auto& prop : prop_map) {
