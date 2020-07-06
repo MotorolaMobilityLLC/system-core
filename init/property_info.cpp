@@ -210,7 +210,7 @@ void set_system_properties(){
              || carrier_ontim == "amxmx_amxmxsl" || carrier_ontim == "amxpe_claro"
              || carrier_ontim == "amxco_claro" || carrier_ontim == "amxbr_clarobr"
              || carrier_ontim == "amxar_amxar" || carrier_ontim == "amxcl_clarosl"
-             || carrier_ontim == "amxla_amxlag") {
+             || carrier_ontim == "amxla_amxlag" || carrier_ontim == "amxla_amxdomi") {
                 property_set(prop_amclient, prop_clientcountry_value);
                 property_set(prop_msclient, prop_clientrevc_value);
             } else if (carrier_ontim == "attmx_attmx") {
@@ -339,7 +339,6 @@ bool isProductNameMaltaReteu(std::string carrier_ontim) {
     if (carrier_ontim == "reteu_nether") return true;
     if (carrier_ontim == "reteu_reteu") return true;
     if (carrier_ontim == "timit_timit") return true;
-    if (carrier_ontim == "reteu_reteuse") return true;
     return false;
 }
 
