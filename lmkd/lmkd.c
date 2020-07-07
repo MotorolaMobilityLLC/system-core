@@ -179,6 +179,8 @@ static bool enable_watermark_check;
 static int swap_free_low_percentage;
 static bool use_psi_monitors = false;
 static bool enable_preferred_apps =  false;
+static bool last_event_upgraded = false;
+static int count_upgraded_event;
 static unsigned long pa_update_timeout_ms = 60000; /* 1 min */
 /* PSI window related variables */
 static int psi_window_size_ms = PSI_WINDOW_SIZE_MS;
@@ -2251,8 +2253,13 @@ enum vmpressure_level upgrade_vmpressure_event(enum vmpressure_level level)
 		   if (throttle || (sync + async) >= reclaim_scan_threshold) {
 			   pressure = ((100 * sync)/(sync + async + 1));
 			   if (throttle || (pressure >= direct_reclaim_pressure)) {
-				   s_crit_event = s_crit_event_upgraded = true;
-				   s_crit_base = current;
+				   last_event_upgraded = true;
+				   if (count_upgraded_event >= 4) {
+					   count_upgraded_event = 0;
+					   s_crit_event = true;
+				   } else
+					   s_crit_event = s_crit_event_upgraded = true;
+				    s_crit_base = current;
 			   }
 			   sync = async = 0;
 		   }
@@ -2747,6 +2754,40 @@ static bool have_psi_events(struct epoll_event *evt, int nevents)
 	return false;
 }
 
+static void check_cont_lmkd_events(int lvl)
+{
+	static struct timespec tmed, tcrit, tupgrad;
+	struct timespec now, prev;
+
+	clock_gettime(CLOCK_MONOTONIC_COARSE, &now);
+
+	if (lvl == VMPRESS_LEVEL_MEDIUM) {
+		prev = tmed;
+		tmed = now;
+	}else {
+		prev = tcrit;
+		tcrit = now;
+	}
+
+	/*
+	 * Consider it as contiguous if two successive medium/critical events fall
+	 * in window + 1/2(window) period.
+	 */
+	if (get_time_diff_ms(&prev, &now) < ((psi_window_size_ms * 3) >> 1)) {
+		if (get_time_diff_ms(&tupgrad, &now) > psi_window_size_ms) {
+			if (last_event_upgraded) {
+				count_upgraded_event++;
+				last_event_upgraded = false;
+				tupgrad = now;
+			} else {
+				count_upgraded_event = 0;
+			}
+		}
+	} else {
+		count_upgraded_event = 0;
+	}
+}
+
 static void mainloop(void) {
     struct event_handler_info* handler_info;
     struct event_handler_info* poll_handler = NULL;
@@ -2848,6 +2889,12 @@ static void mainloop(void) {
 				s_crit_event = false;
 			}
 		}
+
+		if (handler_info->handler == mp_event_common &&
+		     (handler_info->data == VMPRESS_LEVEL_MEDIUM ||
+		      handler_info->data == VMPRESS_LEVEL_CRITICAL))
+			check_cont_lmkd_events(handler_info->data);
+
                 handler_info->handler(handler_info->data, evt->events);
 		if (s_crit_tmp) {
 			s_crit_event = s_crit_tmp;
