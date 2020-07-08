@@ -101,6 +101,15 @@ void set_system_properties(){
     property_set("ro.vendor.product.version", fileContent_product);
     std::string  build_name = android::base::GetProperty(prop_build_name, "");
 
+    //Fully disable DuraSpeed service for all carriers in LATAM/Europe/Brazil, and only enable it for APEM.
+    if(carrier_value == "retapac" || carrier_value == "retin") {
+        property_set("persist.vendor.duraspeed.app.on","1");
+        property_set("persist.vendor.duraspeed.support","1");
+    } else {
+        property_set("persist.vendor.duraspeed.app.on","0");
+        property_set("persist.vendor.duraspeed.support","0");
+    }
+
     if (prop_product_value == "blackjack" || prop_product_value == "blackjack_64") {
         set_product_device("blackjack");
         set_some_vendor_properties("blackjack");
@@ -243,19 +252,6 @@ void set_system_properties(){
               property_set("ro.product.locale","ru-RU");
         }
 
-    }
-
-    //Fully disable DuraSpeed for Mexcio only
-    if(carrier_value == "amxmx"
-        || carrier_value == "attmx"
-        || carrier_value == "tefmx"
-        || carrier_value == "altmx"
-        || carrier_value == "openmx") {
-        property_set("persist.vendor.duraspeed.app.on","0");
-        property_set("persist.vendor.duraspeed.support","0");
-    } else {
-        property_set("persist.vendor.duraspeed.app.on","1");
-        property_set("persist.vendor.duraspeed.support","1");
     }
 
     property_set("persist.vendor.normal", "1");//表示正常版本，非 VTS 版本，prop 正常设置.
