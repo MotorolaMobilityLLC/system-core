@@ -1176,12 +1176,12 @@ int GetMTKLOGDISABLERATELIMIT(void) {
 static int marker_fd = -1;
 
 static int OpenTrace(int force) {
-    const char* m_path = "/sys/kernel/debug/tracing/trace_marker";
-
     if (marker_fd != -1 || !force)
         return marker_fd;
 
-    marker_fd = open(m_path, O_WRONLY | O_CLOEXEC);
+    marker_fd = open("/sys/kernel/debug/tracing/trace_marker", O_WRONLY | O_CLOEXEC);
+    if (marker_fd == -1)
+        marker_fd = open("/sys/kernel/tracing/trace_marker", O_WRONLY | O_CLOEXEC);
 
     return marker_fd;
 }
@@ -1193,7 +1193,7 @@ void StartWriteTrace(const char* tracemsg, int pid) {
     int ret;
 
     if (fd != -1) {
-        snprintf (msg, 256, "B|%d|%s", _pid, tracemsg);
+        snprintf(msg, 256, "B|%d|%s", _pid, tracemsg);
         ret = write(fd, msg, strlen(msg));
     }
 }
