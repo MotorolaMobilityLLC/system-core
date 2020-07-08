@@ -113,6 +113,15 @@ void set_system_properties(){
         property_set("persist.vendor.duraspeed.support","0");
     }
 
+    //Fully disable DuraSpeed service for all carriers in LATAM/Europe/Brazil, and only enable it for APEM.
+    if(carrier_value == "retapac" || carrier_value == "retin") {
+        property_set("persist.vendor.duraspeed.app.on","1");
+        property_set("persist.vendor.duraspeed.support","1");
+    } else {
+        property_set("persist.vendor.duraspeed.app.on","0");
+        property_set("persist.vendor.duraspeed.support","0");
+    }
+
     if (prop_product_value == "blackjack" || prop_product_value == "blackjack_64") {
         set_product_device("blackjack");
         set_some_vendor_properties("blackjack");
