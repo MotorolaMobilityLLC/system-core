@@ -74,8 +74,7 @@ void loglevel_control_init();
 void directcoredump_init();
 #endif
 #endif
-static int drop_privs(bool klogd, bool auditd) {
-    sched_param param = {};
+static int DropPrivs(bool klogd, bool auditd) {
 
 #ifdef MTK_LOGD_ENHANCE
     if (set_sched_policy(0, SP_FOREGROUND) < 0) {
@@ -93,6 +92,7 @@ static int drop_privs(bool klogd, bool auditd) {
         return -1;
     }
 
+    sched_param param = {};
     if (sched_setscheduler((pid_t)0, SCHED_BATCH, &param) < 0) {
         android::prdebug("failed to set batch scheduler");
         return -1;
@@ -116,21 +116,24 @@ static int drop_privs(bool klogd, bool auditd) {
 
     std::unique_ptr<struct _cap_struct, int (*)(void*)> caps(cap_init(), cap_free);
     if (cap_clear(caps.get()) < 0) {
+        android::prdebug("cap_clear() failed");
         return -1;
     }
-    std::vector<cap_value_t> cap_value;
     if (klogd) {
-        cap_value.emplace_back(CAP_SYSLOG);
+        cap_value_t cap_syslog = CAP_SYSLOG;
+        if (cap_set_flag(caps.get(), CAP_PERMITTED, 1, &cap_syslog, CAP_SET) < 0 ||
+            cap_set_flag(caps.get(), CAP_EFFECTIVE, 1, &cap_syslog, CAP_SET) < 0) {
+            android::prdebug("Failed to set CAP_SYSLOG");
+            return -1;
+        }
     }
     if (auditd) {
-        cap_value.emplace_back(CAP_AUDIT_CONTROL);
-    }
-
-    if (cap_set_flag(caps.get(), CAP_PERMITTED, cap_value.size(), cap_value.data(), CAP_SET) < 0) {
-        return -1;
-    }
-    if (cap_set_flag(caps.get(), CAP_EFFECTIVE, cap_value.size(), cap_value.data(), CAP_SET) < 0) {
-        return -1;
+        cap_value_t cap_audit_control = CAP_AUDIT_CONTROL;
+        if (cap_set_flag(caps.get(), CAP_PERMITTED, 1, &cap_audit_control, CAP_SET) < 0 ||
+            cap_set_flag(caps.get(), CAP_EFFECTIVE, 1, &cap_audit_control, CAP_SET) < 0) {
+            android::prdebug("Failed to set CAP_AUDIT_CONTROL");
+            return -1;
+        }
     }
     if (cap_set_proc(caps.get()) < 0) {
         android::prdebug("failed to set CAP_SYSLOG or CAP_AUDIT_CONTROL (%d)", errno);
@@ -381,7 +384,7 @@ int main(int argc, char* argv[]) {
 #endif
 #endif
     bool auditd = __android_logger_property_get_bool("ro.logd.auditd", BOOL_DEFAULT_TRUE);
-    if (drop_privs(klogd, auditd) != 0) {
+    if (DropPrivs(klogd, auditd) != 0) {
         return EXIT_FAILURE;
     }
 
