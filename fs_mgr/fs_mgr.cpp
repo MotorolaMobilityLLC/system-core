@@ -79,6 +79,9 @@
 
 #define E2FSCK_BIN      "/system/bin/e2fsck"
 #define F2FS_FSCK_BIN   "/system/bin/fsck.f2fs"
+#ifndef FS_MGR_RESIZE_DISABLED
+#define F2FS_RESIZE_BIN "/system/bin/resize.f2fs"
+#endif
 #define MKSWAP_BIN      "/system/bin/mkswap"
 #define TUNE2FS_BIN     "/system/bin/tune2fs"
 #define RESIZE2FS_BIN "/system/bin/resize2fs"
@@ -187,7 +190,7 @@ static bool umount_retry(const std::string& mount_point) {
 static void check_fs(const std::string& blk_device, const std::string& fs_type,
                      const std::string& target, int* fs_stat) {
     int status;
-    int ret;
+    int ret = -1;
     long tmpmnt_flags = MS_NOATIME | MS_NOEXEC | MS_NOSUID;
     auto tmpmnt_opts = "errors=remount-ro"s;
     const char* e2fsck_argv[] = {E2FSCK_BIN, "-y", blk_device.c_str()};
@@ -309,6 +312,32 @@ static void check_fs(const std::string& blk_device, const std::string& fs_type,
                 *fs_stat |= FS_STAT_FSCK_FS_FIXED;
             }
         }
+
+#ifndef FS_MGR_RESIZE_DISABLED
+        if( (ret >= 0) &&  (!strcmp(target.c_str(), "/data")) ) {
+            const char *f2fs_resize2fs_argv[] = {
+                    F2FS_RESIZE_BIN,
+                    "-r 16384", /* 16KB reserved for FDE Dm_crypt of data partition */
+                    blk_device.c_str()
+            };
+            if (access(F2FS_RESIZE_BIN, X_OK)) {
+                LINFO << "Not running " << F2FS_RESIZE_BIN << " on " << realpath(blk_device)
+                      << " (executable not in system image)";
+            }else{
+                LINFO << "Running " << f2fs_resize2fs_argv[0] << " "
+                      << f2fs_resize2fs_argv[1] << " " << f2fs_resize2fs_argv[2];
+
+                ret = logwrap_fork_execvp(ARRAY_SIZE(f2fs_resize2fs_argv),
+                                          f2fs_resize2fs_argv,
+                                          &status, false, LOG_KLOG | LOG_FILE,
+                                          false, FSCK_LOG_FILE);
+                if (ret < 0) {
+                    /* No need to check for error in fork, we can't really handle it now */
+                    LERROR << "Failed trying to run " << F2FS_RESIZE_BIN;
+                }
+            }
+        }
+#endif
     }
     android::base::SetProperty("ro.boottime.init.fsck." + Basename(target),
                                std::to_string(t.duration().count()));
