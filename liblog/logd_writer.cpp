@@ -86,9 +86,6 @@ void LogdClose() {
 }
 
 int LogdWrite(log_id_t logId, struct timespec* ts, struct iovec* vec, size_t nr) {
-   extern int LogdWriteEx(log_id_t logId, struct timespec* ts, struct iovec* vec, size_t nr);
-   return LogdWriteEx(logId, ts,  vec,  nr);
-
   ssize_t ret;
   static const unsigned headerLength = 1;
   struct iovec newVec[nr + headerLength];
