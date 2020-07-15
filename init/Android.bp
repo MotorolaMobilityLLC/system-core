@@ -120,6 +120,7 @@ cc_library_static {
         "selinux_policy_version",
         "mtk_init_extra_defaults",
     ],
+    cflags: ["-DONTIM_FASTBOOT_PROPERITY"],
     srcs: [
         "action.cpp",
         "action_manager.cpp",
@@ -171,7 +172,7 @@ cc_library_static {
 
     target: {
         recovery: {
-            cflags: ["-DRECOVERY","-DONTIM_FASTBOOT_PROPERITY"],
+            cflags: ["-DRECOVERY"],
             exclude_shared_libs: ["libbinder", "libutils"],
         },
     },
