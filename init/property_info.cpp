@@ -195,6 +195,9 @@ void set_system_properties(){
         if (carrier_ontim == "retru_retru") {
               property_set("ro.product.locale","ru-RU");
         }
+        if (carrier_value == "optus") {
+              property_set("ro.product.locale","en-AU");
+        }
 
         // END EKBLACKJ-178
     } else if(prop_product_value == "malta") {
