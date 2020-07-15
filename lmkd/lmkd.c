@@ -1995,9 +1995,10 @@ static void dump_killable_processes(int min_score_adj) {
         struct adjslot_list *curr = head->next;
         while (curr != head) {
             int pid = ((struct proc *)curr)->pid;
+            int tasksize = proc_get_size(pid);
             char *taskname = proc_get_name(pid, buf, sizeof(buf));
             procp = (struct proc *)curr;
-            ALOGW("adj %d, %s:%d", i, taskname, pid);
+            ALOGW("adj %d, %ldkB, %d:%s", i, tasksize*page_k, pid, taskname);
             curr = curr->next;
         }
     }
@@ -2318,10 +2319,11 @@ static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_
     if (debug_process_killing) {
         int64_t other_file = max(mi.field.nr_file_pages - mi.field.shmem - mi.field.unevictable
                         - mi.field.swap_cached, 0);
-        ALOGW("%s stall, swap free %d%%(%d), file %d%%, anon %d%%, wmark %s %" PRId64 "(%ldm), "
+        ALOGW("%s stall, swap free %d%%(%d), swap util %d%%(%d), file %d%%, anon %d%%, wmark %s %" PRId64 "(%ldm), "
                 "thrashing %" PRId64 "%%(%d), kill_reason %d",
             level == VMPRESS_LEVEL_CRITICAL ? "COMPLETE" : "PARTIAL",
             (int)(mi.field.free_swap*100/mi.field.total_swap), swap_free_low_percentage,
+            calc_swap_utilization(&mi), swap_util_max,
             (int)(other_file*100/mi.field.total_swap),
             (int)((mi.field.active_anon + mi.field.inactive_anon)*100/mi.field.total_swap),
             wmark < WMARK_HIGH ? (wmark > WMARK_LOW ? "min" : "low") : "high",
@@ -3048,11 +3050,13 @@ int main(int argc __unused, char **argv __unused) {
         psi_complete_stall_ms = property_get_int32("persist.lmk.psi_complete_stall_ms", psi_complete_stall_ms);
         thrashing_limit_pct = property_get_int32("persist.lmk.thrashing_limit", thrashing_limit_pct);
         thrashing_limit_decay_pct = property_get_int32("persist.lmk.thrashing_limit_decay", thrashing_limit_decay_pct);
+        swap_util_max = property_get_int32("persist.lmk.swap_util_max", swap_util_max);
 
-        ALOGW("PSI CONFIG - partial_stall:%d, full_stall:%d, thrashing:%d, thrashing_decay:%d, kill_heavy:%d, swap_low:%d",
+        ALOGW("PSI CONFIG - partial_stall:%d, full_stall:%d, thrashing:%d, thrashing_decay:%d, "
+                "kill_heavy:%d, swap_low:%d, swap_util_max:%d",
             psi_partial_stall_ms, psi_complete_stall_ms,
             thrashing_limit_pct, thrashing_limit_decay_pct,
-            kill_heaviest_task, swap_free_low_percentage);
+            kill_heaviest_task, swap_free_low_percentage, swap_util_max);
     }
 
     if (!init()) {
