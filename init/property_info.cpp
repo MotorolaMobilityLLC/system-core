@@ -102,7 +102,7 @@ void set_system_properties(){
     std::string  build_name = android::base::GetProperty(prop_build_name, "");
 
     //Fully disable DuraSpeed service for all carriers in LATAM/Europe/Brazil, and only enable it for APEM.
-    if(carrier_value == "retapac" || carrier_value == "retin") {
+    if(carrier_value == "retapac" || carrier_value == "retin" || carrier_value == "optus") {
         property_set("persist.vendor.duraspeed.app.on","1");
         property_set("persist.vendor.duraspeed.support","1");
     } else {
