@@ -1085,7 +1085,7 @@ void property_load_boot_defaults(bool load_debug_prop) {
 
 void set_properties_from_hwinfo() {
     std::string cmdline_path = "/sys/hwinfo/band_id";
-    std::string cmdline_path_hwversion = "/sys/hwinfo/board_id";
+    std::string cmdline_path_hwversion = "/sys/hwinfo/hw_version";
     std::string file_content;
     std::string file_band;
     int len = strlen("band_id=");
@@ -1101,14 +1101,15 @@ void set_properties_from_hwinfo() {
         PLOG(ERROR) << "Could not read properties from '" << cmdline_path << "'";
     }
 
-    if (ReadFileToString(cmdline_path_hwversion, &file_content)) {
-        property_set("ro.boot.hardware.revision",file_content);
-    } else {
-        PLOG(ERROR) << "Could not read properties from '" << cmdline_path_hwversion << "'";
+    std::string productName = android::base::GetProperty("ro.product.name", "");
+    if (productName.find("malta") != std::string::npos) {
+        if (ReadFileToString(cmdline_path_hwversion, &file_content)) {
+            property_set("ro.boot.hardware.revision",file_content);
+        } else {
+            PLOG(ERROR) << "Could not read properties from '" << cmdline_path_hwversion << "'";
+        }
     }
 }
-
-
 
 static int SelinuxAuditCallback(void* data, security_class_t /*cls*/, char* buf, size_t len) {
     auto* d = reinterpret_cast<PropertyAuditData*>(data);
