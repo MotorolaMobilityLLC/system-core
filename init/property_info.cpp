@@ -258,6 +258,36 @@ void set_system_properties(){
               property_set("ro.product.locale","ru-RU");
         }
 
+    } else if(prop_product_value == "malta_64") {
+        set_product_device("malta");
+
+        if(build_name == "lenovo") {
+            prop_product_value = "malta_64_lnv";
+            property_set(prop_amclient, prop_client_value);
+            property_set(prop_msclient, prop_clientrev_value);
+            set_product_name(prop_product_value);
+
+            std::string fingerprint = get_fingerprint_property_malta(prop_product_value);
+            set_fingerprint(fingerprint);
+            property_set("persist.vendor.normal", "1");//表示正常版本，非 VTS 版本，prop 正常设置.
+            property_set(prop_build_fullversion, get_version_property(prop_version_value));
+            property_set(prop_build_customerid, prop_carrier_value);
+            return;
+        }
+
+        if (carrier_ontim == "amxbr_clarobr") {
+            property_set(prop_amclient, prop_clientcountry_value);
+            property_set(prop_msclient, prop_clientrevc_value);
+        } else if (carrier_ontim == "timbr_clarobr") {
+            property_set(prop_msclient, prop_clientbr_value);
+        } else {
+            property_set(prop_amclient, prop_client_value);
+            property_set(prop_msclient, prop_clientrev_value);
+        }
+
+        set_product_name(prop_product_value);
+        std::string fingerprint = get_fingerprint_property_malta(prop_product_value);
+        set_fingerprint(fingerprint);
     }
 
     property_set("persist.vendor.normal", "1");//表示正常版本，非 VTS 版本，prop 正常设置.
