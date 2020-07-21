@@ -453,9 +453,10 @@ on early-fs
     # Once metadata has been mounted, we'll need vold to deal with userdata checkpointing
     start vold
 
-on post-fs
+on post-fs && property:ro.vendor.build.motfactory=1
     exec_start ufs_ffu
 
+on post-fs
     exec - system system -- /system/bin/vdc checkpoint markBootAttempt
 
     # Once everything is setup, no need to modify /.
