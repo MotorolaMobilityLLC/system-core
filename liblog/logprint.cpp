@@ -997,6 +997,9 @@ int android_log_processBinaryLogBuffer(
     entry->priority = ANDROID_LOG_WARN;
   }
   entry->uid = buf->uid;
+  #ifdef LIBYLOG
+    entry->uid =entry->uid+(((struct logger_entry*)buf)->lid<<(4*6));
+  #endif
   inCount = buf->len;
   if (inCount < sizeof(android_event_header_t)) return -1;
   auto* event_header = reinterpret_cast<const android_event_header_t*>(eventData);
