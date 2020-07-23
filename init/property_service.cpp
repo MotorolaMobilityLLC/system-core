@@ -1083,30 +1083,48 @@ void property_load_boot_defaults(bool load_debug_prop) {
     set_properties_from_hwinfo();
 }
 
-void set_properties_from_hwinfo() {
+void set_hwversion_from_hwinfo() {
+    std::string cmdline_path = "/sys/hwinfo/hw_version";
+    std::string file_content;
+    std::string file_hwversion;
+    int len = strlen("hw_version=");
+
+    if (ReadFileToString(cmdline_path, &file_content)) {
+        file_hwversion = file_content.substr(len, (file_content.length() - 2 - len));
+        property_set("ro.boot.hardware.revision", file_hwversion);
+    } else {
+        PLOG(ERROR) << "Could not read properties from '" << cmdline_path << "'";
+    }
+}
+
+void set_hwsku_from_hwinfo() {
     std::string cmdline_path = "/sys/hwinfo/band_id";
-    std::string cmdline_path_hwversion = "/sys/hwinfo/hw_version";
     std::string file_content;
     std::string file_band;
     int len = strlen("band_id=");
-    std::string prop_sku_value = android::base::GetProperty("ro.build.name", "");
-    if (prop_sku_value == "lenovo") {
-        property_set("ro.boot.hardware.sku","XT2055-3");
-        property_set("ro.vendor.hardware.sku","XT2055-3");
-    } else if (ReadFileToString(cmdline_path, &file_content)) {
+
+    if (ReadFileToString(cmdline_path, &file_content)) {
         file_band = file_content.substr(len,8);
         property_set("ro.boot.hardware.sku",file_band);
         property_set("ro.vendor.hardware.sku",file_band);
     } else {
         PLOG(ERROR) << "Could not read properties from '" << cmdline_path << "'";
     }
+}
 
-    std::string productName = android::base::GetProperty("ro.product.name", "");
-    if (productName.find("malta") != std::string::npos) {
-        if (ReadFileToString(cmdline_path_hwversion, &file_content)) {
-            property_set("ro.boot.hardware.revision",file_content);
+void set_properties_from_hwinfo() {
+    std::string build_name = android::base::GetProperty("ro.build.name", "");
+    std::string product_name = android::base::GetProperty("ro.product.name", "");
+
+    if (product_name.find("malta") != std::string::npos) {
+        set_hwversion_from_hwinfo();
+        set_hwsku_from_hwinfo();
+    } else if (product_name.find("blackjack") != std::string::npos) {
+        if (build_name == "lenovo") {
+            property_set("ro.boot.hardware.sku","XT2055-3");
+            property_set("ro.vendor.hardware.sku","XT2055-3");
         } else {
-            PLOG(ERROR) << "Could not read properties from '" << cmdline_path_hwversion << "'";
+            set_hwsku_from_hwinfo();
         }
     }
 }
