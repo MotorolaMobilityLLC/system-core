@@ -406,9 +406,13 @@ std::string get_fingerprint_property(std::string value) {
 
 std::string get_fingerprint_property_malta(std::string value) {
     std::string  buildFingerprint = android::base::GetProperty(prop_fingerprint, "");
-    std::vector<std::string> fingerprint = android::base::Split(buildFingerprint, "/");
-    fingerprint[1] = value;
-    return android::base::Join(fingerprint, "/");
+    std::vector<std::string> fingerprint = android::base::Split(buildFingerprint, ":");
+
+    std::vector<std::string> name = android::base::Split(fingerprint[0], "/");
+    name[1] = value;
+    name[2] = "malta";
+    fingerprint[0] = android::base::Join(name, "/");
+    return android::base::Join(fingerprint, ":");
 }
 
 std::string get_product_property(std::string prop_name, std::string value) {
