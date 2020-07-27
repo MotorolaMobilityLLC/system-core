@@ -105,16 +105,18 @@ bool HashtreeDmVeritySetup(FstabEntry* fstab_entry, const FsAvbHashtreeDescripto
     table.set_readonly(true);
 
     std::chrono::milliseconds timeout = {};
-    if (wait_for_verity_dev) timeout = 1s;
+    if (wait_for_verity_dev) timeout = 5s;
 
     std::string dev_path;
     const std::string mount_point(Basename(fstab_entry->mount_point));
     const std::string device_name(GetVerityDeviceName(*fstab_entry));
     android::dm::DeviceMapper& dm = android::dm::DeviceMapper::Instance();
+    LINFO << "start create verity device!";
     if (!dm.CreateDevice(device_name, table, &dev_path, timeout)) {
         LERROR << "Couldn't create verity device!";
         return false;
     }
+    LINFO << "create verity device success!";
 
     // Marks the underlying block device as read-only.
     SetBlockDeviceReadOnly(fstab_entry->blk_device);
