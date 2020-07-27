@@ -1115,9 +1115,12 @@ void set_hwsku_from_hwinfo() {
 void set_properties_from_hwinfo() {
     std::string build_name = android::base::GetProperty("ro.build.name", "");
     std::string product_name = android::base::GetProperty("ro.product.name", "");
+    std::string carrier_ontim = android::base::GetProperty("ro.carrier.ontim", "");
 
     if (product_name.find("malta") != std::string::npos) {
-        set_hwversion_from_hwinfo();
+        if (carrier_ontim == "amxla_amxdomi") {
+            set_hwversion_from_hwinfo();
+        }
         set_hwsku_from_hwinfo();
     } else if (product_name.find("blackjack") != std::string::npos) {
         if (build_name == "lenovo") {
