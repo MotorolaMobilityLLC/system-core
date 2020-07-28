@@ -288,6 +288,21 @@ void set_system_properties(){
         set_product_name(prop_product_value);
         std::string fingerprint = get_fingerprint_property_malta(prop_product_value);
         set_fingerprint(fingerprint);
+        // BEGIN Ontim, maqing, 30/06/2020,EKMALTA-369:[Region_LATAM]FEATURE-5963: Amazon MDIP app single SKU solution
+        if (carrier_ontim == "timit_timit") {
+             property_set(prop_amazon_partnerid, carrier_value);
+        }
+        if (carrier_ontim == "windit_windds") {
+             property_set(prop_amazon_partnerid, "3it");
+        }
+        if (carrier_ontim == "attmx_attmx") {
+             property_set(prop_amazon_partnerid,carrier_value);
+        }
+
+        // END EKMALTA-369
+        if (carrier_ontim == "retru_retru") {
+              property_set(prop_local, "ru-RU");
+        }
     }
 
     property_set("persist.vendor.normal", "1");//表示正常版本，非 VTS 版本，prop 正常设置.
