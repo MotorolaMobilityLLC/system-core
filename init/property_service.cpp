@@ -717,7 +717,7 @@ uint32_t HandlePropertySet(const std::string& name, const std::string& value,
                            const std::string& source_context, const ucred& cr,
                            SocketConnection* socket, std::string* error) {
 #ifdef MTK_LOG
-    SnapshotPropertyFlowTraceLog("CPs");
+    SnapshotPropertyFlowTraceLog("CPs " + name);
 #endif
     if (auto ret = CheckPermissions(name, value, source_context, cr, error); ret != PROP_SUCCESS) {
         return ret;

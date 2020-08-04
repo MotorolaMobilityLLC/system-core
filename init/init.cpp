@@ -768,6 +768,11 @@ int SecondStageMain(int argc, char** argv) {
 
         if (cmdline.find("init.mtklogdrl=1") != std::string::npos)
             SetMTKLOGDISABLERATELIMIT();
+
+        const char* force_debuggable_env = getenv("INIT_FORCE_DEBUGGABLE");
+        if (force_debuggable_env && AvbHandle::IsDeviceUnlocked()) {
+            SetMTKLOGDISABLERATELIMIT();
+        }
     }
 #else
     SetMTKLOGDISABLERATELIMIT();

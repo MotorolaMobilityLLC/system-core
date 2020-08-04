@@ -1107,9 +1107,6 @@ static std::queue<std::string> _PropertyFlowTraceQueue;
 static bool _isInPropertyFlowTrace = false;
 
 void StartPropertyFlowTraceLog(void) {
-    if (!GetMTKLOGDISABLERATELIMIT())
-        return;
-
     android::base::Timer t;
     _PropertyFlowTraceTimer = t;
 
@@ -1117,12 +1114,11 @@ void StartPropertyFlowTraceLog(void) {
         _PropertyFlowTraceQueue.pop();
 
     _isInPropertyFlowTrace = true;
+
+    SnapshotPropertyFlowTraceLog("SPFTL");
 }
 
 void SnapshotPropertyFlowTraceLog(const std::string& log) {
-    if (!GetMTKLOGDISABLERATELIMIT())
-        return;
-
     std::string s;
 
     if (!_isInPropertyFlowTrace)
@@ -1139,20 +1135,19 @@ void SnapshotPropertyFlowTraceLog(const std::string& log) {
 }
 
 void EndPropertyFlowTraceLog(void) {
-    if (!GetMTKLOGDISABLERATELIMIT())
-        return;
-
     std::string s;
     auto duration = _PropertyFlowTraceTimer.duration();
 
-    if (_isInPropertyFlowTrace && duration > 2000ms) {
+    SnapshotPropertyFlowTraceLog("EPFTL");
+
+    if (_isInPropertyFlowTrace && duration >= 2000ms) {
         s.append(StringPrintf("PropertyFlow took %llu ms, ", (unsigned long long) duration.count()));
         while (!_PropertyFlowTraceQueue.empty()) {
             s.append(_PropertyFlowTraceQueue.front());
             _PropertyFlowTraceQueue.pop();
         }
 
-        KernelLogger_split(android::base::MAIN, android::base::INFO, "init", nullptr, 0, s.c_str());
+        LOG(INFO) << s;
     }
 
     while (!_PropertyFlowTraceQueue.empty())
