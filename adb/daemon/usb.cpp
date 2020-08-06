@@ -487,6 +487,7 @@ struct UsbFfsConnection : public Connection {
 
     void PrepareReadBlock(IoReadBlock* block, uint64_t id) {
         block->pending = false;
+	LOG(INFO) << "Update block->pending -> false";
         if (block->payload.capacity() >= kUsbReadSize) {
             block->payload.resize(kUsbReadSize);
         } else {
@@ -606,7 +607,8 @@ struct UsbFfsConnection : public Connection {
                 if (block->payload.capacity() == 0) {
                     block->payload = std::move(free_block);
                 }
-            }
+            }else
+		LOG(INFO) << "incoming_header_->data_length:" << incoming_header_->data_length << "incoming_payload_.size:" << incoming_payload_.size();
         }
 
         PrepareReadBlock(block, block->id().id + kUsbReadQueueDepth);
@@ -616,12 +618,14 @@ struct UsbFfsConnection : public Connection {
 
     bool SubmitRead(IoReadBlock* block) {
         block->pending = true;
+	LOG(INFO) << "Update block->pending -> ture";
         struct iocb* iocb = &block->control;
         if (io_submit(aio_context_.get(), 1, &iocb) != 1) {
             HandleError(StringPrintf("failed to submit read: %s", strerror(errno)));
+	    LOG(INFO) << "SubmitRead return false";
             return false;
         }
-
+	LOG(INFO) << "SubmitRead return ture";
         return true;
     }
 
