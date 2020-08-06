@@ -765,6 +765,7 @@ static void transport_registration_func(int _fd, unsigned ev, void*) {
     atransport* t;
 
     if (!(ev & FDE_READ)) {
+	LOG(INFO) << "transport_registration_func RETURN, EV:" << ev;
         return;
     }
 
@@ -818,7 +819,8 @@ static void transport_registration_func(int _fd, unsigned ev, void*) {
 #if ADB_HOST
         send_connect(t);
 #endif
-    }
+    }else
+	LOG(INFO) << "t->GetConnectionState():" << t->GetConnectionState();
 
     {
         std::lock_guard<std::recursive_mutex> lock(transport_lock);

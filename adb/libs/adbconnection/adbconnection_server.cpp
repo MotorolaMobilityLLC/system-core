@@ -20,7 +20,9 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
+#include <sys/stat.h>
 
+#include <fcntl.h>
 #include <algorithm>
 #include <array>
 #include <vector>
@@ -34,6 +36,21 @@ using android::base::unique_fd;
 #define JDWP_CONTROL_NAME_LEN (sizeof(JDWP_CONTROL_NAME) - 1)
 
 static_assert(JDWP_CONTROL_NAME_LEN <= sizeof(reinterpret_cast<sockaddr_un*>(0)->sun_path));
+
+
+struct stat fd_stat;
+int check_fd_fine(int fd) {
+	int ret = -1;
+	if(!fcntl(fd, F_GETFL)) {
+		if(!fstat(fd, &fd_stat)) {
+			if(fd_stat.st_nlink >= 1)
+				ret = 0;
+			else
+				LOG(INFO) << "Fd file was deleted!";
+		}
+	}
+	return ret;
+}
 
 // Listen for incoming jdwp clients forever.
 void adbconnection_listen(void (*callback)(int fd, pid_t pid)) {
@@ -118,9 +135,12 @@ void adbconnection_listen(void (*callback)(int fd, pid_t pid)) {
           callback(it->release(), static_cast<pid_t>(pid));
         }
 
-        if (epoll_ctl(epfd.get(), EPOLL_CTL_DEL, event.data.fd, nullptr) != 0) {
-          LOG(FATAL) << "failed to delete fd from JDWP epoll fd";
-        }
+	if(check_fd_fine(event.data.fd) == 0){
+		if (epoll_ctl(epfd.get(), EPOLL_CTL_DEL, event.data.fd, nullptr) != 0) {
+			LOG(INFO) << "failed to delete fd from JDWP epoll fd";
+		}
+	}else
+		LOG(INFO) << "Listened fd disapper";
 
         pending_connections.erase(it);
       }
