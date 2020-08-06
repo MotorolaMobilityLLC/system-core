@@ -117,9 +117,11 @@ namespace mboot {
             // Make stdin/stdout/stderr all point to /dev/null.
             mknod("/dev/null.mboot", S_IFCHR | 0666, makedev(1, 3));
             int fd = open("/dev/null.mboot", O_RDWR);
-            dup2(fd, STDIN_FILENO);
-            dup2(fd, STDOUT_FILENO);
-            dup2(fd, STDERR_FILENO);
+            if (fd >= STDIN_FILENO) {
+                dup2(fd, STDIN_FILENO);
+                dup2(fd, STDOUT_FILENO);
+                dup2(fd, STDERR_FILENO);
+            }
             if (fd > STDERR_FILENO) close(fd);
         }
 
