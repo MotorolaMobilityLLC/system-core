@@ -262,7 +262,7 @@ void set_system_properties(){
         set_product_device("malta");
 
         if(build_name == "lenovo") {
-            prop_product_value = "malta_64_lnv";
+            prop_product_value = "malta_lnv";
             property_set(prop_amclient, prop_client_value);
             property_set(prop_msclient, prop_clientrev_value);
             set_product_name(prop_product_value);
