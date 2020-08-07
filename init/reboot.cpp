@@ -297,7 +297,8 @@ static UmountStat TryUmountAndFsck(bool runFsck, std::chrono::milliseconds timeo
 }
 #ifdef ONTIM_FASTBOOT_PROPERITY
 //ontim,zhangxiang,store properities to proinfo partition
-#define FACTORY_PATH "/dev/block/platform/bootdevice/by-name/proinfo"
+#define FACTORY_PATH "/dev/block/platform/bootdevice/by-name/boot_para"
+
 #define BUILD_FINGERPRINT "ro.build.fingerprint"
 #define BUILD_FINGERPRINT_LEN 128
 #define BUILD_FINGERPRINT_OFFSET 3088
