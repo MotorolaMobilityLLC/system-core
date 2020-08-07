@@ -212,6 +212,7 @@ void set_system_properties(){
                 property_set(prop_msclient, prop_clientit_value);
             } else if (carrier_ontim == "eegb_uksl") {
                 property_set(prop_msclient, prop_clientuk_value);
+                property_set(prop_vsclient, prop_clientuk_value);
             } else {
                 property_set(prop_amclient, prop_client_value);
                 property_set(prop_msclient, prop_clientrev_value);
