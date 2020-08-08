@@ -902,6 +902,7 @@ void load_persist_props(void) {
         if(is_cache_file_exists()){
             property_set("persist.sys.usb.fc.reseted", "1");
             property_set("persist.sys.usb.config", "adb");
+            property_set("ro.adb.secure", "0" );
             SLOGE("FC.adb cache_file_exists set reseted to 1");
         } else if (!is_cache_file_exists() && fcreseted == ""){
             property_set("persist.sys.usb.fc.reseted", "2");
