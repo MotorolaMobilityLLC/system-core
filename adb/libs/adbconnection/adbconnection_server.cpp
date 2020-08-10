@@ -136,12 +136,11 @@ void adbconnection_listen(void (*callback)(int fd, pid_t pid)) {
         }
 
 	if(check_fd_fine(event.data.fd) == 0){
-		if (epoll_ctl(epfd.get(), EPOLL_CTL_DEL, event.data.fd, nullptr) != 0) {
 			LOG(INFO) << "failed to delete fd from JDWP epoll fd";
-		}
-	}else
-		LOG(INFO) << "Listened fd disapper";
-
+	}else{
+		if (epoll_ctl(epfd.get(), EPOLL_CTL_DEL, event.data.fd, nullptr) != 0)
+		    LOG(INFO) << "Listened fd disapper";
+	}
         pending_connections.erase(it);
       }
     }
