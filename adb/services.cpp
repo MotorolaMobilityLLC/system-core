@@ -84,7 +84,7 @@ unique_fd service_to_fd(std::string_view name, atransport* transport) {
         }
     } else {
 #if !ADB_HOST
-	LOG(INFO) << "service to fd: " << name;
+	LOG(INFO) << "Current CMD: " << name;
         ret = daemon_service_to_fd(name, transport);
 #endif
     }

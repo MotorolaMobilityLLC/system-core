@@ -850,7 +850,7 @@ unique_fd StartSubprocess(std::string name, const char* terminal_type, Subproces
       type == SubprocessType::kRaw ? "raw" : "PTY",
       protocol == SubprocessProtocol::kNone ? "none" : "shell", terminal_type, name.c_str());
 
-    LOG(INFO) << "Tianyuan Current sh name:" << name.c_str();
+    LOG(INFO) << "Current Subprocess name:" << name.c_str();
     auto subprocess = std::make_unique<Subprocess>(std::move(name), terminal_type, type, protocol,
                                                    make_pty_raw);
     if (!subprocess) {
