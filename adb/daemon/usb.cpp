@@ -487,7 +487,7 @@ struct UsbFfsConnection : public Connection {
 
     void PrepareReadBlock(IoReadBlock* block, uint64_t id) {
         block->pending = false;
-	LOG(INFO) << "Update block->pending -> false";
+	//LOG(INFO) << "Update block->pending -> false";
         if (block->payload.capacity() >= kUsbReadSize) {
             block->payload.resize(kUsbReadSize);
         } else {
@@ -564,6 +564,7 @@ struct UsbFfsConnection : public Connection {
                 break;
             }
             if (!ProcessRead(current_block)) {
+		LOG(INFO) << "Check amessage abnormal,do not need add the read flag";
                 return false;
             }
             ++needed_read_id_;
@@ -612,20 +613,22 @@ struct UsbFfsConnection : public Connection {
         }
 
         PrepareReadBlock(block, block->id().id + kUsbReadQueueDepth);
-        SubmitRead(block);
+        if(!SubmitRead(block))
+		LOG(INFO) << "Submit Read Block Failed";
+	
         return true;
     }
 
     bool SubmitRead(IoReadBlock* block) {
         block->pending = true;
-	LOG(INFO) << "Update block->pending -> ture";
+	//LOG(INFO) << "Update block->pending -> ture";
         struct iocb* iocb = &block->control;
         if (io_submit(aio_context_.get(), 1, &iocb) != 1) {
             HandleError(StringPrintf("failed to submit read: %s", strerror(errno)));
 	    LOG(INFO) << "SubmitRead return false";
             return false;
         }
-	LOG(INFO) << "SubmitRead return ture";
+	//LOG(INFO) << "SubmitRead return ture";
         return true;
     }
 
