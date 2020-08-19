@@ -643,7 +643,8 @@ void engrave_tombstone(unique_fd output_fd, unwindstack::Unwinder* unwinder,
     unwinder->SetRegs(regs_copy.get());
     unwinder->Unwind();
   if (unwinder->NumFrames() != 0) {
-      log_backtrace(&log, unwinder, "    ");
+      const char* prefix=(char*)it->second.thread_name.c_str();
+      log_backtrace(&log, unwinder, prefix);
   }
   } else {
   _LOG(&log, logtype::HEADER, "*** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***\n");
