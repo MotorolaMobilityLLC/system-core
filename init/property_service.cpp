@@ -913,6 +913,7 @@ void load_persist_props(void) {
     SLOGE("FC.adb end ... ");
 
     property_set("ro.persistent_properties.ready", "true");
+    set_properties_from_proinfo();
 }
 
 bool is_cache_file_exists() {
@@ -1131,6 +1132,27 @@ void set_properties_from_hwinfo() {
             set_hwsku_from_hwinfo();
         }
     }
+}
+
+void set_properties_from_proinfo() {
+    // ontim factory check.
+    uint8_t ontim_factory_buffer = 0;
+    int position = 3022;
+    size_t ontim_factory_buffer_len = 1;
+
+    int fd = open("/dev/block/platform/bootdevice/by-name/proinfo", O_RDONLY | O_CLOEXEC);
+    if (fd == -1) {
+        SLOGE("proinfo fd open fail!");
+        return;
+    } else {
+        // ontim factory check.
+        lseek(fd, position, SEEK_SET);
+        read(fd, &ontim_factory_buffer, ontim_factory_buffer_len);
+        if (ontim_factory_buffer == 1) {
+            property_set("ro.vendor.ontim_factory", "1");
+        }
+    }
+    close(fd);
 }
 
 static int SelinuxAuditCallback(void* data, security_class_t /*cls*/, char* buf, size_t len) {
