@@ -794,11 +794,9 @@ static int prepare_fs_for_mount(const std::string& blk_device, const FstabEntry&
     struct f2fs_super_block f2fs_sb;
 
     if (is_extfs(entry.fs_type)) {
-        struct ext4_super_block sb;
-
-        if (read_ext4_superblock(blk_device, &sb, &fs_stat)) {
-            if ((sb.s_feature_incompat & EXT4_FEATURE_INCOMPAT_RECOVER) != 0 ||
-                (sb.s_state & EXT4_VALID_FS) == 0) {
+        if (read_ext4_superblock(blk_device, &ext4_sb, &fs_stat)) {
+            if ((ext4_sb.s_feature_incompat & EXT4_FEATURE_INCOMPAT_RECOVER) != 0 ||
+                (ext4_sb.s_state & EXT4_VALID_FS) == 0) {
                 LINFO << "Filesystem on " << blk_device << " was not cleanly shutdown; "
                       << "state flags: 0x" << std::hex << ext4_sb.s_state << ", "
                       << "incompat feature flags: 0x" << std::hex << ext4_sb.s_feature_incompat;
