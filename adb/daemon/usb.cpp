@@ -608,8 +608,8 @@ struct UsbFfsConnection : public Connection {
                 if (block->payload.capacity() == 0) {
                     block->payload = std::move(free_block);
                 }
-            }else
-		LOG(INFO) << "incoming_header_->data_length:" << incoming_header_->data_length << "incoming_payload_.size:" << incoming_payload_.size();
+            }//else
+		//LOG(INFO) << "incoming_header_->data_length:" << incoming_header_->data_length << "incoming_payload_.size:" << incoming_payload_.size();
         }
 
         PrepareReadBlock(block, block->id().id + kUsbReadQueueDepth);
