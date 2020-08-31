@@ -35,6 +35,7 @@
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
 #include <android-base/unique_fd.h>
+#include <bionic/mte_kernel.h>
 #include <bionic/reserved_signals.h>
 #include <debuggerd/handler.h>
 #include <log/log.h>
@@ -128,23 +129,22 @@ void _VLOG(log_t* log, enum logtype ltype, const char* fmt, va_list ap) {
 #define MEMORY_BYTES_PER_LINE 16
 
 void dump_memory(log_t* log, unwindstack::Memory* memory, uint64_t addr, const std::string& label) {
-  // Align the address to sizeof(long) and start 32 bytes before the address.
-  addr &= ~(sizeof(long) - 1);
+  // Align the address to the number of bytes per line to avoid confusing memory tag output if
+  // memory is tagged and we start from a misaligned address. Start 32 bytes before the address.
+  addr &= ~(MEMORY_BYTES_PER_LINE - 1);
   if (addr >= 4128) {
     addr -= 32;
   }
 
-  // Don't bother if the address looks too low, or looks too high.
-  if (addr < 4096 ||
-#if defined(__LP64__)
-      addr > 0x4000000000000000UL - MEMORY_BYTES_TO_DUMP) {
-#else
-      addr > 0xffff0000 - MEMORY_BYTES_TO_DUMP) {
-#endif
+  // We don't want the address tag to appear in the addresses in the memory dump.
+  addr = untag_address(addr);
+
+  // Don't bother if the address would overflow, taking tag bits into account. Note that
+  // untag_address truncates to 32 bits on 32-bit platforms as a side effect of returning a
+  // uintptr_t, so this also checks for 32-bit overflow.
+  if (untag_address(addr + MEMORY_BYTES_TO_DUMP - 1) < addr) {
     return;
   }
-
-  _LOG(log, logtype::MEMORY, "\n%s:\n", label.c_str());
 
   // Dump 256 bytes
   uintptr_t data[MEMORY_BYTES_TO_DUMP/sizeof(uintptr_t)];
@@ -186,6 +186,15 @@ void dump_memory(log_t* log, unwindstack::Memory* memory, uint64_t addr, const s
     }
   }
 
+  // If we were unable to read anything, it probably means that the register doesn't contain a
+  // valid pointer. In that case, skip the output for this register entirely rather than emitting 16
+  // lines of dashes.
+  if (bytes == 0) {
+    return;
+  }
+
+  _LOG(log, logtype::MEMORY, "\n%s:\n", label.c_str());
+
   // Dump the code around memory as:
   //  addr             contents                           ascii
   //  0000000000008d34 ef000000e8bd0090 e1b00000512fff1e  ............../Q
@@ -196,8 +205,13 @@ void dump_memory(log_t* log, unwindstack::Memory* memory, uint64_t addr, const s
   size_t current = 0;
   size_t total_bytes = start + bytes;
   for (size_t line = 0; line < MEMORY_BYTES_TO_DUMP / MEMORY_BYTES_PER_LINE; line++) {
+    uint64_t tagged_addr = addr;
+    long tag = memory->ReadTag(addr);
+    if (tag >= 0) {
+      tagged_addr |= static_cast<uint64_t>(tag) << 56;
+    }
     std::string logline;
-    android::base::StringAppendF(&logline, "    %" PRIPTR, addr);
+    android::base::StringAppendF(&logline, "    %" PRIPTR, tagged_addr);
 
     addr += MEMORY_BYTES_PER_LINE;
     std::string ascii;
@@ -223,23 +237,6 @@ void dump_memory(log_t* log, unwindstack::Memory* memory, uint64_t addr, const s
     }
     _LOG(log, logtype::MEMORY, "%s  %s\n", logline.c_str(), ascii.c_str());
   }
-}
-
-void read_with_default(const char* path, char* buf, size_t len, const char* default_value) {
-  unique_fd fd(open(path, O_RDONLY | O_CLOEXEC));
-  if (fd != -1) {
-    int rc = TEMP_FAILURE_RETRY(read(fd.get(), buf, len - 1));
-    if (rc != -1) {
-      buf[rc] = '\0';
-
-      // Trim trailing newlines.
-      if (rc > 0 && buf[rc - 1] == '\n') {
-        buf[rc - 1] = '\0';
-      }
-      return;
-    }
-  }
-  strcpy(buf, default_value);
 }
 
 void drop_capabilities() {
@@ -374,6 +371,12 @@ const char* get_sigcode(const siginfo_t* si) {
           return "SEGV_ADIDERR";
         case SEGV_ADIPERR:
           return "SEGV_ADIPERR";
+#if defined(ANDROID_EXPERIMENTAL_MTE)
+        case SEGV_MTEAERR:
+          return "SEGV_MTEAERR";
+        case SEGV_MTESERR:
+          return "SEGV_MTESERR";
+#endif
       }
       static_assert(NSIGSEGV == SEGV_ADIPERR, "missing SEGV_* si_code");
       break;
@@ -448,4 +451,41 @@ void log_backtrace(log_t* log, unwindstack::Unwinder* unwinder, const char* pref
   for (size_t i = 0; i < unwinder->NumFrames(); i++) {
     _LOG(log, logtype::BACKTRACE, "%s%s\n", prefix, unwinder->FormatFrame(i).c_str());
   }
+}
+
+#if defined(__aarch64__)
+#define FAR_MAGIC 0x46415201
+
+struct far_context {
+  struct _aarch64_ctx head;
+  __u64 far;
+};
+#endif
+
+uintptr_t get_fault_address(const siginfo_t* siginfo, const ucontext_t* ucontext) {
+  (void)ucontext;
+#if defined(__aarch64__)
+  // This relies on a kernel patch:
+  //   https://patchwork.kernel.org/patch/11435077/
+  // that hasn't been accepted into the kernel yet. TODO(pcc): Update this to
+  // use the official interface once it lands.
+  auto* begin = reinterpret_cast<const char*>(ucontext->uc_mcontext.__reserved);
+  auto* end = begin + sizeof(ucontext->uc_mcontext.__reserved);
+  auto* ptr = begin;
+  while (1) {
+    auto* ctx = reinterpret_cast<const _aarch64_ctx*>(ptr);
+    if (ctx->magic == 0) {
+      break;
+    }
+    if (ctx->magic == FAR_MAGIC) {
+      auto* far_ctx = reinterpret_cast<const far_context*>(ctx);
+      return far_ctx->far;
+    }
+    ptr += ctx->size;
+    if (ctx->size % sizeof(void*) != 0 || ptr < begin || ptr >= end) {
+      break;
+    }
+  }
+#endif
+  return reinterpret_cast<uintptr_t>(siginfo->si_addr);
 }

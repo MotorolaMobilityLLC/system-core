@@ -125,19 +125,6 @@ String8::String8()
 {
 }
 
-String8::String8(StaticLinkage)
-    : mString(nullptr)
-{
-    // this constructor is used when we can't rely on the static-initializers
-    // having run. In this case we always allocate an empty string. It's less
-    // efficient than using getEmptyString(), but we assume it's uncommon.
-
-    char* data = static_cast<char*>(
-            SharedBuffer::alloc(sizeof(char))->data());
-    data[0] = 0;
-    mString = data;
-}
-
 String8::String8(const String8& o)
     : mString(o.mString)
 {
@@ -437,7 +424,7 @@ void String8::toLower(size_t start, size_t length)
     char* buf = lockBuffer(len);
     buf += start;
     while (length > 0) {
-        *buf = tolower(*buf);
+        *buf = static_cast<char>(tolower(*buf));
         buf++;
         length--;
     }
@@ -461,7 +448,7 @@ void String8::toUpper(size_t start, size_t length)
     char* buf = lockBuffer(len);
     buf += start;
     while (length > 0) {
-        *buf = toupper(*buf);
+        *buf = static_cast<char>(toupper(*buf));
         buf++;
         length--;
     }

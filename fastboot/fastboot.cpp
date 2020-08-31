@@ -145,6 +145,7 @@ static Image images[] = {
     { "dtbo",     "dtbo.img",         "dtbo.sig",     "dtbo",     true,  ImageType::BootCritical },
     { "dts",      "dt.img",           "dt.sig",       "dts",      true,  ImageType::BootCritical },
     { "odm",      "odm.img",          "odm.sig",      "odm",      true,  ImageType::Normal },
+    { "odm_dlkm", "odm_dlkm.img",     "odm_dlkm.sig", "odm_dlkm", true,  ImageType::Normal },
     { "product",  "product.img",      "product.sig",  "product",  true,  ImageType::Normal },
     { "recovery", "recovery.img",     "recovery.sig", "recovery", true,  ImageType::BootCritical },
     { "super",    "super.img",        "super.sig",    "super",    true,  ImageType::Extra },
@@ -166,6 +167,10 @@ static Image images[] = {
                   "vendor_boot.img",  "vendor_boot.sig",
                                                       "vendor_boot",
                                                                   true,  ImageType::BootCritical },
+    { "vendor_dlkm",
+                  "vendor_dlkm.img",  "vendor_dlkm.sig",
+                                                      "vendor_dlkm",
+                                                                  true,  ImageType::Normal },
     { nullptr,    "vendor_other.img", "vendor.sig",   "vendor",   true,  ImageType::Normal },
         // clang-format on
 };
@@ -200,8 +205,10 @@ static std::string find_item(const std::string& item) {
 double last_start_time;
 
 static void Status(const std::string& message) {
-    static constexpr char kStatusFormat[] = "%-50s ";
-    fprintf(stderr, kStatusFormat, message.c_str());
+    if (!message.empty()) {
+        static constexpr char kStatusFormat[] = "%-50s ";
+        fprintf(stderr, kStatusFormat, message.c_str());
+    }
     last_start_time = now();
 }
 
@@ -258,6 +265,10 @@ static int match_fastboot(usb_ifc_info* info) {
 static int list_devices_callback(usb_ifc_info* info) {
     if (match_fastboot_with_serial(info, nullptr) == 0) {
         std::string serial = info->serial_number;
+        std::string interface = info->interface;
+        if (interface.empty()) {
+            interface = "fastboot";
+        }
         if (!info->writable) {
             serial = UsbNoPermissionsShortHelpText();
         }
@@ -266,9 +277,9 @@ static int list_devices_callback(usb_ifc_info* info) {
         }
         // output compatible with "adb devices"
         if (!g_long_listing) {
-            printf("%s\tfastboot", serial.c_str());
+            printf("%s\t%s", serial.c_str(), interface.c_str());
         } else {
-            printf("%-22s fastboot", serial.c_str());
+            printf("%-22s %s", serial.c_str(), interface.c_str());
             if (strlen(info->device_path) > 0) printf(" %s", info->device_path);
         }
         putchar('\n');
@@ -1284,7 +1295,7 @@ static void reboot_to_userspace_fastboot() {
 static void CancelSnapshotIfNeeded() {
     std::string merge_status = "none";
     if (fb->GetVar(FB_VAR_SNAPSHOT_UPDATE_STATUS, &merge_status) == fastboot::SUCCESS &&
-        merge_status != "none") {
+        !merge_status.empty() && merge_status != "none") {
         fb->SnapshotUpdateCommand("cancel");
     }
 }

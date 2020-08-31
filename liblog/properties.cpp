@@ -365,29 +365,6 @@ static inline unsigned char do_cache2_char(struct cache2_char* self) {
   return c;
 }
 
-static unsigned char evaluate_persist_ro(const struct cache2_char* self) {
-  unsigned char c = self->cache_persist.c;
-
-  if (c) {
-    return c;
-  }
-
-  return self->cache_ro.c;
-}
-
-/*
- * Timestamp state generally remains constant, but can change at any time
- * to handle developer requirements.
- */
-clockid_t android_log_clockid() {
-  static struct cache2_char clockid = {PTHREAD_MUTEX_INITIALIZER, 0,
-                                       "persist.logd.timestamp",  {{NULL, 0xFFFFFFFF}, '\0'},
-                                       "ro.logd.timestamp",       {{NULL, 0xFFFFFFFF}, '\0'},
-                                       evaluate_persist_ro};
-
-  return (tolower(do_cache2_char(&clockid)) == 'm') ? CLOCK_MONOTONIC : CLOCK_REALTIME;
-}
-
 /*
  * Security state generally remains constant, but the DO must be able
  * to turn off logging should it become spammy after an attack is detected.
@@ -497,36 +474,7 @@ bool __android_logger_property_get_bool(const char* key, int flag) {
 }
 
 bool __android_logger_valid_buffer_size(unsigned long value) {
-  static long pages, pagesize;
-  unsigned long maximum;
-
-  if ((value < LOG_BUFFER_MIN_SIZE) || (LOG_BUFFER_MAX_SIZE < value)) {
-    return false;
-  }
-
-  if (!pages) {
-    pages = sysconf(_SC_PHYS_PAGES);
-  }
-  if (pages < 1) {
-    return true;
-  }
-
-  if (!pagesize) {
-    pagesize = sysconf(_SC_PAGESIZE);
-    if (pagesize <= 1) {
-      pagesize = PAGE_SIZE;
-    }
-  }
-
-  /* maximum memory impact a somewhat arbitrary ~3% */
-  pages = (pages + 31) / 32;
-  maximum = pages * pagesize;
-
-  if ((maximum < LOG_BUFFER_MIN_SIZE) || (LOG_BUFFER_MAX_SIZE < maximum)) {
-    return true;
-  }
-
-  return value <= maximum;
+  return LOG_BUFFER_MIN_SIZE <= value && value <= LOG_BUFFER_MAX_SIZE;
 }
 
 struct cache2_property_size {

@@ -15,8 +15,13 @@
  */
 #include <string>
 
-#include "../LogBuffer.h"
-#include "../LogTimes.h"
+#include <android-base/logging.h>
+
+#include "../ChattyLogBuffer.h"
+#include "../LogReaderList.h"
+#include "../LogReaderThread.h"
+#include "../LogStatistics.h"
+#include "../SerializedLogBuffer.h"
 
 // We don't want to waste a lot of entropy on messages
 #define MAX_MSG_LENGTH 5
@@ -25,7 +30,20 @@
 #define MIN_TAG_ID 1000
 #define TAG_MOD 10
 
-namespace android {
+#ifndef __ANDROID__
+unsigned long __android_logger_get_buffer_size(log_id_t) {
+    return 1024 * 1024;
+}
+
+bool __android_logger_valid_buffer_size(unsigned long) {
+    return true;
+}
+#endif
+
+char* android::uidToName(uid_t) {
+    return strdup("fake");
+}
+
 struct LogInput {
   public:
     log_id_t log_id;
@@ -36,7 +54,8 @@ struct LogInput {
     unsigned int log_mask;
 };
 
-int write_log_messages(const uint8_t** pdata, size_t* data_left, LogBuffer* log_buffer) {
+int write_log_messages(const uint8_t** pdata, size_t* data_left, LogBuffer* log_buffer,
+                       LogStatistics* stats) {
     const uint8_t* data = *pdata;
     const LogInput* logInput = reinterpret_cast<const LogInput*>(data);
     data += sizeof(LogInput);
@@ -69,23 +88,20 @@ int write_log_messages(const uint8_t** pdata, size_t* data_left, LogBuffer* log_
 
     // Other elements not in enum.
     log_id_t log_id = static_cast<log_id_t>(unsigned(logInput->log_id) % (LOG_ID_MAX + 1));
-    log_buffer->log(log_id, logInput->realtime, logInput->uid, logInput->pid, logInput->tid, msg,
+    log_buffer->Log(log_id, logInput->realtime, logInput->uid, logInput->pid, logInput->tid, msg,
                     sizeof(uint32_t) + msg_length + 1);
-    log_buffer->formatStatistics(logInput->uid, logInput->pid, logInput->log_mask);
+    stats->Format(logInput->uid, logInput->pid, logInput->log_mask);
     *pdata = data;
     return 1;
 }
 
-// Because system/core/logd/main.cpp redefines these.
-void prdebug(char const* fmt, ...) {
-    va_list ap;
-    va_start(ap, fmt);
-    vfprintf(stderr, fmt, ap);
-    va_end(ap);
-}
-char* uidToName(uid_t) {
-    return strdup("fake");
-}
+class NoopWriter : public LogWriter {
+  public:
+    NoopWriter() : LogWriter(0, true) {}
+    bool Write(const logger_entry&, const char*) override { return true; }
+
+    std::string name() const override { return "noop_writer"; }
+};
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
     // We want a random tag length and a random remaining message length
@@ -93,23 +109,50 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
         return 0;
     }
 
-    LastLogTimes times;
-    LogBuffer log_buffer(&times);
+    android::base::SetMinimumLogSeverity(android::base::ERROR);
+
+    LogReaderList reader_list;
+    LogTags tags;
+    PruneList prune_list;
+    LogStatistics stats(true, true);
+    std::unique_ptr<LogBuffer> log_buffer;
+#ifdef FUZZ_SERIALIZED
+    log_buffer.reset(new SerializedLogBuffer(&reader_list, &tags, &stats));
+#else
+    log_buffer.reset(new ChattyLogBuffer(&reader_list, &tags, &prune_list, &stats));
+#endif
     size_t data_left = size;
     const uint8_t** pdata = &data;
 
-    log_buffer.enableStatistics();
-    log_buffer.initPrune(nullptr);
+    prune_list.Init(nullptr);
     // We want to get pruning code to get called.
-    log_id_for_each(i) { log_buffer.setSize(i, 10000); }
+    log_id_for_each(i) { log_buffer->SetSize(i, 10000); }
 
     while (data_left >= sizeof(LogInput) + 2 * sizeof(uint8_t)) {
-        if (!write_log_messages(pdata, &data_left, &log_buffer)) {
+        if (!write_log_messages(pdata, &data_left, log_buffer.get(), &stats)) {
             return 0;
         }
     }
 
-    log_id_for_each(i) { log_buffer.clear(i); }
+    // Read out all of the logs.
+    {
+        auto lock = std::unique_lock{reader_list.reader_threads_lock()};
+        std::unique_ptr<LogWriter> test_writer(new NoopWriter());
+        std::unique_ptr<LogReaderThread> log_reader(
+                new LogReaderThread(log_buffer.get(), &reader_list, std::move(test_writer), true, 0,
+                                    kLogMaskAll, 0, {}, 1, {}));
+        reader_list.reader_threads().emplace_back(std::move(log_reader));
+    }
+
+    // Wait until the reader has finished.
+    while (true) {
+        usleep(50);
+        auto lock = std::unique_lock{reader_list.reader_threads_lock()};
+        if (reader_list.reader_threads().size() == 0) {
+            break;
+        }
+    }
+
+    log_id_for_each(i) { log_buffer->Clear(i, 0); }
     return 0;
 }
-}  // namespace android

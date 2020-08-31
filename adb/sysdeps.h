@@ -671,6 +671,10 @@ static inline int adb_get_os_handle(borrowed_fd fd) {
     return fd.get();
 }
 
+static inline int cast_handle_to_int(int fd) {
+    return fd;
+}
+
 // A very simple wrapper over a launched child process
 class Process {
   public:

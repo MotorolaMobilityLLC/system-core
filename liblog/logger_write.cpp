@@ -192,7 +192,7 @@ static int write_to_log(log_id_t log_id, struct iovec* vec, size_t nr) {
     return -EINVAL;
   }
 
-  clock_gettime(android_log_clockid(), &ts);
+  clock_gettime(CLOCK_REALTIME, &ts);
 
   if (log_id == LOG_ID_SECURITY) {
     if (vec[0].iov_len < 4) {
@@ -334,7 +334,7 @@ int __android_log_vprint(int prio, const char* tag, const char* fmt, va_list ap)
     return -EPERM;
   }
 
-  char buf[LOG_BUF_SIZE];
+  __attribute__((uninitialized)) char buf[LOG_BUF_SIZE];
 
   vsnprintf(buf, LOG_BUF_SIZE, fmt, ap);
 
@@ -352,7 +352,7 @@ int __android_log_print(int prio, const char* tag, const char* fmt, ...) {
   }
 
   va_list ap;
-  char buf[LOG_BUF_SIZE];
+  __attribute__((uninitialized)) char buf[LOG_BUF_SIZE];
 
   va_start(ap, fmt);
   vsnprintf(buf, LOG_BUF_SIZE, fmt, ap);
@@ -372,7 +372,7 @@ int __android_log_buf_print(int bufID, int prio, const char* tag, const char* fm
   }
 
   va_list ap;
-  char buf[LOG_BUF_SIZE];
+  __attribute__((uninitialized)) char buf[LOG_BUF_SIZE];
 
   va_start(ap, fmt);
   vsnprintf(buf, LOG_BUF_SIZE, fmt, ap);
@@ -385,7 +385,7 @@ int __android_log_buf_print(int bufID, int prio, const char* tag, const char* fm
 }
 
 void __android_log_assert(const char* cond, const char* tag, const char* fmt, ...) {
-  char buf[LOG_BUF_SIZE];
+  __attribute__((uninitialized)) char buf[LOG_BUF_SIZE];
 
   if (fmt) {
     va_list ap;

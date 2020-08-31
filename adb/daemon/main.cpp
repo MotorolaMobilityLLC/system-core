@@ -157,12 +157,6 @@ static void drop_privileges(int server_port) {
                 LOG(FATAL) << "Could not set SELinux context";
             }
         }
-        std::string error;
-        std::string local_name =
-            android::base::StringPrintf("tcp:%d", server_port);
-        if (install_listener(local_name, "*smartsocket*", nullptr, 0, nullptr, &error)) {
-            LOG(FATAL) << "Could not install *smartsocket* listener: " << error;
-        }
     }
 }
 #endif
@@ -279,6 +273,8 @@ int adbd_main(int server_port) {
         addrs = android::base::Split(prop_addr, ",");
         setup_adb(addrs);
     }
+
+    LOG(INFO) << "adbd started";
 
     D("adbd_main(): pre init_jdwp()");
     init_jdwp();

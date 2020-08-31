@@ -18,6 +18,7 @@
 #include <fcntl.h>
 #include <stdlib.h>
 #include <sys/capability.h>
+#include <sys/mman.h>
 #include <sys/prctl.h>
 #include <sys/ptrace.h>
 #include <sys/resource.h>
@@ -31,6 +32,9 @@
 
 #include <android/fdsan.h>
 #include <android/set_abort_message.h>
+#include <bionic/malloc.h>
+#include <bionic/mte.h>
+#include <bionic/mte_kernel.h>
 #include <bionic/reserved_signals.h>
 
 #include <android-base/cmsg.h>
@@ -169,6 +173,8 @@ class CrasherTest : public ::testing::Test {
   void StartCrasher(const std::string& crash_type);
   void FinishCrasher();
   void AssertDeath(int signo);
+
+  static void Trap(void* ptr);
 };
 
 CrasherTest::CrasherTest() {
@@ -303,6 +309,301 @@ TEST_F(CrasherTest, smoke) {
   std::string result;
   ConsumeFd(std::move(output_fd), &result);
   ASSERT_MATCH(result, R"(signal 11 \(SIGSEGV\), code 1 \(SEGV_MAPERR\), fault addr 0xdead)");
+}
+
+TEST_F(CrasherTest, tagged_fault_addr) {
+#if !defined(__aarch64__)
+  GTEST_SKIP() << "Requires aarch64";
+#endif
+  int intercept_result;
+  unique_fd output_fd;
+  StartProcess([]() {
+    *reinterpret_cast<volatile char*>(0x100000000000dead) = '1';
+  });
+
+  StartIntercept(&output_fd);
+  FinishCrasher();
+  AssertDeath(SIGSEGV);
+  FinishIntercept(&intercept_result);
+
+  ASSERT_EQ(1, intercept_result) << "tombstoned reported failure";
+
+  std::string result;
+  ConsumeFd(std::move(output_fd), &result);
+
+  // The address can either be tagged (new kernels) or untagged (old kernels).
+  ASSERT_MATCH(
+      result,
+      R"(signal 11 \(SIGSEGV\), code 1 \(SEGV_MAPERR\), fault addr (0x100000000000dead|0xdead))");
+}
+
+// Marked as weak to prevent the compiler from removing the malloc in the caller. In theory, the
+// compiler could still clobber the argument register before trapping, but that's unlikely.
+__attribute__((weak)) void CrasherTest::Trap(void* ptr ATTRIBUTE_UNUSED) {
+  __builtin_trap();
+}
+
+TEST_F(CrasherTest, heap_addr_in_register) {
+#if defined(__i386__)
+  GTEST_SKIP() << "architecture does not pass arguments in registers";
+#endif
+  int intercept_result;
+  unique_fd output_fd;
+  StartProcess([]() {
+    // Crash with a heap pointer in the first argument register.
+    Trap(malloc(1));
+  });
+
+  StartIntercept(&output_fd);
+  FinishCrasher();
+  int status;
+  ASSERT_EQ(crasher_pid, TIMEOUT(30, waitpid(crasher_pid, &status, 0)));
+  ASSERT_TRUE(WIFSIGNALED(status)) << "crasher didn't terminate via a signal";
+  // Don't test the signal number because different architectures use different signals for
+  // __builtin_trap().
+  FinishIntercept(&intercept_result);
+
+  ASSERT_EQ(1, intercept_result) << "tombstoned reported failure";
+
+  std::string result;
+  ConsumeFd(std::move(output_fd), &result);
+
+#if defined(__aarch64__)
+  ASSERT_MATCH(result, "memory near x0");
+#elif defined(__arm__)
+  ASSERT_MATCH(result, "memory near r0");
+#elif defined(__x86_64__)
+  ASSERT_MATCH(result, "memory near rdi");
+#else
+  ASSERT_TRUE(false) << "unsupported architecture";
+#endif
+}
+
+#if defined(__aarch64__) && defined(ANDROID_EXPERIMENTAL_MTE)
+static void SetTagCheckingLevelSync() {
+  int tagged_addr_ctrl = prctl(PR_GET_TAGGED_ADDR_CTRL, 0, 0, 0, 0);
+  if (tagged_addr_ctrl < 0) {
+    abort();
+  }
+
+  tagged_addr_ctrl = (tagged_addr_ctrl & ~PR_MTE_TCF_MASK) | PR_MTE_TCF_SYNC;
+  if (prctl(PR_SET_TAGGED_ADDR_CTRL, tagged_addr_ctrl, 0, 0, 0) != 0) {
+    abort();
+  }
+
+  HeapTaggingLevel heap_tagging_level = M_HEAP_TAGGING_LEVEL_SYNC;
+  if (!android_mallopt(M_SET_HEAP_TAGGING_LEVEL, &heap_tagging_level, sizeof(heap_tagging_level))) {
+    abort();
+  }
+}
+#endif
+
+TEST_F(CrasherTest, mte_uaf) {
+#if defined(__aarch64__) && defined(ANDROID_EXPERIMENTAL_MTE)
+  if (!mte_supported()) {
+    GTEST_SKIP() << "Requires MTE";
+  }
+
+  int intercept_result;
+  unique_fd output_fd;
+  StartProcess([]() {
+    SetTagCheckingLevelSync();
+    volatile int* p = (volatile int*)malloc(16);
+    free((void *)p);
+    p[0] = 42;
+  });
+
+  StartIntercept(&output_fd);
+  FinishCrasher();
+  AssertDeath(SIGSEGV);
+  FinishIntercept(&intercept_result);
+
+  ASSERT_EQ(1, intercept_result) << "tombstoned reported failure";
+
+  std::string result;
+  ConsumeFd(std::move(output_fd), &result);
+
+  ASSERT_MATCH(result, R"(signal 11 \(SIGSEGV\), code 9 \(SEGV_MTESERR\))");
+  ASSERT_MATCH(result, R"(Cause: \[MTE\]: Use After Free, 0 bytes into a 16-byte allocation.*
+
+allocated by thread .*
+      #00 pc)");
+  ASSERT_MATCH(result, R"(deallocated by thread .*
+      #00 pc)");
+#else
+  GTEST_SKIP() << "Requires aarch64 + ANDROID_EXPERIMENTAL_MTE";
+#endif
+}
+
+TEST_F(CrasherTest, mte_overflow) {
+#if defined(__aarch64__) && defined(ANDROID_EXPERIMENTAL_MTE)
+  if (!mte_supported()) {
+    GTEST_SKIP() << "Requires MTE";
+  }
+
+  int intercept_result;
+  unique_fd output_fd;
+  StartProcess([]() {
+    SetTagCheckingLevelSync();
+    volatile int* p = (volatile int*)malloc(16);
+    p[4] = 42;
+  });
+
+  StartIntercept(&output_fd);
+  FinishCrasher();
+  AssertDeath(SIGSEGV);
+  FinishIntercept(&intercept_result);
+
+  ASSERT_EQ(1, intercept_result) << "tombstoned reported failure";
+
+  std::string result;
+  ConsumeFd(std::move(output_fd), &result);
+
+  ASSERT_MATCH(result, R"(signal 11 \(SIGSEGV\))");
+  ASSERT_MATCH(result, R"(Cause: \[MTE\]: Buffer Overflow, 0 bytes right of a 16-byte allocation.*
+
+allocated by thread .*
+      #00 pc)");
+#else
+  GTEST_SKIP() << "Requires aarch64 + ANDROID_EXPERIMENTAL_MTE";
+#endif
+}
+
+TEST_F(CrasherTest, mte_underflow) {
+#if defined(__aarch64__) && defined(ANDROID_EXPERIMENTAL_MTE)
+  if (!mte_supported()) {
+    GTEST_SKIP() << "Requires MTE";
+  }
+
+  int intercept_result;
+  unique_fd output_fd;
+  StartProcess([]() {
+    SetTagCheckingLevelSync();
+    volatile int* p = (volatile int*)malloc(16);
+    p[-1] = 42;
+  });
+
+  StartIntercept(&output_fd);
+  FinishCrasher();
+  AssertDeath(SIGSEGV);
+  FinishIntercept(&intercept_result);
+
+  ASSERT_EQ(1, intercept_result) << "tombstoned reported failure";
+
+  std::string result;
+  ConsumeFd(std::move(output_fd), &result);
+
+  ASSERT_MATCH(result, R"(signal 11 \(SIGSEGV\), code 9 \(SEGV_MTESERR\))");
+  ASSERT_MATCH(result, R"(Cause: \[MTE\]: Buffer Underflow, 4 bytes left of a 16-byte allocation.*
+
+allocated by thread .*
+      #00 pc)");
+#else
+  GTEST_SKIP() << "Requires aarch64 + ANDROID_EXPERIMENTAL_MTE";
+#endif
+}
+
+TEST_F(CrasherTest, mte_multiple_causes) {
+#if defined(__aarch64__) && defined(ANDROID_EXPERIMENTAL_MTE)
+  if (!mte_supported()) {
+    GTEST_SKIP() << "Requires MTE";
+  }
+
+  int intercept_result;
+  unique_fd output_fd;
+  StartProcess([]() {
+    SetTagCheckingLevelSync();
+
+    // Make two allocations with the same tag and close to one another. Check for both properties
+    // with a bounds check -- this relies on the fact that only if the allocations have the same tag
+    // would they be measured as closer than 128 bytes to each other. Otherwise they would be about
+    // (some non-zero value << 56) apart.
+    //
+    // The out-of-bounds access will be considered either an overflow of one or an underflow of the
+    // other.
+    std::set<uintptr_t> allocs;
+    for (int i = 0; i != 4096; ++i) {
+      uintptr_t alloc = reinterpret_cast<uintptr_t>(malloc(16));
+      auto it = allocs.insert(alloc).first;
+      if (it != allocs.begin() && *std::prev(it) + 128 > alloc) {
+        *reinterpret_cast<int*>(*std::prev(it) + 16) = 42;
+      }
+      if (std::next(it) != allocs.end() && alloc + 128 > *std::next(it)) {
+        *reinterpret_cast<int*>(alloc + 16) = 42;
+      }
+    }
+  });
+
+  StartIntercept(&output_fd);
+  FinishCrasher();
+  AssertDeath(SIGSEGV);
+  FinishIntercept(&intercept_result);
+
+  ASSERT_EQ(1, intercept_result) << "tombstoned reported failure";
+
+  std::string result;
+  ConsumeFd(std::move(output_fd), &result);
+
+  ASSERT_MATCH(result, R"(signal 11 \(SIGSEGV\))");
+  ASSERT_MATCH(
+      result,
+      R"(Note: multiple potential causes for this crash were detected, listing them in decreasing order of probability.)");
+
+  // Adjacent untracked allocations may cause us to see the wrong underflow here (or only
+  // overflows), so we can't match explicitly for an underflow message.
+  ASSERT_MATCH(result, R"(Cause: \[MTE\]: Buffer Overflow, 0 bytes right of a 16-byte allocation)");
+#else
+  GTEST_SKIP() << "Requires aarch64 + ANDROID_EXPERIMENTAL_MTE";
+#endif
+}
+
+#if defined(__aarch64__) && defined(ANDROID_EXPERIMENTAL_MTE)
+static uintptr_t CreateTagMapping() {
+  uintptr_t mapping =
+      reinterpret_cast<uintptr_t>(mmap(nullptr, getpagesize(), PROT_READ | PROT_WRITE | PROT_MTE,
+                                       MAP_PRIVATE | MAP_ANONYMOUS, -1, 0));
+  if (reinterpret_cast<void*>(mapping) == MAP_FAILED) {
+    return 0;
+  }
+  __asm__ __volatile__(".arch_extension mte; stg %0, [%0]"
+                       :
+                       : "r"(mapping + (1ULL << 56))
+                       : "memory");
+  return mapping;
+}
+#endif
+
+TEST_F(CrasherTest, mte_tag_dump) {
+#if defined(__aarch64__) && defined(ANDROID_EXPERIMENTAL_MTE)
+  if (!mte_supported()) {
+    GTEST_SKIP() << "Requires MTE";
+  }
+
+  int intercept_result;
+  unique_fd output_fd;
+  StartProcess([&]() {
+    SetTagCheckingLevelSync();
+    Trap(reinterpret_cast<void *>(CreateTagMapping()));
+  });
+
+  StartIntercept(&output_fd);
+  FinishCrasher();
+  AssertDeath(SIGTRAP);
+  FinishIntercept(&intercept_result);
+
+  ASSERT_EQ(1, intercept_result) << "tombstoned reported failure";
+
+  std::string result;
+  ConsumeFd(std::move(output_fd), &result);
+
+  ASSERT_MATCH(result, R"(memory near x0:
+.*
+.*
+    01.............0 0000000000000000 0000000000000000  ................
+    00.............0)");
+#else
+  GTEST_SKIP() << "Requires aarch64 + ANDROID_EXPERIMENTAL_MTE";
+#endif
 }
 
 TEST_F(CrasherTest, LD_PRELOAD) {

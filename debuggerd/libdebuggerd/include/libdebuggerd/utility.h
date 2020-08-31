@@ -83,8 +83,6 @@ void log_backtrace(log_t* log, unwindstack::Unwinder* unwinder, const char* pref
 
 void dump_memory(log_t* log, unwindstack::Memory* backtrace, uint64_t addr, const std::string&);
 
-void read_with_default(const char* path, char* buf, size_t len, const char* default_value);
-
 void drop_capabilities();
 
 bool signal_has_sender(const siginfo_t*, pid_t caller_pid);
@@ -92,5 +90,7 @@ bool signal_has_si_addr(const siginfo_t*);
 void get_signal_sender(char* buf, size_t n, const siginfo_t*);
 const char* get_signame(const siginfo_t*);
 const char* get_sigcode(const siginfo_t*);
+
+uintptr_t get_fault_address(const siginfo_t* siginfo, const ucontext_t* ucontext);
 
 #endif // _DEBUGGERD_UTILITY_H

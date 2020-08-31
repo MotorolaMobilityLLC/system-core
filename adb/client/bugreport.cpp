@@ -104,7 +104,9 @@ class BugreportStandardStreamsCallback : public StandardStreamsCallbackInterface
             SetLineMessage("pulling");
             status_ =
                 br_->DoSyncPull(srcs, destination.c_str(), false, line_message_.c_str()) ? 0 : 1;
-            if (status_ != 0) {
+            if (status_ == 0) {
+                printf("Bug report copied to %s\n", destination.c_str());
+            } else {
                 fprintf(stderr,
                         "Bug report finished but could not be copied to '%s'.\n"
                         "Try to run 'adb pull %s <directory>'\n"
@@ -282,5 +284,5 @@ int Bugreport::SendShellCommand(const std::string& command, bool disable_shell_p
 
 bool Bugreport::DoSyncPull(const std::vector<const char*>& srcs, const char* dst, bool copy_attrs,
                            const char* name) {
-    return do_sync_pull(srcs, dst, copy_attrs, name);
+    return do_sync_pull(srcs, dst, copy_attrs, CompressionType::None, name);
 }

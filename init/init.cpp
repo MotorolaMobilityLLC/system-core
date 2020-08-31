@@ -18,6 +18,7 @@
 
 #include <dirent.h>
 #include <fcntl.h>
+#include <paths.h>
 #include <pthread.h>
 #include <signal.h>
 #include <stdlib.h>
@@ -46,6 +47,7 @@
 #include <android-base/properties.h>
 #include <android-base/stringprintf.h>
 #include <android-base/strings.h>
+#include <backtrace/Backtrace.h>
 #include <fs_avb/fs_avb.h>
 #include <fs_mgr.h>
 #include <fs_mgr_dm_linear.h>
@@ -246,17 +248,44 @@ static class ShutdownState {
     std::optional<std::string> CheckShutdown() {
         auto lock = std::lock_guard{shutdown_command_lock_};
         if (do_shutdown_ && !IsShuttingDown()) {
-            do_shutdown_ = false;
             return shutdown_command_;
         }
         return {};
     }
+
+    bool do_shutdown() const { return do_shutdown_; }
+    void set_do_shutdown(bool value) { do_shutdown_ = value; }
 
   private:
     std::mutex shutdown_command_lock_;
     std::string shutdown_command_;
     bool do_shutdown_ = false;
 } shutdown_state;
+
+static void UnwindMainThreadStack() {
+    std::unique_ptr<Backtrace> backtrace(Backtrace::Create(BACKTRACE_CURRENT_PROCESS, 1));
+    if (!backtrace->Unwind(0)) {
+        LOG(ERROR) << __FUNCTION__ << "sys.powerctl: Failed to unwind callstack.";
+    }
+    for (size_t i = 0; i < backtrace->NumFrames(); i++) {
+        LOG(ERROR) << "sys.powerctl: " << backtrace->FormatFrameData(i);
+    }
+}
+
+void DebugRebootLogging() {
+    LOG(INFO) << "sys.powerctl: do_shutdown: " << shutdown_state.do_shutdown()
+              << " IsShuttingDown: " << IsShuttingDown();
+    if (shutdown_state.do_shutdown()) {
+        LOG(ERROR) << "sys.powerctl set while a previous shutdown command has not been handled";
+        UnwindMainThreadStack();
+        DumpShutdownDebugInformation();
+    }
+    if (IsShuttingDown()) {
+        LOG(ERROR) << "sys.powerctl set while init is already shutting down";
+        UnwindMainThreadStack();
+        DumpShutdownDebugInformation();
+    }
+}
 
 void DumpState() {
     ServiceList::GetInstance().DumpState();
@@ -711,8 +740,14 @@ int SecondStageMain(int argc, char** argv) {
     trigger_shutdown = [](const std::string& command) { shutdown_state.TriggerShutdown(command); };
 
     SetStdioToDevNull(argv);
-    InitKernelLogging(argv);
+    InitSecondStageLogging(argv);
     LOG(INFO) << "init second stage started!";
+
+    // Update $PATH in the case the second stage init is newer than first stage init, where it is
+    // first set.
+    if (setenv("PATH", _PATH_DEFPATH, 1) != 0) {
+        PLOG(FATAL) << "Could not set $PATH to '" << _PATH_DEFPATH << "' in second stage";
+    }
 
     // Init should not crash because of a dependence on any other process, therefore we ignore
     // SIGPIPE and handle EPIPE at the call site directly.  Note that setting a signal to SIG_IGN
@@ -893,13 +928,18 @@ int SecondStageMain(int argc, char** argv) {
     // Run all property triggers based on current state of the properties.
     am.QueueBuiltinAction(queue_property_triggers_action, "queue_property_triggers");
 
+    // Restore prio before main loop
+    setpriority(PRIO_PROCESS, 0, 0);
     while (true) {
         // By default, sleep until something happens.
         auto epoll_timeout = std::optional<std::chrono::milliseconds>{};
 
         auto shutdown_command = shutdown_state.CheckShutdown();
         if (shutdown_command) {
+            LOG(INFO) << "Got shutdown_command '" << *shutdown_command
+                      << "' Calling HandlePowerctlMessage()";
             HandlePowerctlMessage(*shutdown_command);
+            shutdown_state.set_do_shutdown(false);
         }
 
         if (!(prop_waiter_state.MightBeWaiting() || Service::is_exec_service_running())) {

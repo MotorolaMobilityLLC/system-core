@@ -359,19 +359,12 @@ TEST_F(TombstoneTest, dump_thread_info_uid) {
   ASSERT_STREQ(expected.c_str(), amfd_data_.c_str());
 }
 
-TEST_F(TombstoneTest, dump_timestamp) {
-  setenv("TZ", "UTC", 1);
-  tzset();
-  dump_timestamp(&log_, 0);
-  ASSERT_STREQ("Timestamp: 1970-01-01 00:00:00+0000\n", amfd_data_.c_str());
-}
-
 class GwpAsanCrashDataTest : public GwpAsanCrashData {
 public:
   GwpAsanCrashDataTest(
       gwp_asan::Error error,
       const gwp_asan::AllocationMetadata *responsible_allocation) :
-      GwpAsanCrashData(nullptr, 0u, 0u, ThreadInfo{}) {
+      GwpAsanCrashData(nullptr, ProcessInfo{}, ThreadInfo{}) {
     is_gwp_asan_responsible_ = true;
     error_ = error;
     responsible_allocation_ = responsible_allocation;

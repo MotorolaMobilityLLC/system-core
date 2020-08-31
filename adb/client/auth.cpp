@@ -145,12 +145,12 @@ static bool load_key(const std::string& file) {
 
     std::lock_guard<std::mutex> lock(g_keys_mutex);
     std::string fingerprint = hash_key(key.get());
-    if (g_keys.find(fingerprint) != g_keys.end()) {
-        LOG(INFO) << "ignoring already-loaded key: " << file;
-    } else {
-        LOG(INFO) << "Loaded fingerprint=[" << SHA256BitsToHexString(fingerprint) << "]";
+    bool already_loaded = (g_keys.find(fingerprint) != g_keys.end());
+    if (!already_loaded) {
         g_keys[fingerprint] = std::move(key);
     }
+    LOG(INFO) << (already_loaded ? "ignored already-loaded" : "loaded new") << " key from '" << file
+              << "' with fingerprint " << SHA256BitsToHexString(fingerprint);
     return true;
 }
 
@@ -159,23 +159,25 @@ static bool load_keys(const std::string& path, bool allow_dir = true) {
 
     struct stat st;
     if (stat(path.c_str(), &st) != 0) {
-        PLOG(ERROR) << "failed to stat '" << path << "'";
+        PLOG(ERROR) << "load_keys: failed to stat '" << path << "'";
         return false;
     }
 
     if (S_ISREG(st.st_mode)) {
         return load_key(path);
-    } else if (S_ISDIR(st.st_mode)) {
+    }
+
+    if (S_ISDIR(st.st_mode)) {
         if (!allow_dir) {
             // inotify isn't recursive. It would break expectations to load keys in nested
             // directories but not monitor them for new keys.
-            LOG(WARNING) << "refusing to recurse into directory '" << path << "'";
+            LOG(WARNING) << "load_keys: refusing to recurse into directory '" << path << "'";
             return false;
         }
 
         std::unique_ptr<DIR, decltype(&closedir)> dir(opendir(path.c_str()), closedir);
         if (!dir) {
-            PLOG(ERROR) << "failed to open directory '" << path << "'";
+            PLOG(ERROR) << "load_keys: failed to open directory '" << path << "'";
             return false;
         }
 
@@ -189,7 +191,7 @@ static bool load_keys(const std::string& path, bool allow_dir = true) {
             }
 
             if (!android::base::EndsWith(name, ".adb_key")) {
-                LOG(INFO) << "skipping non-adb_key '" << path << "/" << name << "'";
+                LOG(INFO) << "skipped non-adb_key '" << path << "/" << name << "'";
                 continue;
             }
 
@@ -198,7 +200,7 @@ static bool load_keys(const std::string& path, bool allow_dir = true) {
         return result;
     }
 
-    LOG(ERROR) << "unexpected type for '" << path << "': 0x" << std::hex << st.st_mode;
+    LOG(ERROR) << "load_keys: unexpected type for '" << path << "': 0x" << std::hex << st.st_mode;
     return false;
 }
 
@@ -398,12 +400,12 @@ static void adb_auth_inotify_init(const std::set<std::string>& paths) {
     for (const std::string& path : paths) {
         int wd = inotify_add_watch(infd, path.c_str(), IN_CREATE | IN_MOVED_TO);
         if (wd < 0) {
-            PLOG(ERROR) << "failed to inotify_add_watch on path '" << path;
+            PLOG(ERROR) << "failed to inotify_add_watch on path '" << path << "'";
             continue;
         }
 
         g_monitored_paths[wd] = path;
-        LOG(INFO) << "watch descriptor " << wd << " registered for " << path;
+        LOG(INFO) << "watch descriptor " << wd << " registered for '" << path << "'";
     }
 
     fdevent* event = fdevent_create(infd, adb_auth_inotify_update, nullptr);

@@ -285,7 +285,6 @@ int ueventd_main(int argc, char** argv) {
 
     // Keep the current product name base configuration so we remain backwards compatible and
     // allow it to override everything.
-    // TODO: cleanup platform ueventd.rc to remove vendor specific device node entries (b/34968103)
     auto hardware = android::base::GetProperty("ro.hardware", "");
 
     auto ueventd_configuration = ParseConfig({"/system/etc/ueventd.rc", "/vendor/ueventd.rc",
@@ -322,6 +321,8 @@ int ueventd_main(int argc, char** argv) {
     while (waitpid(-1, nullptr, WNOHANG) > 0) {
     }
 
+    // Restore prio before main loop
+    setpriority(PRIO_PROCESS, 0, 0);
     uevent_listener.Poll([&uevent_handlers](const Uevent& uevent) {
         for (auto& uevent_handler : uevent_handlers) {
             uevent_handler->HandleUevent(uevent);

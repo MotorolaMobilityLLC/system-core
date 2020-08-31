@@ -148,6 +148,7 @@ cc_binary {
         "libgtest_prod",
         "libhealthhalutils",
         "libsnapshot_nobinder",
+        "update_metadata-protos",
     ],
 
     header_libs: [

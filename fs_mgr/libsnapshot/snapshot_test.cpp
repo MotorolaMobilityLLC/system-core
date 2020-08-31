@@ -41,6 +41,11 @@
 #include <libsnapshot/test_helpers.h>
 #include "utility.h"
 
+// Mock classes are not used. Header included to ensure mocked class definition aligns with the
+// class itself.
+#include <libsnapshot/mock_device_info.h>
+#include <libsnapshot/mock_snapshot.h>
+
 namespace android {
 namespace snapshot {
 
@@ -1799,7 +1804,6 @@ class ImageManagerTest : public SnapshotTest, public WithParamInterface<uint64_t
   protected:
     void SetUp() override {
         if (!is_virtual_ab_) GTEST_SKIP() << "Test for Virtual A/B devices only";
-        GTEST_SKIP() << "WIP failure b/149738928";
 
         SnapshotTest::SetUp();
         userdata_ = std::make_unique<LowSpaceUserdata>();

@@ -19,6 +19,8 @@
 #define HAVE_STRSEP
 #endif
 
+#include <log/logprint.h>
+
 #include <assert.h>
 #include <ctype.h>
 #include <errno.h>
@@ -37,7 +39,7 @@
 #include <cutils/list.h>
 
 #include <log/log.h>
-#include <log/logprint.h>
+#include <log/log_read.h>
 #include <private/android_logger.h>
 
 #define MS_PER_NSEC 1000000
@@ -76,18 +78,21 @@ struct AndroidLogFormat_t {
 static bool descriptive_output = false;
 
 /*
- *  gnome-terminal color tags
- *    See http://misc.flogisoft.com/bash/tip_colors_and_formatting
- *    for ideas on how to set the forground color of the text for xterm.
- *    The color manipulation character stream is defined as:
- *      ESC [ 3 8 ; 5 ; <color#> m
+ * 8-bit color tags. See ECMA-48 Set Graphics Rendition in
+ * [console_codes(4)](https://man7.org/linux/man-pages/man4/console_codes.4.html).
+ *
+ * The text manipulation character stream is defined as:
+ *   ESC [ <parameter #> m
+ *
+ * We use "set <color> foreground" escape sequences instead of
+ * "256/24-bit foreground color". This allows colors to render
+ * according to user preferences in terminal emulator settings
  */
-#define ANDROID_COLOR_BLUE 75
-#define ANDROID_COLOR_DEFAULT 231
-#define ANDROID_COLOR_GREEN 40
-#define ANDROID_COLOR_ORANGE 166
-#define ANDROID_COLOR_RED 196
-#define ANDROID_COLOR_YELLOW 226
+#define ANDROID_COLOR_BLUE 34
+#define ANDROID_COLOR_DEFAULT 39
+#define ANDROID_COLOR_GREEN 32
+#define ANDROID_COLOR_RED 31
+#define ANDROID_COLOR_YELLOW 33
 
 static FilterInfo* filterinfo_new(const char* tag, android_LogPriority pri) {
   FilterInfo* p_ret;
@@ -163,7 +168,7 @@ static int colorFromPri(android_LogPriority pri) {
     case ANDROID_LOG_VERBOSE: return ANDROID_COLOR_DEFAULT;
     case ANDROID_LOG_DEBUG:   return ANDROID_COLOR_BLUE;
     case ANDROID_LOG_INFO:    return ANDROID_COLOR_GREEN;
-    case ANDROID_LOG_WARN:    return ANDROID_COLOR_ORANGE;
+    case ANDROID_LOG_WARN:    return ANDROID_COLOR_YELLOW;
     case ANDROID_LOG_ERROR:   return ANDROID_COLOR_RED;
     case ANDROID_LOG_FATAL:   return ANDROID_COLOR_RED;
     case ANDROID_LOG_SILENT:  return ANDROID_COLOR_DEFAULT;
@@ -214,11 +219,7 @@ AndroidLogFormat* android_log_format_new() {
   p_ret->year_output = false;
   p_ret->zone_output = false;
   p_ret->epoch_output = false;
-#ifdef __ANDROID__
-  p_ret->monotonic_output = android_log_clockid() == CLOCK_MONOTONIC;
-#else
   p_ret->monotonic_output = false;
-#endif
   p_ret->uid_output = false;
   p_ret->descriptive_output = false;
   descriptive_output = false;
@@ -1463,13 +1464,10 @@ char* android_log_formatLogLine(AndroidLogFormat* p_format, char* defaultBuffer,
   nsec = entry->tv_nsec;
 #if __ANDROID__
   if (p_format->monotonic_output) {
-    /* prevent convertMonotonic from being called if logd is monotonic */
-    if (android_log_clockid() != CLOCK_MONOTONIC) {
-      struct timespec time;
-      convertMonotonic(&time, entry);
-      now = time.tv_sec;
-      nsec = time.tv_nsec;
-    }
+    struct timespec time;
+    convertMonotonic(&time, entry);
+    now = time.tv_sec;
+    nsec = time.tv_nsec;
   }
 #endif
   if (now < 0) {
@@ -1504,7 +1502,7 @@ char* android_log_formatLogLine(AndroidLogFormat* p_format, char* defaultBuffer,
    */
   if (p_format->colored_output) {
     prefixLen =
-        snprintf(prefixBuf, sizeof(prefixBuf), "\x1B[38;5;%dm", colorFromPri(entry->priority));
+        snprintf(prefixBuf, sizeof(prefixBuf), "\x1B[%dm", colorFromPri(entry->priority));
     prefixLen = MIN(prefixLen, sizeof(prefixBuf));
 
     const char suffixContents[] = "\x1B[0m";

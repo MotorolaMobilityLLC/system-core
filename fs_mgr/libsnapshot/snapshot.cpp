@@ -300,9 +300,9 @@ bool SnapshotManager::CreateSnapshot(LockedFile* lock, SnapshotStatus* status) {
         LOG(ERROR) << "SnapshotStatus has no name.";
         return false;
     }
-    // Sanity check these sizes. Like liblp, we guarantee the partition size
-    // is respected, which means it has to be sector-aligned. (This guarantee
-    // is useful for locating avb footers correctly). The COW file size, however,
+    // Check these sizes. Like liblp, we guarantee the partition size is
+    // respected, which means it has to be sector-aligned. (This guarantee is
+    // useful for locating avb footers correctly). The COW file size, however,
     // can be arbitrarily larger than specified, so we can safely round it up.
     if (status->device_size() % kSectorSize != 0) {
         LOG(ERROR) << "Snapshot " << status->name()
@@ -351,7 +351,6 @@ Return SnapshotManager::CreateCowImage(LockedFile* lock, const std::string& name
     }
 
     // The COW file size should have been rounded up to the nearest sector in CreateSnapshot.
-    // Sanity check this.
     if (status.cow_file_size() % kSectorSize != 0) {
         LOG(ERROR) << "Snapshot " << name << " COW file size is not a multiple of the sector size: "
                    << status.cow_file_size();
@@ -2277,6 +2276,10 @@ Return SnapshotManager::CreateUpdateSnapshotsInternal(
         auto operations_it = install_operation_map.find(target_partition->name());
         if (operations_it != install_operation_map.end()) {
             cow_creator->operations = operations_it->second;
+        } else {
+            LOG(INFO) << target_partition->name()
+                      << " isn't included in the payload, skipping the cow creation.";
+            continue;
         }
 
         cow_creator->extra_extents.clear();
@@ -2758,6 +2761,10 @@ bool SnapshotManager::UpdateForwardMergeIndicator(bool wipe) {
     }
 
     return true;
+}
+
+ISnapshotMergeStats* SnapshotManager::GetSnapshotMergeStatsInstance() {
+    return SnapshotMergeStats::GetInstance(*this);
 }
 
 bool SnapshotManager::GetMappedImageDeviceStringOrPath(const std::string& device_name,

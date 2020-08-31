@@ -66,7 +66,7 @@ TEST_F(TransportTest, SetFeatures) {
     ASSERT_TRUE(t.has_feature("bar"));
 
     t.SetFeatures(FeatureSetToString(FeatureSet{"foo", "bar", "foo"}));
-    ASSERT_EQ(2U, t.features().size());
+    ASSERT_LE(2U, t.features().size());
     ASSERT_TRUE(t.has_feature("foo"));
     ASSERT_TRUE(t.has_feature("bar"));
 
@@ -127,6 +127,7 @@ TEST_F(TransportTest, parse_banner_features) {
     ASSERT_EQ(std::string("baz"), t.device);
 }
 
+#if ADB_HOST
 TEST_F(TransportTest, test_matches_target) {
     std::string serial = "foo";
     std::string devpath = "/path/to/bar";
@@ -183,3 +184,4 @@ TEST_F(TransportTest, test_matches_target_local) {
         EXPECT_FALSE(t.MatchesTarget("abc:100.100.100.100"));
     }
 }
+#endif

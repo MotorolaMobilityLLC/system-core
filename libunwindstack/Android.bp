@@ -57,6 +57,7 @@ cc_defaults {
         "MapInfo.cpp",
         "Maps.cpp",
         "Memory.cpp",
+        "MemoryMte.cpp",
         "LocalUnwinder.cpp",
         "Regs.cpp",
         "RegsArm.cpp",
@@ -74,12 +75,28 @@ cc_defaults {
     ],
 
     target: {
-        // Always disable optimizations for host to make it easier to debug.
         host: {
+            // Always disable optimizations for host to make it easier to debug.
             cflags: [
                 "-O0",
                 "-g",
             ],
+        },
+        android: {
+            header_libs: ["bionic_libc_platform_headers"],
+            product_variables: {
+                experimental_mte: {
+                    cflags: ["-DANDROID_EXPERIMENTAL_MTE"],
+                },
+            },
+        },
+        linux_bionic: {
+            header_libs: ["bionic_libc_platform_headers"],
+            product_variables: {
+                experimental_mte: {
+                    cflags: ["-DANDROID_EXPERIMENTAL_MTE"],
+                },
+            },
         },
     },
 
@@ -89,12 +106,6 @@ cc_defaults {
         },
         x86_64: {
             srcs: ["AsmGetRegsX86_64.S"],
-        },
-        mips: {
-            srcs: ["AsmGetRegsMips.S"],
-        },
-        mips64: {
-            srcs: ["AsmGetRegsMips64.S"],
         },
     },
 
@@ -232,6 +243,7 @@ cc_defaults {
         "tests/MemoryRangesTest.cpp",
         "tests/MemoryRemoteTest.cpp",
         "tests/MemoryTest.cpp",
+        "tests/MemoryMteTest.cpp",
         "tests/RegsInfoTest.cpp",
         "tests/RegsIterateTest.cpp",
         "tests/RegsStepIfSignalHandlerTest.cpp",
@@ -287,6 +299,25 @@ cc_defaults {
         "tests/files/offline/straddle_arm/*",
         "tests/files/offline/straddle_arm64/*",
     ],
+
+    target: {
+        android: {
+            header_libs: ["bionic_libc_platform_headers"],
+            product_variables: {
+                experimental_mte: {
+                    cflags: ["-DANDROID_EXPERIMENTAL_MTE"],
+                },
+            },
+        },
+        linux_bionic: {
+            header_libs: ["bionic_libc_platform_headers"],
+            product_variables: {
+                experimental_mte: {
+                    cflags: ["-DANDROID_EXPERIMENTAL_MTE"],
+                },
+            },
+        },
+    },
 }
 
 cc_test {
@@ -307,6 +338,37 @@ cc_test {
     name: "libunwindstack_unit_test",
     defaults: ["libunwindstack_testlib_flags"],
     isolated: true,
+}
+
+//-------------------------------------------------------------------------
+// Fuzzers
+//-------------------------------------------------------------------------
+cc_defaults {
+    name: "libunwindstack_fuzz_defaults",
+    host_supported: true,
+    defaults: ["libunwindstack_flags"],
+    cflags: [
+        "-Wno-exit-time-destructors",
+        "-g",
+    ],
+    shared_libs: [
+        "libbase",
+        "liblog",
+        "liblzma",
+        "libunwindstack",
+        "libdexfile_support",
+    ],
+}
+
+cc_fuzz {
+    name: "libunwindstack_fuzz_unwinder",
+    defaults: ["libunwindstack_fuzz_defaults"],
+    srcs: [
+        "tests/MemoryFake.cpp",
+        "tests/ElfFake.cpp",
+        "tests/fuzz/UnwinderComponentCreator.cpp",
+        "tests/fuzz/UnwinderFuzz.cpp",
+    ],
 }
 
 //-------------------------------------------------------------------------
@@ -392,12 +454,29 @@ cc_benchmark {
 
     srcs: [
         "benchmarks/unwind_benchmarks.cpp",
+        "benchmarks/ElfBenchmark.cpp",
+        "benchmarks/MapsBenchmark.cpp",
+        "benchmarks/SymbolBenchmark.cpp",
+        "benchmarks/Utils.cpp",
+    ],
+
+    data: [
+        "benchmarks/files/*",
     ],
 
     shared_libs: [
         "libbase",
         "libunwindstack",
     ],
+
+    target: {
+        android: {
+            static_libs: [
+                "libmeminfo",
+                "libprocinfo",
+            ],
+        },
+    },
 }
 
 // Generates the elf data for use in the tests for .gnu_debugdata frames.
@@ -410,3 +489,4 @@ cc_binary_host {
         "tests/GenGnuDebugdata.cpp",
     ],
 }
+

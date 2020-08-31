@@ -197,11 +197,14 @@ runs the service.
   Currently defaults to root.  (??? probably should default to nobody)
 
 `interface <interface name> <instance name>`
-> Associates this service with a list of the HIDL services that it provides. The interface name
-  must be a fully-qualified name and not a value name. For instance, this is used to allow
-  hwservicemanager to lazily start services. When multiple interfaces are served, this tag should
-  be used multiple times.
-  For example: interface vendor.foo.bar@1.0::IBaz default
+> Associates this service with a list of the AIDL or HIDL services that it provides. The interface
+  name must be a fully-qualified name and not a value name. For instance, this is used to allow
+  servicemanager or hwservicemanager to lazily start services. When multiple interfaces are served,
+  this tag should be used multiple times. An example of an entry for a HIDL
+  interface is `interface vendor.foo.bar@1.0::IBaz default`. For an AIDL interface, use
+  `interface aidl <instance name>`. The instance name for an AIDL interface is
+  whatever is registered with servicemanager, and these can be listed with `adb
+  shell dumpsys -l`.
 
 `ioprio <class> <priority>`
 > Sets the IO priority and IO priority class for this service via the SYS_ioprio_set syscall.
@@ -564,9 +567,11 @@ provides the `aidl_lazy_test_1` interface.
   _options_ include "barrier=1", "noauto\_da\_alloc", "discard", ... as
   a comma separated string, e.g. barrier=1,noauto\_da\_alloc
 
-`parse_apex_configs`
-> Parses config file(s) from the mounted APEXes. Intended to be used only once
-  when apexd notifies the mount event by setting apexd.status to ready.
+`perform_apex_config`
+> Performs tasks after APEXes are mounted. For example, creates data directories
+  for the mounted APEXes, parses config file(s) from them, and updates linker
+  configurations. Intended to be used only once when apexd notifies the mount
+  event by setting `apexd.status` to ready.
 
 `restart <service>`
 > Stops and restarts a running service, does nothing if the service is currently
@@ -762,7 +767,7 @@ The _commands_ are listed below.
 These are equivalent to using the `start`, `restart`, and `stop` commands on the service specified
 by the _value_ of the property.
 
-`oneshot_one` and `oneshot_off` will turn on or off the _oneshot_
+`oneshot_on` and `oneshot_off` will turn on or off the _oneshot_
 flag for the service specified by the _value_ of the property.  This is
 particularly intended for services that are conditionally lazy HALs.  When
 they are lazy HALs, oneshot must be on, otherwise oneshot should be off.
