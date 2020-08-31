@@ -3043,7 +3043,7 @@ int main(int argc __unused, char **argv __unused) {
 
     // Moto huangzq2: override configs on dev build for tuning.
     if (!property_get_bool("ro.product.is_production", true)) {
-        debug_process_killing = property_get_bool("persist.lmk.debug", debug_process_killing);
+        debug_process_killing = property_get_bool("persist.lmk.debug", property_get_bool("ro.debuggable", false));
         kill_heaviest_task = property_get_bool("persist.lmk.kill_heaviest_task", kill_heaviest_task);
         swap_free_low_percentage = property_get_int32("persist.lmk.swap_free_low_percentage", swap_free_low_percentage);
         psi_partial_stall_ms = property_get_int32("persist.lmk.psi_partial_stall_ms", psi_partial_stall_ms);
