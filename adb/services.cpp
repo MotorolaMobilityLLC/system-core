@@ -41,6 +41,9 @@
 #include "sysdeps.h"
 #include "transport.h"
 
+#if !ADB_HOST
+bool debugable = false;
+#endif
 namespace {
 
 void service_bootstrap_func(std::string service_name, std::function<void(unique_fd)> func,
@@ -84,7 +87,12 @@ unique_fd service_to_fd(std::string_view name, atransport* transport) {
         }
     } else {
 #if !ADB_HOST
-	//LOG(INFO) << "Current CMD: " << name;
+       if(debugable){
+               LOG(INFO) << "Current CMD: " << name;
+       }else{
+               if(name.starts_with("reboot:") || name.starts_with("shell,v2,raw:reboot"))
+                       LOG(INFO) << "Current CMD: " << name;
+       }
         ret = daemon_service_to_fd(name, transport);
 #endif
     }

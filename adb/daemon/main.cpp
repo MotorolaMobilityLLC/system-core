@@ -60,6 +60,16 @@
 #include "mdns.h"
 
 #if defined(__ANDROID__)
+
+extern bool debugable;
+void version_type(void){
+     if (__android_log_is_debuggable()){
+		LOG(INFO) << "adbd running under Debug version";
+		debugable = true;
+     }else
+		LOG(INFO) << "adbd running under User version";
+}
+
 static const char* root_seclabel = nullptr;
 
 static bool should_drop_privileges() {
@@ -201,7 +211,9 @@ int adbd_main(int server_port) {
         android_fdsan_set_error_level(ANDROID_FDSAN_ERROR_LEVEL_WARN_ONCE);
     }
 #endif
-
+#if defined(__ANDROID__)
+    version_type();
+#endif
     init_transport_registration();
 
     // We need to call this even if auth isn't enabled because the file
