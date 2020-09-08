@@ -227,13 +227,14 @@ void set_system_properties(){
             if (carrier_ontim == "openmx_retmx" || carrier_ontim == "amxmx_amxmx"
              || carrier_ontim == "amxmx_amxmxsl" || carrier_ontim == "amxpe_claro"
              || carrier_ontim == "amxco_claro" || carrier_ontim == "amxbr_clarobr"
-             || carrier_ontim == "amxar_amxar" || carrier_ontim == "amxcl_clarosl"
-             || carrier_ontim == "amxla_amxlag" || carrier_ontim == "amxla_amxdomi") {
+             || carrier_ontim == "amxar_amxar" || carrier_ontim == "amxcl_clarocl"
+             || carrier_ontim == "amxla_amxlag" || carrier_ontim == "amxla_amxdomi"
+             || carrier_ontim == "amxbr_brmanaus") {
                 property_set(prop_amclient, prop_clientcountry_value);
                 property_set(prop_msclient, prop_clientrevc_value);
             } else if (carrier_ontim == "attmx_attmx") {
                 property_set(prop_msclient, prop_clientmx_value);
-            } else if (carrier_ontim == "timbr_clarobr") {
+            } else if (carrier_ontim == "timbr_timbr" || carrier_ontim == "timbr_brmanaus") {
                 property_set(prop_msclient, prop_clientbr_value);
             } else {
                 property_set(prop_amclient, prop_client_value);
@@ -278,10 +279,10 @@ void set_system_properties(){
             return;
         }
 
-        if (carrier_ontim == "amxbr_clarobr") {
+        if (carrier_ontim == "amxbr_clarobr" || carrier_ontim == "amxbr_brmanaus") {
             property_set(prop_amclient, prop_clientcountry_value);
             property_set(prop_msclient, prop_clientrevc_value);
-        } else if (carrier_ontim == "timbr_clarobr") {
+        } else if (carrier_ontim == "timbr_timbr" || carrier_ontim == "timbr_brmanaus") {
             property_set(prop_msclient, prop_clientbr_value);
         } else {
             property_set(prop_amclient, prop_client_value);
@@ -382,13 +383,12 @@ bool isProductNameMaltaRetru(std::string carrier_ontim) {
 }
 
 bool isProductNameMaltaReteu(std::string carrier_ontim) {
-    if (carrier_ontim == "reteu_euro") return true;
     if (carrier_ontim == "retgb_retgbds") return true;
     if (carrier_ontim == "eegb_uksl") return true;
     if (carrier_ontim == "tescogb_tescogb") return true;
-    if (carrier_ontim == "reteu_nether") return true;
     if (carrier_ontim == "reteu_reteu") return true;
     if (carrier_ontim == "timit_timit") return true;
+    if (carrier_ontim == "reteu_retfr") return true;
     return false;
 }
 
