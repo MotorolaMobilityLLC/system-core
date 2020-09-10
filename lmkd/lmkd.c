@@ -211,6 +211,7 @@ static int psi_complete_stall_ms;
 static int thrashing_limit_pct;
 static int thrashing_limit_decay_pct;
 static int swap_util_max;
+static int pgscan_limit;
 static bool use_psi_monitors = false;
 static struct kernel_poll_info kpoll_info;
 static struct psi_threshold psi_thresholds[VMPRESS_LEVEL_COUNT] = {
@@ -2130,6 +2131,8 @@ static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_
         LOW_MEM_AND_THRASHING,
         DIRECT_RECL_AND_THRASHING,
         LOW_MEM_AND_SWAP_UTIL,
+        RECLAIM_BUSY_AND_THRASHING,
+        RECLAIM_BUSY_AND_LOW_MEM,
         KILL_REASON_COUNT
     };
     enum reclaim_state {
@@ -2147,6 +2150,7 @@ static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_
     static bool in_reclaim;
     static struct zone_watermarks watermarks;
     static struct timespec wmark_update_tm;
+    static struct timespec pgscan_update_tm;
 
     union meminfo mi;
     union vmstat vs;
@@ -2163,6 +2167,8 @@ static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_
     // Moto huangzq2: kill to 100 by default, only kill to adj 0 on critical event.
     int min_score_adj = VISIBLE_APP_ADJ;
     int swap_util = 0;
+    int64_t pgscan = 0;
+    bool busy_on_reclaim = false;
 
     /* Skip while still killing a process */
     if (is_kill_pending()) {
@@ -2207,6 +2213,16 @@ static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_
         swap_is_low = mi.field.free_swap < swap_low_threshold;
     }
 
+    /* Moto huangzq2: Calculate avg pgscan per 10ms. */
+    if (pgscan_limit > 0) {
+        long elapsed_ms = get_time_diff_ms(&pgscan_update_tm, &curr_tm);
+        if (elapsed_ms > 0) {
+            pgscan = (vs.field.pgscan_direct - init_pgscan_direct) * 10 / elapsed_ms;
+            pgscan += (vs.field.pgscan_kswapd - init_pgscan_kswapd) * 10 / elapsed_ms;
+        }
+        pgscan_update_tm = curr_tm;
+    }
+
     /* Identify reclaim state */
     if (vs.field.pgscan_direct > init_pgscan_direct) {
         init_pgscan_direct = vs.field.pgscan_direct;
@@ -2230,6 +2246,10 @@ static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_
     } else {
         /* Calculate what % of the file-backed pagecache refaulted so far */
         thrashing = (vs.field.workingset_refault - init_ws_refault) * 100 / base_file_lru;
+        /* Moto huangzq2: Kernel is busy on reclaim? */
+        if (pgscan_limit > 0) {
+            busy_on_reclaim = pgscan > pgscan_limit;
+        }
     }
     in_reclaim = true;
 
@@ -2313,6 +2333,18 @@ static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_
         cut_thrashing_limit = true;
         /* Do not kill perceptible apps because of thrashing */
         min_score_adj = PERCEPTIBLE_APP_ADJ;
+    } else if (busy_on_reclaim && thrashing > thrashing_limit_pct) {
+        /* Moto huangzq2: kernel is busy on reclaim and thrashing */
+        kill_reason = RECLAIM_BUSY_AND_THRASHING;
+        snprintf(kill_desc, sizeof(kill_desc), "kernel is busy on reclaim (%" PRId64
+            ") and thrashing (%" PRId64 "%%)", pgscan, thrashing);
+        min_score_adj = PERCEPTIBLE_APP_ADJ + 1;
+    } else if (busy_on_reclaim && wmark < WMARK_HIGH) {
+        /* Moto huangzq2: kernel is busy on reclaim and watermark is low */
+        kill_reason = RECLAIM_BUSY_AND_LOW_MEM;
+        snprintf(kill_desc, sizeof(kill_desc), "kernel is busy on reclaim (%" PRId64
+            ") and %s watermark is breached", pgscan, wmark > WMARK_LOW ? "min" : "low");
+        min_score_adj = PERCEPTIBLE_APP_ADJ + 1;
     }
 
     // Moto huangzq2: add log for debugging.
@@ -2320,7 +2352,7 @@ static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_
         int64_t other_file = max(mi.field.nr_file_pages - mi.field.shmem - mi.field.unevictable
                         - mi.field.swap_cached, 0);
         ALOGW("%s stall, swap free %d%%(%d), swap util %d%%(%d), file %d%%, anon %d%%, wmark %s %" PRId64 "(%ldm), "
-                "thrashing %" PRId64 "%%(%d), kill_reason %d",
+                "thrashing %" PRId64 "%%(%d), pgscan %" PRId64 "(%d), kill_reason %d",
             level == VMPRESS_LEVEL_CRITICAL ? "COMPLETE" : "PARTIAL",
             (int)(mi.field.free_swap*100/mi.field.total_swap), swap_free_low_percentage,
             calc_swap_utilization(&mi), swap_util_max,
@@ -2329,7 +2361,7 @@ static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_
             wmark < WMARK_HIGH ? (wmark > WMARK_LOW ? "min" : "low") : "high",
             (mi.field.nr_free_pages - mi.field.cma_free) * page_k / 1024,
             watermarks.high_wmark * page_k / 1024,
-            thrashing, thrashing_limit, kill_reason);
+            thrashing, thrashing_limit, pgscan, pgscan_limit, kill_reason);
     }
 
     /* Kill a process if necessary */
@@ -3036,6 +3068,7 @@ int main(int argc __unused, char **argv __unused) {
     thrashing_limit_decay_pct = clamp(0, 100, property_get_int32("ro.lmk.thrashing_limit_decay",
         low_ram_device ? DEF_THRASHING_DECAY_LOWRAM : DEF_THRASHING_DECAY));
     swap_util_max = clamp(0, 100, property_get_int32("ro.lmk.swap_util_max", 100));
+    pgscan_limit = property_get_int32("ro.lmk.pgscan_limit", 0);
 
     ctx = create_android_logger(KILLINFO_LOG_TAG);
 
@@ -3051,12 +3084,13 @@ int main(int argc __unused, char **argv __unused) {
         thrashing_limit_pct = property_get_int32("persist.lmk.thrashing_limit", thrashing_limit_pct);
         thrashing_limit_decay_pct = property_get_int32("persist.lmk.thrashing_limit_decay", thrashing_limit_decay_pct);
         swap_util_max = property_get_int32("persist.lmk.swap_util_max", swap_util_max);
+        pgscan_limit = property_get_int32("persist.lmk.pgscan_limit", pgscan_limit);
 
         ALOGW("PSI CONFIG - partial_stall:%d, full_stall:%d, thrashing:%d, thrashing_decay:%d, "
-                "kill_heavy:%d, swap_low:%d, swap_util_max:%d",
+                "kill_heavy:%d, swap_low:%d, swap_util_max:%d, pgscan_limit:%d",
             psi_partial_stall_ms, psi_complete_stall_ms,
             thrashing_limit_pct, thrashing_limit_decay_pct,
-            kill_heaviest_task, swap_free_low_percentage, swap_util_max);
+            kill_heaviest_task, swap_free_low_percentage, swap_util_max, pgscan_limit);
     }
 
     if (!init()) {
