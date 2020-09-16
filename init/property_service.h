@@ -43,6 +43,7 @@ void StartPropertyService(Epoll* epoll);
 bool is_cache_file_exists();
 void set_properties_from_proinfo();
 void set_properties_from_hwinfo();
+unsigned char read_from_factory();
 
 }  // namespace init
 }  // namespace android
