@@ -910,6 +910,13 @@ void load_persist_props(void) {
             SLOGE("FC.adb !cache_file_exists close adb set reseted 2 ");
         }
      }
+    if (read_from_factory() == 1) {
+        SLOGE("user_diag pu.load_properties_from_factory_cus is user and P skip.setupwizard");
+        property_set("ro.setupwizard.skip", "1");
+    } else {
+        SLOGE("user_diag pu.load_properties_from_factory_cus is user and not P open.setupwizard");
+        property_set("ro.setupwizard.skip", "0");
+    }
     SLOGE("FC.adb end ... ");
 
     property_set("ro.persistent_properties.ready", "true");
@@ -927,6 +934,20 @@ bool is_cache_file_exists() {
         close(fd);
         return true;
     }
+}
+
+// read form factory
+unsigned char read_from_factory() {
+    unsigned char buf = 0;
+    int fd = open("/dev/block/platform/bootdevice/by-name/proinfo", O_RDONLY);
+    if (fd == -1) {
+        close(fd);
+    } else {
+        lseek(fd, 210, SEEK_SET);
+        read(fd, &buf, 1);
+        close(fd);
+    }
+    return buf;
 }
 
 // If the ro.product.[brand|device|manufacturer|model|name] properties have not been explicitly
