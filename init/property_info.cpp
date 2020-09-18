@@ -214,6 +214,8 @@ void set_system_properties(){
             } else if (carrier_ontim == "eegb_uksl") {
                 property_set(prop_msclient, prop_clientuk_value);
                 property_set(prop_vsclient, prop_clientuk_value);
+            } else if (carrier_ontim == "o2gb_teluk") {
+                property_set(prop_msclient, prop_cliento2_value);
             } else {
                 property_set(prop_amclient, prop_client_value);
                 property_set(prop_msclient, prop_clientrev_value);
@@ -390,6 +392,7 @@ bool isProductNameMaltaReteu(std::string carrier_ontim) {
     if (carrier_ontim == "reteu_reteu") return true;
     if (carrier_ontim == "timit_timit") return true;
     if (carrier_ontim == "reteu_retfr") return true;
+    if (carrier_ontim == "o2gb_teluk") return true;
     return false;
 }
 
