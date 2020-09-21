@@ -57,6 +57,7 @@ cc_library_static {
         "LogReaderList.cpp",
         "LogReaderThread.cpp",
         "LogBufferElement.cpp",
+        "LogSize.cpp",
         "LogStatistics.cpp",
         "LogTags.cpp",
         "PruneList.cpp",
@@ -65,6 +66,7 @@ cc_library_static {
         "SerializedLogChunk.cpp",
         "SimpleLogBuffer.cpp",
     ],
+    static_libs: ["liblog"],
     logtags: ["event.logtags"],
 
     export_include_dirs: ["."],
@@ -177,6 +179,7 @@ cc_test {
     },
     test_suites: [
         "cts",
+        "device-tests",
         "vts10",
     ],
 }
