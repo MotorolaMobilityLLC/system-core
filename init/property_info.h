@@ -27,6 +27,7 @@ bool isProductNameBlackjackReteu(std::string carrier_ontim);
 bool isProductNameBlackjackLnv(std::string carrier_ontim);
 bool isProductNameBlackjackRetru(std::string carrier_ontim);
 bool isProductNameMaltaReteu(std::string carrier_ontim);
+bool isProductNameMaltaLiteReteu(std::string carrier_ontim);
 bool isProductNameMaltaRetru(std::string carrier_ontim);
 bool changeSystemProperty(std::string key);
 std::string get_fingerprint_property(std::string value);
