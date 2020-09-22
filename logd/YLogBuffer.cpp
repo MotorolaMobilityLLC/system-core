@@ -70,7 +70,7 @@
 #include "LogReader.h"
 #include "YLogBuffer.h"
 
-//#define DO_LOG_LASTANDROID
+#define DO_LOG_LASTANDROID
 
 
 #define log2kernel(...)  {char buff[1024]={0};snprintf(buff,sizeof(buff)-1,__VA_ARGS__);android::prdebug("logd: %s ",buff);}
@@ -388,8 +388,12 @@ unsigned char* YLogBuffer::getDeviceBuff(const char* path, long size) {
 
     fd = open(path, O_RDWR);
     int er = errno;
+    static int fdError = 0;
     if (fd < 0) {
-        log2kernel("logd open %s  error:%s", path, strerror(er));
+        if (fdError == 0) {
+           fdError = 1;
+           log2kernel("logd open %s  error:%s", path, strerror(er));
+        }
         return NULL;
     }
 
