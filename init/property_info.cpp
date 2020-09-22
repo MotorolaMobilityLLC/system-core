@@ -103,6 +103,22 @@ void set_system_properties(){
     property_set("ro.product.ontim.version", fileContent_product);
     property_set("ro.vendor.product.version", fileContent_product);
     std::string  build_name = android::base::GetProperty(prop_build_name, "");
+    bool isMaltaLite = false;
+
+    if (prop_product_value == "malta" || prop_product_value == "malta_64") {
+        std::string band_id_path = "/sys/hwinfo/band_id";
+        std::ifstream stream_band_id(band_id_path);
+        std::stringstream fileStream_band_id;
+        fileStream_band_id << stream_band_id.rdbuf();
+        int len = strlen("band_id=");
+        std::string hw_sku = fileStream_band_id.str().substr(len, 6);
+        if (hw_sku == "XT2095") {
+            property_set("ro.maltalite", "0");
+        } else if(hw_sku == "XT2097") {
+            property_set("ro.maltalite", "1");
+            isMaltaLite = true;
+        }
+    }
 
     //Fully disable DuraSpeed service for all carriers in LATAM/Europe/Brazil, and only enable it for APEM.
     if(carrier_value == "retapac" || carrier_value == "retin" || carrier_value == "optus") {
@@ -113,6 +129,7 @@ void set_system_properties(){
         property_set("persist.vendor.duraspeed.support","0");
     }
 
+    //blackjack
     if (prop_product_value == "blackjack" || prop_product_value == "blackjack_64") {
         set_product_device("blackjack");
         set_some_vendor_properties("blackjack");
@@ -206,7 +223,8 @@ void set_system_properties(){
         }
 
         // END EKBLACKJ-178
-    } else if(prop_product_value == "malta") {
+    //malta
+    } else if(prop_product_value == "malta" && !isMaltaLite) {
         if (isProductNameMaltaReteu(carrier_ontim)) {
             prop_product_value = "malta_reteu";
             if (carrier_ontim == "timit_timit") {
@@ -264,8 +282,79 @@ void set_system_properties(){
         if (carrier_ontim == "retru_retru") {
               property_set("ro.product.locale","ru-RU");
         }
+    //malta lite
+    } else if(prop_product_value == "malta" && isMaltaLite) {
+        if(build_name == "lenovo") {
+            prop_product_value = "malta_l_lnv";
+            property_set(prop_amclient, prop_client_value);
+            property_set(prop_msclient, prop_clientrev_value);
+            set_product_name(prop_product_value);
 
-    } else if(prop_product_value == "malta_64") {
+            std::string fingerprint = get_fingerprint_property_malta(prop_product_value);
+            set_fingerprint(fingerprint);
+            property_set("persist.vendor.normal", "1");//表示正常版本，非 VTS 版本，prop 正常设置.
+            property_set(prop_build_fullversion, get_version_property(prop_version_value));
+            property_set(prop_build_customerid, prop_carrier_value);
+            return;
+        }
+
+        if (isProductNameMaltaLiteReteu(carrier_ontim)) {
+            prop_product_value = "malta_l_reteu";
+            if (carrier_ontim == "timit_timit") {
+                property_set(prop_msclient, prop_clientit_value);
+            } else if (carrier_ontim == "eegb_uksl") {
+                property_set(prop_msclient, prop_clientuk_value);
+                property_set(prop_vsclient, prop_clientuk_value);
+            } else {
+                property_set(prop_amclient, prop_client_value);
+                property_set(prop_msclient, prop_clientrev_value);
+            }
+        } else if (isProductNameMaltaRetru(carrier_ontim)) {
+            prop_product_value = "malta_l_retru";
+            prop_carrier_value = "retru";
+            property_set(prop_amclient, prop_client_value);
+            property_set(prop_msclient, prop_clientrev_value);
+        } else {
+            prop_product_value = "malta_l";
+            if (carrier_ontim == "openmx_retmx" || carrier_ontim == "amxmx_amxmx"
+             || carrier_ontim == "amxmx_amxmxsl" || carrier_ontim == "amxpe_claro"
+             || carrier_ontim == "amxco_claro" || carrier_ontim == "amxbr_clarobr"
+             || carrier_ontim == "amxar_amxar" || carrier_ontim == "amxcl_clarocl"
+             || carrier_ontim == "amxla_amxlag" || carrier_ontim == "amxla_amxdomi"
+             || carrier_ontim == "amxbr_brmanaus") {
+                property_set(prop_amclient, prop_clientcountry_value);
+                property_set(prop_msclient, prop_clientrevc_value);
+            } else if (carrier_ontim == "attmx_attmx") {
+                property_set(prop_msclient, prop_clientmx_value);
+            } else if (carrier_ontim == "timbr_timbr" || carrier_ontim == "timbr_brmanaus") {
+                property_set(prop_msclient, prop_clientbr_value);
+            } else {
+                property_set(prop_amclient, prop_client_value);
+                property_set(prop_msclient, prop_clientrev_value);
+            }
+        }
+
+        set_product_name(prop_product_value);
+        std::string fingerprint = get_fingerprint_property_malta(prop_product_value);
+        set_fingerprint(fingerprint);
+
+        // BEGIN Ontim, maqing, 30/06/2020,EKMALTA-369:[Region_LATAM]FEATURE-5963: Amazon MDIP app single SKU solution
+        if (carrier_ontim == "timit_timit") {
+             property_set(prop_amazon_partnerid, carrier_value);
+        }
+        if (carrier_ontim == "windit_windds") {
+             property_set(prop_amazon_partnerid, "3it");
+        }
+        if (carrier_ontim == "attmx_attmx") {
+             property_set(prop_amazon_partnerid,carrier_value);
+        }
+
+        // END EKMALTA-369
+        if (carrier_ontim == "retru_retru") {
+              property_set("ro.product.locale","ru-RU");
+        }
+    //malta 64
+    } else if(prop_product_value == "malta_64" && !isMaltaLite) {
         set_product_device("malta");
 
         if(build_name == "lenovo") {
@@ -290,6 +379,60 @@ void set_system_properties(){
         } else {
             property_set(prop_amclient, prop_client_value);
             property_set(prop_msclient, prop_clientrev_value);
+        }
+
+        set_product_name(prop_product_value);
+        std::string fingerprint = get_fingerprint_property_malta(prop_product_value);
+        set_fingerprint(fingerprint);
+        // BEGIN Ontim, maqing, 30/06/2020,EKMALTA-369:[Region_LATAM]FEATURE-5963: Amazon MDIP app single SKU solution
+        if (carrier_ontim == "timit_timit") {
+             property_set(prop_amazon_partnerid, carrier_value);
+        }
+        if (carrier_ontim == "windit_windds") {
+             property_set(prop_amazon_partnerid, "3it");
+        }
+        if (carrier_ontim == "attmx_attmx") {
+             property_set(prop_amazon_partnerid,carrier_value);
+        }
+
+        // END EKMALTA-369
+        if (carrier_ontim == "retru_retru") {
+              property_set(prop_local, "ru-RU");
+        }
+    //malta 64 lite
+    } else if(prop_product_value == "malta_64" && isMaltaLite) {
+        set_product_device("malta");
+
+        if(build_name == "lenovo") {
+            prop_product_value = "malta_l_lnv_64";
+            property_set(prop_amclient, prop_client_value);
+            property_set(prop_msclient, prop_clientrev_value);
+            set_product_name(prop_product_value);
+
+            std::string fingerprint = get_fingerprint_property_malta(prop_product_value);
+            set_fingerprint(fingerprint);
+            property_set("persist.vendor.normal", "1");//表示正常版本，非 VTS 版本，prop 正常设置.
+            property_set(prop_build_fullversion, get_version_property(prop_version_value));
+            property_set(prop_build_customerid, prop_carrier_value);
+            return;
+        }
+
+        if (carrier_ontim == "reteu_reteu") {
+            prop_product_value = "malta_l_reteu_64";
+
+            property_set(prop_amclient, prop_client_value);
+            property_set(prop_msclient, prop_clientrev_value);
+        } else {
+            prop_product_value = "malta_l_64";
+            if (carrier_ontim == "amxbr_clarobr" || carrier_ontim == "amxbr_brmanaus") {
+                property_set(prop_amclient, prop_clientcountry_value);
+                property_set(prop_msclient, prop_clientrevc_value);
+            } else if (carrier_ontim == "timbr_timbr" || carrier_ontim == "timbr_brmanaus") {
+                property_set(prop_msclient, prop_clientbr_value);
+            } else {
+                property_set(prop_amclient, prop_client_value);
+                property_set(prop_msclient, prop_clientrev_value);
+            }
         }
 
         set_product_name(prop_product_value);
@@ -393,6 +536,15 @@ bool isProductNameMaltaReteu(std::string carrier_ontim) {
     if (carrier_ontim == "timit_timit") return true;
     if (carrier_ontim == "reteu_retfr") return true;
     if (carrier_ontim == "o2gb_teluk") return true;
+    return false;
+}
+
+bool isProductNameMaltaLiteReteu(std::string carrier_ontim) {
+    if (carrier_ontim == "retgb_retgbds") return true;
+    if (carrier_ontim == "eegb_uksl") return true;
+    if (carrier_ontim == "tescogb_tescogb") return true;
+    if (carrier_ontim == "reteu_reteu") return true;
+    if (carrier_ontim == "timit_timit") return true;
     return false;
 }
 
