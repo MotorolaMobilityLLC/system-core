@@ -302,9 +302,6 @@ void set_system_properties(){
             prop_product_value = "malta_l_reteu";
             if (carrier_ontim == "timit_timit") {
                 property_set(prop_msclient, prop_clientit_value);
-            } else if (carrier_ontim == "eegb_uksl") {
-                property_set(prop_msclient, prop_clientuk_value);
-                property_set(prop_vsclient, prop_clientuk_value);
             } else {
                 property_set(prop_amclient, prop_client_value);
                 property_set(prop_msclient, prop_clientrev_value);
@@ -320,13 +317,12 @@ void set_system_properties(){
              || carrier_ontim == "amxmx_amxmxsl" || carrier_ontim == "amxpe_claro"
              || carrier_ontim == "amxco_claro" || carrier_ontim == "amxbr_clarobr"
              || carrier_ontim == "amxar_amxar" || carrier_ontim == "amxcl_clarocl"
-             || carrier_ontim == "amxla_amxlag" || carrier_ontim == "amxla_amxdomi"
-             || carrier_ontim == "amxbr_brmanaus") {
+             || carrier_ontim == "amxla_amxlag" || carrier_ontim == "amxla_amxdomi") {
                 property_set(prop_amclient, prop_clientcountry_value);
                 property_set(prop_msclient, prop_clientrevc_value);
             } else if (carrier_ontim == "attmx_attmx") {
                 property_set(prop_msclient, prop_clientmx_value);
-            } else if (carrier_ontim == "timbr_timbr" || carrier_ontim == "timbr_brmanaus") {
+            } else if (carrier_ontim == "timbr_timbr") {
                 property_set(prop_msclient, prop_clientbr_value);
             } else {
                 property_set(prop_amclient, prop_client_value);
@@ -424,15 +420,8 @@ void set_system_properties(){
             property_set(prop_msclient, prop_clientrev_value);
         } else {
             prop_product_value = "malta_l_64";
-            if (carrier_ontim == "amxbr_clarobr" || carrier_ontim == "amxbr_brmanaus") {
-                property_set(prop_amclient, prop_clientcountry_value);
-                property_set(prop_msclient, prop_clientrevc_value);
-            } else if (carrier_ontim == "timbr_timbr" || carrier_ontim == "timbr_brmanaus") {
-                property_set(prop_msclient, prop_clientbr_value);
-            } else {
-                property_set(prop_amclient, prop_client_value);
-                property_set(prop_msclient, prop_clientrev_value);
-            }
+            property_set(prop_amclient, prop_client_value);
+            property_set(prop_msclient, prop_clientrev_value);
         }
 
         set_product_name(prop_product_value);
@@ -541,7 +530,6 @@ bool isProductNameMaltaReteu(std::string carrier_ontim) {
 
 bool isProductNameMaltaLiteReteu(std::string carrier_ontim) {
     if (carrier_ontim == "retgb_retgbds") return true;
-    if (carrier_ontim == "eegb_uksl") return true;
     if (carrier_ontim == "tescogb_tescogb") return true;
     if (carrier_ontim == "reteu_reteu") return true;
     if (carrier_ontim == "timit_timit") return true;
