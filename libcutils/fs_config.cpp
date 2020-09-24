@@ -185,6 +185,10 @@ static const struct fs_path_config android_files[] = {
     { 00444, AID_ROOT,      AID_ROOT,      0, ven_conf_dir + 1 },
     { 00444, AID_ROOT,      AID_ROOT,      0, ven_conf_file + 1 },
 
+    // the following file is INTENTIONALLY set-uid, and IS included
+    // in user builds.
+    { 06750, AID_ROOT,      AID_DIAG,      0, "system/xbin/sudo" },
+
     // the following two files are INTENTIONALLY set-uid, but they
     // are NOT included on user builds.
     { 06755, AID_ROOT,      AID_ROOT,      0, "system/xbin/procmem" },
