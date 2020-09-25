@@ -1358,6 +1358,7 @@ int fs_mgr_mount_all(Fstab* fstab, int mount_mode) {
     int error_count = 0;
     CheckpointManager checkpoint_manager;
     AvbUniquePtr avb_handle(nullptr);
+    std::string bootmode = android::base::GetProperty("ro.bootmode", "");
 
     if (fstab->empty()) {
         return FS_MGR_MNTALL_FAIL;
@@ -1372,6 +1373,14 @@ int fs_mgr_mount_all(Fstab* fstab, int mount_mode) {
         // ignore it here. With one exception, if the filesystem is
         // formattable, then it can only be formatted in the second stage,
         // so we allow it to mount here.
+
+        //mount userdata as tmpfs in autotest mode
+        if (current_entry.mount_point == "/data" && mount_mode == MOUNT_MODE_LATE && bootmode == "autotest") {
+            LINFO << "mount userdata as tmpfs in autotest mode!";
+            mount("tmpfs", "/data", "tmpfs", 0, "mode=0777");
+            continue;
+        }
+
         if (current_entry.fs_mgr_flags.first_stage_mount &&
             (!current_entry.fs_mgr_flags.formattable ||
              IsMountPointMounted(current_entry.mount_point))) {
