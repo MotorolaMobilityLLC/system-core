@@ -49,6 +49,7 @@ std::string prop_vendor_fingerprint = "ro.vendor.build.fingerprint";
 std::string prop_product_fingerprint = "ro.product.build.fingerprint";
 std::string prop_client_value = "android-motorola";
 std::string prop_clientrev_value = "android-motorola-rev2";
+std::string prop_clientrvo3_value = "android-motorola-rvo3";
 std::string prop_clientcountry_value = "android-americamovil-{country}";
 std::string prop_clientrevc_value = "android-americamovil-{country}-revc";
 std::string prop_clientwindit_value = "android-h3g-{country}-revc";
@@ -236,13 +237,13 @@ void set_system_properties(){
                 property_set(prop_msclient, prop_cliento2_value);
             } else {
                 property_set(prop_amclient, prop_client_value);
-                property_set(prop_msclient, prop_clientrev_value);
+                property_set(prop_msclient, prop_clientrvo3_value);
             }
         } else if (isProductNameMaltaRetru(carrier_ontim)) {
             prop_product_value = "malta_retru";
             prop_carrier_value = "retru";
             property_set(prop_amclient, prop_client_value);
-            property_set(prop_msclient, prop_clientrev_value);
+            property_set(prop_msclient, prop_clientrvo3_value);
         } else {
             prop_product_value = "malta";
             if (carrier_ontim == "openmx_retmx" || carrier_ontim == "amxmx_amxmx"
@@ -259,7 +260,7 @@ void set_system_properties(){
                 property_set(prop_msclient, prop_clientbr_value);
             } else {
                 property_set(prop_amclient, prop_client_value);
-                property_set(prop_msclient, prop_clientrev_value);
+                property_set(prop_msclient, prop_clientrvo3_value);
             }
         }
 
@@ -287,7 +288,7 @@ void set_system_properties(){
         if(build_name == "lenovo") {
             prop_product_value = "malta_l_lnv";
             property_set(prop_amclient, prop_client_value);
-            property_set(prop_msclient, prop_clientrev_value);
+            property_set(prop_msclient, prop_clientrvo3_value);
             set_product_name(prop_product_value);
 
             std::string fingerprint = get_fingerprint_property_malta(prop_product_value);
@@ -304,13 +305,13 @@ void set_system_properties(){
                 property_set(prop_msclient, prop_clientit_value);
             } else {
                 property_set(prop_amclient, prop_client_value);
-                property_set(prop_msclient, prop_clientrev_value);
+                property_set(prop_msclient, prop_clientrvo3_value);
             }
         } else if (isProductNameMaltaRetru(carrier_ontim)) {
             prop_product_value = "malta_l_retru";
             prop_carrier_value = "retru";
             property_set(prop_amclient, prop_client_value);
-            property_set(prop_msclient, prop_clientrev_value);
+            property_set(prop_msclient, prop_clientrvo3_value);
         } else {
             prop_product_value = "malta_l";
             if (carrier_ontim == "openmx_retmx" || carrier_ontim == "amxmx_amxmx"
@@ -326,7 +327,7 @@ void set_system_properties(){
                 property_set(prop_msclient, prop_clientbr_value);
             } else {
                 property_set(prop_amclient, prop_client_value);
-                property_set(prop_msclient, prop_clientrev_value);
+                property_set(prop_msclient, prop_clientrvo3_value);
             }
         }
 
@@ -356,7 +357,7 @@ void set_system_properties(){
         if(build_name == "lenovo") {
             prop_product_value = "malta_lnv";
             property_set(prop_amclient, prop_client_value);
-            property_set(prop_msclient, prop_clientrev_value);
+            property_set(prop_msclient, prop_clientrvo3_value);
             set_product_name(prop_product_value);
 
             std::string fingerprint = get_fingerprint_property_malta(prop_product_value);
@@ -374,7 +375,7 @@ void set_system_properties(){
             property_set(prop_msclient, prop_clientbr_value);
         } else {
             property_set(prop_amclient, prop_client_value);
-            property_set(prop_msclient, prop_clientrev_value);
+            property_set(prop_msclient, prop_clientrvo3_value);
         }
 
         set_product_name(prop_product_value);
@@ -402,7 +403,7 @@ void set_system_properties(){
         if(build_name == "lenovo") {
             prop_product_value = "malta_l_lnv_64";
             property_set(prop_amclient, prop_client_value);
-            property_set(prop_msclient, prop_clientrev_value);
+            property_set(prop_msclient, prop_clientrvo3_value);
             set_product_name(prop_product_value);
 
             std::string fingerprint = get_fingerprint_property_malta(prop_product_value);
@@ -417,11 +418,11 @@ void set_system_properties(){
             prop_product_value = "malta_l_reteu_64";
 
             property_set(prop_amclient, prop_client_value);
-            property_set(prop_msclient, prop_clientrev_value);
+            property_set(prop_msclient, prop_clientrvo3_value);
         } else {
             prop_product_value = "malta_l_64";
             property_set(prop_amclient, prop_client_value);
-            property_set(prop_msclient, prop_clientrev_value);
+            property_set(prop_msclient, prop_clientrvo3_value);
         }
 
         set_product_name(prop_product_value);
