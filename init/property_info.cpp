@@ -230,6 +230,7 @@ void set_system_properties(){
             prop_product_value = "malta_reteu";
             if (carrier_ontim == "timit_timit") {
                 property_set(prop_msclient, prop_clientit_value);
+                property_set(prop_vsclient, prop_clientit_value);
             } else if (carrier_ontim == "eegb_uksl") {
                 property_set(prop_msclient, prop_clientuk_value);
                 property_set(prop_vsclient, prop_clientuk_value);
@@ -303,6 +304,7 @@ void set_system_properties(){
             prop_product_value = "malta_l_reteu";
             if (carrier_ontim == "timit_timit") {
                 property_set(prop_msclient, prop_clientit_value);
+                property_set(prop_vsclient, prop_clientit_value);
             } else {
                 property_set(prop_amclient, prop_client_value);
                 property_set(prop_msclient, prop_clientrvo3_value);
