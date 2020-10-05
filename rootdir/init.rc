@@ -783,6 +783,7 @@ on post-fs-data
     mkdir /data/local/tests/system 0700 shell shell
     mkdir /data/local/tests/unrestricted 0700 shell shell
     mkdir /data/local/tests/vendor 0700 shell shell
+    mkdir /data/adspd 0770 audio diag
 
     # create dalvik-cache, so as to enforce our permissions
     mkdir /data/dalvik-cache 0771 root root encryption=Require
