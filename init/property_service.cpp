@@ -1141,7 +1141,7 @@ void set_properties_from_hwinfo() {
     std::string carrier_ontim = android::base::GetProperty("ro.carrier.ontim", "");
 
     if (product_name.find("malta") != std::string::npos) {
-        if (carrier_ontim == "amxla_amxdomi") {
+        if (carrier_ontim == "amxla_amxdomi" || carrier_ontim == "amxla_amxlag") {
             set_hwversion_from_hwinfo();
         }
         set_hwsku_from_hwinfo();
