@@ -81,6 +81,11 @@ on early-init
     # Mount tracefs
     mount tracefs tracefs /sys/kernel/tracing
 
+    # create sys dirctory
+    mkdir /dev/sys 0755 system system
+    mkdir /dev/sys/fs 0755 system system
+    mkdir /dev/sys/block 0755 system system
+
 # Run boringssl self test for each ABI so that later processes can skip it. http://b/139348610
 on early-init && property:ro.product.cpu.abilist32=*
     exec_start boringssl_self_test32
@@ -333,16 +338,6 @@ on init
     chmod 0664 /dev/cpuset/restricted/tasks
     chmod 0664 /dev/cpuset/tasks
 
-    # freezer cgroup entries
-    mkdir /dev/freezer/frozen
-    write /dev/freezer/frozen/freezer.state FROZEN
-    chown system system /dev/freezer/cgroup.procs
-    chown system system /dev/freezer/frozen
-    chown system system /dev/freezer/frozen/freezer.state
-    chown system system /dev/freezer/frozen/cgroup.procs
-
-    chmod 0664 /dev/freezer/frozen/freezer.state
-
     # make the PSI monitor accessible to others
     chown system system /proc/pressure/memory
     chmod 0664 /proc/pressure/memory
@@ -357,8 +352,6 @@ on init
     # This is needed by any process that uses socket tagging.
     chmod 0644 /dev/xt_qtaguid
 
-    chown root root /dev/cg2_bpf
-    chmod 0600 /dev/cg2_bpf
     mount bpf bpf /sys/fs/bpf nodev noexec nosuid
 
     # Create location for fs_mgr to store abbreviated output from filesystem
@@ -484,6 +477,10 @@ on post-fs
     # The bind+remount combination allows this to work in containers.
     mount rootfs rootfs / remount bind ro nodev
 
+    # Mount default storage into root namespace
+    mount none /mnt/user/0 /storage bind rec
+    mount none none /storage slave rec
+
     # Make sure /sys/kernel/debug (if present) is labeled properly
     # Note that tracefs may be mounted under debug, so we need to cross filesystems
     restorecon --recursive --cross-filesystems /sys/kernel/debug
@@ -533,6 +530,7 @@ on post-fs
     mkdir /metadata/bootstat 0750 system log
     mkdir /metadata/ota 0700 root system
     mkdir /metadata/ota/snapshots 0700 root system
+    mkdir /metadata/userspacereboot 0770 root system
 
     mkdir /metadata/apex 0700 root system
     mkdir /metadata/apex/sessions 0700 root system
@@ -680,6 +678,15 @@ on post-fs-data
     mkdir /data/vendor/tombstones 0771 root root
     mkdir /data/vendor/tombstones/wifi 0771 wifi wifi
 
+    # Create directories to push tests to for each linker namespace.
+    # Create the subdirectories in case the first test is run as root
+    # so it doesn't end up owned by root.
+    mkdir /data/local/tests 0700 shell shell
+    mkdir /data/local/tests/product 0700 shell shell
+    mkdir /data/local/tests/system 0700 shell shell
+    mkdir /data/local/tests/unrestricted 0700 shell shell
+    mkdir /data/local/tests/vendor 0700 shell shell
+
     # create dalvik-cache, so as to enforce our permissions
     mkdir /data/dalvik-cache 0771 root root encryption=Require
     # create the A/B OTA directory, so as to enforce our permissions
@@ -819,22 +826,6 @@ on post-fs-data
     # Enable FUSE by default
     setprop persist.sys.fuse true
 
-# Switch between sdcardfs and FUSE depending on persist property
-# TODO: Move this to ro property before launch because FDE devices
-# interact with persistent properties differently during boot
-on zygote-start && property:persist.sys.fuse=true
-  # Mount default storage into root namespace
-  mount none /mnt/user/0 /storage bind rec
-  mount none none /storage slave rec
-on zygote-start && property:persist.sys.fuse=false
-  # Mount default storage into root namespace
-  mount none /mnt/runtime/default /storage bind rec
-  mount none none /storage slave rec
-on zygote-start && property:persist.sys.fuse=""
-  # Mount default storage into root namespace
-  mount none /mnt/runtime/default /storage bind rec
-  mount none none /storage slave rec
-
 # It is recommended to put unnecessary data/ initialization from post-fs-data
 # to start-zygote in device's init.rc to unblock zygote start.
 on zygote-start && property:ro.crypto.state=unencrypted
@@ -887,18 +878,26 @@ on boot
     chown root system /sys/block/zram0/writeback
     chmod 0664 /sys/block/zram0/writeback
 
+    # to access F2FS sysfs on dm-<num> directly
+    mkdir /dev/sys/fs/by-name 0755 system system
+    symlink /sys/fs/f2fs/${dev.mnt.blk.data} /dev/sys/fs/by-name/userdata
+
+    # to access dm-<num> sysfs
+    mkdir /dev/sys/block/by-name 0755 system system
+    symlink /sys/devices/virtual/block/${dev.mnt.blk.data} /dev/sys/block/by-name/userdata
+
     # F2FS tuning. Set cp_interval larger than dirty_expire_centisecs, 30 secs,
     # to avoid power consumption when system becomes mostly idle. Be careful
     # to make it too large, since it may bring userdata loss, if they
     # are not aware of using fsync()/sync() to prepare sudden power-cut.
-    write /sys/fs/f2fs/${dev.mnt.blk.data}/cp_interval 200
-    write /sys/fs/f2fs/${dev.mnt.blk.data}/gc_urgent_sleep_time 50
-    write /sys/fs/f2fs/${dev.mnt.blk.data}/iostat_enable 1
+    write /dev/sys/fs/by-name/userdata/cp_interval 200
+    write /dev/sys/fs/by-name/userdata/gc_urgent_sleep_time 50
+    write /dev/sys/fs/by-name/userdata/iostat_enable 1
 
     # limit discard size to 128MB in order to avoid long IO latency
     # for filesystem tuning first (dm or sda)
     # Note that, if dm-<num> is used, sda/mmcblk0 should be tuned in vendor/init.rc
-    write /sys/devices/virtual/block/${dev.mnt.blk.data}/queue/discard_max_bytes 134217728
+    write /dev/sys/block/by-name/userdata/queue/discard_max_bytes 134217728
 
     # Permissions for System Server and daemons.
     chown system system /sys/power/autosleep

@@ -113,12 +113,15 @@ class Unwinder {
 
   ErrorCode LastErrorCode() { return last_error_.code; }
   uint64_t LastErrorAddress() { return last_error_.address; }
+  uint64_t warnings() { return warnings_; }
 
   // Builds a frame for symbolization using the maps from this unwinder. The
   // constructed frame contains just enough information to be used to symbolize
   // frames collected by frame-pointer unwinding that's done outside of
   // libunwindstack. This is used by tombstoned to symbolize frame pointer-based
   // stack traces that are collected by tools such as GWP-ASan and MTE.
+  static FrameData BuildFrameFromPcOnly(uint64_t pc, ArchEnum arch, Maps* maps, JitDebug* jit_debug,
+                                        std::shared_ptr<Memory> process_memory, bool resolve_names);
   FrameData BuildFrameFromPcOnly(uint64_t pc);
 
  protected:
@@ -141,6 +144,7 @@ class Unwinder {
   // file. This is only true if there is an actual file backing up the elf.
   bool elf_from_memory_not_file_ = false;
   ErrorData last_error_;
+  uint64_t warnings_;
 };
 
 class UnwinderFromPid : public Unwinder {
