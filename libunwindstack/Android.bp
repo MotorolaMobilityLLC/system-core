@@ -131,7 +131,6 @@ cc_library {
         support_system_process: true,
     },
     defaults: ["libunwindstack_defaults"],
-
     srcs: ["DexFile.cpp"],
     cflags: ["-DDEXFILE_SUPPORT"],
     shared_libs: ["libdexfile_support"],
@@ -168,6 +167,7 @@ cc_library_static {
     defaults: ["libunwindstack_defaults"],
 
     visibility: [
+        "//external/gwp_asan",
         "//system/core/debuggerd",
         "//system/core/init",
         "//system/core/libbacktrace",
@@ -296,6 +296,8 @@ cc_defaults {
         "tests/files/offline/shared_lib_in_apk_memory_only_arm64/*",
         "tests/files/offline/shared_lib_in_apk_single_map_arm64/*",
         "tests/files/offline/signal_load_bias_arm/*",
+        "tests/files/offline/signal_fde_x86/*",
+        "tests/files/offline/signal_fde_x86_64/*",
         "tests/files/offline/straddle_arm/*",
         "tests/files/offline/straddle_arm64/*",
     ],
