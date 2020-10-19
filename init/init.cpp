@@ -426,6 +426,7 @@ static void export_kernel_boot_props() {
         { "ro.boot.revision",   "ro.revision",   "0", },
         { "ro.boot.ddrsize",    "ro.ramsize",    "0", },
         { "ro.boot.carrier",    "ro.carrier.ontim",    "unknown", },
+        { "ro.boot.psn",        "ro.psn",        "unknown", },
     };
     for (const auto& prop : prop_map) {
         std::string value = GetProperty(prop.src_prop, prop.default_value);
