@@ -2290,14 +2290,19 @@ static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_
      * Refresh watermarks once per min in case user updated one of the margins.
      * TODO: b/140521024 replace this periodic update with an API for AMS to notify LMKD
      * that zone watermarks were changed by the system software.
+     * Moto huangzq2: update watermark once free has too much gap with marker.
      */
-    if (watermarks.high_wmark == 0 || get_time_diff_ms(&wmark_update_tm, &curr_tm) > 60000) {
+    if (watermarks.high_wmark == 0 || (get_time_diff_ms(&wmark_update_tm, &curr_tm) > 3000 &&
+            (mi.field.nr_free_pages - mi.field.cma_free > watermarks.high_wmark * 2 ||
+                mi.field.nr_free_pages - mi.field.cma_free < watermarks.high_wmark / 2))) {
         struct zoneinfo zi;
 
         if (zoneinfo_parse(&zi) < 0) {
             ALOGE("Failed to parse zoneinfo!");
             return;
         }
+
+        if (debug_process_killing) ALOGW("update watermarker");
 
         calc_zone_watermarks(&zi, &watermarks);
         wmark_update_tm = curr_tm;
