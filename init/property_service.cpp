@@ -369,7 +369,6 @@ class SocketConnection {
                 PLOG(ERROR) << "sys_prop: recv error";
                 return false;
             }
-
             bytes_left -= result;
             data += result;
         }
@@ -525,7 +524,7 @@ uint32_t HandlePropertySet(const std::string& name, const std::string& value,
 }
 
 static void handle_property_set_fd() {
-    static constexpr uint32_t kDefaultSocketTimeout = 2000; /* ms */
+    static constexpr uint32_t kDefaultSocketTimeout = 8000; /* ms */
 
     int s = accept4(property_set_fd, nullptr, nullptr, SOCK_CLOEXEC);
     if (s == -1) {
