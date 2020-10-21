@@ -527,6 +527,7 @@ bool isProductNameMaltaReteu(std::string carrier_ontim) {
     if (carrier_ontim == "timit_timit") return true;
     if (carrier_ontim == "reteu_retfr") return true;
     if (carrier_ontim == "o2gb_teluk") return true;
+    if (carrier_ontim == "pluspl_pluspl") return true;
     return false;
 }
 
