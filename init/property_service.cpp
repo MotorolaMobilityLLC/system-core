@@ -358,13 +358,13 @@ class SocketConnection {
                 PLOG(ERROR) << "sys_prop: recv error";
                 return false;
             }
-
             bytes_left -= result;
             data += result;
         }
 
         if (bytes_left != 0) {
-            LOG(ERROR) << "sys_prop: recv data is not properly obtained.";
+            LOG(ERROR) << "sys_prop: recv data is not properly obtained.bytes_left: " << bytes_left
+                       << ",data: " << data;
         }
 
         return bytes_left == 0;
@@ -511,7 +511,7 @@ uint32_t HandlePropertySet(const std::string& name, const std::string& value,
 }
 
 static void handle_property_set_fd() {
-    static constexpr uint32_t kDefaultSocketTimeout = 2000; /* ms */
+    static constexpr uint32_t kDefaultSocketTimeout = 8000; /* ms */
 
     int s = accept4(property_set_fd, nullptr, nullptr, SOCK_CLOEXEC);
     if (s == -1) {
