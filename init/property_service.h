@@ -35,6 +35,7 @@ extern uint32_t (*property_set)(const std::string& name, const std::string& valu
 void property_init();
 void property_load_boot_defaults(bool load_debug_prop);
 void StartPropertyService(int* epoll_socket);
+void set_properties_from_hwinfo();
 
 }  // namespace init
 }  // namespace android
