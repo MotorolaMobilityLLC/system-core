@@ -115,6 +115,8 @@ bool FastbootDevice::WriteStatus(FastbootResult result, const std::string& messa
     char buf[FB_RESPONSE_SZ];
     constexpr size_t kMaxMessageSize = sizeof(buf) - kResponseReasonSize;
     size_t msg_len = std::min(kMaxMessageSize, message.size());
+    size_t msg_send_len = 0;
+    size_t msg_offset = 0;
 
     constexpr const char* kResultStrings[kNumResponseTypes] = {RESPONSE_OKAY, RESPONSE_FAIL,
                                                                RESPONSE_INFO, RESPONSE_DATA};
@@ -123,15 +125,23 @@ bool FastbootDevice::WriteStatus(FastbootResult result, const std::string& messa
         return false;
     }
 
-    memcpy(buf, kResultStrings[static_cast<size_t>(result)], kResponseReasonSize);
-    memcpy(buf + kResponseReasonSize, message.c_str(), msg_len);
+    do {
+        msg_send_len = msg_len;
+        if (msg_len > (FB_MAX_RSP_SIZE - kResponseReasonSize))
+            msg_send_len = FB_MAX_RSP_SIZE - kResponseReasonSize;
 
-    size_t response_len = kResponseReasonSize + msg_len;
-    auto write_ret = this->get_transport()->Write(buf, response_len);
-    if (write_ret != static_cast<ssize_t>(response_len)) {
-        PLOG(ERROR) << "Failed to write " << message;
-        return false;
-    }
+        memcpy(buf, kResultStrings[static_cast<size_t>(result)], kResponseReasonSize);
+        memcpy(buf + kResponseReasonSize, message.c_str() + msg_offset, msg_send_len);
+
+        size_t response_len = kResponseReasonSize + msg_send_len;
+        auto write_ret = this->get_transport()->Write(buf, response_len);
+        if (write_ret != static_cast<ssize_t>(response_len)) {
+            PLOG(ERROR) << "Failed to write " << message;
+            return false;
+        }
+        msg_len -= msg_send_len;
+        msg_offset += msg_send_len;
+    } while (msg_len > 0);
 
     return true;
 }
