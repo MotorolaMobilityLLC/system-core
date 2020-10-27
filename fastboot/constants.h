@@ -42,6 +42,7 @@
 #define RESPONSE_INFO "INFO"
 
 #define FB_COMMAND_SZ 64
+#define FB_MAX_RSP_SIZE 64
 #define FB_RESPONSE_SZ 256
 
 #define FB_VAR_VERSION "version"
