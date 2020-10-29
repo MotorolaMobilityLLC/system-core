@@ -283,6 +283,8 @@ void set_system_properties(){
         if (carrier_ontim == "retru_retru") {
               property_set("ro.product.locale","ru-RU");
         }
+        //EKMALTA-2759 Enable Google PREMIER_TIER
+        property_set("ro.product.gms_premier_tier","true");
     //malta lite
     } else if(prop_product_value == "malta" && isMaltaLite) {
         if(build_name == "lenovo") {
@@ -353,6 +355,8 @@ void set_system_properties(){
     //malta 64
     } else if(prop_product_value == "malta_64" && !isMaltaLite) {
         set_product_device("malta");
+        //EKMALTA-2759 Enable Google PREMIER_TIER
+        property_set("ro.product.gms_premier_tier","true");
 
         if(build_name == "lenovo") {
             prop_product_value = "malta_lnv";
