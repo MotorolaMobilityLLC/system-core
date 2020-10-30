@@ -423,7 +423,6 @@ static void export_kernel_boot_props() {
         { "ro.boot.baseband",   "ro.baseband",   "unknown", },
         { "ro.boot.bootloader", "ro.bootloader", "unknown", },
         { "ro.boot.hardware",   "ro.hardware",   "unknown", },
-        { "ro.boot.carrier",    "ro.carrier.ontim",    "unknown", },
         { "ro.boot.revision",   "ro.revision",   "0", },
         { "ro.boot.ddrsize",    "ro.ramsize",    "0", },
         { "ro.boot.carrier",    "ro.carrier.ontim",    "unknown", },
