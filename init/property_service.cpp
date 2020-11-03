@@ -1144,7 +1144,13 @@ void set_properties_from_hwinfo() {
         if (carrier_ontim == "amxla_amxdomi" || carrier_ontim == "amxla_amxlag") {
             set_hwversion_from_hwinfo();
         }
-        set_hwsku_from_hwinfo();
+
+        if (build_name == "lenovo") {
+            property_set("ro.boot.hardware.sku","XT2095-4");
+            property_set("ro.vendor.hardware.sku","XT2095-4");
+        } else {
+            set_hwsku_from_hwinfo();
+        }
     } else if (product_name.find("blackjack") != std::string::npos) {
         if (build_name == "lenovo") {
             property_set("ro.boot.hardware.sku","XT2055-3");
