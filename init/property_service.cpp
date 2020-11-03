@@ -937,6 +937,7 @@ void property_load_boot_defaults(bool load_debug_prop) {
 
     update_sys_usb_config();
     set_properties_from_hwinfo();
+    set_properties_from_proinfo();
 }
 
 void set_hwversion_from_hwinfo() {
@@ -986,6 +987,28 @@ void set_properties_from_hwinfo() {
             set_hwsku_from_hwinfo();
         }
     }
+}
+
+// add properties from proinfo by hansenchen
+void set_properties_from_proinfo() {
+    // ontim factory check.
+    uint8_t ontim_factory_buffer = 0;
+    int position = 3022;
+    size_t ontim_factory_buffer_len = 1;
+
+    int fd = open("/dev/block/by-name/factory", O_RDONLY | O_CLOEXEC);
+    if (fd == -1) {
+        LOG(ERROR) << "proinfo fd open fail!";
+        return;
+    } else {
+        // ontim factory check.
+        lseek(fd, position, SEEK_SET);
+        read(fd, &ontim_factory_buffer, ontim_factory_buffer_len);
+        if (ontim_factory_buffer == 1) {
+            property_set("ro.vendor.ontim_factory", "1");
+        }
+    }
+    close(fd);
 }
 
 bool LoadPropertyInfoFromFile(const std::string& filename,

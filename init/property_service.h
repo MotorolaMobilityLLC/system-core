@@ -36,6 +36,8 @@ void property_init();
 void property_load_boot_defaults(bool load_debug_prop);
 void StartPropertyService(int* epoll_socket);
 void set_properties_from_hwinfo();
+// add properties from proinfo by hansenchen
+void set_properties_from_proinfo();
 
 }  // namespace init
 }  // namespace android
