@@ -2150,7 +2150,7 @@ static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_
     static int64_t base_file_lru;
     static int64_t init_pgscan_kswapd;
     static int64_t init_pgscan_direct;
-    static long init_watermark;
+    static long lowest_watermark;
     static int64_t swap_low_threshold;
     static int64_t file_low_threshold;
     static bool killing;
@@ -2290,8 +2290,8 @@ static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_
         calc_zone_watermarks(&zi, &watermarks);
         wmark_update_tm = curr_tm;
 
-        if (init_watermark == 0 && watermarks.high_wmark > 0) {
-            init_watermark = watermarks.high_wmark;
+        if (lowest_watermark == 0 || lowest_watermark > watermarks.high_wmark) {
+            lowest_watermark = watermarks.high_wmark;
         }
      }
 
@@ -2302,13 +2302,14 @@ static void mp_event_psi(int data, uint32_t events, struct polling_params *poll_
     if (threshold_decay_pct > 0) {
         int threshold_pct = 100;
         /* Cut threshold if watermark boosted */
-        if (init_watermark > 0 && watermarks.high_wmark > init_watermark * 2) {
+        if (lowest_watermark > 0 && watermarks.high_wmark > lowest_watermark * 2) {
             threshold_pct = threshold_pct * (100 - threshold_decay_pct) / 100;
         }
         /* Cut threshold if file is low */
         if (file_is_low) {
             threshold_pct = threshold_pct * (100 - threshold_decay_pct) / 100;
         }
+
         pgscan_limit = original_pgscan_limit * threshold_pct / 100;
         thrashing_limit_pct = original_thrashing_limit_pct * threshold_pct / 100;
         thrashing_limit = min(thrashing_limit, thrashing_limit_pct);
