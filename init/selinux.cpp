@@ -97,7 +97,6 @@ EnforcingStatus StatusFromCmdline() {
 }
 
 bool IsEnforcing() {
-    return false;
     {
         int fd(open("/mboot/selinux", O_RDONLY | O_CLOEXEC | O_BINARY));
         if (fd != -1) {
