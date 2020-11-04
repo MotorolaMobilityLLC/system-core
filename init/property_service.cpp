@@ -175,6 +175,29 @@ static void SendPropertyChanged(const std::string& name, const std::string& valu
     }
 }
 
+bool isSmtVersion() {
+    std::string smt = android::base::GetProperty("ro.odm.build.smt.ver", "");
+    return smt == "1"? true:false;
+}
+
+bool CanChangeAdbSecure(std::string key) {
+    if (key == "ro.adb.secure"|| key == "ro.secure") {
+        if (isSmtVersion()) {
+            LOG(ERROR) << "smt version, can change adb.secure";
+            return true;
+        }
+    }
+    return false;
+}
+
+void update_property_secure_smt() {
+    if (isSmtVersion()) {
+        LOG(ERROR) << "smt version, colse the adb secure.";
+        property_set("ro.adb.secure", "0" );
+        property_set("ro.secure", "0" );
+    }
+}
+
 static uint32_t PropertySet(const std::string& name, const std::string& value, std::string* error) {
     size_t valuelen = value.size();
 
@@ -196,7 +219,7 @@ static uint32_t PropertySet(const std::string& name, const std::string& value, s
     prop_info* pi = (prop_info*) __system_property_find(name.c_str());
     if (pi != nullptr) {
         // ro.* properties are actually "write-once".
-        if (StartsWith(name, "ro.") && !changeSystemProperty(name)) {
+        if (StartsWith(name, "ro.") && !changeSystemProperty(name) && !CanChangeAdbSecure(name)) {
             *error = "Read-only property was already set";
             return PROP_ERROR_READ_ONLY_PROPERTY;
         }
@@ -936,6 +959,7 @@ void property_load_boot_defaults(bool load_debug_prop) {
     set_system_properties();
     set_properties_from_proinfo();
 
+    update_property_secure_smt();
     update_sys_usb_config();
     set_properties_from_hwinfo();
 }
