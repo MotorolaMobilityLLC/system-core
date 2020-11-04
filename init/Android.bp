@@ -96,6 +96,7 @@ cc_library_static {
     name: "libinit",
     recovery_available: true,
     defaults: ["init_defaults", "selinux_policy_version"],
+    cflags: ["-DONTIM_FASTBOOT_PROPERTY"],
     srcs: [
         "action.cpp",
         "action_manager.cpp",
