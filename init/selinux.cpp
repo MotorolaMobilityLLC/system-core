@@ -97,6 +97,9 @@ EnforcingStatus StatusFromCmdline() {
 }
 
 bool IsEnforcing() {
+/*#ifdef SMT_MODE //use Android.bp close selinux
+    return false;
+#endif*/
     {
         int fd(open("/mboot/selinux", O_RDONLY | O_CLOEXEC | O_BINARY));
         if (fd != -1) {

@@ -13,8 +13,30 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
+bootstrap_go_package {
+    name: "soong-smtparser",
+    pkgPath: "android/soong/smtparser",
+    deps: [
+    "blueprint",
+    "blueprint-pathtools",
+    "soong",
+    "soong-android",
+    "soong-cc",
+    "soong-genrule",
+    ],  
+    srcs: [
+        "smtparser.go",
+    ],  
+    pluginFor: ["soong_build"],
+}
+
+smtparser_defaults {
+    name: "smtparser_defaults",
+}
+BUILD_SMT = ["YES"]
 
 cc_defaults {
+    defaults: ["smtparser_defaults"],
     name: "init_defaults",
     cpp_std: "experimental",
     sanitize: {
