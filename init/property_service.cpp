@@ -961,7 +961,7 @@ void property_load_boot_defaults(bool load_debug_prop) {
     update_property_secure_smt();
     update_sys_usb_config();
     set_properties_from_hwinfo();
-    set_properties_from_proinfo();
+    //set_properties_from_proinfo();
 }
 
 void set_hwversion_from_hwinfo() {
