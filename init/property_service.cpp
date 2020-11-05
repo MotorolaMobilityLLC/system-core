@@ -957,11 +957,11 @@ void property_load_boot_defaults(bool load_debug_prop) {
     property_initialize_ro_product_props();
     property_derive_build_fingerprint();
     set_system_properties();
-    set_properties_from_proinfo();
 
     update_property_secure_smt();
     update_sys_usb_config();
     set_properties_from_hwinfo();
+    set_properties_from_proinfo();
 }
 
 void set_hwversion_from_hwinfo() {
