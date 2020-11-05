@@ -239,7 +239,7 @@ static void perform_request(Crash* crash) {
     goto fail;
   } else {
     // TODO: Make this configurable by the interceptor?
-    struct timeval timeout = { 10, 0 };
+    struct timeval timeout = { 20, 0 }; //MOTO IKSWQ-148729, duxu1 2020/11/5 increase timeout to wait tombstoned complete
 
     event_base* base = event_get_base(crash->crash_event);
     event_assign(crash->crash_event, base, crash->crash_socket_fd, EV_TIMEOUT | EV_READ,
