@@ -1116,6 +1116,7 @@ static Result<Success> do_load_persist_props(const BuiltinArguments& args) {
     // as having been loaded during the first call, so we return in that case.
     std::string crypto_state = android::base::GetProperty("ro.crypto.state", "");
     std::string crypto_type = android::base::GetProperty("ro.crypto.type", "");
+    set_properties_from_proinfo();
     if (crypto_state == "encrypted" && crypto_type == "block") {
         static size_t num_calls = 0;
         if (++num_calls == 1) return Success();
