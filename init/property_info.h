@@ -23,18 +23,12 @@ namespace android {
 namespace init {
 
 void set_system_properties();
-bool isProductNameBlackjackReteu(std::string carrier_ontim);
-bool isProductNameBlackjackLnv(std::string carrier_ontim);
-bool isProductNameBlackjackRetru(std::string carrier_ontim);
-bool isProductNameMaltaReteu(std::string carrier_ontim);
+bool isProductNameFijiReteu(std::string carrier_ontim);
 bool isProductNameMaltaLiteReteu(std::string carrier_ontim);
 bool isProductNameMaltaRetru(std::string carrier_ontim);
 bool changeSystemProperty(std::string key);
-std::string get_fingerprint_property(std::string value);
-std::string get_fingerprint_property_malta(std::string value);
+std::string get_fingerprint_property_fiji(std::string value);
 std::string get_version_property(std::string value);
-std::string get_product_property(std::string prop_name,std::string value);
-void set_some_vendor_properties(std::string prop_product_value);
 void set_fingerprint(std::string fingerprint) ;
 void set_product_device(std::string product_device);
 void set_product_name(std::string product_name);

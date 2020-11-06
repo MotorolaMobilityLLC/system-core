@@ -106,7 +106,7 @@ void set_system_properties(){
     std::string  build_name = android::base::GetProperty(prop_build_name, "");
     bool isMaltaLite = false;
 
-    if (prop_product_value == "malta" || prop_product_value == "malta_64") {
+    /*if (prop_product_value == "fiji_2g") {// || prop_product_value == "malta_64") {
         std::string band_id_path = "/sys/hwinfo/band_id";
         std::ifstream stream_band_id(band_id_path);
         std::stringstream fileStream_band_id;
@@ -119,145 +119,23 @@ void set_system_properties(){
             property_set("ro.maltalite", "1");
             isMaltaLite = true;
         }
-    }
+    }*/
 
-    //Fully disable DuraSpeed service for all carriers in LATAM/Europe/Brazil, and only enable it for APEM.
-    if(carrier_value == "retapac" || carrier_value == "retin" || carrier_value == "optus") {
-        property_set("persist.vendor.duraspeed.app.on","1");
-        property_set("persist.vendor.duraspeed.support","1");
-    } else {
-        property_set("persist.vendor.duraspeed.app.on","0");
-        property_set("persist.vendor.duraspeed.support","0");
-    }
+    //fiji
+    if(prop_product_value == "fiji_2g" && !isMaltaLite) {
+        if (isProductNameFijiReteu(carrier_ontim)) {
+            prop_product_value = "fijisc_reteu";
 
-    //blackjack
-    if (prop_product_value == "blackjack" || prop_product_value == "blackjack_64") {
-        set_product_device("blackjack");
-        set_some_vendor_properties("blackjack");
-
-        if(build_name == "lenovo") {
-            prop_product_value = "blackjack_lnv";
-            property_set(prop_amclient, prop_client_value);
-            property_set(prop_msclient, prop_clientrev_value);
-            set_product_name(prop_product_value);
-
-            std::string fingerprint = get_fingerprint_property(prop_product_value);
-            set_fingerprint(fingerprint);
-            property_set("persist.vendor.normal", "1");//表示正常版本，非 VTS 版本，prop 正常设置.
-            property_set(prop_build_fullversion, get_version_property(prop_version_value));
-            property_set(prop_build_customerid, prop_carrier_value);
-            return;
-        }
-
-        if (isProductNameBlackjackReteu(carrier_ontim)) {
-            prop_product_value = "blackjack_reteu";
-            if (carrier_ontim == "windit_windds") {
-                property_set(prop_msclient, prop_clientwindit_value);
-            } else if (carrier_ontim == "dteu_dteu") {
-                property_set(prop_amclient, prop_clienttmobile_value);
-                property_set(prop_msclient, prop_clientdt_value);
-            } else if (carrier_ontim == "reteu_reteuop") {
-                property_set(prop_msclient, prop_clientor_value);
-            } else if (carrier_ontim == "eegb_uksl") {
-                property_set(prop_msclient, prop_clientuk_value);
-                property_set(prop_vsclient, prop_clientuk_value);
-            } else if (carrier_ontim == "o2gb_teluk") {
-                property_set(prop_msclient, prop_cliento2_value);
-            } else {
-                property_set(prop_amclient, prop_client_value);
-                property_set(prop_msclient, prop_clientrev_value);
-            }
-        } else if (isProductNameBlackjackLnv(carrier_ontim)) {
-            //remain this temporarily for requirement update
-            if(build_name == "lenovo") {
-                prop_product_value = "blackjack_lnv";
-            } else {
-                prop_product_value = "blackjack";
-            }
-            property_set(prop_amclient, prop_client_value);
-            property_set(prop_msclient, prop_clientrev_value);
-        } else if (isProductNameBlackjackRetru(carrier_ontim)) {
-            prop_product_value = "blackjack_retru";
-            prop_carrier_value = "retru";
-            property_set(prop_amclient, prop_client_value);
-            property_set(prop_msclient, prop_clientrev_value);
-        } else {
-            prop_product_value = "blackjack";
-            if (carrier_ontim == "openmx_retmx" || carrier_ontim == "amxmx_amxmx"
-             || carrier_ontim == "amxmx_amxmxsl" || carrier_ontim == "amxpe_claro"
-             || carrier_ontim == "amxco_claro" || carrier_ontim == "amxbr_clarobr"
-             || carrier_ontim == "amxar_amxar" || carrier_ontim == "amxcl_clarosl"
-             || carrier_ontim == "amxla_amxlas" || carrier_ontim == "amxla_amxlag") {
-                property_set(prop_amclient, prop_clientcountry_value);
-                property_set(prop_msclient, prop_clientrevc_value);
-            } else if (carrier_ontim == "attmx_attmx") {
-                property_set(prop_msclient, prop_clientmx_value);
-            } else if (carrier_ontim == "timbr_clarobr") {
-                property_set(prop_msclient, prop_clientbr_value);
-            } else if (carrier_ontim == "optus_optus") {
-                property_set(prop_msclient, prop_clientau_value);
-            } else {
-                property_set(prop_amclient, prop_client_value);
-                property_set(prop_msclient, prop_clientrev_value);
-            }
-        }
-
-        set_product_name(prop_product_value);
-        std::string fingerprint = get_fingerprint_property(prop_product_value);
-        set_fingerprint(fingerprint);
-
-        // BEGIN Ontim, maqing, 20/11/2019, EKBLACKJ-178 , St-result :PASS,[BJ][Europe Requirement][Fiji Features]FEATURE-5963
-        if (carrier_ontim == "timit_timit") {
-             property_set(prop_amazon_partnerid, carrier_value);
-        }
-        if (carrier_ontim == "windit_windds") {
-             property_set(prop_amazon_partnerid, "3it");
-        }
-        if (carrier_ontim == "attmx_attmx") {
-             property_set(prop_amazon_partnerid,carrier_value);
-        }
-        if (carrier_ontim == "retru_retru") {
-              property_set("ro.product.locale","ru-RU");
-        }
-        if (carrier_value == "optus") {
-              property_set("ro.product.locale","en-AU");
-        }
-
-        // END EKBLACKJ-178
-    //malta
-    } else if(prop_product_value == "malta" && !isMaltaLite) {
-        if (isProductNameMaltaReteu(carrier_ontim)) {
-            prop_product_value = "malta_reteu";
-            if (carrier_ontim == "timit_timit") {
-                property_set(prop_msclient, prop_clientit_value);
-                property_set(prop_vsclient, prop_clientit_value);
-            } else if (carrier_ontim == "eegb_uksl") {
-                property_set(prop_msclient, prop_clientuk_value);
-                property_set(prop_vsclient, prop_clientuk_value);
-            } else if (carrier_ontim == "o2gb_teluk") {
-                property_set(prop_msclient, prop_cliento2_value);
-            } else {
-                property_set(prop_amclient, prop_client_value);
-                property_set(prop_msclient, prop_clientrvo3_value);
-            }
-        } else if (isProductNameMaltaRetru(carrier_ontim)) {
-            prop_product_value = "malta_retru";
-            prop_carrier_value = "retru";
             property_set(prop_amclient, prop_client_value);
             property_set(prop_msclient, prop_clientrvo3_value);
         } else {
-            prop_product_value = "malta";
+            prop_product_value = "fijisc";
             if (carrier_ontim == "openmx_retmx" || carrier_ontim == "amxmx_amxmx"
-             || carrier_ontim == "amxmx_amxmxsl" || carrier_ontim == "amxpe_claro"
-             || carrier_ontim == "amxco_claro" || carrier_ontim == "amxbr_clarobr"
-             || carrier_ontim == "amxbr_brmanaus" || carrier_ontim == "amxcl_clarocl"
-             || carrier_ontim == "amxla_amxlag" || carrier_ontim == "amxla_amxdomi") {
+             || carrier_ontim == "amxmx_amxmxsl") {
                 property_set(prop_amclient, prop_clientcountry_value);
                 property_set(prop_msclient, prop_clientrevc_value);
             } else if (carrier_ontim == "attmx_attmx") {
                 property_set(prop_msclient, prop_clientmx_value);
-            } else if (carrier_ontim == "timbr_timbr" || carrier_ontim == "timbr_brmanaus") {
-                property_set(prop_msclient, prop_clientbr_value);
             } else {
                 property_set(prop_amclient, prop_client_value);
                 property_set(prop_msclient, prop_clientrvo3_value);
@@ -265,7 +143,7 @@ void set_system_properties(){
         }
 
         set_product_name(prop_product_value);
-        std::string fingerprint = get_fingerprint_property_malta(prop_product_value);
+        std::string fingerprint = get_fingerprint_property_fiji(prop_product_value);
         set_fingerprint(fingerprint);
 
         // BEGIN Ontim, maqing, 30/06/2020,EKMALTA-369:[Region_LATAM]FEATURE-5963: Amazon MDIP app single SKU solution
@@ -284,14 +162,14 @@ void set_system_properties(){
               property_set("ro.product.locale","ru-RU");
         }
     //malta lite
-    } else if(prop_product_value == "malta" && isMaltaLite) {
+    } else if(prop_product_value == "fiji_2g" && isMaltaLite) {
         if(build_name == "lenovo") {
             prop_product_value = "malta_l_lnv";
             property_set(prop_amclient, prop_client_value);
             property_set(prop_msclient, prop_clientrvo3_value);
             set_product_name(prop_product_value);
 
-            std::string fingerprint = get_fingerprint_property_malta(prop_product_value);
+            std::string fingerprint = get_fingerprint_property_fiji(prop_product_value);
             set_fingerprint(fingerprint);
             property_set("persist.vendor.normal", "1");//表示正常版本，非 VTS 版本，prop 正常设置.
             property_set(prop_build_fullversion, get_version_property(prop_version_value));
@@ -333,7 +211,7 @@ void set_system_properties(){
         }
 
         set_product_name(prop_product_value);
-        std::string fingerprint = get_fingerprint_property_malta(prop_product_value);
+        std::string fingerprint = get_fingerprint_property_fiji(prop_product_value);
         set_fingerprint(fingerprint);
 
         // BEGIN Ontim, maqing, 30/06/2020,EKMALTA-369:[Region_LATAM]FEATURE-5963: Amazon MDIP app single SKU solution
@@ -351,8 +229,9 @@ void set_system_properties(){
         if (carrier_ontim == "retru_retru") {
               property_set("ro.product.locale","ru-RU");
         }
+    }
     //malta 64
-    } else if(prop_product_value == "malta_64" && !isMaltaLite) {
+    /*} else if(prop_product_value == "malta_64" && !isMaltaLite) {
         set_product_device("malta");
 
         if(build_name == "lenovo") {
@@ -444,20 +323,11 @@ void set_system_properties(){
         if (carrier_ontim == "retru_retru") {
               property_set(prop_local, "ru-RU");
         }
-    }
+    }*/
 
     property_set("persist.vendor.normal", "1");//表示正常版本，非 VTS 版本，prop 正常设置.
     property_set(prop_build_fullversion, get_version_property(prop_version_value));
     property_set(prop_build_customerid, prop_carrier_value);
-}
-
-void set_some_vendor_properties(std::string prop_product_value) {
-    property_set(prop_build_product, prop_product_value);
-    property_set(prop_product_board, prop_product_value);
-    property_set(prop_boot_bootloader, get_product_property(prop_boot_bootloader,prop_product_value));
-    property_set(prop_bootloader, get_product_property(prop_bootloader,prop_product_value));
-    property_set(prop_build_description, get_product_property(prop_build_description,prop_product_value));
-    property_set(prop_build_flavor, get_product_property(prop_build_flavor,prop_product_value));
 }
 
 void set_product_name(std::string product_name) {
@@ -485,49 +355,15 @@ void set_fingerprint(std::string fingerprint) {
     property_set(prop_odm_fingerprint, fingerprint);
 }
 
-bool isProductNameBlackjackReteu(std::string carrier_ontim) {
-    if (carrier_ontim == "retgb_retgbds") return true;
-    if (carrier_ontim == "retgb_cpwds") return true;
-    if (carrier_ontim == "tescogb_tescogb") return true;
-    if (carrier_ontim == "reteu_reteu") return true;
-    if (carrier_ontim == "playpl_playpl") return true;
-    if (carrier_ontim == "dteu_dteu") return true;
-    if (carrier_ontim == "reteu_reteuop") return true;
-    if (carrier_ontim == "openeu_pluspl") return true;
-    if (carrier_ontim == "windit_windds") return true;
-    if (carrier_ontim == "reteu_retfr") return true;
-    if (carrier_ontim == "eegb_uksl") return true;
-    if (carrier_ontim == "vfeu_vfeu") return true;
-    if (carrier_ontim == "reteu_dtag") return true;
-    if (carrier_ontim == "o2gb_teluk") return true;
-    return false;
-}
-
-bool isProductNameBlackjackLnv(std::string carrier_ontim) {
-    if (carrier_ontim == "retapac_reteuuae") return true;
-    if (carrier_ontim == "retapac_rettld") return true;
-    return false;
-}
-
-bool isProductNameBlackjackRetru(std::string carrier_ontim) {
-    if (carrier_ontim == "retru_retru") return true;
-    return false;
-}
-
 bool isProductNameMaltaRetru(std::string carrier_ontim) {
     if (carrier_ontim == "retru_retru") return true;
     return false;
 }
 
-bool isProductNameMaltaReteu(std::string carrier_ontim) {
-    if (carrier_ontim == "retgb_retgbds") return true;
-    if (carrier_ontim == "eegb_uksl") return true;
-    if (carrier_ontim == "tescogb_tescogb") return true;
+bool isProductNameFijiReteu(std::string carrier_ontim) {
     if (carrier_ontim == "reteu_reteu") return true;
-    if (carrier_ontim == "timit_timit") return true;
     if (carrier_ontim == "reteu_retfr") return true;
-    if (carrier_ontim == "o2gb_teluk") return true;
-    if (carrier_ontim == "pluspl_pluspl") return true;
+    if (carrier_ontim == "reteu_reteuse") return true;
     return false;
 }
 
@@ -559,33 +395,15 @@ bool changeSystemProperty(std::string key) {
     return false;
 }
 
-std::string get_fingerprint_property(std::string value) {
-    std::string  buildFingerprint = android::base::GetProperty(prop_fingerprint, "");
+std::string get_fingerprint_property_fiji(std::string value) {
+    std::string  buildFingerprint = android::base::GetProperty(prop_system_fingerprint, "");
     std::vector<std::string> fingerprint = android::base::Split(buildFingerprint, ":");
 
     std::vector<std::string> name = android::base::Split(fingerprint[0], "/");
     name[1] = value;
-    name[2] = "blackjack";
+    name[2] = "fijisc";
     fingerprint[0] = android::base::Join(name, "/");
     return android::base::Join(fingerprint, ":");
-}
-
-std::string get_fingerprint_property_malta(std::string value) {
-    std::string  buildFingerprint = android::base::GetProperty(prop_fingerprint, "");
-    std::vector<std::string> fingerprint = android::base::Split(buildFingerprint, ":");
-
-    std::vector<std::string> name = android::base::Split(fingerprint[0], "/");
-    name[1] = value;
-    name[2] = "malta";
-    fingerprint[0] = android::base::Join(name, "/");
-    return android::base::Join(fingerprint, ":");
-}
-
-std::string get_product_property(std::string prop_name, std::string value) {
-    std::string  product_name = android::base::GetProperty(prop_name, "");
-    std::vector<std::string> product = android::base::Split(product_name, "-");
-    product[0] = value;
-    return android::base::Join(product, "-");
 }
 
 std::string get_version_property(std::string value) {
