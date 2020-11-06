@@ -57,6 +57,7 @@
 #include <keyutils.h>
 #include <libavb/libavb.h>
 #include <libgsi/libgsi.h>
+#include <libsnapshot/snapshot.h>
 #include <private/android_filesystem_config.h>
 #include <processgroup/processgroup.h>
 #include <processgroup/setup.h>
@@ -76,6 +77,7 @@
 #include "proto_utils.h"
 #include "reboot.h"
 #include "reboot_utils.h"
+#include "second_stage_resources.h"
 #include "security.h"
 #include "selabel.h"
 #include "selinux.h"
@@ -98,6 +100,7 @@ using android::base::StringPrintf;
 using android::base::Timer;
 using android::base::Trim;
 using android::fs_mgr::AvbHandle;
+using android::snapshot::SnapshotManager;
 using android::fs_mgr::Fstab;
 using android::fs_mgr::ReadDefaultFstab;
 
@@ -683,6 +686,12 @@ static void UmountDebugRamdisk() {
     }
 }
 
+static void UmountSecondStageRes() {
+    if (umount(kSecondStageRes) != 0) {
+        PLOG(ERROR) << "Failed to umount " << kSecondStageRes;
+    }
+}
+
 static void MountExtraFilesystems() {
 #define CHECKCALL(x) \
     if ((x) != 0) PLOG(FATAL) << #x " failed.";
@@ -728,6 +737,32 @@ void SendLoadPersistentPropertiesMessage() {
     if (auto result = SendMessage(property_fd, init_message); !result.ok()) {
         LOG(ERROR) << "Failed to send load persistent properties message: " << result.error();
     }
+}
+
+static Result<void> TransitionSnapuserdAction(const BuiltinArguments&) {
+    if (!SnapshotManager::IsSnapshotManagerNeeded() ||
+        !android::base::GetBoolProperty(android::snapshot::kVirtualAbCompressionProp, false)) {
+        return {};
+    }
+
+    auto sm = SnapshotManager::New();
+    if (!sm) {
+        LOG(FATAL) << "Failed to create SnapshotManager, will not transition snapuserd";
+        return {};
+    }
+
+    ServiceList& service_list = ServiceList::GetInstance();
+    auto svc = service_list.FindService("snapuserd");
+    if (!svc) {
+        LOG(FATAL) << "Failed to find snapuserd service, aborting transition";
+        return {};
+    }
+    svc->Start();
+
+    if (!sm->PerformSecondStageTransition()) {
+        LOG(FATAL) << "Failed to transition snapuserd to second-stage";
+    }
+    return {};
 }
 
 int SecondStageMain(int argc, char** argv) {
@@ -806,6 +841,9 @@ int SecondStageMain(int argc, char** argv) {
 
     PropertyInit();
 
+    // Umount second stage resources after property service has read the .prop files.
+    UmountSecondStageRes();
+
     // Umount the debug ramdisk after property service has read the .prop files when it means to.
     if (load_debug_prop) {
         UmountDebugRamdisk();
@@ -867,6 +905,7 @@ int SecondStageMain(int argc, char** argv) {
     SetProperty(gsi::kGsiInstalledProp, is_installed);
 
     am.QueueBuiltinAction(SetupCgroupsAction, "SetupCgroups");
+    am.QueueBuiltinAction(TransitionSnapuserdAction, "TransitionSnapuserd");
     am.QueueBuiltinAction(SetKptrRestrictAction, "SetKptrRestrict");
     am.QueueBuiltinAction(TestPerfEventSelinuxAction, "TestPerfEventSelinux");
     am.QueueEventTrigger("early-init");

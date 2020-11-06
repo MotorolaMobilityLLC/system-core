@@ -16,6 +16,7 @@ cc_library_headers {
     name: "libdebuggerd_common_headers",
     export_include_dirs: ["common/include"],
     recovery_available: true,
+    vendor_ramdisk_available: true,
 }
 
 cc_library_shared {
@@ -46,6 +47,7 @@ cc_library_static {
     name: "libtombstoned_client_static",
     defaults: ["debuggerd_defaults"],
     recovery_available: true,
+    vendor_ramdisk_available: true,
     srcs: [
         "tombstoned/tombstoned_client.cpp",
         "util.cpp",
@@ -68,6 +70,7 @@ cc_library_static {
     name: "libdebuggerd_handler_core",
     defaults: ["debuggerd_defaults"],
     recovery_available: true,
+    vendor_ramdisk_available: true,
     srcs: ["handler/debuggerd_handler.cpp"],
 
     header_libs: [
@@ -112,6 +115,7 @@ cc_library_static {
     ],
     defaults: ["debuggerd_defaults"],
     recovery_available: true,
+    vendor_ramdisk_available: true,
     srcs: [
         "handler/debuggerd_fallback.cpp",
     ],
@@ -163,6 +167,7 @@ cc_library_static {
     name: "libdebuggerd",
     defaults: ["debuggerd_defaults"],
     recovery_available: true,
+    vendor_ramdisk_available: true,
 
     srcs: [
         "libdebuggerd/backtrace.cpp",
@@ -204,6 +209,11 @@ cc_library_static {
 
     target: {
         recovery: {
+            exclude_static_libs: [
+                "libdexfile_support",
+            ],
+        },
+        vendor_ramdisk: {
             exclude_static_libs: [
                 "libdexfile_support",
             ],

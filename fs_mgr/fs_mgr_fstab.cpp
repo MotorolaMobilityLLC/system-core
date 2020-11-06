@@ -584,18 +584,19 @@ bool EraseFstabEntry(Fstab* fstab, const std::string& mount_point) {
 
 }  // namespace
 
-void TransformFstabForDsu(Fstab* fstab, const std::vector<std::string>& dsu_partitions) {
+void TransformFstabForDsu(Fstab* fstab, const std::string& dsu_slot,
+                          const std::vector<std::string>& dsu_partitions) {
     static constexpr char kDsuKeysDir[] = "/avb";
     // Convert userdata
     // Inherit fstab properties for userdata.
     FstabEntry userdata;
     if (FstabEntry* entry = GetEntryForMountPoint(fstab, "/data")) {
         userdata = *entry;
-        userdata.blk_device = "userdata_gsi";
+        userdata.blk_device = android::gsi::kDsuUserdata;
         userdata.fs_mgr_flags.logical = true;
         userdata.fs_mgr_flags.formattable = true;
         if (!userdata.metadata_key_dir.empty()) {
-            userdata.metadata_key_dir += "/gsi";
+            userdata.metadata_key_dir = android::gsi::GetDsuMetadataKeyDir(dsu_slot);
         }
     } else {
         userdata = BuildDsuUserdataFstabEntry();
@@ -611,7 +612,11 @@ void TransformFstabForDsu(Fstab* fstab, const std::vector<std::string>& dsu_part
             continue;
         }
         // userdata has been handled
-        if (StartsWith(partition, "user")) {
+        if (partition == android::gsi::kDsuUserdata) {
+            continue;
+        }
+        // scratch is handled by fs_mgr_overlayfs
+        if (partition == android::gsi::kDsuScratch) {
             continue;
         }
         // dsu_partition_name = corresponding_partition_name + kDsuPostfix
@@ -688,9 +693,14 @@ bool ReadFstabFromFile(const std::string& path, Fstab* fstab) {
         return false;
     }
     if (!is_proc_mounts && !access(android::gsi::kGsiBootedIndicatorFile, F_OK)) {
+        std::string dsu_slot;
+        if (!android::gsi::GetActiveDsu(&dsu_slot)) {
+            PERROR << __FUNCTION__ << "(): failed to get active dsu slot";
+            return false;
+        }
         std::string lp_names;
         ReadFileToString(gsi::kGsiLpNamesFile, &lp_names);
-        TransformFstabForDsu(fstab, Split(lp_names, ","));
+        TransformFstabForDsu(fstab, dsu_slot, Split(lp_names, ","));
     }
 
 #ifndef NO_SKIP_MOUNT
