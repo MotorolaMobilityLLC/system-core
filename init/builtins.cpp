@@ -1122,6 +1122,7 @@ static Result<Success> do_load_persist_props(const BuiltinArguments& args) {
         if (++num_calls == 1) return Success();
     }
 
+    update_usb_config_factory();
     SendLoadPersistentPropertiesMessage();
 
     start_waiting_for_property("ro.persistent_properties.ready", "true");

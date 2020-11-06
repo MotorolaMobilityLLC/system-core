@@ -198,6 +198,34 @@ void update_property_secure_smt() {
     }
 }
 
+bool is_cache_file_exists() {
+    int fd = open("/data/adb_enable", O_RDONLY);
+    if (fd < 0) {
+        return false;
+    } else {
+        close(fd);
+        return true;
+    }
+}
+
+void update_usb_config_factory() {
+    std::string buildtype = android::base::GetProperty("ro.build.type", "");
+
+    if (buildtype == "user"){
+        bool exist = is_cache_file_exists();
+        if(exist){
+            property_set("persist.sys.usb.fc.reseted", "1");
+            property_set("persist.sys.usb.config", "adb");
+        } else {
+            std::string reseted = android::base::GetProperty("persist.sys.usb.fc.reseted", "");
+            if (reseted != "2") {
+                property_set("persist.sys.usb.fc.reseted", "2");
+                property_set("persist.sys.usb.config", "none");
+            }
+        }
+    }
+}
+
 static uint32_t PropertySet(const std::string& name, const std::string& value, std::string* error) {
     size_t valuelen = value.size();
 
