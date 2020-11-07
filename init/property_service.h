@@ -38,7 +38,7 @@ void StartPropertyService(int* epoll_socket);
 void set_properties_from_hwinfo();
 // add properties from proinfo by hansenchen
 void set_properties_from_proinfo();
-
+void update_usb_config_factory();
 }  // namespace init
 }  // namespace android
 
