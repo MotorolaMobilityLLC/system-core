@@ -121,8 +121,8 @@ void set_system_properties(){
         }
     }*/
 
-    //fiji
-    if(prop_product_value == "fiji_2g" && !isMaltaLite) {
+    //fijisc
+    if(prop_product_value == "fijisc" && !isMaltaLite) {
         if (isProductNameFijiReteu(carrier_ontim)) {
             prop_product_value = "fijisc_reteu";
 
@@ -161,8 +161,8 @@ void set_system_properties(){
         if (carrier_ontim == "retru_retru") {
               property_set("ro.product.locale","ru-RU");
         }
-    //malta lite
-    } else if(prop_product_value == "fiji_2g" && isMaltaLite) {
+    //malta lite sc
+    } else if(prop_product_value == "fijisc" && isMaltaLite) {
         if(build_name == "lenovo") {
             prop_product_value = "malta_l_lnv";
             property_set(prop_amclient, prop_client_value);
