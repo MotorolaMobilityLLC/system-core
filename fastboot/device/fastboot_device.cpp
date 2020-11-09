@@ -127,7 +127,7 @@ bool FastbootDevice::WriteStatus(FastbootResult result, const std::string& messa
 
     do {
         msg_send_len = msg_len;
-        if (msg_len > (FB_MAX_RSP_SIZE - kResponseReasonSize))
+        if ((msg_len > (FB_MAX_RSP_SIZE - kResponseReasonSize))  && (result == FastbootResult::INFO))
             msg_send_len = FB_MAX_RSP_SIZE - kResponseReasonSize;
 
         memcpy(buf, kResultStrings[static_cast<size_t>(result)], kResponseReasonSize);
