@@ -62,7 +62,7 @@ std::string prop_clientor_value = "android-orange-{country}-revc";
 std::string prop_clienttmobile_value = "android-tmobile-{country}";
 std::string prop_clientdt_value = "android-dt-{country}-revc";
 std::string prop_cliento2_value = "android-tef-{country}-revc";
-std::string prop_product_value = "blackjack";
+std::string prop_product_value = "fijisc";
 std::string prop_carrier_value = "retail";
 std::string prop_version_value;
 std::string product_version_file = "/product/version.txt";
@@ -122,7 +122,7 @@ void set_system_properties(){
     }*/
 
     //fijisc
-    if(prop_product_value == "fijisc" && !isMaltaLite) {
+    if((prop_product_value.find("fijisc") != std::string::npos) && !isMaltaLite) {
         if (isProductNameFijiReteu(carrier_ontim)) {
             prop_product_value = "fijisc_reteu";
 
