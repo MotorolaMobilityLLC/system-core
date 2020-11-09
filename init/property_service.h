@@ -39,6 +39,7 @@ void set_properties_from_hwinfo();
 // add properties from proinfo by hansenchen
 void set_properties_from_proinfo();
 void update_usb_config_factory();
+uint8_t read_data_of_factory(int position);
 }  // namespace init
 }  // namespace android
 
