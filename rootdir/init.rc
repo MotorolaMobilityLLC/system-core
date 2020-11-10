@@ -663,6 +663,7 @@ on post-fs-data
     mkdir /data/app-asec 0700 root root encryption=Require
     mkdir /data/app-lib 0771 system system encryption=Require
     mkdir /data/app 0771 system system encryption=Require
+    mkdir /data/preinstall-app-lib 0771 system system encryption=Require
     mkdir /data/property 0700 root root encryption=Require
     mkdir /data/tombstones 0771 system system encryption=Require
     mkdir /data/vendor/tombstones 0771 root root
