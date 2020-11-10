@@ -363,7 +363,6 @@ bool isProductNameMaltaRetru(std::string carrier_ontim) {
 bool isProductNameFijiReteu(std::string carrier_ontim) {
     if (carrier_ontim == "reteu_reteu") return true;
     if (carrier_ontim == "reteu_retfr") return true;
-    if (carrier_ontim == "reteu_reteuse") return true;
     return false;
 }
 
