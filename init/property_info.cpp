@@ -131,11 +131,13 @@ void set_system_properties(){
         } else {
             prop_product_value = "fijisc";
             if (carrier_ontim == "openmx_retmx" || carrier_ontim == "amxmx_amxmx"
-             || carrier_ontim == "amxmx_amxmxsl") {
+             || carrier_ontim == "amxmx_amxmxsl" || carrier_ontim == "amxbr_clarobr") {
                 property_set(prop_amclient, prop_clientcountry_value);
                 property_set(prop_msclient, prop_clientrevc_value);
             } else if (carrier_ontim == "attmx_attmx") {
                 property_set(prop_msclient, prop_clientmx_value);
+            } else if (carrier_ontim == "timbr_timbr") {
+                property_set(prop_msclient, prop_clientbr_value);
             } else {
                 property_set(prop_amclient, prop_client_value);
                 property_set(prop_msclient, prop_clientrvo3_value);
