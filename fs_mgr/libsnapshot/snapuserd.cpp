@@ -159,7 +159,7 @@ int Snapuserd::ReadData(chunk_t chunk, size_t size) {
     CHECK((read_size & (BLOCK_SIZE - 1)) == 0);
 
     while (read_size > 0) {
-        const CowOperation* cow_op = chunk_vec_[chunk_key];
+        const CowOperation* cow_op = chunk_map_[chunk_key];
         CHECK(cow_op != nullptr);
         int result;
 
@@ -201,6 +201,8 @@ int Snapuserd::ReadData(chunk_t chunk, size_t size) {
         // constructing the metadata, we know that the chunk IDs
         // are contiguous
         chunk_key += 1;
+
+        if (cow_op->type == kCowCopyOp) CHECK(read_size == 0);
 
         // This is similar to the way when chunk IDs were assigned
         // in ReadMetadata().
@@ -287,6 +289,171 @@ int Snapuserd::ReadDiskExceptions(chunk_t chunk, size_t read_size) {
     return size;
 }
 
+loff_t Snapuserd::GetMergeStartOffset(void* merged_buffer, void* unmerged_buffer,
+                                      int* unmerged_exceptions) {
+    loff_t offset = 0;
+    *unmerged_exceptions = 0;
+
+    while (*unmerged_exceptions <= exceptions_per_area_) {
+        struct disk_exception* merged_de =
+                reinterpret_cast<struct disk_exception*>((char*)merged_buffer + offset);
+        struct disk_exception* cow_de =
+                reinterpret_cast<struct disk_exception*>((char*)unmerged_buffer + offset);
+
+        // Unmerged op by the kernel
+        if (merged_de->old_chunk != 0) {
+            CHECK(merged_de->new_chunk != 0);
+            CHECK(merged_de->old_chunk == cow_de->old_chunk);
+            CHECK(merged_de->new_chunk == cow_de->new_chunk);
+
+            offset += sizeof(struct disk_exception);
+            *unmerged_exceptions += 1;
+            continue;
+        }
+
+        // Merge complete on this exception. However, we don't know how many
+        // merged in this cycle; hence break here.
+        CHECK(merged_de->new_chunk == 0);
+        CHECK(merged_de->old_chunk == 0);
+
+        break;
+    }
+
+    CHECK(!(*unmerged_exceptions == exceptions_per_area_));
+
+    LOG(DEBUG) << "Unmerged_Exceptions: " << *unmerged_exceptions << " Offset: " << offset;
+    return offset;
+}
+
+int Snapuserd::GetNumberOfMergedOps(void* merged_buffer, void* unmerged_buffer, loff_t offset,
+                                    int unmerged_exceptions) {
+    int merged_ops_cur_iter = 0;
+
+    // Find the operations which are merged in this cycle.
+    while ((unmerged_exceptions + merged_ops_cur_iter) <= exceptions_per_area_) {
+        struct disk_exception* merged_de =
+                reinterpret_cast<struct disk_exception*>((char*)merged_buffer + offset);
+        struct disk_exception* cow_de =
+                reinterpret_cast<struct disk_exception*>((char*)unmerged_buffer + offset);
+
+        CHECK(merged_de->new_chunk == 0);
+        CHECK(merged_de->old_chunk == 0);
+
+        if (cow_de->new_chunk != 0) {
+            merged_ops_cur_iter += 1;
+            offset += sizeof(struct disk_exception);
+            // zero out to indicate that operation is merged.
+            cow_de->old_chunk = 0;
+            cow_de->new_chunk = 0;
+        } else if (cow_de->old_chunk == 0) {
+            // Already merged op in previous iteration or
+            // This could also represent a partially filled area.
+            //
+            // If the op was merged in previous cycle, we don't have
+            // to count them.
+            CHECK(cow_de->new_chunk == 0);
+            break;
+        } else {
+            LOG(ERROR) << "Error in merge operation. Found invalid metadata";
+            LOG(ERROR) << "merged_de-old-chunk: " << merged_de->old_chunk;
+            LOG(ERROR) << "merged_de-new-chunk: " << merged_de->new_chunk;
+            LOG(ERROR) << "cow_de-old-chunk: " << cow_de->old_chunk;
+            LOG(ERROR) << "cow_de-new-chunk: " << cow_de->new_chunk;
+            return -1;
+        }
+    }
+
+    return merged_ops_cur_iter;
+}
+
+bool Snapuserd::AdvanceMergedOps(int merged_ops_cur_iter) {
+    // Advance the merge operation pointer in the
+    // vector.
+    //
+    // cowop_iter_ is already initialized in ReadMetadata(). Just resume the
+    // merge process
+    while (!cowop_iter_->Done() && merged_ops_cur_iter) {
+        const CowOperation* cow_op = &cowop_iter_->Get();
+        CHECK(cow_op != nullptr);
+
+        if (cow_op->type == kCowFooterOp || cow_op->type == kCowLabelOp) {
+            cowop_iter_->Next();
+            continue;
+        }
+
+        if (!(cow_op->type == kCowReplaceOp || cow_op->type == kCowZeroOp ||
+              cow_op->type == kCowCopyOp)) {
+            LOG(ERROR) << "Unknown operation-type found during merge: " << cow_op->type;
+            return false;
+        }
+
+        merged_ops_cur_iter -= 1;
+        LOG(DEBUG) << "Merge op found of type " << cow_op->type
+                   << "Pending-merge-ops: " << merged_ops_cur_iter;
+        cowop_iter_->Next();
+    }
+
+    if (cowop_iter_->Done()) {
+        CHECK(merged_ops_cur_iter == 0);
+        LOG(DEBUG) << "All cow operations merged successfully in this cycle";
+    }
+
+    return true;
+}
+
+bool Snapuserd::ProcessMergeComplete(chunk_t chunk, void* buffer) {
+    uint32_t stride = exceptions_per_area_ + 1;
+    CowHeader header;
+
+    if (!reader_->GetHeader(&header)) {
+        LOG(ERROR) << "Failed to get header";
+        return false;
+    }
+
+    // ChunkID to vector index
+    lldiv_t divresult = lldiv(chunk, stride);
+    CHECK(divresult.quot < vec_.size());
+    LOG(DEBUG) << "ProcessMergeComplete: chunk: " << chunk << " Metadata-Index: " << divresult.quot;
+
+    int unmerged_exceptions = 0;
+    loff_t offset = GetMergeStartOffset(buffer, vec_[divresult.quot].get(), &unmerged_exceptions);
+
+    int merged_ops_cur_iter =
+            GetNumberOfMergedOps(buffer, vec_[divresult.quot].get(), offset, unmerged_exceptions);
+
+    // There should be at least one operation merged in this cycle
+    CHECK(merged_ops_cur_iter > 0);
+    if (!AdvanceMergedOps(merged_ops_cur_iter)) return false;
+
+    header.num_merge_ops += merged_ops_cur_iter;
+    reader_->UpdateMergeProgress(merged_ops_cur_iter);
+    if (!writer_->CommitMerge(merged_ops_cur_iter)) {
+        LOG(ERROR) << "CommitMerge failed...";
+        return false;
+    }
+
+    LOG(DEBUG) << "Merge success";
+    return true;
+}
+
+bool Snapuserd::IsChunkIdMetadata(chunk_t chunk) {
+    uint32_t stride = exceptions_per_area_ + 1;
+    lldiv_t divresult = lldiv(chunk, stride);
+
+    return (divresult.rem == NUM_SNAPSHOT_HDR_CHUNKS);
+}
+
+// Find the next free chunk-id to be assigned. Check if the next free
+// chunk-id represents a metadata page. If so, skip it.
+chunk_t Snapuserd::GetNextAllocatableChunkId(chunk_t chunk) {
+    chunk_t next_chunk = chunk + 1;
+
+    if (IsChunkIdMetadata(next_chunk)) {
+        next_chunk += 1;
+    }
+    return next_chunk;
+}
+
 /*
  * Read the metadata from COW device and
  * construct the metadata as required by the kernel.
@@ -304,12 +471,26 @@ int Snapuserd::ReadDiskExceptions(chunk_t chunk, size_t read_size) {
  *    This represents the old_chunk in the kernel COW format
  * 4: We need to assign new_chunk for a corresponding old_chunk
  * 5: The algorithm is similar to how kernel assigns chunk number
- *    while creating exceptions.
+ *    while creating exceptions. However, there are few cases
+ *    which needs to be addressed here:
+ *      a: During merge process, kernel scans the metadata page
+ *      from backwards when merge is initiated. Since, we need
+ *      to make sure that the merge ordering follows our COW format,
+ *      we read the COW operation from backwards and populate the
+ *      metadata so that when kernel starts the merging from backwards,
+ *      those ops correspond to the beginning of our COW format.
+ *      b: Kernel can merge successive operations if the two chunk IDs
+ *      are contiguous. This can be problematic when there is a crash
+ *      during merge; specifically when the merge operation has dependency.
+ *      These dependencies can only happen during copy operations.
+ *
+ *      To avoid this problem, we make sure that no two copy-operations
+ *      do not have contiguous chunk IDs. Additionally, we make sure
+ *      that each copy operation is merged individually.
  * 6: Use a monotonically increasing chunk number to assign the
  *    new_chunk
  * 7: Each chunk-id represents either a: Metadata page or b: Data page
- * 8: Chunk-id representing a data page is stored in a vector. Index is the
- *    chunk-id and value is the pointer to the CowOperation
+ * 8: Chunk-id representing a data page is stored in a map.
  * 9: Chunk-id representing a metadata page is converted into a vector
  *    index. We store this in vector as kernel requests metadata during
  *    two stage:
@@ -324,71 +505,73 @@ int Snapuserd::ReadDiskExceptions(chunk_t chunk, size_t read_size) {
  *    exceptions_per_area_
  * 12: Kernel will stop issuing metadata IO request when new-chunk ID is 0.
  */
-int Snapuserd::ReadMetadata() {
+bool Snapuserd::ReadMetadata() {
     reader_ = std::make_unique<CowReader>();
     CowHeader header;
-    CowFooter footer;
+    CowOptions options;
+    bool prev_copy_op = false;
+    bool metadata_found = false;
+
+    LOG(DEBUG) << "ReadMetadata Start...";
 
     if (!reader_->Parse(cow_fd_)) {
         LOG(ERROR) << "Failed to parse";
-        return 1;
+        return false;
     }
 
     if (!reader_->GetHeader(&header)) {
         LOG(ERROR) << "Failed to get header";
-        return 1;
-    }
-
-    if (!reader_->GetFooter(&footer)) {
-        LOG(ERROR) << "Failed to get footer";
-        return 1;
+        return false;
     }
 
     CHECK(header.block_size == BLOCK_SIZE);
 
-    LOG(DEBUG) << "Num-ops: " << std::hex << footer.op.num_ops;
-    LOG(DEBUG) << "ops-size: " << std::hex << footer.op.ops_size;
+    LOG(DEBUG) << "Merge-ops: " << header.num_merge_ops;
 
-    cowop_iter_ = reader_->GetOpIter();
+    writer_ = std::make_unique<CowWriter>(options);
+    writer_->InitializeMerge(cow_fd_.get(), &header);
 
-    if (cowop_iter_ == nullptr) {
-        LOG(ERROR) << "Failed to get cowop_iter";
-        return 1;
-    }
+    // Initialize the iterator for reading metadata
+    cowop_riter_ = reader_->GetRevOpIter();
 
     exceptions_per_area_ = (CHUNK_SIZE << SECTOR_SHIFT) / sizeof(struct disk_exception);
 
     // Start from chunk number 2. Chunk 0 represents header and chunk 1
     // represents first metadata page.
     chunk_t next_free = NUM_SNAPSHOT_HDR_CHUNKS + 1;
-    chunk_vec_.push_back(nullptr);
-    chunk_vec_.push_back(nullptr);
 
     loff_t offset = 0;
     std::unique_ptr<uint8_t[]> de_ptr =
             std::make_unique<uint8_t[]>(exceptions_per_area_ * sizeof(struct disk_exception));
 
     // This memset is important. Kernel will stop issuing IO when new-chunk ID
-    // is 0. When Area is not filled completely will all 256 exceptions,
+    // is 0. When Area is not filled completely with all 256 exceptions,
     // this memset will ensure that metadata read is completed.
     memset(de_ptr.get(), 0, (exceptions_per_area_ * sizeof(struct disk_exception)));
     size_t num_ops = 0;
 
-    while (!cowop_iter_->Done()) {
-        const CowOperation* cow_op = &cowop_iter_->Get();
+    while (!cowop_riter_->Done()) {
+        const CowOperation* cow_op = &cowop_riter_->Get();
         struct disk_exception* de =
                 reinterpret_cast<struct disk_exception*>((char*)de_ptr.get() + offset);
 
         if (cow_op->type == kCowFooterOp || cow_op->type == kCowLabelOp) {
-            cowop_iter_->Next();
+            cowop_riter_->Next();
             continue;
         }
 
         if (!(cow_op->type == kCowReplaceOp || cow_op->type == kCowZeroOp ||
               cow_op->type == kCowCopyOp)) {
             LOG(ERROR) << "Unknown operation-type found: " << cow_op->type;
-            return 1;
+            return false;
         }
+
+        metadata_found = true;
+        if ((cow_op->type == kCowCopyOp || prev_copy_op)) {
+            next_free = GetNextAllocatableChunkId(next_free);
+        }
+
+        prev_copy_op = (cow_op->type == kCowCopyOp);
 
         // Construct the disk-exception
         de->old_chunk = cow_op->new_block;
@@ -396,58 +579,54 @@ int Snapuserd::ReadMetadata() {
 
         LOG(DEBUG) << "Old-chunk: " << de->old_chunk << "New-chunk: " << de->new_chunk;
 
-        // Store operation pointer. Note, new-chunk ID is the index
-        chunk_vec_.push_back(cow_op);
-        CHECK(next_free == (chunk_vec_.size() - 1));
+        // Store operation pointer.
+        chunk_map_[next_free] = cow_op;
+        num_ops += 1;
 
         offset += sizeof(struct disk_exception);
 
-        cowop_iter_->Next();
+        cowop_riter_->Next();
 
-        // Find the next free chunk-id to be assigned. Check if the next free
-        // chunk-id represents a metadata page. If so, skip it.
-        next_free += 1;
-        uint32_t stride = exceptions_per_area_ + 1;
-        lldiv_t divresult = lldiv(next_free, stride);
-        num_ops += 1;
-
-        if (divresult.rem == NUM_SNAPSHOT_HDR_CHUNKS) {
-            CHECK(num_ops == exceptions_per_area_);
+        if (num_ops == exceptions_per_area_) {
             // Store it in vector at the right index. This maps the chunk-id to
             // vector index.
             vec_.push_back(std::move(de_ptr));
             offset = 0;
             num_ops = 0;
 
-            chunk_t metadata_chunk = (next_free - exceptions_per_area_ - NUM_SNAPSHOT_HDR_CHUNKS);
-
-            LOG(DEBUG) << "Area: " << vec_.size() - 1;
-            LOG(DEBUG) << "Metadata-chunk: " << metadata_chunk;
-            LOG(DEBUG) << "Sector number of Metadata-chunk: " << (metadata_chunk << CHUNK_SHIFT);
-
             // Create buffer for next area
             de_ptr = std::make_unique<uint8_t[]>(exceptions_per_area_ *
                                                  sizeof(struct disk_exception));
             memset(de_ptr.get(), 0, (exceptions_per_area_ * sizeof(struct disk_exception)));
 
-            // Since this is a metadata, store at this index
-            chunk_vec_.push_back(nullptr);
-
-            // Find the next free chunk-id
-            next_free += 1;
-            if (cowop_iter_->Done()) {
+            if (cowop_riter_->Done()) {
                 vec_.push_back(std::move(de_ptr));
+                LOG(DEBUG) << "ReadMetadata() completed; Number of Areas: " << vec_.size();
             }
         }
+
+        next_free = GetNextAllocatableChunkId(next_free);
     }
 
-    // Partially filled area
-    if (num_ops) {
-        LOG(DEBUG) << "Partially filled area num_ops: " << num_ops;
+    // Partially filled area or there is no metadata
+    // If there is no metadata, fill with zero so that kernel
+    // is aware that merge is completed.
+    if (num_ops || !metadata_found) {
         vec_.push_back(std::move(de_ptr));
+        LOG(DEBUG) << "ReadMetadata() completed. Partially filled area num_ops: " << num_ops
+                   << "Areas : " << vec_.size();
     }
 
-    return 0;
+    LOG(DEBUG) << "ReadMetadata() completed. chunk_id: " << next_free
+               << "Num Sector: " << ChunkToSector(next_free);
+
+    // Initialize the iterator for merging
+    cowop_iter_ = reader_->GetOpIter();
+
+    // Total number of sectors required for creating dm-user device
+    num_sectors_ = ChunkToSector(next_free);
+    metadata_read_done_ = true;
+    return true;
 }
 
 void MyLogger(android::base::LogId, android::base::LogSeverity severity, const char*, const char*,
@@ -484,26 +663,21 @@ int Snapuserd::WriteDmUserPayload(size_t size) {
     return sizeof(struct dm_user_header) + size;
 }
 
-bool Snapuserd::Init() {
-    backing_store_fd_.reset(open(backing_store_device_.c_str(), O_RDONLY));
-    if (backing_store_fd_ < 0) {
-        PLOG(ERROR) << "Open Failed: " << backing_store_device_;
+bool Snapuserd::ReadDmUserPayload(void* buffer, size_t size) {
+    if (!android::base::ReadFully(ctrl_fd_, buffer, size)) {
+        PLOG(ERROR) << "ReadDmUserPayload failed";
         return false;
     }
+
+    return true;
+}
+
+bool Snapuserd::InitCowDevice(std::string& cow_device) {
+    cow_device_ = cow_device;
 
     cow_fd_.reset(open(cow_device_.c_str(), O_RDWR));
     if (cow_fd_ < 0) {
         PLOG(ERROR) << "Open Failed: " << cow_device_;
-        return false;
-    }
-
-    std::string control_path = GetControlDevicePath();
-
-    LOG(DEBUG) << "Opening control device " << control_path;
-
-    ctrl_fd_.reset(open(control_path.c_str(), O_RDWR));
-    if (ctrl_fd_ < 0) {
-        PLOG(ERROR) << "Unable to open " << control_path;
         return false;
     }
 
@@ -513,6 +687,26 @@ bool Snapuserd::Init() {
     // of PAYLOAD_SIZE.
     size_t buf_size = sizeof(struct dm_user_header) + PAYLOAD_SIZE;
     bufsink_.Initialize(buf_size);
+
+    return ReadMetadata();
+}
+
+bool Snapuserd::InitBackingAndControlDevice(std::string& backing_device,
+                                            std::string& control_device) {
+    backing_store_device_ = backing_device;
+    control_device_ = control_device;
+
+    backing_store_fd_.reset(open(backing_store_device_.c_str(), O_RDONLY));
+    if (backing_store_fd_ < 0) {
+        PLOG(ERROR) << "Open Failed: " << backing_store_device_;
+        return false;
+    }
+
+    ctrl_fd_.reset(open(control_device_.c_str(), O_RDWR));
+    if (ctrl_fd_ < 0) {
+        PLOG(ERROR) << "Unable to open " << control_device_;
+        return false;
+    }
 
     return true;
 }
@@ -549,15 +743,7 @@ int Snapuserd::Run() {
                 // never see multiple IO requests. Additionally this IO
                 // will always be a single 4k.
                 if (header->sector == 0) {
-                    // Read the metadata from internal COW device
-                    // and build the in-memory data structures
-                    // for all the operations in the internal COW.
-                    if (!metadata_read_done_ && ReadMetadata()) {
-                        LOG(ERROR) << "Metadata read failed";
-                        return 1;
-                    }
-                    metadata_read_done_ = true;
-
+                    CHECK(metadata_read_done_ == true);
                     CHECK(read_size == BLOCK_SIZE);
                     ret = ConstructKernelCowHeader();
                     if (ret < 0) return ret;
@@ -567,15 +753,9 @@ int Snapuserd::Run() {
                     // Check if the chunk ID represents a metadata
                     // page. If the chunk ID is not found in the
                     // vector, then it points to a metadata page.
-                    chunk_t chunk = (header->sector >> CHUNK_SHIFT);
+                    chunk_t chunk = SectorToChunk(header->sector);
 
-                    if (chunk >= chunk_vec_.size()) {
-                        ret = ZerofillDiskExceptions(read_size);
-                        if (ret < 0) {
-                            LOG(ERROR) << "ZerofillDiskExceptions failed";
-                            return ret;
-                        }
-                    } else if (chunk_vec_[chunk] == nullptr) {
+                    if (chunk_map_.find(chunk) == chunk_map_.end()) {
                         ret = ReadDiskExceptions(chunk, read_size);
                         if (ret < 0) {
                             LOG(ERROR) << "ReadDiskExceptions failed";
@@ -611,12 +791,29 @@ int Snapuserd::Run() {
         }
 
         case DM_USER_MAP_WRITE: {
-            // TODO: Bug: 168311203: After merge operation is completed, kernel issues write
-            // to flush all the exception mappings where the merge is
-            // completed. If dm-user routes the WRITE IO, we need to clear
-            // in-memory data structures representing those exception
-            // mappings.
-            abort();
+            size_t remaining_size = header->len;
+            size_t read_size = std::min(PAYLOAD_SIZE, remaining_size);
+            CHECK(read_size == BLOCK_SIZE);
+            CHECK(header->sector > 0);
+            chunk_t chunk = SectorToChunk(header->sector);
+            CHECK(chunk_map_.find(chunk) == chunk_map_.end());
+
+            void* buffer = bufsink_.GetPayloadBuffer(read_size);
+            CHECK(buffer != nullptr);
+
+            if (!ReadDmUserPayload(buffer, read_size)) {
+                return 1;
+            }
+
+            if (!ProcessMergeComplete(chunk, buffer)) {
+                LOG(ERROR) << "ProcessMergeComplete failed...";
+                return 1;
+            }
+
+            // Write the header only.
+            ssize_t written = WriteDmUserPayload(0);
+            if (written < 0) return written;
+
             break;
         }
     }
