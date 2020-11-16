@@ -17,6 +17,7 @@
 #include <csignal>
 
 #include <libsnapshot/snapuserd.h>
+#include <libsnapshot/snapuserd_client.h>
 #include <libsnapshot/snapuserd_daemon.h>
 #include <libsnapshot/snapuserd_server.h>
 
@@ -33,18 +34,6 @@ using android::base::unique_fd;
 static constexpr size_t PAYLOAD_SIZE = (1UL << 16);
 
 static_assert(PAYLOAD_SIZE >= BLOCK_SIZE);
-
-class Target {
-  public:
-    // Represents an already-created Target, which is referenced by UUID.
-    Target(std::string uuid) : uuid_(uuid) {}
-
-    const auto& uuid() { return uuid_; }
-    std::string control_path() { return std::string("/dev/dm-user-") + uuid(); }
-
-  private:
-    const std::string uuid_;
-};
 
 void BufferSink::Initialize(size_t size) {
     buffer_size_ = size;
@@ -338,6 +327,7 @@ int Snapuserd::ReadDiskExceptions(chunk_t chunk, size_t read_size) {
 int Snapuserd::ReadMetadata() {
     reader_ = std::make_unique<CowReader>();
     CowHeader header;
+    CowFooter footer;
 
     if (!reader_->Parse(cow_fd_)) {
         LOG(ERROR) << "Failed to parse";
@@ -349,11 +339,15 @@ int Snapuserd::ReadMetadata() {
         return 1;
     }
 
+    if (!reader_->GetFooter(&footer)) {
+        LOG(ERROR) << "Failed to get footer";
+        return 1;
+    }
+
     CHECK(header.block_size == BLOCK_SIZE);
 
-    LOG(DEBUG) << "Num-ops: " << std::hex << header.num_ops;
-    LOG(DEBUG) << "ops-offset: " << std::hex << header.ops_offset;
-    LOG(DEBUG) << "ops-size: " << std::hex << header.ops_size;
+    LOG(DEBUG) << "Num-ops: " << std::hex << footer.op.num_ops;
+    LOG(DEBUG) << "ops-size: " << std::hex << footer.op.ops_size;
 
     cowop_iter_ = reader_->GetOpIter();
 
@@ -384,6 +378,11 @@ int Snapuserd::ReadMetadata() {
         const CowOperation* cow_op = &cowop_iter_->Get();
         struct disk_exception* de =
                 reinterpret_cast<struct disk_exception*>((char*)de_ptr.get() + offset);
+
+        if (cow_op->type == kCowFooterOp || cow_op->type == kCowLabelOp) {
+            cowop_iter_->Next();
+            continue;
+        }
 
         if (!(cow_op->type == kCowReplaceOp || cow_op->type == kCowZeroOp ||
               cow_op->type == kCowCopyOp)) {
@@ -488,36 +487,23 @@ int Snapuserd::WriteDmUserPayload(size_t size) {
 bool Snapuserd::Init() {
     backing_store_fd_.reset(open(backing_store_device_.c_str(), O_RDONLY));
     if (backing_store_fd_ < 0) {
-        LOG(ERROR) << "Open Failed: " << backing_store_device_;
+        PLOG(ERROR) << "Open Failed: " << backing_store_device_;
         return false;
     }
 
     cow_fd_.reset(open(cow_device_.c_str(), O_RDWR));
     if (cow_fd_ < 0) {
-        LOG(ERROR) << "Open Failed: " << cow_device_;
+        PLOG(ERROR) << "Open Failed: " << cow_device_;
         return false;
     }
 
-    std::string str(cow_device_);
-    std::size_t found = str.find_last_of("/\\");
-    CHECK(found != std::string::npos);
-    std::string device_name = str.substr(found + 1);
+    std::string control_path = GetControlDevicePath();
 
-    LOG(DEBUG) << "Fetching UUID for: " << device_name;
+    LOG(DEBUG) << "Opening control device " << control_path;
 
-    auto& dm = dm::DeviceMapper::Instance();
-    std::string uuid;
-    if (!dm.GetDmDeviceUuidByName(device_name, &uuid)) {
-        LOG(ERROR) << "Unable to find UUID for " << cow_device_;
-        return false;
-    }
-
-    LOG(DEBUG) << "UUID: " << uuid;
-    Target t(uuid);
-
-    ctrl_fd_.reset(open(t.control_path().c_str(), O_RDWR));
+    ctrl_fd_.reset(open(control_path.c_str(), O_RDWR));
     if (ctrl_fd_ < 0) {
-        LOG(ERROR) << "Unable to open " << t.control_path();
+        PLOG(ERROR) << "Unable to open " << control_path;
         return false;
     }
 
@@ -553,7 +539,6 @@ int Snapuserd::Run() {
         case DM_USER_MAP_READ: {
             size_t remaining_size = header->len;
             loff_t offset = 0;
-            header->io_in_progress = 0;
             ret = 0;
             do {
                 size_t read_size = std::min(PAYLOAD_SIZE, remaining_size);
@@ -619,7 +604,6 @@ int Snapuserd::Run() {
                 if (remaining_size) {
                     LOG(DEBUG) << "Write done ret: " << ret
                                << " remaining size: " << remaining_size;
-                    bufsink_.GetHeaderPtr()->io_in_progress = 1;
                 }
             } while (remaining_size);
 
@@ -650,7 +634,11 @@ int main([[maybe_unused]] int argc, char** argv) {
 
     android::snapshot::Daemon& daemon = android::snapshot::Daemon::Instance();
 
-    daemon.StartServer(argv[1]);
+    std::string socket = android::snapshot::kSnapuserdSocket;
+    if (argc >= 2) {
+        socket = argv[1];
+    }
+    daemon.StartServer(socket);
     daemon.Run();
 
     return 0;

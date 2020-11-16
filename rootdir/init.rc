@@ -156,6 +156,27 @@ on init
     chmod 0664 /dev/stune/rt/tasks
     chmod 0664 /dev/stune/audio-app/tasks
 
+    # cpuctl hierarchy for devices using utilclamp
+    mkdir /dev/cpuctl/foreground
+    mkdir /dev/cpuctl/background
+    mkdir /dev/cpuctl/top-app
+    mkdir /dev/cpuctl/rt
+    chown system system /dev/cpuctl
+    chown system system /dev/cpuctl/foreground
+    chown system system /dev/cpuctl/background
+    chown system system /dev/cpuctl/top-app
+    chown system system /dev/cpuctl/rt
+    chown system system /dev/cpuctl/tasks
+    chown system system /dev/cpuctl/foreground/tasks
+    chown system system /dev/cpuctl/background/tasks
+    chown system system /dev/cpuctl/top-app/tasks
+    chown system system /dev/cpuctl/rt/tasks
+    chmod 0664 /dev/cpuctl/tasks
+    chmod 0664 /dev/cpuctl/foreground/tasks
+    chmod 0664 /dev/cpuctl/background/tasks
+    chmod 0664 /dev/cpuctl/top-app/tasks
+    chmod 0664 /dev/cpuctl/rt/tasks
+
     # Create an stune group for NNAPI HAL processes
     mkdir /dev/stune/nnapi-hal
     chown system system /dev/stune/nnapi-hal
@@ -163,6 +184,14 @@ on init
     chmod 0664 /dev/stune/nnapi-hal/tasks
     write /dev/stune/nnapi-hal/schedtune.boost 1
     write /dev/stune/nnapi-hal/schedtune.prefer_idle 1
+
+    # cpuctl hierarchy for devices using utilclamp
+    mkdir /dev/cpuctl/nnapi-hal
+    chown system system /dev/cpuctl/nnapi-hal
+    chown system system /dev/cpuctl/nnapi-hal/tasks
+    chmod 0664 /dev/cpuctl/nnapi-hal/tasks
+    write /dev/cpuctl/nnapi-hal/cpu.uclamp.min 1
+    write /dev/cpuctl/nnapi-hal/cpu.uclamp.latency_sensitive 1
 
     # Create blkio group and apply initial settings.
     # This feature needs kernel to support it, and the
@@ -578,6 +607,11 @@ on post-fs-data
     # Make sure that apexd is started in the default namespace
     enter_default_mount_ns
 
+    mkdir /data/vendor 0771 root root encryption=Require
+    mkdir /data/vendor_ce 0771 root root encryption=None
+    mkdir /data/vendor_de 0771 root root encryption=None
+    mkdir /data/vendor/hardware 0771 root root
+
     # Start tombstoned early to be able to store tombstones.
     mkdir /data/tombstones 0771 system system encryption=Require
     mkdir /data/vendor/tombstones 0771 root root
@@ -618,6 +652,8 @@ on post-fs-data
     chown bluetooth bluetooth /data/misc/bluedroid/bt_config.conf
     mkdir /data/misc/bluetooth 0770 bluetooth bluetooth
     mkdir /data/misc/bluetooth/logs 0770 bluetooth bluetooth
+    mkdir /data/misc/nfc 0770 nfc nfc
+    mkdir /data/misc/nfc/logs 0770 nfc nfc
     mkdir /data/misc/credstore 0700 credstore credstore
     mkdir /data/misc/keystore 0700 keystore keystore
     mkdir /data/misc/gatekeeper 0700 system system
@@ -667,11 +703,6 @@ on post-fs-data
     mkdir /data/misc/prereboot 0700 system system
 
     mkdir /data/preloads 0775 system system encryption=None
-
-    mkdir /data/vendor 0771 root root encryption=Require
-    mkdir /data/vendor_ce 0771 root root encryption=None
-    mkdir /data/vendor_de 0771 root root encryption=None
-    mkdir /data/vendor/hardware 0771 root root
 
     # For security reasons, /data/local/tmp should always be empty.
     # Do not place files or directories in /data/local/tmp
@@ -1031,8 +1062,8 @@ on property:sys.sysctl.extra_free_kbytes=*
     write /proc/sys/vm/extra_free_kbytes ${sys.sysctl.extra_free_kbytes}
 
 # "tcp_default_init_rwnd" Is too long!
-on property:sys.sysctl.tcp_def_init_rwnd=*
-    write /proc/sys/net/ipv4/tcp_default_init_rwnd ${sys.sysctl.tcp_def_init_rwnd}
+on property:net.tcp_def_init_rwnd=*
+    write /proc/sys/net/ipv4/tcp_default_init_rwnd ${net.tcp_def_init_rwnd}
 
 # perf_event_open syscall security:
 # Newer kernels have the ability to control the use of the syscall via SELinux
@@ -1060,6 +1091,14 @@ on property:security.perf_harden=1
     write /proc/sys/kernel/perf_event_max_sample_rate 100000
     write /proc/sys/kernel/perf_cpu_time_max_percent 25
     write /proc/sys/kernel/perf_event_mlock_kb 516
+
+# This property can be set only on userdebug/eng. See neverallow rule in
+# /system/sepolicy/private/property.te .
+on property:security.lower_kptr_restrict=1
+    write /proc/sys/kernel/kptr_restrict 0
+
+on property:security.lower_kptr_restrict=0
+    write /proc/sys/kernel/kptr_restrict 2
 
 
 # on shutdown
