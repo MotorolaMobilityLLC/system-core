@@ -693,11 +693,18 @@ bool ReadFstabFromFile(const std::string& path, Fstab* fstab) {
         return false;
     }
     if (!is_proc_mounts && !access(android::gsi::kGsiBootedIndicatorFile, F_OK)) {
+        // This is expected to fail if host is android Q, since Q doesn't
+        // support DSU slotting. The DSU "active" indicator file would be
+        // non-existent or empty if DSU is enabled within the guest system.
+        // In that case, just use the default slot name "dsu".
         std::string dsu_slot;
         if (!android::gsi::GetActiveDsu(&dsu_slot)) {
-            PERROR << __FUNCTION__ << "(): failed to get active dsu slot";
-            return false;
+            PWARNING << __FUNCTION__ << "(): failed to get active dsu slot";
         }
+        if (dsu_slot.empty()) {
+            dsu_slot = "dsu";
+        }
+
         std::string lp_names;
         ReadFileToString(gsi::kGsiLpNamesFile, &lp_names);
         TransformFstabForDsu(fstab, dsu_slot, Split(lp_names, ","));
