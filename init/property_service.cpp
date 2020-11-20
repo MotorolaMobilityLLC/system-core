@@ -182,11 +182,8 @@ bool isSmtVersion() {
 
 bool CanChangeAdbSecure(std::string key) {
     if (key == "ro.adb.secure"|| key == "ro.secure") {
-        if (isSmtVersion()) {
-            LOG(ERROR) << "smt version, can change adb.secure";
             return true;
         }
-    }
     return false;
 }
 
@@ -216,6 +213,7 @@ void update_usb_config_factory() {
         if(exist){
             property_set("persist.sys.usb.fc.reseted", "1");
             property_set("persist.sys.usb.config", "adb");
+            property_set("ro.adb.secure", "0" );
         } else {
             std::string reseted = android::base::GetProperty("persist.sys.usb.fc.reseted", "");
             if (reseted != "2") {
