@@ -1010,9 +1010,9 @@ void set_hwsku_from_hwinfo() {
     int len = strlen("band_id=");
 
     if (ReadFileToString(cmdline_path, &file_content)) {
-        file_band = file_content.substr(len,8);
-        property_set("ro.boot.hardware.sku",file_band);
-        property_set("ro.vendor.hardware.sku",file_band);
+        file_band = file_content.substr(len, (file_content.length() - 2 - len));
+        property_set("ro.boot.hardware.sku", file_band);
+        property_set("ro.vendor.hardware.sku", file_band);
     } else {
         PLOG(ERROR) << "Could not read properties from '" << cmdline_path << "'";
     }
@@ -1023,9 +1023,17 @@ void set_properties_from_hwinfo() {
     std::string product_name = android::base::GetProperty("ro.product.name", "");
     std::string carrier_ontim = android::base::GetProperty("ro.carrier.ontim", "");
 
-    if (product_name.find("fiji") != std::string::npos) {
+    if (product_name.find("fijisc") != std::string::npos) {
         set_hwversion_from_hwinfo();
         set_hwsku_from_hwinfo();
+    } else if (product_name.find("maltalsc") != std::string::npos) {
+        set_hwversion_from_hwinfo();
+        if (build_name == "lenovo") {
+            property_set("ro.boot.hardware.sku", "XT2097-15");
+            property_set("ro.vendor.hardware.sku", "XT2097-15");
+        } else {
+            set_hwsku_from_hwinfo();
+        }
     }
 }
 

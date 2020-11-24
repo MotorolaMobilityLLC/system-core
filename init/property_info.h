@@ -25,12 +25,11 @@ namespace init {
 void set_system_properties();
 bool isProductNameFijiReteu(std::string carrier_ontim);
 bool isProductNameMaltaLiteReteu(std::string carrier_ontim);
-bool isProductNameMaltaRetru(std::string carrier_ontim);
 bool changeSystemProperty(std::string key);
 std::string get_fingerprint_property_fiji(std::string value);
-std::string get_version_property(std::string value);
+std::string get_fingerprint_property_maltalite(std::string value);
+std::string get_version_property();
 void set_fingerprint(std::string fingerprint) ;
-void set_product_device(std::string product_device);
 void set_product_name(std::string product_name);
 void setElabelProperty();
 }  // namespace init
