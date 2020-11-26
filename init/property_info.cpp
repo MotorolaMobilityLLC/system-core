@@ -47,6 +47,7 @@ std::string prop_vendor_fingerprint = "ro.vendor.build.fingerprint";
 std::string prop_product_fingerprint = "ro.product.build.fingerprint";
 std::string prop_build_name = "ro.build.name";
 std::string prop_product_locale = "ro.product.locale";
+std::string prop_vendor_locale = "ro.vendor.locale";
 std::string prop_product_name = "ro.product.name";
 std::string prop_product_vendor_name = "ro.product.vendor.name";
 std::string prop_product_odm_name = "ro.product.odm.name";
@@ -192,6 +193,7 @@ void set_system_properties() {
 
     property_set(prop_build_fullversion, get_version_property());
     property_set(prop_build_customerid, prop_carrier_value);
+    property_set(prop_vendor_locale, android::base::GetProperty(prop_product_locale, "en-US"));
 }
 
 bool isProductNameFijiReteu(std::string carrier_ontim) {
