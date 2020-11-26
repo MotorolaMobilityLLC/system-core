@@ -136,6 +136,7 @@ void set_system_properties() {
         if(build_name == "lenovo") {
             if (carrier_ontim == "retru_retru") {
                 prop_product_value = "maltalsc_lnvru";
+                prop_carrier_value = "retru";
             } else {
                 prop_product_value = "maltalsc_lnv";
             }
@@ -205,6 +206,7 @@ bool isProductNameMaltaLiteReteu(std::string carrier_ontim) {
     if (carrier_ontim == "reteu_reteu") return true;
     if (carrier_ontim == "timit_timit") return true;
     if (carrier_ontim == "retgb_cpwds") return true;
+    if (carrier_ontim == "reteu_retfr") return true;
     return false;
 }
 
