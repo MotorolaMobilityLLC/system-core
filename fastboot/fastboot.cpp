@@ -458,6 +458,8 @@ static int show_help() {
             " setdump full-disable       Disable fulldump function .\n"
             " setdump mini-enable        Enable minidump function .\n"
             " setdump mini-disable       Disable minidump function .\n"
+            " setdump autoreboot-enable	 Enable autoreboot when dump finish .\n"
+            " setdump autoreboot-disable Disable autoreboot when dump finish .\n"
             " getdump status             Show Enable status of fulldump & minidump function .\n"
             "\n"
         );
@@ -2174,7 +2176,10 @@ int FastBootTool::Main(int argc, char* argv[]) {
             }
             fb->SnapshotUpdateCommand(arg);
         } else if (command == "setdump") {
-            if ((args.size() == 1 ) && ((args[0] == "full-enable") || (args[0] == "full-disable") || (args[0] == "mini-enable") || (args[0] == "mini-disable"))) {
+            if ((args.size() == 1 ) && ((args[0] == "full-enable") || (args[0] == "full-disable") || \
+		 (args[0] == "mini-enable") || (args[0] == "mini-disable") || (args[0] == "autoreboot-enable") || \
+		(args[0] == "autoreboot-disable")
+		)) {
                 do_oem_command("setdump",&args);
 	    } else {
 	        syntax_error("unknown command %s", command.c_str());
