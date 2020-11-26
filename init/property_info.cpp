@@ -35,6 +35,7 @@ namespace init {
 std::string prop_build_customerid = "ro.mot.build.customerid";
 std::string prop_build_fullversion = "ro.build.version.full";
 std::string prop_product_locale = "ro.product.locale";
+std::string prop_vendor_locale = "ro.vendor.locale";
 std::string prop_build_id = "ro.build.id";
 std::string prop_carrier_ontim = "ro.carrier.ontim";
 std::string prop_carrier = "ro.carrier";
@@ -287,6 +288,7 @@ void set_system_properties(){
         property_set("ro.product.gms_premier_tier","true");
     //malta lite
     } else if(prop_product_value == "malta" && isMaltaLite) {
+        property_set(prop_vendor_locale, android::base::GetProperty(prop_product_locale, "en-US"));
         if(build_name == "lenovo") {
             prop_product_value = "malta_l_lnv";
             property_set(prop_amclient, prop_client_value);
@@ -350,7 +352,8 @@ void set_system_properties(){
 
         // END EKMALTA-369
         if (carrier_ontim == "retru_retru") {
-              property_set("ro.product.locale","ru-RU");
+             property_set("ro.product.locale","ru-RU");
+             property_set(prop_vendor_locale, android::base::GetProperty(prop_product_locale, "en-US"));
         }
     //malta 64
     } else if(prop_product_value == "malta_64" && !isMaltaLite) {
@@ -403,7 +406,7 @@ void set_system_properties(){
     //malta 64 lite
     } else if(prop_product_value == "malta_64" && isMaltaLite) {
         set_product_device("malta");
-
+        property_set(prop_vendor_locale, android::base::GetProperty(prop_product_locale, "en-US"));
         if(build_name == "lenovo") {
             prop_product_value = "malta_l_lnv_64";
             property_set(prop_amclient, prop_client_value);
@@ -445,7 +448,8 @@ void set_system_properties(){
 
         // END EKMALTA-369
         if (carrier_ontim == "retru_retru") {
-              property_set(prop_local, "ru-RU");
+            property_set(prop_local, "ru-RU");
+            property_set(prop_vendor_locale, android::base::GetProperty(prop_product_locale, "en-US"));
         }
     }
 
