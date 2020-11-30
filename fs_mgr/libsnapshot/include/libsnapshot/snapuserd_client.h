@@ -30,17 +30,12 @@ namespace snapshot {
 
 static constexpr uint32_t PACKET_SIZE = 512;
 
-static constexpr char kSnapuserdSocketFirstStage[] = "snapuserd_first_stage";
 static constexpr char kSnapuserdSocket[] = "snapuserd";
 
 static constexpr char kSnapuserdFirstStagePidVar[] = "FIRST_STAGE_SNAPUSERD_PID";
 
 // Ensure that the second-stage daemon for snapuserd is running.
 bool EnsureSnapuserdStarted();
-
-// Start the first-stage version of snapuserd, returning its pid. This is used
-// by first-stage init, as well as vts_libsnapshot_test. On failure, -1 is returned.
-pid_t StartFirstStageSnapuserd();
 
 class SnapuserdClient {
   private:
@@ -58,13 +53,28 @@ class SnapuserdClient {
                                                     std::chrono::milliseconds timeout_ms);
 
     bool StopSnapuserd();
-    uint64_t InitDmUserCow(const std::string& cow_device);
-    bool InitializeSnapuserd(const std::string& cow_device, const std::string& backing_device,
-                             const std::string& control_device);
+
+    // Initializing a snapuserd handler is a three-step process:
+    //
+    //  1. Client invokes InitDmUserCow. This creates the snapuserd handler and validates the
+    //     COW. The number of sectors required for the dm-user target is returned.
+    //  2. Client creates the device-mapper device with the dm-user target.
+    //  3. Client calls AttachControlDevice.
+    //
+    // The misc_name must be the "misc_name" given to dm-user in step 2.
+    //
+    uint64_t InitDmUserCow(const std::string& misc_name, const std::string& cow_device,
+                           const std::string& backing_device);
+    bool AttachDmUser(const std::string& misc_name);
 
     // Wait for snapuserd to disassociate with a dm-user control device. This
     // must ONLY be called if the control device has already been deleted.
     bool WaitForDeviceDelete(const std::string& control_device);
+
+    // Detach snapuserd. This shuts down the listener socket, and will cause
+    // snapuserd to gracefully exit once all handler threads have terminated.
+    // This should only be used on first-stage instances of snapuserd.
+    bool DetachSnapuserd();
 };
 
 }  // namespace snapshot

@@ -28,8 +28,8 @@ using namespace android;
 using namespace android::dm;
 using android::base::unique_fd;
 
-#define DM_USER_MAP_READ 0
-#define DM_USER_MAP_WRITE 1
+#define SNAP_LOG(level) LOG(level) << misc_name_ << ": "
+#define SNAP_PLOG(level) PLOG(level) << misc_name_ << ": "
 
 static constexpr size_t PAYLOAD_SIZE = (1UL << 16);
 
@@ -66,11 +66,19 @@ struct dm_user_header* BufferSink::GetHeaderPtr() {
     return header;
 }
 
+Snapuserd::Snapuserd(const std::string& misc_name, const std::string& cow_device,
+                     const std::string& backing_device) {
+    misc_name_ = misc_name;
+    cow_device_ = cow_device;
+    backing_store_device_ = backing_device;
+    control_device_ = "/dev/dm-user/" + misc_name;
+}
+
 // Construct kernel COW header in memory
 // This header will be in sector 0. The IO
 // request will always be 4k. After constructing
 // the header, zero out the remaining block.
-int Snapuserd::ConstructKernelCowHeader() {
+void Snapuserd::ConstructKernelCowHeader() {
     void* buffer = bufsink_.GetPayloadBuffer(BLOCK_SIZE);
     CHECK(buffer != nullptr);
 
@@ -82,25 +90,23 @@ int Snapuserd::ConstructKernelCowHeader() {
     dh->valid = SNAPSHOT_VALID;
     dh->version = SNAPSHOT_DISK_VERSION;
     dh->chunk_size = CHUNK_SIZE;
-
-    return BLOCK_SIZE;
 }
 
 // Start the replace operation. This will read the
 // internal COW format and if the block is compressed,
 // it will be de-compressed.
-int Snapuserd::ProcessReplaceOp(const CowOperation* cow_op) {
+bool Snapuserd::ProcessReplaceOp(const CowOperation* cow_op) {
     if (!reader_->ReadData(*cow_op, &bufsink_)) {
-        LOG(ERROR) << "ReadData failed for chunk: " << cow_op->new_block;
-        return -EIO;
+        SNAP_LOG(ERROR) << "ReadData failed for chunk: " << cow_op->new_block;
+        return false;
     }
 
-    return BLOCK_SIZE;
+    return true;
 }
 
 // Start the copy operation. This will read the backing
 // block device which is represented by cow_op->source.
-int Snapuserd::ProcessCopyOp(const CowOperation* cow_op) {
+bool Snapuserd::ProcessCopyOp(const CowOperation* cow_op) {
     void* buffer = bufsink_.GetPayloadBuffer(BLOCK_SIZE);
     CHECK(buffer != nullptr);
 
@@ -108,20 +114,20 @@ int Snapuserd::ProcessCopyOp(const CowOperation* cow_op) {
     // if the successive blocks are contiguous.
     if (!android::base::ReadFullyAtOffset(backing_store_fd_, buffer, BLOCK_SIZE,
                                           cow_op->source * BLOCK_SIZE)) {
-        LOG(ERROR) << "Copy-op failed. Read from backing store at: " << cow_op->source;
-        return -1;
+        SNAP_LOG(ERROR) << "Copy-op failed. Read from backing store at: " << cow_op->source;
+        return false;
     }
 
-    return BLOCK_SIZE;
+    return true;
 }
 
-int Snapuserd::ProcessZeroOp() {
+bool Snapuserd::ProcessZeroOp() {
     // Zero out the entire block
     void* buffer = bufsink_.GetPayloadBuffer(BLOCK_SIZE);
     CHECK(buffer != nullptr);
 
     memset(buffer, 0, BLOCK_SIZE);
-    return BLOCK_SIZE;
+    return true;
 }
 
 /*
@@ -146,11 +152,9 @@ int Snapuserd::ProcessZeroOp() {
  * 3: Zero operation
  *
  */
-int Snapuserd::ReadData(chunk_t chunk, size_t size) {
-    int ret = 0;
-
+bool Snapuserd::ReadData(chunk_t chunk, size_t size) {
     size_t read_size = size;
-
+    bool ret = true;
     chunk_t chunk_key = chunk;
     uint32_t stride;
     lldiv_t divresult;
@@ -161,41 +165,39 @@ int Snapuserd::ReadData(chunk_t chunk, size_t size) {
     while (read_size > 0) {
         const CowOperation* cow_op = chunk_map_[chunk_key];
         CHECK(cow_op != nullptr);
-        int result;
 
         switch (cow_op->type) {
             case kCowReplaceOp: {
-                result = ProcessReplaceOp(cow_op);
+                ret = ProcessReplaceOp(cow_op);
                 break;
             }
 
             case kCowZeroOp: {
-                result = ProcessZeroOp();
+                ret = ProcessZeroOp();
                 break;
             }
 
             case kCowCopyOp: {
-                result = ProcessCopyOp(cow_op);
+                ret = ProcessCopyOp(cow_op);
                 break;
             }
 
             default: {
-                LOG(ERROR) << "Unknown operation-type found: " << cow_op->type;
-                ret = -EIO;
-                goto done;
+                SNAP_LOG(ERROR) << "Unknown operation-type found: " << cow_op->type;
+                ret = false;
+                break;
             }
         }
 
-        if (result < 0) {
-            ret = result;
-            goto done;
+        if (!ret) {
+            SNAP_LOG(ERROR) << "ReadData failed for operation: " << cow_op->type;
+            return false;
         }
 
         // Update the buffer offset
         bufsink_.UpdateBufferOffset(BLOCK_SIZE);
 
         read_size -= BLOCK_SIZE;
-        ret += BLOCK_SIZE;
 
         // Start iterating the chunk incrementally; Since while
         // constructing the metadata, we know that the chunk IDs
@@ -223,8 +225,6 @@ int Snapuserd::ReadData(chunk_t chunk, size_t size) {
         }
     }
 
-done:
-
     // Reset the buffer offset
     bufsink_.ResetBufferOffset();
     return ret;
@@ -241,16 +241,18 @@ done:
  * When dm-snap starts parsing the buffer, it will stop
  * reading metadata page once the buffer content is zero.
  */
-int Snapuserd::ZerofillDiskExceptions(size_t read_size) {
+bool Snapuserd::ZerofillDiskExceptions(size_t read_size) {
     size_t size = exceptions_per_area_ * sizeof(struct disk_exception);
 
-    if (read_size > size) return -EINVAL;
+    if (read_size > size) {
+        return false;
+    }
 
     void* buffer = bufsink_.GetPayloadBuffer(size);
     CHECK(buffer != nullptr);
 
     memset(buffer, 0, size);
-    return size;
+    return true;
 }
 
 /*
@@ -266,7 +268,7 @@ int Snapuserd::ZerofillDiskExceptions(size_t read_size) {
  * Convert the chunk ID to index into the vector which gives us
  * the metadata page.
  */
-int Snapuserd::ReadDiskExceptions(chunk_t chunk, size_t read_size) {
+bool Snapuserd::ReadDiskExceptions(chunk_t chunk, size_t read_size) {
     uint32_t stride = exceptions_per_area_ + 1;
     size_t size;
 
@@ -276,17 +278,19 @@ int Snapuserd::ReadDiskExceptions(chunk_t chunk, size_t read_size) {
     if (divresult.quot < vec_.size()) {
         size = exceptions_per_area_ * sizeof(struct disk_exception);
 
-        if (read_size > size) return -EINVAL;
+        if (read_size > size) {
+            return false;
+        }
 
         void* buffer = bufsink_.GetPayloadBuffer(size);
         CHECK(buffer != nullptr);
 
         memcpy(buffer, vec_[divresult.quot].get(), size);
     } else {
-        size = ZerofillDiskExceptions(read_size);
+        return ZerofillDiskExceptions(read_size);
     }
 
-    return size;
+    return true;
 }
 
 loff_t Snapuserd::GetMergeStartOffset(void* merged_buffer, void* unmerged_buffer,
@@ -321,7 +325,7 @@ loff_t Snapuserd::GetMergeStartOffset(void* merged_buffer, void* unmerged_buffer
 
     CHECK(!(*unmerged_exceptions == exceptions_per_area_));
 
-    LOG(DEBUG) << "Unmerged_Exceptions: " << *unmerged_exceptions << " Offset: " << offset;
+    SNAP_LOG(DEBUG) << "Unmerged_Exceptions: " << *unmerged_exceptions << " Offset: " << offset;
     return offset;
 }
 
@@ -330,7 +334,7 @@ int Snapuserd::GetNumberOfMergedOps(void* merged_buffer, void* unmerged_buffer, 
     int merged_ops_cur_iter = 0;
 
     // Find the operations which are merged in this cycle.
-    while ((unmerged_exceptions + merged_ops_cur_iter) <= exceptions_per_area_) {
+    while ((unmerged_exceptions + merged_ops_cur_iter) < exceptions_per_area_) {
         struct disk_exception* merged_de =
                 reinterpret_cast<struct disk_exception*>((char*)merged_buffer + offset);
         struct disk_exception* cow_de =
@@ -354,11 +358,11 @@ int Snapuserd::GetNumberOfMergedOps(void* merged_buffer, void* unmerged_buffer, 
             CHECK(cow_de->new_chunk == 0);
             break;
         } else {
-            LOG(ERROR) << "Error in merge operation. Found invalid metadata";
-            LOG(ERROR) << "merged_de-old-chunk: " << merged_de->old_chunk;
-            LOG(ERROR) << "merged_de-new-chunk: " << merged_de->new_chunk;
-            LOG(ERROR) << "cow_de-old-chunk: " << cow_de->old_chunk;
-            LOG(ERROR) << "cow_de-new-chunk: " << cow_de->new_chunk;
+            SNAP_LOG(ERROR) << "Error in merge operation. Found invalid metadata";
+            SNAP_LOG(ERROR) << "merged_de-old-chunk: " << merged_de->old_chunk;
+            SNAP_LOG(ERROR) << "merged_de-new-chunk: " << merged_de->new_chunk;
+            SNAP_LOG(ERROR) << "cow_de-old-chunk: " << cow_de->old_chunk;
+            SNAP_LOG(ERROR) << "cow_de-new-chunk: " << cow_de->new_chunk;
             return -1;
         }
     }
@@ -383,19 +387,19 @@ bool Snapuserd::AdvanceMergedOps(int merged_ops_cur_iter) {
 
         if (!(cow_op->type == kCowReplaceOp || cow_op->type == kCowZeroOp ||
               cow_op->type == kCowCopyOp)) {
-            LOG(ERROR) << "Unknown operation-type found during merge: " << cow_op->type;
+            SNAP_LOG(ERROR) << "Unknown operation-type found during merge: " << cow_op->type;
             return false;
         }
 
         merged_ops_cur_iter -= 1;
-        LOG(DEBUG) << "Merge op found of type " << cow_op->type
-                   << "Pending-merge-ops: " << merged_ops_cur_iter;
+        SNAP_LOG(DEBUG) << "Merge op found of type " << cow_op->type
+                        << "Pending-merge-ops: " << merged_ops_cur_iter;
         cowop_iter_->Next();
     }
 
     if (cowop_iter_->Done()) {
         CHECK(merged_ops_cur_iter == 0);
-        LOG(DEBUG) << "All cow operations merged successfully in this cycle";
+        SNAP_LOG(DEBUG) << "All cow operations merged successfully in this cycle";
     }
 
     return true;
@@ -406,14 +410,15 @@ bool Snapuserd::ProcessMergeComplete(chunk_t chunk, void* buffer) {
     CowHeader header;
 
     if (!reader_->GetHeader(&header)) {
-        LOG(ERROR) << "Failed to get header";
+        SNAP_LOG(ERROR) << "Failed to get header";
         return false;
     }
 
     // ChunkID to vector index
     lldiv_t divresult = lldiv(chunk, stride);
     CHECK(divresult.quot < vec_.size());
-    LOG(DEBUG) << "ProcessMergeComplete: chunk: " << chunk << " Metadata-Index: " << divresult.quot;
+    SNAP_LOG(DEBUG) << "ProcessMergeComplete: chunk: " << chunk
+                    << " Metadata-Index: " << divresult.quot;
 
     int unmerged_exceptions = 0;
     loff_t offset = GetMergeStartOffset(buffer, vec_[divresult.quot].get(), &unmerged_exceptions);
@@ -428,11 +433,11 @@ bool Snapuserd::ProcessMergeComplete(chunk_t chunk, void* buffer) {
     header.num_merge_ops += merged_ops_cur_iter;
     reader_->UpdateMergeProgress(merged_ops_cur_iter);
     if (!writer_->CommitMerge(merged_ops_cur_iter)) {
-        LOG(ERROR) << "CommitMerge failed...";
+        SNAP_LOG(ERROR) << "CommitMerge failed...";
         return false;
     }
 
-    LOG(DEBUG) << "Merge success";
+    SNAP_LOG(DEBUG) << "Merge success";
     return true;
 }
 
@@ -512,21 +517,21 @@ bool Snapuserd::ReadMetadata() {
     bool prev_copy_op = false;
     bool metadata_found = false;
 
-    LOG(DEBUG) << "ReadMetadata Start...";
+    SNAP_LOG(DEBUG) << "ReadMetadata Start...";
 
     if (!reader_->Parse(cow_fd_)) {
-        LOG(ERROR) << "Failed to parse";
+        SNAP_LOG(ERROR) << "Failed to parse";
         return false;
     }
 
     if (!reader_->GetHeader(&header)) {
-        LOG(ERROR) << "Failed to get header";
+        SNAP_LOG(ERROR) << "Failed to get header";
         return false;
     }
 
     CHECK(header.block_size == BLOCK_SIZE);
 
-    LOG(DEBUG) << "Merge-ops: " << header.num_merge_ops;
+    SNAP_LOG(DEBUG) << "Merge-ops: " << header.num_merge_ops;
 
     writer_ = std::make_unique<CowWriter>(options);
     writer_->InitializeMerge(cow_fd_.get(), &header);
@@ -562,7 +567,7 @@ bool Snapuserd::ReadMetadata() {
 
         if (!(cow_op->type == kCowReplaceOp || cow_op->type == kCowZeroOp ||
               cow_op->type == kCowCopyOp)) {
-            LOG(ERROR) << "Unknown operation-type found: " << cow_op->type;
+            SNAP_LOG(ERROR) << "Unknown operation-type found: " << cow_op->type;
             return false;
         }
 
@@ -577,7 +582,7 @@ bool Snapuserd::ReadMetadata() {
         de->old_chunk = cow_op->new_block;
         de->new_chunk = next_free;
 
-        LOG(DEBUG) << "Old-chunk: " << de->old_chunk << "New-chunk: " << de->new_chunk;
+        SNAP_LOG(DEBUG) << "Old-chunk: " << de->old_chunk << "New-chunk: " << de->new_chunk;
 
         // Store operation pointer.
         chunk_map_[next_free] = cow_op;
@@ -601,7 +606,7 @@ bool Snapuserd::ReadMetadata() {
 
             if (cowop_riter_->Done()) {
                 vec_.push_back(std::move(de_ptr));
-                LOG(DEBUG) << "ReadMetadata() completed; Number of Areas: " << vec_.size();
+                SNAP_LOG(DEBUG) << "ReadMetadata() completed; Number of Areas: " << vec_.size();
             }
         }
 
@@ -613,12 +618,12 @@ bool Snapuserd::ReadMetadata() {
     // is aware that merge is completed.
     if (num_ops || !metadata_found) {
         vec_.push_back(std::move(de_ptr));
-        LOG(DEBUG) << "ReadMetadata() completed. Partially filled area num_ops: " << num_ops
-                   << "Areas : " << vec_.size();
+        SNAP_LOG(DEBUG) << "ReadMetadata() completed. Partially filled area num_ops: " << num_ops
+                        << "Areas : " << vec_.size();
     }
 
-    LOG(DEBUG) << "ReadMetadata() completed. chunk_id: " << next_free
-               << "Num Sector: " << ChunkToSector(next_free);
+    SNAP_LOG(DEBUG) << "ReadMetadata() completed. chunk_id: " << next_free
+                    << "Num Sector: " << ChunkToSector(next_free);
 
     // Initialize the iterator for merging
     cowop_iter_ = reader_->GetOpIter();
@@ -640,44 +645,39 @@ void MyLogger(android::base::LogId, android::base::LogSeverity severity, const c
 
 // Read Header from dm-user misc device. This gives
 // us the sector number for which IO is issued by dm-snapshot device
-int Snapuserd::ReadDmUserHeader() {
-    int ret;
-
-    ret = read(ctrl_fd_, bufsink_.GetBufPtr(), sizeof(struct dm_user_header));
-    if (ret < 0) {
-        PLOG(ERROR) << "Control-read failed with: " << ret;
-        return ret;
-    }
-
-    return sizeof(struct dm_user_header);
-}
-
-// Send the payload/data back to dm-user misc device.
-int Snapuserd::WriteDmUserPayload(size_t size) {
-    if (!android::base::WriteFully(ctrl_fd_, bufsink_.GetBufPtr(),
-                                   sizeof(struct dm_user_header) + size)) {
-        PLOG(ERROR) << "Write to dm-user failed";
-        return -1;
-    }
-
-    return sizeof(struct dm_user_header) + size;
-}
-
-bool Snapuserd::ReadDmUserPayload(void* buffer, size_t size) {
-    if (!android::base::ReadFully(ctrl_fd_, buffer, size)) {
-        PLOG(ERROR) << "ReadDmUserPayload failed";
+bool Snapuserd::ReadDmUserHeader() {
+    if (!android::base::ReadFully(ctrl_fd_, bufsink_.GetBufPtr(), sizeof(struct dm_user_header))) {
+        SNAP_PLOG(ERROR) << "Control-read failed";
         return false;
     }
 
     return true;
 }
 
-bool Snapuserd::InitCowDevice(std::string& cow_device) {
-    cow_device_ = cow_device;
+// Send the payload/data back to dm-user misc device.
+bool Snapuserd::WriteDmUserPayload(size_t size) {
+    if (!android::base::WriteFully(ctrl_fd_, bufsink_.GetBufPtr(),
+                                   sizeof(struct dm_user_header) + size)) {
+        SNAP_PLOG(ERROR) << "Write to dm-user failed";
+        return false;
+    }
 
+    return true;
+}
+
+bool Snapuserd::ReadDmUserPayload(void* buffer, size_t size) {
+    if (!android::base::ReadFully(ctrl_fd_, buffer, size)) {
+        SNAP_PLOG(ERROR) << "ReadDmUserPayload failed";
+        return false;
+    }
+
+    return true;
+}
+
+bool Snapuserd::InitCowDevice() {
     cow_fd_.reset(open(cow_device_.c_str(), O_RDWR));
     if (cow_fd_ < 0) {
-        PLOG(ERROR) << "Open Failed: " << cow_device_;
+        SNAP_PLOG(ERROR) << "Open Failed: " << cow_device_;
         return false;
     }
 
@@ -691,51 +691,45 @@ bool Snapuserd::InitCowDevice(std::string& cow_device) {
     return ReadMetadata();
 }
 
-bool Snapuserd::InitBackingAndControlDevice(std::string& backing_device,
-                                            std::string& control_device) {
-    backing_store_device_ = backing_device;
-    control_device_ = control_device;
-
+bool Snapuserd::InitBackingAndControlDevice() {
     backing_store_fd_.reset(open(backing_store_device_.c_str(), O_RDONLY));
     if (backing_store_fd_ < 0) {
-        PLOG(ERROR) << "Open Failed: " << backing_store_device_;
+        SNAP_PLOG(ERROR) << "Open Failed: " << backing_store_device_;
         return false;
     }
 
     ctrl_fd_.reset(open(control_device_.c_str(), O_RDWR));
     if (ctrl_fd_ < 0) {
-        PLOG(ERROR) << "Unable to open " << control_device_;
+        SNAP_PLOG(ERROR) << "Unable to open " << control_device_;
         return false;
     }
 
     return true;
 }
 
-int Snapuserd::Run() {
-    int ret = 0;
-
+bool Snapuserd::Run() {
     struct dm_user_header* header = bufsink_.GetHeaderPtr();
 
     bufsink_.Clear();
 
-    ret = ReadDmUserHeader();
-    if (ret < 0) return ret;
+    if (!ReadDmUserHeader()) {
+        SNAP_LOG(ERROR) << "ReadDmUserHeader failed";
+        return false;
+    }
 
-    LOG(DEBUG) << "dm-user returned " << ret << " bytes";
-
-    LOG(DEBUG) << "msg->seq: " << std::hex << header->seq;
-    LOG(DEBUG) << "msg->type: " << std::hex << header->type;
-    LOG(DEBUG) << "msg->flags: " << std::hex << header->flags;
-    LOG(DEBUG) << "msg->sector: " << std::hex << header->sector;
-    LOG(DEBUG) << "msg->len: " << std::hex << header->len;
+    SNAP_LOG(DEBUG) << "msg->seq: " << std::hex << header->seq;
+    SNAP_LOG(DEBUG) << "msg->type: " << std::hex << header->type;
+    SNAP_LOG(DEBUG) << "msg->flags: " << std::hex << header->flags;
+    SNAP_LOG(DEBUG) << "msg->sector: " << std::hex << header->sector;
+    SNAP_LOG(DEBUG) << "msg->len: " << std::hex << header->len;
 
     switch (header->type) {
-        case DM_USER_MAP_READ: {
+        case DM_USER_REQ_MAP_READ: {
             size_t remaining_size = header->len;
             loff_t offset = 0;
-            ret = 0;
             do {
                 size_t read_size = std::min(PAYLOAD_SIZE, remaining_size);
+                header->type = DM_USER_RESP_SUCCESS;
 
                 // Request to sector 0 is always for kernel
                 // representation of COW header. This IO should be only
@@ -745,8 +739,8 @@ int Snapuserd::Run() {
                 if (header->sector == 0) {
                     CHECK(metadata_read_done_ == true);
                     CHECK(read_size == BLOCK_SIZE);
-                    ret = ConstructKernelCowHeader();
-                    if (ret < 0) return ret;
+                    ConstructKernelCowHeader();
+                    SNAP_LOG(DEBUG) << "Kernel header constructed";
                 } else {
                     // Convert the sector number to a chunk ID.
                     //
@@ -756,71 +750,100 @@ int Snapuserd::Run() {
                     chunk_t chunk = SectorToChunk(header->sector);
 
                     if (chunk_map_.find(chunk) == chunk_map_.end()) {
-                        ret = ReadDiskExceptions(chunk, read_size);
-                        if (ret < 0) {
-                            LOG(ERROR) << "ReadDiskExceptions failed";
-                            return ret;
+                        if (!ReadDiskExceptions(chunk, read_size)) {
+                            SNAP_LOG(ERROR) << "ReadDiskExceptions failed for chunk id: " << chunk
+                                            << "Sector: " << header->sector;
+                            header->type = DM_USER_RESP_ERROR;
+                        } else {
+                            SNAP_LOG(DEBUG) << "ReadDiskExceptions success for chunk id: " << chunk
+                                            << "Sector: " << header->sector;
                         }
                     } else {
                         chunk_t num_chunks_read = (offset >> BLOCK_SHIFT);
-                        ret = ReadData(chunk + num_chunks_read, read_size);
-                        if (ret < 0) {
-                            LOG(ERROR) << "ReadData failed";
-                            // TODO: Bug 168259959: All the error paths from this function
-                            // should send error code to dm-user thereby IO
-                            // terminates with an error from dm-user. Returning
-                            // here without sending error code will block the
-                            // IO.
-                            return ret;
+                        if (!ReadData(chunk + num_chunks_read, read_size)) {
+                            SNAP_LOG(ERROR) << "ReadData failed for chunk id: " << chunk
+                                            << "Sector: " << header->sector;
+                            header->type = DM_USER_RESP_ERROR;
+                        } else {
+                            SNAP_LOG(DEBUG) << "ReadData success for chunk id: " << chunk
+                                            << "Sector: " << header->sector;
                         }
                     }
                 }
 
-                ssize_t written = WriteDmUserPayload(ret);
-                if (written < 0) return written;
-
-                remaining_size -= ret;
-                offset += ret;
-                if (remaining_size) {
-                    LOG(DEBUG) << "Write done ret: " << ret
-                               << " remaining size: " << remaining_size;
+                // Daemon will not be terminated if there is any error. We will
+                // just send the error back to dm-user.
+                if (!WriteDmUserPayload(read_size)) {
+                    return false;
                 }
+
+                remaining_size -= read_size;
+                offset += read_size;
             } while (remaining_size);
 
             break;
         }
 
-        case DM_USER_MAP_WRITE: {
+        case DM_USER_REQ_MAP_WRITE: {
+            // device mapper has the capability to allow
+            // targets to flush the cache when writes are completed. This
+            // is controlled by each target by a flag "flush_supported".
+            // This flag is set by dm-user. When flush is supported,
+            // a number of zero-length bio's will be submitted to
+            // the target for the purpose of flushing cache. It is the
+            // responsibility of the target driver - which is dm-user in this
+            // case, to remap these bio's to the underlying device. Since,
+            // there is no underlying device for dm-user, this zero length
+            // bio's gets routed to daemon.
+            //
+            // Flush operations are generated post merge by dm-snap by having
+            // REQ_PREFLUSH flag set. Snapuser daemon doesn't have anything
+            // to flush per se; hence, just respond back with a success message.
+            if (header->sector == 0) {
+                CHECK(header->len == 0);
+                header->type = DM_USER_RESP_SUCCESS;
+                if (!WriteDmUserPayload(0)) {
+                    return false;
+                }
+                break;
+            }
+
             size_t remaining_size = header->len;
             size_t read_size = std::min(PAYLOAD_SIZE, remaining_size);
             CHECK(read_size == BLOCK_SIZE);
+
             CHECK(header->sector > 0);
             chunk_t chunk = SectorToChunk(header->sector);
             CHECK(chunk_map_.find(chunk) == chunk_map_.end());
 
             void* buffer = bufsink_.GetPayloadBuffer(read_size);
             CHECK(buffer != nullptr);
+            header->type = DM_USER_RESP_SUCCESS;
 
             if (!ReadDmUserPayload(buffer, read_size)) {
-                return 1;
+                SNAP_LOG(ERROR) << "ReadDmUserPayload failed for chunk id: " << chunk
+                                << "Sector: " << header->sector;
+                header->type = DM_USER_RESP_ERROR;
             }
 
-            if (!ProcessMergeComplete(chunk, buffer)) {
-                LOG(ERROR) << "ProcessMergeComplete failed...";
-                return 1;
+            if (header->type == DM_USER_RESP_SUCCESS && !ProcessMergeComplete(chunk, buffer)) {
+                SNAP_LOG(ERROR) << "ProcessMergeComplete failed for chunk id: " << chunk
+                                << "Sector: " << header->sector;
+                header->type = DM_USER_RESP_ERROR;
+            } else {
+                SNAP_LOG(DEBUG) << "ProcessMergeComplete success for chunk id: " << chunk
+                                << "Sector: " << header->sector;
             }
 
-            // Write the header only.
-            ssize_t written = WriteDmUserPayload(0);
-            if (written < 0) return written;
+            if (!WriteDmUserPayload(0)) {
+                return false;
+            }
 
             break;
         }
     }
 
-    LOG(DEBUG) << "read() finished, next message";
-
-    return 0;
+    return true;
 }
 
 }  // namespace snapshot

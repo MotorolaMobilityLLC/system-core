@@ -16,12 +16,6 @@
       "File": "top-app/cpus"
     },
     {
-      "Name": "AudioAppCapacityCPUs",
-      "Controller": "cpuset",
-      "File": "audio-app/cpus"
-    },
-
-    {
       "Name": "MemLimit",
       "Controller": "memory",
       "File": "memory.limit_in_bytes"
@@ -37,6 +31,16 @@
       "File": "memory.swappiness"
     },
     {
+      "Name": "STuneBoost",
+      "Controller": "schedtune",
+      "File": "schedtune.boost"
+    },
+    {
+      "Name": "STunePreferIdle",
+      "Controller": "schedtune",
+      "File": "schedtune.prefer_idle"
+    },
+    {
       "Name": "UClampMin",
       "Controller": "cpu",
       "File": "cpu.uclamp.min"
@@ -45,11 +49,6 @@
       "Name": "UClampMax",
       "Controller": "cpu",
       "File": "cpu.uclamp.max"
-    },
-    {
-      "Name": "UClampLatencySensitive",
-      "Controller": "cpu",
-      "File": "cpu.uclamp.latency_sensitive"
     },
     {
       "Name": "FreezerState",
@@ -66,7 +65,7 @@
           "Name": "JoinCgroup",
           "Params":
           {
-            "Controller": "cpu",
+            "Controller": "schedtune",
             "Path": "background"
           }
         }
@@ -105,8 +104,8 @@
           "Name": "JoinCgroup",
           "Params":
           {
-            "Controller": "cpu",
-            "Path": "system"
+            "Controller": "schedtune",
+            "Path": ""
           }
         }
       ]
@@ -118,7 +117,7 @@
           "Name": "JoinCgroup",
           "Params":
           {
-            "Controller": "cpu",
+            "Controller": "schedtune",
             "Path": "foreground"
           }
         }
@@ -131,7 +130,7 @@
           "Name": "JoinCgroup",
           "Params":
           {
-            "Controller": "cpu",
+            "Controller": "schedtune",
             "Path": "top-app"
           }
         }
@@ -144,7 +143,7 @@
           "Name": "JoinCgroup",
           "Params":
           {
-            "Controller": "cpu",
+            "Controller": "schedtune",
             "Path": "rt"
           }
         }
@@ -157,21 +156,8 @@
           "Name": "JoinCgroup",
           "Params":
           {
-            "Controller": "cpu",
-            "Path": "camera-daemon"
-          }
-        }
-      ]
-    },
-    {
-      "Name": "AudioAppPerformance",
-      "Actions" : [
-        {
-          "Name" : "JoinCgroup",
-          "Params" :
-          {
             "Controller": "schedtune",
-            "Path": "audio-app"
+            "Path": "camera-daemon"
           }
         }
       ]
@@ -183,7 +169,7 @@
           "Name": "JoinCgroup",
           "Params":
           {
-            "Controller": "cpu",
+            "Controller": "schedtune",
             "Path": "nnapi-hal"
           }
         }
@@ -197,7 +183,7 @@
           "Name": "SetAttribute",
           "Params":
           {
-            "Name": "UClampLatencySensitive",
+            "Name": "STunePreferIdle",
             "Value": "1"
           }
         }
@@ -210,7 +196,7 @@
           "Name": "SetAttribute",
           "Params":
           {
-            "Name": "UClampLatencySensitive",
+            "Name": "STunePreferIdle",
             "Value": "0"
           }
         }
@@ -398,46 +384,6 @@
           {
             "Controller": "cpuset",
             "Path": "camera-daemon"
-          }
-        }
-      ]
-    },
-    {
-      "Name": "AudioAppCapacity",
-      "Actions" : [
-        {
-          "Name" : "JoinCgroup",
-          "Params" :
-          {
-            "Controller": "cpuset",
-            "Path": "audio-app"
-          }
-        }
-      ]
-    },
-
-    {
-      "Name": "BlkIOForeground",
-      "Actions" : [
-        {
-          "Name" : "JoinCgroup",
-          "Params" :
-          {
-            "Controller": "blkio",
-            "Path": ""
-          }
-        }
-      ]
-    },
-    {
-      "Name": "BlkIOBackground",
-      "Actions" : [
-        {
-          "Name" : "JoinCgroup",
-          "Params" :
-          {
-            "Controller": "blkio",
-            "Path": "bg"
           }
         }
       ]

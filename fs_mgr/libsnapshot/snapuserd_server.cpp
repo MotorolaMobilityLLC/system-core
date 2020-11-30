@@ -38,6 +38,7 @@ DaemonOperations SnapuserdServer::Resolveop(std::string& input) {
     if (input == "stop") return DaemonOperations::STOP;
     if (input == "query") return DaemonOperations::QUERY;
     if (input == "delete") return DaemonOperations::DELETE;
+    if (input == "detach") return DaemonOperations::DETACH;
 
     return DaemonOperations::INVALID;
 }
@@ -72,23 +73,11 @@ void SnapuserdServer::Parsemsg(std::string const& msg, const char delim,
 
 void SnapuserdServer::ShutdownThreads() {
     StopThreads();
-
-    // Acquire the thread list within the lock.
-    std::vector<std::unique_ptr<DmUserHandler>> dm_users;
-    {
-        std::lock_guard<std::mutex> guard(lock_);
-        dm_users = std::move(dm_users_);
-    }
-
-    for (auto& client : dm_users) {
-        auto& th = client->thread();
-
-        if (th.joinable()) th.join();
-    }
+    JoinAllThreads();
 }
 
-const std::string& DmUserHandler::GetControlDevice() const {
-    return snapuserd_->GetControlDevicePath();
+const std::string& DmUserHandler::GetMiscName() const {
+    return snapuserd_->GetMiscName();
 }
 
 bool SnapuserdServer::Sendmsg(android::base::borrowed_fd fd, const std::string& msg) {
@@ -126,16 +115,16 @@ bool SnapuserdServer::Receivemsg(android::base::borrowed_fd fd, const std::strin
     switch (op) {
         case DaemonOperations::INIT: {
             // Message format:
-            // init,<cow_device_path>
+            // init,<misc_name>,<cow_device_path>,<control_device>
             //
             // Reads the metadata and send the number of sectors
-            if (out.size() != 2) {
+            if (out.size() != 4) {
                 LOG(ERROR) << "Malformed init message, " << out.size() << " parts";
                 return Sendmsg(fd, "fail");
             }
 
-            auto snapuserd = std::make_unique<Snapuserd>();
-            if (!snapuserd->InitCowDevice(out[1])) {
+            auto snapuserd = std::make_unique<Snapuserd>(out[1], out[2], out[3]);
+            if (!snapuserd->InitCowDevice()) {
                 LOG(ERROR) << "Failed to initialize Snapuserd";
                 return Sendmsg(fd, "fail");
             }
@@ -145,6 +134,10 @@ bool SnapuserdServer::Receivemsg(android::base::borrowed_fd fd, const std::strin
             auto handler = std::make_unique<DmUserHandler>(std::move(snapuserd));
             {
                 std::lock_guard<std::mutex> lock(lock_);
+                if (FindHandler(&lock, out[1]) != dm_users_.end()) {
+                    LOG(ERROR) << "Handler already exists: " << out[1];
+                    return Sendmsg(fd, "fail");
+                }
                 dm_users_.push_back(std::move(handler));
             }
 
@@ -152,37 +145,30 @@ bool SnapuserdServer::Receivemsg(android::base::borrowed_fd fd, const std::strin
         }
         case DaemonOperations::START: {
             // Message format:
-            // start,<cow_device_path>,<source_device_path>,<control_device>
+            // start,<misc_name>
             //
             // Start the new thread which binds to dm-user misc device
-            if (out.size() != 4) {
+            if (out.size() != 2) {
                 LOG(ERROR) << "Malformed start message, " << out.size() << " parts";
                 return Sendmsg(fd, "fail");
             }
 
-            bool found = false;
-            {
-                std::lock_guard<std::mutex> lock(lock_);
-                auto iter = dm_users_.begin();
-                while (iter != dm_users_.end()) {
-                    if ((*iter)->snapuserd()->GetCowDevice() == out[1]) {
-                        if (!((*iter)->snapuserd()->InitBackingAndControlDevice(out[2], out[3]))) {
-                            LOG(ERROR) << "Failed to initialize control device: " << out[3];
-                            break;
-                        }
-                        (*iter)->thread() = std::thread(
-                                std::bind(&SnapuserdServer::RunThread, this, (*iter).get()));
-                        found = true;
-                        break;
-                    }
-                    iter++;
-                }
-            }
-            if (found) {
-                return Sendmsg(fd, "success");
-            } else {
+            std::lock_guard<std::mutex> lock(lock_);
+            auto iter = FindHandler(&lock, out[1]);
+            if (iter == dm_users_.end()) {
+                LOG(ERROR) << "Could not find handler: " << out[1];
                 return Sendmsg(fd, "fail");
             }
+            if ((*iter)->snapuserd()->IsAttached()) {
+                LOG(ERROR) << "Tried to re-attach control device: " << out[1];
+                return Sendmsg(fd, "fail");
+            }
+            if (!((*iter)->snapuserd()->InitBackingAndControlDevice())) {
+                LOG(ERROR) << "Failed to initialize control device: " << out[1];
+                return Sendmsg(fd, "fail");
+            }
+            (*iter)->thread() = std::thread(std::bind(&SnapuserdServer::RunThread, this, *iter));
+            return Sendmsg(fd, "success");
         }
         case DaemonOperations::STOP: {
             // Message format: stop
@@ -207,14 +193,18 @@ bool SnapuserdServer::Receivemsg(android::base::borrowed_fd fd, const std::strin
         }
         case DaemonOperations::DELETE: {
             // Message format:
-            // delete,<control_device_path>
+            // delete,<misc_name>
             if (out.size() != 2) {
                 LOG(ERROR) << "Malformed delete message, " << out.size() << " parts";
                 return Sendmsg(fd, "fail");
             }
-            if (!WaitForDelete(out[1])) {
+            if (!RemoveHandler(out[1], true)) {
                 return Sendmsg(fd, "fail");
             }
+            return Sendmsg(fd, "success");
+        }
+        case DaemonOperations::DETACH: {
+            terminating_ = true;
             return Sendmsg(fd, "success");
         }
         default: {
@@ -225,25 +215,21 @@ bool SnapuserdServer::Receivemsg(android::base::borrowed_fd fd, const std::strin
     }
 }
 
-void SnapuserdServer::RunThread(DmUserHandler* handler) {
-    LOG(INFO) << "Entering thread for handler: " << handler->GetControlDevice();
+void SnapuserdServer::RunThread(std::shared_ptr<DmUserHandler> handler) {
+    LOG(INFO) << "Entering thread for handler: " << handler->GetMiscName();
 
     while (!StopRequested()) {
-        if (handler->snapuserd()->Run() < 0) {
-            LOG(INFO) << "Snapuserd: Thread terminating as control device is de-registered";
+        if (!handler->snapuserd()->Run()) {
+            LOG(INFO) << "Snapuserd: Thread terminating";
             break;
         }
     }
 
-    LOG(INFO) << "Exiting thread for handler: " << handler->GetControlDevice();
+    LOG(INFO) << "Exiting thread for handler: " << handler->GetMiscName();
 
-    if (auto client = RemoveHandler(handler->GetControlDevice())) {
-        // The main thread did not receive a WaitForDelete request for this
-        // control device. Since we transferred ownership within the lock,
-        // we know join() was never called, and will never be called. We can
-        // safely detach here.
-        client->thread().detach();
-    }
+    // If the main thread called RemoveHandler, the handler was already removed
+    // from within the lock, and calling RemoveHandler again has no effect.
+    RemoveHandler(handler->GetMiscName(), false);
 }
 
 bool SnapuserdServer::Start(const std::string& socketname) {
@@ -293,7 +279,24 @@ bool SnapuserdServer::Run() {
             }
         }
     }
+
+    JoinAllThreads();
     return true;
+}
+
+void SnapuserdServer::JoinAllThreads() {
+    // Acquire the thread list within the lock.
+    std::vector<std::shared_ptr<DmUserHandler>> dm_users;
+    {
+        std::lock_guard<std::mutex> guard(lock_);
+        dm_users = std::move(dm_users_);
+    }
+
+    for (auto& client : dm_users) {
+        auto& th = client->thread();
+
+        if (th.joinable()) th.join();
+    }
 }
 
 void SnapuserdServer::AddWatchedFd(android::base::borrowed_fd fd) {
@@ -336,34 +339,37 @@ void SnapuserdServer::Interrupt() {
     SetTerminating();
 }
 
-std::unique_ptr<DmUserHandler> SnapuserdServer::RemoveHandler(const std::string& control_device) {
-    std::unique_ptr<DmUserHandler> client;
-    {
-        std::lock_guard<std::mutex> lock(lock_);
-        auto iter = dm_users_.begin();
-        while (iter != dm_users_.end()) {
-            if ((*iter)->GetControlDevice() == control_device) {
-                client = std::move(*iter);
-                iter = dm_users_.erase(iter);
-                break;
-            }
-            iter++;
+auto SnapuserdServer::FindHandler(std::lock_guard<std::mutex>* proof_of_lock,
+                                  const std::string& misc_name) -> HandlerList::iterator {
+    CHECK(proof_of_lock);
+
+    for (auto iter = dm_users_.begin(); iter != dm_users_.end(); iter++) {
+        if ((*iter)->GetMiscName() == misc_name) {
+            return iter;
         }
     }
-    return client;
+    return dm_users_.end();
 }
 
-bool SnapuserdServer::WaitForDelete(const std::string& control_device) {
-    auto client = RemoveHandler(control_device);
+bool SnapuserdServer::RemoveHandler(const std::string& misc_name, bool wait) {
+    std::shared_ptr<DmUserHandler> handler;
+    {
+        std::lock_guard<std::mutex> lock(lock_);
 
-    // Client already deleted.
-    if (!client) {
-        return true;
+        auto iter = FindHandler(&lock, misc_name);
+        if (iter == dm_users_.end()) {
+            // Client already deleted.
+            return true;
+        }
+        handler = std::move(*iter);
+        dm_users_.erase(iter);
     }
 
-    auto& th = client->thread();
-    if (th.joinable()) {
+    auto& th = handler->thread();
+    if (th.joinable() && wait) {
         th.join();
+    } else if (handler->snapuserd()->IsAttached()) {
+        th.detach();
     }
     return true;
 }

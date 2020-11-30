@@ -54,25 +54,6 @@ bool EnsureSnapuserdStarted() {
     return true;
 }
 
-pid_t StartFirstStageSnapuserd() {
-    pid_t pid = fork();
-    if (pid < 0) {
-        PLOG(ERROR) << "fork failed";
-        return pid;
-    }
-    if (pid != 0) {
-        return pid;
-    }
-
-    std::string arg0 = "/system/bin/snapuserd";
-    std::string arg1 = kSnapuserdSocketFirstStage;
-    char* const argv[] = {arg0.data(), arg1.data(), nullptr};
-    if (execv(arg0.c_str(), argv) < 0) {
-        PLOG(FATAL) << "execv failed";
-    }
-    return pid;
-}
-
 SnapuserdClient::SnapuserdClient(android::base::unique_fd&& sockfd) : sockfd_(std::move(sockfd)) {}
 
 static inline bool IsRetryErrno() {
@@ -183,10 +164,8 @@ bool SnapuserdClient::StopSnapuserd() {
     return true;
 }
 
-bool SnapuserdClient::InitializeSnapuserd(const std::string& cow_device,
-                                          const std::string& backing_device,
-                                          const std::string& control_device) {
-    std::string msg = "start," + cow_device + "," + backing_device + "," + control_device;
+bool SnapuserdClient::AttachDmUser(const std::string& misc_name) {
+    std::string msg = "start," + misc_name;
     if (!Sendmsg(msg)) {
         LOG(ERROR) << "Failed to send message " << msg << " to snapuserd daemon";
         return false;
@@ -202,8 +181,10 @@ bool SnapuserdClient::InitializeSnapuserd(const std::string& cow_device,
     return true;
 }
 
-uint64_t SnapuserdClient::InitDmUserCow(const std::string& cow_device) {
-    std::string msg = "init," + cow_device;
+uint64_t SnapuserdClient::InitDmUserCow(const std::string& misc_name, const std::string& cow_device,
+                                        const std::string& backing_device) {
+    std::vector<std::string> parts = {"init", misc_name, cow_device, backing_device};
+    std::string msg = android::base::Join(parts, ",");
     if (!Sendmsg(msg)) {
         LOG(ERROR) << "Failed to send message " << msg << " to snapuserd daemon";
         return 0;
@@ -213,7 +194,7 @@ uint64_t SnapuserdClient::InitDmUserCow(const std::string& cow_device) {
 
     std::vector<std::string> input = android::base::Split(str, ",");
 
-    if (input[0] != "success") {
+    if (input.empty() || input[0] != "success") {
         LOG(ERROR) << "Failed to receive number of sectors for " << msg << " from snapuserd daemon";
         return 0;
     }
@@ -227,6 +208,14 @@ uint64_t SnapuserdClient::InitDmUserCow(const std::string& cow_device) {
         return 0;
     }
     return num_sectors;
+}
+
+bool SnapuserdClient::DetachSnapuserd() {
+    if (!Sendmsg("detach")) {
+        LOG(ERROR) << "Failed to detach snapuserd.";
+        return false;
+    }
+    return true;
 }
 
 }  // namespace snapshot

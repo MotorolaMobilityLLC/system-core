@@ -117,7 +117,7 @@ void PrepareSwitchRoot() {
 
     auto dst_dir = android::base::Dirname(dst);
     std::error_code ec;
-    if (!fs::create_directories(dst_dir, ec)) {
+    if (!fs::create_directories(dst_dir, ec) && !!ec) {
         LOG(FATAL) << "Cannot create " << dst_dir << ": " << ec.message();
     }
     if (rename(src, dst) != 0) {
@@ -221,6 +221,7 @@ int FirstStageMain(int argc, char** argv) {
     CHECKCALL(mount("tmpfs", "/dev", "tmpfs", MS_NOSUID, "mode=0755"));
     CHECKCALL(mkdir("/dev/pts", 0755));
     CHECKCALL(mkdir("/dev/socket", 0755));
+    CHECKCALL(mkdir("/dev/dm-user", 0755));
     CHECKCALL(mount("devpts", "/dev/pts", "devpts", 0, NULL));
 #define MAKE_STR(x) __STRING(x)
     CHECKCALL(mount("proc", "/proc", "proc", 0, "hidepid=2,gid=" MAKE_STR(AID_READPROC)));
@@ -314,7 +315,7 @@ int FirstStageMain(int argc, char** argv) {
         std::string dest = GetRamdiskPropForSecondStage();
         std::string dir = android::base::Dirname(dest);
         std::error_code ec;
-        if (!fs::create_directories(dir, ec)) {
+        if (!fs::create_directories(dir, ec) && !!ec) {
             LOG(FATAL) << "Can't mkdir " << dir << ": " << ec.message();
         }
         if (!fs::copy_file(kBootImageRamdiskProp, dest, ec)) {
