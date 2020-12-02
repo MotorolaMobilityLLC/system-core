@@ -134,7 +134,6 @@
 #define AID_EXT_DATA_RW 1078      /* GID for app-private data directories on external storage */
 #define AID_EXT_OBB_RW 1079       /* GID for OBB directories on external storage */
 #define AID_CONTEXT_HUB 1080      /* GID for access to the Context Hub */
-#define AID_UWB 1081              /* GID for uwb */
 /* Changes to this file must be made in AOSP, *not* in internal branches. */
 
 #define AID_SHELL 2000 /* adb and debug shell user */
@@ -175,8 +174,10 @@
 #define AID_SYSTEM_RESERVED_START 6000
 #define AID_SYSTEM_RESERVED_END 6499
 
+
 /* The range 6500-6999 is reserved for the odm partition. */
 #define AID_ODM_RESERVED_START 6500
+#define AID_UWB 6888              /* GID for uwb */
 #define AID_ODM_RESERVED_END 6999
 
 /* The range 7000-7499 is reserved for the product partition. */
