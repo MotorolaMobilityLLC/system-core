@@ -120,6 +120,52 @@ cc_defaults {
         uml: {
             cppflags: ["-DUSER_MODE_LINUX"],
         },
+        journey_feature_debug_mode: {
+            cflags: ["-DJOURNEY_FEATURE_DEBUG_MODE"],
+        },
+        journey_feature_root_mode: {
+            cflags: ["-DJOURNEY_FEATURE_ROOT_MODE"],
+            whole_static_libs: ["libjourneyunlockcode"],
+        },
+        journey_feature_factory_support: {
+            cflags: ["-DJOURNEY_FEATURE_FACTORY_SUPPORT"],
+        },
+        journey_feature_factory_version: {
+            cflags: ["-DJOURNEY_FEATURE_FACTORY_VERSION"],
+        },
+        journey_feature_reduce_log: {
+            cflags: ["-DJOURNEY_FEATURE_REDUCE_LOG"],
+        },
+        journey_feature_debug_prop_set: {
+            cflags: ["-DJOURNEY_FEATURE_DEBUG_PROP_SET"],
+        },
+        journey_feature_secure: {
+            cflags: ["-DJOURNEY_FEATURE_SECURE"],
+        },
+        journey_feature_carrier_build: {
+            cflags: ["-DJOURNEY_FEATURE_CARRIER_BUILD"],
+        },
+        journey_feature_variant_build: {
+            cflags: ["-DJOURNEY_FEATURE_VARIANT_BUILD"],
+        },
+        journey_feature_factory_diag_ext: {
+            cflags: ["-DJOURNEY_FEATURE_FACTORY_DIAG_EXT"],
+        },
+        journey_feature_rescue_log: {
+            cflags: ["-DJOURNEY_FEATURE_RESCUE_LOG"],
+        },
+        moto_general_feature: {
+            cflags: ["-DMOTO_GENERAL_FEATURE"],
+        },
+        moto_general_feature_ota: {
+            cflags: ["-DMOTO_GENERAL_FEATURE_OTA"],
+        },
+        moto_latam_feature_4176: {
+            cflags: ["-DMOTO_LATAM_FEATURE_4176"],
+        },
+        moto_general_feature_secure_locked_bootloader: {
+            cflags: ["-DMOTO_GENERAL_FEATURE_SECURE_LOCKED_BOOTLOADER"],
+        },        
     },
     static_libs: [
         "libavb",
