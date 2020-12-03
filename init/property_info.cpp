@@ -421,7 +421,8 @@ void set_system_properties(){
             return;
         }
 
-        if (carrier_ontim == "reteu_reteu" || carrier_ontim == "reteu_retfr") {
+        if (carrier_ontim == "reteu_reteu" || carrier_ontim == "reteu_retfr"
+         || carrier_ontim == "playpl_playpl") {
             prop_product_value = "malta_l_reteu_64";
 
             property_set(prop_amclient, prop_client_value);
