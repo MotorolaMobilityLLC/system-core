@@ -639,6 +639,84 @@ static void UmountDebugRamdisk() {
     }
 }
 
+
+#ifdef JOURNEY_FEATURE_SYSTEM_ENHANCED
+void SetJourneySafeMode(std::string reason) {
+    if(base::GetBoolProperty("ro.moto.factory", false)) return; // dont care when we are in factory.
+    if(base::GetBoolProperty("ro.sys.safemode.journey", false)) return; // dont need set it again.
+#ifdef JOURNEY_FEATURE_ROOT_MODE
+    if(journey_root_mode)
+        SetProperty("ro.sys.safemode.journey", "0"); // disable safe mode in root mode
+#endif
+    SetProperty("ro.sys.safemode.journey", "1"); // keep it in safe mode.
+    SetProperty("ro.sys.safemode.journey.reason", reason); // tell the framework reason
+
+}
+#endif
+
+#ifdef JOURNEY_FEATURE_SECURE
+static void SetJourneySafeMode(std::string reason) {
+    if (reason.empty()) return; // avoid unused function
+
+#ifdef JOURNEY_FEATURE_ROOT_MODE
+    if(getJourneyRootMode())  return; // disable safe mode in root mode
+#endif
+    if(base::GetBoolProperty("ro.journey.factory", false)) return; // dont care when we are in factory.
+    if(base::GetBoolProperty("ro.journey.secure.safemode", false)) return; // dont need set it again.
+
+    SetProperty("ro.journey.secure.safemode", "1"); // keep it in safe mode on in cfc version
+    SetProperty("ro.journey.secure.reason", reason); // tell the framework reason
+}
+
+
+#ifdef MOTO_GENERAL_FEATURE_SECURE_LOCKED_BOOTLOADER
+void CheckSecureUnlockMode() {
+    // unlock ?
+    bool isLocked = base::GetBoolProperty("ro.boot.flash.locked", false);
+    if(!isLocked) {
+        LOG(ERROR) << "this build not allow unlock (without MOTO_GENERAL_FEATURE_SECURE_LOCKED_BOOTLOADER). force to safemode";
+        SetJourneySafeMode("Illegal Unlock");
+    }
+}
+#endif
+
+#ifndef JOURNEY_FEATURE_DEBUG_MODE
+static void CheckJourneyDebugMode() {
+    // debug ?
+    bool isDebug = base::GetBoolProperty("ro.boot.journey.debug", false);
+    if(isDebug) {
+        LOG(ERROR) << "this build not allow debug (without JOURNEY_FEATURE_DEBUG_MODE). force to safemode";
+        SetJourneySafeMode("Illegal Version");
+    }
+}
+#endif // JOURNEY_FEATURE_DEBUG_MODE
+
+static void CheckJourneySecureMode() {
+    SetJourneySafeMode(""); // always call this avoid unused function
+
+#ifndef JOURNEY_FEATURE_DEBUG_MODE
+    CheckJourneyDebugMode();
+#endif
+}
+#endif // JOURNEY_FEATURE_SECURE
+
+#ifdef MOTO_LATAM_FEATURE_4176
+void CheckSecureCarrier() {
+    std::string misc = base::GetProperty("ro.boot.misc.version", "normal");
+    if(misc != "normal") {
+        LOG(ERROR) << "misc not normal . force to safemode";
+        SetJourneySafeMode("Expired Carrier");
+    }
+}
+void CheckUnknowCarrier() {
+    std::string carrier = base::GetProperty("ro.boot.carrier", "unknown");
+    if(carrier == "unknown") {
+        LOG(ERROR) << "carrier is unknown . force to safemode";
+        SetJourneySafeMode("Unknow Carrier");
+    }
+}
+#endif
+
 static void MountExtraFilesystems() {
 #define CHECKCALL(x) \
     if ((x) != 0) PLOG(FATAL) << #x " failed.";
@@ -772,11 +850,28 @@ int SecondStageMain(int argc, char** argv) {
     }
     unsetenv("INIT_AVB_VERSION");
 
+#if defined(JOURNEY_FEATURE_ROOT_MODE) && defined (__ANDROID_RECOVERY__)
+    if(getJourneyRootMode()) {
+        // force recovery use adb. just work like a userdebug version
+        SetProperty("ro.adb.secure","0");
+        SetProperty("ro.debuggable","1");
+    }
+#endif
+
     fs_mgr_vendor_overlay_mount_all();
     export_oem_lock_status();
     MountHandler mount_handler(&epoll);
     SetUsbController();
-
+#ifdef JOURNEY_FEATURE_SECURE
+    CheckJourneySecureMode();
+#endif
+#ifdef MOTO_GENERAL_FEATURE_SECURE_LOCKED_BOOTLOADER
+    CheckSecureUnlockMode();
+#endif
+#ifdef MOTO_LATAM_FEATURE_4176
+    CheckUnknowCarrier();
+    CheckSecureCarrier();
+#endif
     const BuiltinFunctionMap& function_map = GetBuiltinFunctionMap();
     Action::set_function_map(&function_map);
 

@@ -100,5 +100,10 @@ void SetStdioToDevNull(char** argv);
 void InitKernelLogging(char** argv);
 bool IsRecoveryMode();
 bool IsFtMode();
+#ifdef JOURNEY_FEATURE_ROOT_MODE
+#define JOURNEY_FEATURE_ROOT_MODE_PROP_KEY "ro.boot.journey.root"
+#define JOURNEY_FEATURE_ROOT_MODE_CMD_KEY "androidboot.journey.root"
+bool getJourneyRootMode();
+#endif
 }  // namespace init
 }  // namespace android

@@ -80,6 +80,28 @@ cc_defaults {
     defaults: ["adb_defaults"],
 
     cflags: ["-UADB_HOST", "-DADB_HOST=0"],
+    product_variables: {
+        debuggable: {
+            cflags: [
+                "-UALLOW_ADBD_ROOT",
+                "-DALLOW_ADBD_ROOT=1",
+                "-DALLOW_ADBD_DISABLE_VERITY",
+                "-DALLOW_ADBD_NO_AUTH",
+            ],
+        },
+        journey_feature_debug_mode: {
+            cflags: ["-DJOURNEY_FEATURE_DEBUG_MODE"],
+        },
+        journey_feature_factory_support: {
+            cflags: ["-DJOURNEY_FEATURE_FACTORY_SUPPORT"],
+        },
+        journey_feature_root_mode: {
+            cflags: ["-DJOURNEY_FEATURE_ROOT_MODE"],
+        },
+        journey_feature_fake_adb_root: {
+            cflags: ["-DJOURNEY_FEATURE_FAKE_ADB_ROOT"],
+        }
+    },
 }
 
 cc_defaults {

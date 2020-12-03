@@ -473,6 +473,11 @@ uint32_t HandlePropertySet(const std::string& name, const std::string& value,
     if (auto ret = CheckPermissions(name, value, source_context, cr, error); ret != PROP_SUCCESS) {
         return ret;
     }
+#ifdef JOURNEY_FEATURE_DEBUG_PROP_SET
+    if(cr.pid != 1) { // dont care init process
+         LOG(INFO) << "set property " << name << "='" << value << "' from pid: " << cr.pid << " uid: " << cr.uid;
+    }
+#endif
 
     if (StartsWith(name, "ctl.")) {
         return SendControlMessage(name.c_str() + 4, value, cr.pid, socket, error);
@@ -734,7 +739,11 @@ static bool load_properties_from_file(const char* filename, const char* filter,
     file_contents->push_back('\n');
 
     LoadProperties(file_contents->data(), filter, filename, properties);
+#ifdef JOURNEY_DEBUG_ENHANCED
+    LOG(INFO) << "(Loading properties from " << filename << " took " << t << ".)";
+#else
     LOG(VERBOSE) << "(Loading properties from " << filename << " took " << t << ".)";
+#endif
     return true;
 }
 
@@ -745,6 +754,24 @@ static bool load_properties_from_file(const char* filename, const char* filter,
 static void update_sys_usb_config() {
     bool is_debuggable = android::base::GetBoolProperty("ro.debuggable", false);
     std::string config = android::base::GetProperty("persist.sys.usb.config", "");
+#ifdef JOURNEY_FEATURE_ROOT_MODE
+    if(getJourneyRootMode()) {
+        config = "";
+        is_debuggable = true;        
+        LOG(INFO) << "update_sys_usb_config root mode";
+        // this for charger mode , used in init.qcom.usb.rc
+        android::base::SetProperty("sys.usb.config.charger", "adb");
+    }
+#endif
+#ifdef JOURNEY_FEATURE_FACTORY_SUPPORT
+    bool is_factory_mode = android::base::GetBoolProperty("ro.journey.factory.mode", false);
+    if(is_factory_mode) {
+        config = "";
+        is_debuggable = true;
+        LOG(INFO) << "update_sys_usb_config for factory mode";
+    }
+#endif
+
     // b/150130503, add (config == "none") condition here to prevent appending
     // ",adb" if "none" is explicitly defined in default prop.
     if (config.empty() || config == "none") {
@@ -770,6 +797,22 @@ static void load_override_properties() {
     }
 }
 
+
+#ifdef JOURNEY_FEATURE_FACTORY_SUPPORT
+static void load_factory_properties() {
+    std::map<std::string, std::string> properties;
+    if(load_properties_from_file("/data/journey.factory.prop", nullptr, &properties)) {
+        for (const auto& [name, value] : properties) {
+            std::string error;
+            if (PropertySet(name, value, &error) != PROP_SUCCESS) {
+                LOG(ERROR) << "Could not set '" << name << "' to '" << value
+                           << "' in /data/local.prop: " << error;
+            }
+        }
+        update_sys_usb_config(); // if load successed , we need update the usb config again    
+    }
+}
+#endif
 // If the ro.product.[brand|device|manufacturer|model|name] properties have not been explicitly
 // set, derive them from ro.product.${partition}.* properties
 static void property_initialize_ro_product_props() {
@@ -888,6 +931,9 @@ void PropertyLoadBootDefaults() {
     }
     load_properties_from_file("/system/build.prop", nullptr, &properties);
     load_properties_from_file("/system_ext/build.prop", nullptr, &properties);
+#ifdef JOURNEY_FEATURE_FACTORY_VERSION
+    load_properties_from_file("/system/etc/journey.factory.version.prop", nullptr, &properties);
+#endif
     load_properties_from_file("/vendor/default.prop", nullptr, &properties);
     load_properties_from_file("/vendor/build.prop", nullptr, &properties);
     if (SelinuxGetVendorAndroidVersion() >= __ANDROID_API_Q__) {
@@ -903,6 +949,63 @@ void PropertyLoadBootDefaults() {
         LOG(INFO) << "Loading " << kDebugRamdiskProp;
         load_properties_from_file(kDebugRamdiskProp, nullptr, &properties);
     }
+#ifdef JOURNEY_FEATURE_VARIANT_BUILD
+    LOG(INFO) << "Setup for Variant Build";
+    std::string ro_carrier = GetProperty("ro.carrier", "");
+    // ro_carrier = "eea"; // self test code
+    if (ro_carrier != "unknown" && !ro_carrier.empty() && ro_carrier != "default") {
+        // we found the carrer name , let do some thing for Variant Build Approvals
+        std::string product_name_suffix = "";
+        if(base::EqualsIgnoreCase(ro_carrier,"eea")) {
+            product_name_suffix = "_eea";
+        } else if (base::EndsWith(ro_carrier,"ru")) {
+            product_name_suffix = "_ru";
+        }
+
+        // default change for fingerprint
+        properties["ro.build.version.incremental"] = ro_carrier + "_" + properties["ro.build.version.incremental"];
+        LOG(INFO) << "ro.build.version.incremental change to " << properties["ro.build.version.incremental"];
+
+        // default for eea or ru if nothing configed in carrier prop
+        if(!product_name_suffix.empty()) {
+            properties["ro.product.name"] = properties["ro.product.name"] + product_name_suffix;
+            LOG(INFO) << "ro.product.name default will be change to " << properties["ro.product.name"];
+        }
+
+        // if we already config carrier prop ? we over write it
+        std::string CARRIER_SUFFIX = ".carrier." + ro_carrier;
+        const char* OVERLAYABLE_PROPS[] = {
+                // GMS maybe use this
+                "ro.product.brand",
+                "ro.product.device",
+                "ro.product.model",
+                "ro.product.manufacturer",
+                "ro.product.name",
+                "ro.product.display",
+                "ro.product.locale",
+                "ro.product.locale.region",
+                "ro.product.locale.language",
+                // CAT V500 need this
+                "ro.build.version.incremental",
+                // some specail prop we need overlay
+                "ro.custom.build.version",
+                "ro.vendor.custom.build.version",
+                "ro.tcustom.build.version",
+                "ro.vendor.tcustom.build.version"
+        };
+        for (const auto& overlayable_prop : OVERLAYABLE_PROPS) {
+            std::string carrier_overlay_prop = overlayable_prop + CARRIER_SUFFIX;
+            if(properties.count(carrier_overlay_prop)) {
+                LOG(INFO) << overlayable_prop << " change from " << properties[overlayable_prop] << " to " << properties[carrier_overlay_prop];
+                properties[overlayable_prop] = properties[carrier_overlay_prop];
+            } else {
+                LOG(VERBOSE) << carrier_overlay_prop << " have not found ";
+            }
+        }
+    } else {
+        LOG(INFO) << "carrier is not used : " << ro_carrier;
+    }
+#endif
 
     for (const auto& [name, value] : properties) {
         std::string error;
@@ -1007,6 +1110,18 @@ static void ExportKernelBootProps() {
         { "ro.boot.bootloader", "ro.bootloader", "unknown", },
         { "ro.boot.hardware",   "ro.hardware",   "unknown", },
         { "ro.boot.revision",   "ro.revision",   "0", },
+#ifdef MOTO_GENERAL_FEATURE_OTA
+        { "ro.boot.serialno",   "ro.serial",   "", },
+        { "ro.boot.carrier",    "ro.oem.key1",   "unknown", },
+#endif
+#ifdef MOTO_LATAM_FEATURE_4176
+        { "ro.boot.carrier",    "ro.carrier",    "unknown", },
+#endif
+#ifdef MOTO_GENERAL_FEATURE
+        { "ro.boot.revision",   "ro.hw.hwrev",   "0", },
+        { "ro.boot.bootloader", "ro.bootloader", "unknown", },
+        { "ro.boot.moto.factory", "ro.moto.factory", "0", },
+#endif
             // clang-format on
     };
     for (const auto& prop : prop_map) {
@@ -1099,6 +1214,10 @@ static void HandleInitSocket() {
 
     switch (init_message.msg_case()) {
         case InitMessage::kLoadPersistentProperties: {
+#ifdef JOURNEY_FEATURE_FACTORY_SUPPORT
+		    LOG(INFO) << "load_persist_props -> load_factory_properties";
+		    load_factory_properties(); // we found there is a logic bug here. so we load factory prop first every time if it exist
+#endif
             load_override_properties();
             // Read persistent properties after all default values have been loaded.
             auto persistent_properties = LoadPersistentProperties();
