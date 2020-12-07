@@ -125,6 +125,8 @@ int set_sched_policy(int tid, SchedPolicy policy) {
             return SetTaskProfiles(tid, {"SCHED_SP_FOREGROUND", "BlkIOForeground"}, true) ? 0 : -1;
         case SP_TOP_APP:
             return SetTaskProfiles(tid, {"SCHED_SP_TOP_APP", "BlkIOForeground"}, true) ? 0 : -1;
+        case SP_SYSTEM:
+            return SetTaskProfiles(tid, {"SCHED_SP_SYSTEM"}, true) ? 0 : -1;
         case SP_RT_APP:
             return SetTaskProfiles(tid, {"SCHED_SP_RT_APP", "BlkIOForeground"}, true) ? 0 : -1;
         default:
@@ -261,7 +263,7 @@ const char* get_sched_policy_profile_name(SchedPolicy policy) {
      */
     static constexpr const char* kSchedProfiles[SP_CNT + 1] = {
             "SCHED_SP_DEFAULT", "SCHED_SP_BACKGROUND", "SCHED_SP_FOREGROUND",
-            "SCHED_SP_DEFAULT", "SCHED_SP_FOREGROUND", "SCHED_SP_FOREGROUND",
+            "SCHED_SP_SYSTEM",  "SCHED_SP_FOREGROUND", "SCHED_SP_FOREGROUND",
             "SCHED_SP_TOP_APP", "SCHED_SP_RT_APP",     "SCHED_SP_DEFAULT"};
     if (policy < SP_DEFAULT || policy >= SP_CNT) {
         return nullptr;
