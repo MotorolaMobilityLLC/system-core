@@ -90,6 +90,7 @@ void set_system_properties() {
     property_set(prop_carrier, carrier_value);
     property_set("ro.oem.key1", carrier_value);
     property_set("persist.vendor.normal", "1");//表示正常版本，非 VTS 版本，prop 正常设置.
+    property_set("ro.product.gms_premier_tier","true");
 
     //fijisc
     if(prop_product_value.find("fijisc") != std::string::npos) {
