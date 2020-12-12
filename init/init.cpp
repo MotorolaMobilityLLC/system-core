@@ -640,20 +640,6 @@ static void UmountDebugRamdisk() {
 }
 
 
-#ifdef JOURNEY_FEATURE_SYSTEM_ENHANCED
-void SetJourneySafeMode(std::string reason) {
-    if(base::GetBoolProperty("ro.moto.factory", false)) return; // dont care when we are in factory.
-    if(base::GetBoolProperty("ro.sys.safemode.journey", false)) return; // dont need set it again.
-#ifdef JOURNEY_FEATURE_ROOT_MODE
-    if(journey_root_mode)
-        SetProperty("ro.sys.safemode.journey", "0"); // disable safe mode in root mode
-#endif
-    SetProperty("ro.sys.safemode.journey", "1"); // keep it in safe mode.
-    SetProperty("ro.sys.safemode.journey.reason", reason); // tell the framework reason
-
-}
-#endif
-
 #ifdef JOURNEY_FEATURE_SECURE
 static void SetJourneySafeMode(std::string reason) {
     if (reason.empty()) return; // avoid unused function
@@ -691,15 +677,6 @@ static void CheckJourneyDebugMode() {
 }
 #endif // JOURNEY_FEATURE_DEBUG_MODE
 
-static void CheckJourneySecureMode() {
-    SetJourneySafeMode(""); // always call this avoid unused function
-
-#ifndef JOURNEY_FEATURE_DEBUG_MODE
-    CheckJourneyDebugMode();
-#endif
-}
-#endif // JOURNEY_FEATURE_SECURE
-
 #ifdef MOTO_LATAM_FEATURE_4176
 void CheckSecureCarrier() {
     std::string misc = base::GetProperty("ro.boot.misc.version", "normal");
@@ -708,6 +685,7 @@ void CheckSecureCarrier() {
         SetJourneySafeMode("Expired Carrier");
     }
 }
+
 void CheckUnknowCarrier() {
     std::string carrier = base::GetProperty("ro.boot.carrier", "unknown");
     if(carrier == "unknown") {
@@ -716,6 +694,22 @@ void CheckUnknowCarrier() {
     }
 }
 #endif
+
+static void CheckJourneySecureMode() {
+    SetJourneySafeMode(""); // always call this avoid unused function
+
+#ifndef JOURNEY_FEATURE_DEBUG_MODE
+    CheckJourneyDebugMode();
+#endif
+#ifdef MOTO_GENERAL_FEATURE_SECURE_LOCKED_BOOTLOADER
+    CheckSecureUnlockMode();
+#endif
+#ifdef MOTO_LATAM_FEATURE_4176
+    CheckUnknowCarrier();
+    CheckSecureCarrier();
+#endif
+}
+#endif // JOURNEY_FEATURE_SECURE
 
 static void MountExtraFilesystems() {
 #define CHECKCALL(x) \
@@ -865,13 +859,7 @@ int SecondStageMain(int argc, char** argv) {
 #ifdef JOURNEY_FEATURE_SECURE
     CheckJourneySecureMode();
 #endif
-#ifdef MOTO_GENERAL_FEATURE_SECURE_LOCKED_BOOTLOADER
-    CheckSecureUnlockMode();
-#endif
-#ifdef MOTO_LATAM_FEATURE_4176
-    CheckUnknowCarrier();
-    CheckSecureCarrier();
-#endif
+
     const BuiltinFunctionMap& function_map = GetBuiltinFunctionMap();
     Action::set_function_map(&function_map);
 
