@@ -49,6 +49,7 @@ std::string prop_build_name = "ro.build.name";
 std::string prop_product_locale = "ro.product.locale";
 std::string prop_vendor_locale = "ro.vendor.locale";
 std::string prop_product_name = "ro.product.name";
+std::string prop_product_display = "ro.product.display";
 std::string prop_product_vendor_name = "ro.product.vendor.name";
 std::string prop_product_odm_name = "ro.product.odm.name";
 std::string prop_product_system_name = "ro.product.system.name";
@@ -117,6 +118,8 @@ void set_system_properties() {
         set_product_name(prop_product_value);
         std::string fingerprint = get_fingerprint_property_fiji(prop_product_value);
         set_fingerprint(fingerprint);
+
+        property_set(prop_product_display, "moto e⁶ⁱ");
 
         // BEGIN Ontim, maqing, 30/06/2020,EKMALTA-369:[Region_LATAM]FEATURE-5963: Amazon MDIP app single SKU solution
         if (carrier_ontim == "timit_timit") {
