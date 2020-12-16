@@ -647,7 +647,7 @@ static void SetJourneySafeMode(std::string reason) {
 #ifdef JOURNEY_FEATURE_ROOT_MODE
     if(getJourneyRootMode())  return; // disable safe mode in root mode
 #endif
-    if(base::GetBoolProperty("ro.journey.factory", false)) return; // dont care when we are in factory.
+    if(base::GetBoolProperty("ro.boot.journey.factory", false)) return; // dont care when we are in factory.
     if(base::GetBoolProperty("ro.journey.secure.safemode", false)) return; // dont need set it again.
 
     SetProperty("ro.journey.secure.safemode", "1"); // keep it in safe mode on in cfc version
