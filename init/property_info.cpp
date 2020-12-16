@@ -116,8 +116,10 @@ void set_system_properties(){
         std::string hw_sku = fileStream_band_id.str().substr(len, 6);
         if (hw_sku == "XT2095") {
             property_set("ro.maltalite", "0");
+            property_set("ro.mot.product_wave", "2020.4");
         } else if(hw_sku == "XT2097") {
             property_set("ro.maltalite", "1");
+            property_set("ro.mot.product_wave", "2021.1");
             isMaltaLite = true;
         }
     }
