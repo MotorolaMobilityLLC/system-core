@@ -3,6 +3,11 @@ cc_defaults {
     cflags: [
         "-Werror",
     ],
+    product_variables: {
+        journey_debug_enhanced: {
+            cflags: ["-DJOURNEY_DEBUG_ENHANCED"],
+        },
+    },    
 }
 
 // ========================================================
