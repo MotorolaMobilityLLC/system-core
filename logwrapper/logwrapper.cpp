@@ -45,7 +45,9 @@ void usage() {
           "-k: Causes logwrapper to log to the kernel log instead of\n"
           "    the Android system log\n");
 }
-
+#if defined(JOURNEY_DEBUG_ENHANCED) || defined (JOURNEY_FEATURE_LOG_SYSTEM)
+extern char *log_tag;
+#endif
 int main(int argc, char* argv[]) {
     int seg_fault_on_exit = 0;
     int log_target = LOG_ALOG;
@@ -54,7 +56,11 @@ int main(int argc, char* argv[]) {
     int status = 0xAAAA;
     int rc;
 
+#if defined(JOURNEY_DEBUG_ENHANCED) || defined (JOURNEY_FEATURE_LOG_SYSTEM)
+    while ((ch = getopt(argc, argv, "adkt:")) != -1) {
+#else
     while ((ch = getopt(argc, argv, "adk")) != -1) {
+#endif
         switch (ch) {
             case 'a':
                 abbreviated = true;
@@ -66,6 +72,12 @@ int main(int argc, char* argv[]) {
                 log_target = LOG_KLOG;
                 klog_set_level(6);
                 break;
+#if defined(JOURNEY_DEBUG_ENHANCED) || defined (JOURNEY_FEATURE_LOG_SYSTEM)
+            case 't':
+                log_tag = optarg;
+                break;
+#endif
+
             case '?':
             default:
                 usage();
