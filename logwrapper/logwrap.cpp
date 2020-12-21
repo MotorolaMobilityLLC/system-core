@@ -325,6 +325,9 @@ static void signal_handler(int signal_num) {
     }
 }
 
+#if defined(JOURNEY_DEBUG_ENHANCED) || defined (JOURNEY_FEATURE_LOG_SYSTEM)
+char *log_tag = NULL;
+#endif
 static int parent(const char* tag, int parent_read, pid_t pid, int* chld_sts, int log_target,
                   bool abbreviated, const char* file_path, bool forward_signals) {
     int status = 0;
@@ -355,7 +358,10 @@ static int parent(const char* tag, int parent_read, pid_t pid, int* chld_sts, in
     if (!log_info.btag) {
         log_info.btag = tag;
     }
-
+#if defined(JOURNEY_DEBUG_ENHANCED) || defined (JOURNEY_FEATURE_LOG_SYSTEM)
+    if(log_tag != NULL)
+        log_info.btag = log_tag;
+#endif
     if (abbreviated && (log_target == LOG_NONE)) {
         abbreviated = 0;
     }
