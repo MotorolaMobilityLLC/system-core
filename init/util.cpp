@@ -469,6 +469,9 @@ static FscryptAction FscryptInferAction(const std::string& dir) {
             "lost+found", "system_ce", "system_de", "misc_ce",     "misc_de",
             "vendor_ce",  "vendor_de", "media",     "data",        "user",
             "user_de",    "apex",      "preloads",  "app-staging", "gsi",
+#ifdef MOTO_GENERAL_FEATURE_OTA
+            "misc_ne",
+#endif
     };
     for (const auto& d : directories_to_exclude) {
         if ((prefix + d) == dir) {
