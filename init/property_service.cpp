@@ -962,9 +962,11 @@ void PropertyLoadBootDefaults() {
             product_name_suffix = "_ru";
         }
 
-        // default change for fingerprint
-        properties["ro.build.version.incremental"] = ro_carrier + "_" + properties["ro.build.version.incremental"];
-        LOG(INFO) << "ro.build.version.incremental change to " << properties["ro.build.version.incremental"];
+
+        if(!product_name_suffix.empty()) {
+            properties["ro.build.version.incremental"] = ro_carrier + "_" + properties["ro.build.version.incremental"];
+            LOG(INFO) << "ro.build.version.incremental change to " << properties["ro.build.version.incremental"];
+        }
 
         // default for eea or ru if nothing configed in carrier prop
         if(!product_name_suffix.empty()) {
@@ -1002,6 +1004,77 @@ void PropertyLoadBootDefaults() {
                 LOG(VERBOSE) << carrier_overlay_prop << " have not found ";
             }
         }
+
+
+#ifdef MOTO_LATAM_FEATURE_4176
+        std::string ro_svnkit_country = GetProperty("ro.boot.svnkit.country", "");
+        std::string ro_software_sku = GetProperty("ro.boot.software.sku", "");
+        std::string moto_product_suffix = "";
+        LOG(INFO) << ro_svnkit_country << " ro_svnkit_country " << ro_software_sku << " ro_software_sku ";
+        if (base::EqualsIgnoreCase(ro_software_sku,"XT2128-3")) {
+            moto_product_suffix = "_apac_l";
+            properties["ro.pt.lenovo_version"] = "true";
+        } else if (base::EqualsIgnoreCase(ro_carrier,"retapac") || (base::EqualsIgnoreCase(ro_carrier,"reteu") && base::EqualsIgnoreCase(ro_svnkit_country,"Europe_Retail_Serbia"))) {
+            moto_product_suffix = "_apac_m";
+        } else if(base::EqualsIgnoreCase(ro_carrier,"reteu")) {
+            moto_product_suffix = "_emea";
+        }
+
+        if(!moto_product_suffix.empty()) {
+    	    const char* MOTO_OVERLAY_PROPS[] = {
+                "brand","name",
+            };
+   	    const char* RO_PROPS_TARGETS[] = {
+                "odm", "product", "system_ext", "system", "vendor",
+   	    };
+            const char* RO_PROPS_FINGERPRINT_TARGETS[] = {
+                "odm", "product", "system_ext", "system", "vendor", "bootimage",
+            };
+
+
+	    for (const auto& moto_overlay_prop : MOTO_OVERLAY_PROPS) {
+                std::string base_prop("ro.product.");
+                std::string carrier_moto_overlay_prop = base_prop + moto_overlay_prop;
+                std::string carrier_moto_overlay_prop_suffix = base_prop + moto_overlay_prop + moto_product_suffix;
+                if(properties.count(carrier_moto_overlay_prop_suffix)) {
+                    LOG(INFO) << carrier_moto_overlay_prop << " change from " << properties[carrier_moto_overlay_prop] << " to " << properties[carrier_moto_overlay_prop_suffix];
+                    properties[carrier_moto_overlay_prop] = properties[carrier_moto_overlay_prop_suffix];
+		    for (const auto& ro_props_target : RO_PROPS_TARGETS) {
+			std::string carrier_moto_overlay_prop_target = base_prop + ro_props_target + "." + moto_overlay_prop;
+                        properties[carrier_moto_overlay_prop_target] = properties[carrier_moto_overlay_prop];
+		    }
+                } else {
+                    LOG(VERBOSE) << carrier_moto_overlay_prop_suffix << " have not found ";
+                }
+            }
+
+            // moto fingerprint 
+	    // motorola/java/java_retail:11/RTA31.XXX/Y:user/release-keys
+            std::vector<std::string> fps = android::base::Split(properties["ro.build.fingerprint"], "/");
+            std::string carrier_fp = "";
+            std::string prop_barnd = properties["ro.product.brand"];
+            std::string prop_name = properties["ro.product.name"];
+            std::string prop_device = properties["ro.product.device"];
+            if(prop_barnd != "")
+                fps[0] = prop_barnd;
+            if(prop_name != "")
+                fps[1] = prop_name;
+            if(prop_device != "")
+                fps[2] = prop_device + ":11";
+            carrier_fp = android::base::Join(fps,"/");
+
+            LOG(INFO) << "moto fingerprint:PropSet [" << properties["ro.build.fingerprint"] <<"] change to [" << carrier_fp << "]";
+            properties["ro.build.fingerprint"] = carrier_fp;
+
+            for (const auto& ro_props_fingerprint_target : RO_PROPS_FINGERPRINT_TARGETS) {
+                std::string target_base_prop("ro.");
+                std::string ro_props_fingerprint_target_suffix = target_base_prop + ro_props_fingerprint_target + ".build.fingerprint";   
+                properties[ro_props_fingerprint_target_suffix] = carrier_fp;
+            }
+#endif //MOTO_LATAM_FEATURE_4176
+
+        }
+
     } else {
         LOG(INFO) << "carrier is not used : " << ro_carrier;
     }
