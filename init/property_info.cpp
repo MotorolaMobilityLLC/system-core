@@ -72,16 +72,26 @@ std::string prop_amazon_partnerid = "ro.csc.amazon.partnerid";
 std::string prop_build_name = "ro.build.name";
 std::string prop_build_product = "ro.build.product";
 std::string prop_product_board = "ro.product.board";
+std::string prop_product_model = "ro.product.model";
+std::string prop_product_display = "ro.product.display";
 std::string prop_product = "ro.product.name";
 std::string prop_product_device = "ro.product.device";
 std::string prop_product_vendor_device = "ro.product.vendor.device";
 std::string prop_product_vendor_name = "ro.product.vendor.name";
+std::string prop_product_vendor_model = "ro.product.vendor.model";
+std::string prop_product_vendor_display = "ro.product.vendor.display";
 std::string prop_product_odm_device = "ro.product.odm.device";
 std::string prop_product_odm_name = "ro.product.odm.name";
+std::string prop_product_odm_model = "ro.product.odm.model";
+std::string prop_product_odm_display = "ro.product.odm.display";
 std::string prop_product_system_device = "ro.product.system.device";
 std::string prop_product_system_name = "ro.product.system.name";
+std::string prop_product_system_model = "ro.product.system.model";
+std::string prop_product_system_display = "ro.product.system.display";
 std::string prop_product_product_device = "ro.product.product.device";
 std::string prop_product_product_name = "ro.product.product.name";
+std::string prop_product_product_model = "ro.product.product.model";
+std::string prop_product_product_display = "ro.product.product.display";
 std::string prop_boot_bootloader = "ro.boot.bootloader";
 std::string prop_bootloader = "ro.bootloader";
 std::string prop_build_description = "ro.build.description";
@@ -120,6 +130,8 @@ void set_system_properties(){
         } else if(hw_sku == "XT2097") {
             property_set("ro.maltalite", "1");
             property_set("ro.mot.product_wave", "2021.1");
+            set_product_model("moto e(7) power");
+            set_product_display("moto e⁷ power");
             isMaltaLite = true;
         }
     }
@@ -495,6 +507,22 @@ void set_fingerprint(std::string fingerprint) {
     property_set(prop_odm_fingerprint, fingerprint);
 }
 
+void set_product_model(std::string product_model) {
+    property_set(prop_product_model, product_model);
+    property_set(prop_product_vendor_model, product_model);
+    property_set(prop_product_system_model, product_model);
+    property_set(prop_product_odm_model, product_model);
+    property_set(prop_product_product_model, product_model);
+}
+
+void set_product_display(std::string product_display) {
+    property_set(prop_product_display, product_display);
+    property_set(prop_product_vendor_display, product_display);
+    property_set(prop_product_system_display, product_display);
+    property_set(prop_product_odm_display, product_display);
+    property_set(prop_product_product_display, product_display);
+}
+
 bool isProductNameBlackjackReteu(std::string carrier_ontim) {
     if (carrier_ontim == "retgb_retgbds") return true;
     if (carrier_ontim == "retgb_cpwds") return true;
@@ -561,10 +589,14 @@ bool changeSystemProperty(std::string key) {
       || key == prop_product_vendor_device || key == prop_product_vendor_name
       || key == prop_carrier || key == prop_build_product
       || key == prop_product_board ||  key == prop_boot_bootloader
-      || key == prop_bootloader|| key == prop_build_description
-      || key == prop_build_flavor
+      || key == prop_bootloader || key == prop_build_description
+      || key == prop_build_flavor || key == prop_skip_setup_wizard
       || key == prop_adb_secure || key == prop_secure || key == prop_local
-      || key == prop_skip_setup_wizard) {
+      || key == prop_product_model || key == prop_product_display
+      || key == prop_product_vendor_model || key == prop_product_vendor_display
+      || key == prop_product_odm_model || key == prop_product_odm_display
+      || key == prop_product_system_model || key == prop_product_system_display
+      || key == prop_product_product_model || key == prop_product_product_display) {
         return true;
     }
     return false;
