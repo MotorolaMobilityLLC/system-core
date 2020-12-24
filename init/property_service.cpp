@@ -1024,9 +1024,9 @@ void PropertyLoadBootDefaults() {
     	    const char* MOTO_OVERLAY_PROPS[] = {
                 "brand","name",
             };
-   	    const char* RO_PROPS_TARGETS[] = {
+            const char* RO_PROPS_TARGETS[] = {
                 "odm", "product", "system_ext", "system", "vendor",
-   	    };
+            };
             const char* RO_PROPS_FINGERPRINT_TARGETS[] = {
                 "odm", "product", "system_ext", "system", "vendor", "bootimage",
             };
@@ -1071,9 +1071,8 @@ void PropertyLoadBootDefaults() {
                 std::string ro_props_fingerprint_target_suffix = target_base_prop + ro_props_fingerprint_target + ".build.fingerprint";   
                 properties[ro_props_fingerprint_target_suffix] = carrier_fp;
             }
-#endif //MOTO_LATAM_FEATURE_4176
-
         }
+#endif //MOTO_LATAM_FEATURE_4176
 
     } else {
         LOG(INFO) << "carrier is not used : " << ro_carrier;
