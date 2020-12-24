@@ -320,6 +320,7 @@ static void handle_new_connection(atransport* t, apacket* p) {
     handle_online(t);
 #else
 #if defined(JOURNEY_FEATURE_DEBUG_MODE) || defined(JOURNEY_FEATURE_FACTORY_SUPPORT)
+    LOG(INFO) << android::base::GetBoolProperty("ro.journey.factory.mode", false) << " for ro.journey.factory.mode ";
     if(auth_required) {
         // RescueParty will use this to disable auth in some Rescue mode
         // also factory support use this in data prop
