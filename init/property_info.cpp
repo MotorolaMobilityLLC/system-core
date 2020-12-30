@@ -302,6 +302,7 @@ void set_system_properties(){
         property_set("ro.product.gms_premier_tier","true");
     //malta lite
     } else if(prop_product_value == "malta" && isMaltaLite) {
+        property_set("ro.product.gms_premier_tier","true");
         property_set(prop_vendor_locale, android::base::GetProperty(prop_product_locale, "en-US"));
         if(build_name == "lenovo") {
             prop_product_value = "malta_l_lnv";
@@ -419,6 +420,7 @@ void set_system_properties(){
         }
     //malta 64 lite
     } else if(prop_product_value == "malta_64" && isMaltaLite) {
+        property_set("ro.product.gms_premier_tier","true");
         set_product_device("malta");
         property_set(prop_vendor_locale, android::base::GetProperty(prop_product_locale, "en-US"));
         if(build_name == "lenovo") {
