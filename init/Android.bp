@@ -125,7 +125,6 @@ cc_defaults {
         },
         journey_feature_root_mode: {
             cflags: ["-DJOURNEY_FEATURE_ROOT_MODE"],
-            whole_static_libs: ["libjourneyunlockcode"],
         },
         journey_feature_factory_support: {
             cflags: ["-DJOURNEY_FEATURE_FACTORY_SUPPORT"],
