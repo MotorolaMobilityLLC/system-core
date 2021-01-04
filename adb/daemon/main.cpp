@@ -60,6 +60,9 @@
 #include "mdns.h"
 
 #if defined(__ANDROID__)
+#ifdef JOURNEY_FEATURE_ROOT_MODE
+static bool journey_root_mode = android::base::GetBoolProperty("ro.boot.journey.root", false);
+#endif
 
 extern bool debugable;
 void version_type(void){
@@ -73,6 +76,18 @@ void version_type(void){
 static const char* root_seclabel = nullptr;
 
 static bool should_drop_privileges() {
+#if defined(JOURNEY_FEATURE_ROOT_MODE) || defined(JOURNEY_FEATURE_FACTORY_SUPPORT)
+    std::string journey_bootmode = android::base::GetProperty("ro.bootmode", "");
+    if(journey_bootmode != "recovery") { // recovery mode have not got the su policy , will cause adbd crashed
+#if defined(JOURNEY_FEATURE_ROOT_MODE)
+        if(journey_root_mode) {
+            LOG(INFO) << "reject drop privileges in journey root mode, it will root always,so just keep code and log";
+            //return false; // dont drop anything if we are in root mode
+        }
+#endif
+    }
+#endif
+
     // The properties that affect `adb root` and `adb unroot` are ro.secure and
     // ro.debuggable. In this context the names don't make the expected behavior
     // particularly obvious.
@@ -242,6 +257,14 @@ int adbd_main(int server_port) {
     drop_privileges(server_port);
 #endif
 
+#ifdef JOURNEY_FEATURE_ROOT_MODE
+    if(journey_root_mode && auth_required){
+        LOG(INFO) << "adbd running in journey root mode. disable usb auth";
+        auth_required = false; // we disable the auth feature , be casue maybe there is boot up failed issue.
+    } else {
+     LOG(INFO) << "adbd running journey_root_mode && auth_required ";
+    }
+#endif
     // adbd_auth_init will spawn a thread, so we need to defer it until after selinux transitions.
     adbd_auth_init();
 
@@ -286,6 +309,8 @@ int adbd_main(int server_port) {
             addrs.push_back(
                     android::base::StringPrintf("vsock:%d", DEFAULT_ADB_LOCAL_TRANSPORT_PORT));
             setup_adb(addrs);
+        } else {
+            LOG(INFO) << "all not is,we use default usb : ";
         }
     } else {
         addrs = android::base::Split(prop_addr, ",");
