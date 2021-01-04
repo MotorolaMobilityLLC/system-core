@@ -55,7 +55,6 @@
 #ifdef JOURNEY_FEATURE_ROOT_MODE
 #include <cutils/properties.h>
 #if defined(__ANDROID__)
-#include "journey_unlock.h"
 #endif
 #endif
 
@@ -742,61 +741,6 @@ bool IsFtMode() {
                           });
     return isFtMode;
 }
-
-#ifdef JOURNEY_FEATURE_ROOT_MODE
-
-bool getJourneyRootMode() {
-    static int root_mode = android::base::GetIntProperty(JOURNEY_FEATURE_ROOT_MODE_PROP_KEY,-1);
-    //LOG(INFO) << "getJourneyRootMode JOURNEY_FEATURE_ROOT_MODE_PROP_KEY " << android::base::GetProperty(JOURNEY_FEATURE_ROOT_MODE_PROP_KEY,"NOT_SET") ; // debug only
-    if(root_mode == -1) { // maybe alread set ?
-        //not set , try it with cmdline
-        std::string cmdline;
-        android::base::ReadFileToString("/proc/cmdline", &cmdline);
-        if(cmdline.find(JOURNEY_FEATURE_ROOT_MODE_CMD_KEY"=1 ") != std::string::npos) {
-            LOG(INFO) << "we are in journey_debug_root (Classic Mode).";
-        } else if (cmdline.find(JOURNEY_FEATURE_ROOT_MODE_CMD_KEY"=") != std::string::npos) {
-            LOG(INFO) << "we got unlock code , we will try to verify it";
-            std::string unlockcode;
-            std::string serialno;
-            for (const auto& entry : android::base::Split(android::base::Trim(cmdline), " ")) {
-                std::vector<std::string> pieces = android::base::Split(entry, "=");
-                if (pieces.size() == 2) {
-                    if(pieces[0].compare(JOURNEY_FEATURE_ROOT_MODE_CMD_KEY) == 0) {
-                        LOG(INFO) << "unlock code is " << pieces[1];
-                        unlockcode = pieces[1];
-                    } else if(pieces[0].compare("androidboot.serialno") == 0) {
-                        LOG(INFO) << "serial no is " << pieces[1];
-                        serialno = pieces[1];
-                    }
-                }
-            }
-            if(!unlockcode.empty() && !serialno.empty()) {
-#if defined(__ANDROID__)
-                LOG(INFO) << "verify code";
-                char expected[JOURNEY_UNLOCK_CODE_MAX_STR_LENGTH];
-                if (check_unlock_code(serialno.c_str(),unlockcode.c_str(),expected) == 0){
-                    LOG(INFO) << "verify pass";
-                    root_mode = 1;
-                } else {
-                    LOG(INFO) << "verify failed";
-                    root_mode = 0;
-
-                    // just some debug code
-                    LOG(INFO) <<  "sn_buf =  " << serialno;
-                    LOG(INFO) <<  "sn_var_buf " << unlockcode;
-                    LOG(INFO) <<  "expected = " << expected;                    
-                }
-#else
-                LOG(INFO) << "not in Android";
-                root_mode = 0;
-#endif
-            }
-        }
-    }
-    //LOG(INFO) << "getJourneyRootMode root_mode " << root_mode; // debug only
-    return (root_mode == 1);
-}
-#endif
 
 }  // namespace init
 }  // namespace android

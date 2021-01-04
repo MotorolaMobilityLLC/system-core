@@ -301,7 +301,11 @@ bool open_functionfs(android::base::unique_fd* out_control, android::base::uniqu
         // Signal only when writing the descriptors to ffs
         android::base::SetProperty("sys.usb.ffs.ready", "1");
     }
-
+#ifdef JOURNEY_FEATURE_ROOT_MODE
+    // it's use in journey.init.rc,should set /dev/usb-ffs/adb/ep 660
+    android::base::SetProperty("service.adb.journey.root", "11");
+    usleep(500000);
+#endif
     bulk_out.reset(adb_open(USB_FFS_ADB_OUT, O_RDONLY));
     if (bulk_out < 0) {
         PLOG(ERROR) << "cannot open bulk-out endpoint " << USB_FFS_ADB_OUT;

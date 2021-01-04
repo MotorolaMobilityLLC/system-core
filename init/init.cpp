@@ -639,13 +639,29 @@ static void UmountDebugRamdisk() {
     }
 }
 
+#ifdef JOURNEY_FEATURE_ROOT_MODE
+bool journey_root_mode = false;
+static bool initJourneyRootMode() {
+    LOG(INFO) << "init journey.root  initJourneyRootMode!";
+    std::string cmdline;
+    android::base::ReadFileToString("/proc/cmdline", &cmdline);
+    if (cmdline.find("androidboot.journey.root=1") != std::string::npos) {
+        LOG(INFO) << "init:journey.root root =1 !";
+        journey_root_mode = true;
+    } else {
+        LOG(INFO) << "init:we are not in journey.root because cmdline not set";
+        journey_root_mode = false;
+    }
+    return journey_root_mode;
+}
+#endif
 
 #ifdef JOURNEY_FEATURE_SECURE
 static void SetJourneySafeMode(std::string reason) {
     if (reason.empty()) return; // avoid unused function
 
 #ifdef JOURNEY_FEATURE_ROOT_MODE
-    if(getJourneyRootMode())  return; // disable safe mode in root mode
+    if(journey_root_mode)  return; // disable safe mode in root mode
 #endif
     if(base::GetBoolProperty("ro.boot.journey.factory", false)) return; // dont care when we are in factory.
     if(base::GetBoolProperty("ro.journey.secure.safemode", false)) return; // dont need set it again.
@@ -769,6 +785,11 @@ int SecondStageMain(int argc, char** argv) {
 
     SetStdioToDevNull(argv);
     InitKernelLogging(argv);
+
+#ifdef JOURNEY_FEATURE_ROOT_MODE
+    initJourneyRootMode();
+#endif
+
     LOG(INFO) << "init second stage started!";
 
     // Init should not crash because of a dependence on any other process, therefore we ignore
@@ -817,24 +838,19 @@ int SecondStageMain(int argc, char** argv) {
     if (load_debug_prop) {
         UmountDebugRamdisk();
     }
-
     // Mount extra filesystems required during second stage init
     MountExtraFilesystems();
-
     // Now set up SELinux for second stage.
     SelinuxSetupKernelLogging();
     SelabelInitialize();
     SelinuxRestoreContext();
-
     Epoll epoll;
     if (auto result = epoll.Open(); !result.ok()) {
         PLOG(FATAL) << result.error();
     }
-
     InstallSignalFdHandler(&epoll);
     InstallInitNotifier(&epoll);
     StartPropertyService(&property_fd);
-
     // Make the time that init stages started available for bootstat to log.
     RecordStageBoottimes(start_time);
 
@@ -843,14 +859,6 @@ int SecondStageMain(int argc, char** argv) {
         SetProperty("ro.boot.avb_version", avb_version);
     }
     unsetenv("INIT_AVB_VERSION");
-
-#if defined(JOURNEY_FEATURE_ROOT_MODE) && defined (__ANDROID_RECOVERY__)
-    if(getJourneyRootMode()) {
-        // force recovery use adb. just work like a userdebug version
-        SetProperty("ro.adb.secure","0");
-        SetProperty("ro.debuggable","1");
-    }
-#endif
 
     fs_mgr_vendor_overlay_mount_all();
     export_oem_lock_status();

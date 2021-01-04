@@ -755,12 +755,10 @@ static void update_sys_usb_config() {
     bool is_debuggable = android::base::GetBoolProperty("ro.debuggable", false);
     std::string config = android::base::GetProperty("persist.sys.usb.config", "");
 #ifdef JOURNEY_FEATURE_ROOT_MODE
-    if(getJourneyRootMode()) {
+    if(journey_root_mode) {
+        is_debuggable = true;
         config = "";
-        is_debuggable = true;        
-        LOG(INFO) << "update_sys_usb_config root mode";
-        // this for charger mode , used in init.qcom.usb.rc
-        android::base::SetProperty("sys.usb.config.charger", "adb");
+        LOG(INFO) << "update is_debuggable and config in journey_root mode";
     }
 #endif
 #ifdef JOURNEY_FEATURE_FACTORY_SUPPORT
@@ -1237,6 +1235,15 @@ static void ProcessKernelCmdline() {
         }
     });
 
+#ifdef JOURNEY_FEATURE_ROOT_MODE
+    LOG(INFO) << "JOURNEY_FEATURE_ROOT_MODE at " << __FUNCTION__ << ":" << __LINE__;
+    if(!InitPropertySet("ro.boot.journey.root", journey_root_mode ? "1" : "0")) {
+        LOG(INFO) << "InitPropertySet ro.boot.journey.root";
+    } else {
+        LOG(ERROR) << "InitPropertySet failed for ro.boot.journey.root ";
+    }
+#endif
+
     if (for_emulator) {
         ImportKernelCmdline([&](const std::string& key, const std::string& value) {
             // In the emulator, export any kernel option with the "ro.kernel." prefix.
@@ -1267,7 +1274,14 @@ void PropertyInit() {
     // Propagate the kernel variables to internal variables
     // used by init as well as the current required properties.
     ExportKernelBootProps();
-
+#ifdef JOURNEY_FEATURE_ROOT_MODE
+    if(journey_root_mode) {
+        LOG(INFO) << "start  SetProperty in journey.root mode";
+        // force recovery use adb. just work like a userdebug version
+        InitPropertySet("ro.adb.secure","0");
+        InitPropertySet("ro.debuggable","1");
+    }
+#endif
     PropertyLoadBootDefaults();
 }
 
