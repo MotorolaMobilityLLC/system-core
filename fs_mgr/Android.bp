@@ -24,6 +24,11 @@ cc_defaults {
         "-Wall",
         "-Werror",
     ],
+    product_variables: {
+        journey_feature_root_mode: {
+            cflags: ["-DJOURNEY_FEATURE_ROOT_MODE"],
+        },
+    },
 }
 
 cc_defaults {
