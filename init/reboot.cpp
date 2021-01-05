@@ -541,8 +541,8 @@ static void StopServices(const std::set<std::string>& services, std::chrono::mil
 
 // Like StopServices, but also logs all the services that failed to stop after the provided timeout.
 // Returns number of violators.
-static int StopServicesAndLogViolations(const std::set<std::string>& services,
-                                        std::chrono::milliseconds timeout, bool terminate) {
+int StopServicesAndLogViolations(const std::set<std::string>& services,
+                                 std::chrono::milliseconds timeout, bool terminate) {
     StopServices(services, timeout, terminate);
     int still_running = 0;
     for (const auto& s : ServiceList::GetInstance()) {
@@ -865,7 +865,7 @@ static Result<void> DoUserspaceReboot() {
         sub_reason = "apex";
         return result;
     }
-    if (!SwitchToMountNamespaceIfNeeded(NS_BOOTSTRAP)) {
+    if (!SwitchToMountNamespaceIfNeeded(NS_BOOTSTRAP).ok()) {
         sub_reason = "ns_switch";
         return Error() << "Failed to switch to bootstrap namespace";
     }
