@@ -49,7 +49,9 @@ Result<int> CreateSocket(const std::string& name, int type, bool passcred, mode_
 
 Result<std::string> ReadFile(const std::string& path);
 Result<void> WriteFile(const std::string& path, const std::string& content);
-
+#ifdef MOTO_GENERAL_FEATURE
+Result<std::string> ReadFileForce(const std::string& path);
+#endif
 Result<uid_t> DecodeUid(const std::string& name);
 
 bool mkdir_recursive(const std::string& pathname, mode_t mode);
