@@ -158,6 +158,34 @@ Result<int> CreateSocket(const std::string& name, int type, bool passcred, mode_
     return fd.release();
 }
 
+#ifdef MOTO_GENERAL_FEATURE
+  //CJ:
+  // To avoid incomplete control of header file macros
+  // we make a new funcion copy from ReadFile
+  // but just remove the O_NOFOLLOW and (S_IWGRP | S_IWOTH) secure limit
+Result<std::string> ReadFileForce(const std::string& path) {
+    android::base::unique_fd fd(
+        TEMP_FAILURE_RETRY(open(path.c_str(), O_RDONLY | O_CLOEXEC)));
+
+    if (fd == -1) {
+        return ErrnoError() << "open() failed";
+    }
+
+    // For security reasons, disallow world-writable
+    // or group-writable files.
+    struct stat sb;
+    if (fstat(fd, &sb) == -1) {
+        return ErrnoError() << "fstat failed()";
+    }
+
+    std::string content;
+    if (!android::base::ReadFdToString(fd, &content)) {
+        return ErrnoError() << "Unable to read file contents";
+    }
+    return content;
+}
+#endif
+
 Result<std::string> ReadFile(const std::string& path) {
     android::base::unique_fd fd(
         TEMP_FAILURE_RETRY(open(path.c_str(), O_RDONLY | O_NOFOLLOW | O_CLOEXEC)));

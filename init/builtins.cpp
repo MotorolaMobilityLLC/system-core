@@ -970,6 +970,54 @@ static Result<void> do_copy(const BuiltinArguments& args) {
     return {};
 }
 
+#ifdef MOTO_GENERAL_FEATURE
+static Result<void> do_copy_force(const BuiltinArguments& args) {
+    auto file_contents = ReadFileForce(args[1]);
+    if (!file_contents) {
+        return Error() << "Could not read input file '" << args[1] << "': " << file_contents.error();
+    }
+    if (auto result = WriteFile(args[2], *file_contents); !result) {
+        return Error() << "Could not write to output file '" << args[2] << "': " << result.error();
+    }
+
+    return {};
+}
+
+//Tinno:CJ same as do_copy but follow the link
+static Result<void> do_sync_file(const BuiltinArguments& args) {
+    auto file_contents = ReadFileForce(args[1]);
+    if (!file_contents) {
+        return Error() << "Could not read input file '" << args[1] << "': " << file_contents.error();
+    }
+    auto file_contents_output = ReadFileForce(args[2]);
+    if (!file_contents_output) {
+        LOG(WARNING) << "Could not read output file '" << args[1] << "': " << file_contents_output.error();
+    } else {
+        if (*file_contents_output == *file_contents) {
+            LOG(INFO) << "Could found " << args[1] << " is same with " << args[2] << ". skip copy again.";
+            return {};
+        } else {
+            LOG(INFO) << "Could found " << args[1] << " is different with " << args[2] << ".";
+        }
+    }
+
+    if (auto result = WriteFile(args[2], *file_contents); !result) {
+        return Error() << "Could not write to output file '" << args[2] << "': " << result.error();
+    } else {
+        LOG(INFO) << "sync file from " << args[1] << " to " << args[2] << ".";
+    }
+
+    return {};
+}
+
+static Result<void> do_sync(const BuiltinArguments& args) {
+    LOG(INFO) << "do_sync";
+    sync();
+    LOG(INFO) << "sync complete";
+    return {};
+}
+#endif
+
 static Result<void> do_chown(const BuiltinArguments& args) {
     auto uid = DecodeUid(args[1]);
     if (!uid.ok()) {
@@ -1347,6 +1395,11 @@ const BuiltinFunctionMap& GetBuiltinFunctionMap() {
         {"class_start_post_data",   {1,     1,    {false,  do_class_start_post_data}}},
         {"class_stop",              {1,     1,    {false,  do_class_stop}}},
         {"copy",                    {2,     2,    {true,   do_copy}}},
+#ifdef MOTO_GENERAL_FEATURE
+        {"copy_force",              {2,     2,    {true,   do_copy_force}}},
+        {"sync_file",               {2,     2,    {true,   do_sync_file}}},
+        {"sync",                    {0,     0,    {false,  do_sync}}},
+#endif
         {"domainname",              {1,     1,    {true,   do_domainname}}},
         {"enable",                  {1,     1,    {false,  do_enable}}},
         {"exec",                    {1,     kMax, {false,  do_exec}}},
