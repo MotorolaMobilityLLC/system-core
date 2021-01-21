@@ -85,8 +85,8 @@ void LogdClose() {
   logd_socket = 0;
 }
 
-//xiaoyan.yu , temporarily disable the log loop for preventing logd blocked
-#if 0 
+// [JSTINNO_SRC xiaoyan.yu,  control the code lines sprd added which will cause system block , -01 START
+#ifdef SPRD_LOGD_ENHANCED 
 char* pidToName(pid_t pid) {
     char* retval = NULL;
 
@@ -107,7 +107,8 @@ char* pidToName(pid_t pid) {
 
     return retval;
 }
-#endif
+#endif/*SPRD_LOGD_ENHANCED*/
+// JSTINNO_SRC xiaoyan.yu, -01 END]
 
 int LogdWrite(log_id_t logId, struct timespec* ts, struct iovec* vec, size_t nr) {
   ssize_t ret;
@@ -192,8 +193,8 @@ int LogdWrite(log_id_t logId, struct timespec* ts, struct iovec* vec, size_t nr)
     }
   }
   
-  //xiaoyan.yu , temporarily disable the log loop for preventing logd blocked
-  #if 0
+// [JSTINNO_SRC xiaoyan.yu,  control the code lines sprd added which will cause system block , -01 START
+#ifdef SPRD_LOGD_ENHANCED 
   static int do_log_retry = 0;
   static int prop_read = 0;
   if (0 == prop_read) {
@@ -221,7 +222,8 @@ int LogdWrite(log_id_t logId, struct timespec* ts, struct iovec* vec, size_t nr)
    if(1 == is_system_server) {
         loop_count = 32;
    }
-#endif
+#endif/*SPRD_LOGD_ENHANCED*/
+// JSTINNO_SRC xiaoyan.yu, -01 END]
 
   // The write below could be lost, but will never block.
   // EAGAIN occurs if logd is overloaded, other errors indicate that something went wrong with
@@ -236,8 +238,9 @@ int LogdWrite(log_id_t logId, struct timespec* ts, struct iovec* vec, size_t nr)
   if (ret < 0) {
     ret = -errno;
   }
-//xiaoyan.yu , temporarily disable the log loop for preventing logd blocked 
-#if 0
+  
+// [JSTINNO_SRC xiaoyan.yu,  control the code lines sprd added which will cause system block , -01 START
+#ifdef SPRD_LOGD_ENHANCED 
   if ((ret == -EBUSY) || (ret == -EAGAIN)) {
     RETRY_WRITE:
        if(0 == do_log_retry) {
@@ -264,7 +267,9 @@ int LogdWrite(log_id_t logId, struct timespec* ts, struct iovec* vec, size_t nr)
       }
 
    }
-  #endif
+  #endif/*SPRD_LOGD_ENHANCED*/
+// JSTINNO_SRC xiaoyan.yu, -01 END]
+
   if (ret > (ssize_t)sizeof(header)) {
     ret -= sizeof(header);
   } else if (ret < 0) {
