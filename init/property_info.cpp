@@ -60,6 +60,7 @@ std::string prop_clientit_value = "android-tim-it-revc";
 std::string prop_clientau_value = "android-optus-au-revc";
 std::string prop_clientor_value = "android-orange-{country}-revc";
 std::string prop_clienttmobile_value = "android-tmobile-{country}";
+std::string prop_clientdtrevc3_value = "android-dt-{country}-revc3";
 std::string prop_clientdt_value = "android-dt-{country}-revc";
 std::string prop_cliento2_value = "android-tef-{country}-revc";
 std::string prop_product_value = "blackjack";
@@ -236,6 +237,10 @@ void set_system_properties(){
                 property_set(prop_vsclient, prop_clientuk_value);
             } else if (carrier_ontim == "o2gb_teluk") {
                 property_set(prop_msclient, prop_cliento2_value);
+            } else if (carrier_ontim == "reteu_dtag") {
+                property_set(prop_amclient, prop_clienttmobile_value);
+                property_set(prop_msclient, prop_clientdtrevc3_value);
+                property_set(prop_vsclient, prop_clientdtrevc3_value);
             } else {
                 property_set(prop_amclient, prop_client_value);
                 property_set(prop_msclient, prop_clientrvo3_value);
