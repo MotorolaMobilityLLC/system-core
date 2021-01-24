@@ -629,6 +629,9 @@ on late-fs
     # HALs required before storage encryption can get unlocked (FBE/FDE)
     class_start early_hal
 
+    # Load trusted keys from dm-verity protected partitions
+    exec -- /system/bin/fsverity_init --load-verified-keys
+
 on post-fs-data
     mark_post_data
 
@@ -649,19 +652,20 @@ on post-fs-data
     mkdir /data/bootchart 0755 shell shell encryption=Require
     bootchart start
 
-    # Make sure that apexd is started in the default namespace
-    enter_default_mount_ns
-
     mkdir /data/vendor 0771 root root encryption=Require
     mkdir /data/vendor_ce 0771 root root encryption=None
     mkdir /data/vendor_de 0771 root root encryption=None
     mkdir /data/vendor/hardware 0771 root root
 
     # Start tombstoned early to be able to store tombstones.
+    mkdir /data/anr 0775 system system encryption=Require
     mkdir /data/tombstones 0771 system system encryption=Require
     mkdir /data/vendor/tombstones 0771 root root
     mkdir /data/vendor/tombstones/wifi 0771 wifi wifi
     start tombstoned
+
+    # Make sure that apexd is started in the default namespace
+    enter_default_mount_ns
 
     # /data/apex is now available. Start apexd to scan and activate APEXes.
     mkdir /data/apex 0755 root system encryption=None
@@ -669,7 +673,7 @@ on post-fs-data
     mkdir /data/apex/backup 0700 root system
     mkdir /data/apex/hashtree 0700 root system
     mkdir /data/apex/sessions 0700 root system
-    mkdir /data/app-staging 0750 system system encryption=DeleteIfNecessary
+    mkdir /data/app-staging 0751 system system encryption=DeleteIfNecessary
     start apexd
 
     # Avoid predictable entropy pool. Carry over entropy from previous boot.
@@ -795,8 +799,6 @@ on post-fs-data
     # the following directory.
     mkdir /data/mediadrm 0770 mediadrm mediadrm encryption=Require
 
-    mkdir /data/anr 0775 system system encryption=Require
-
     # NFC: create data/nfc for nv storage
     mkdir /data/nfc 0770 nfc nfc encryption=Require
     mkdir /data/nfc/param 0770 nfc nfc
@@ -869,6 +871,9 @@ on post-fs-data
     # Wait for apexd to finish activating APEXes before starting more processes.
     wait_for_prop apexd.status activated
     perform_apex_config
+
+    # Lock the fs-verity keyring, so no more keys can be added
+    exec -- /system/bin/fsverity_init --lock
 
     # After apexes are mounted, tell keymaster early boot has ended, so it will
     # stop allowing use of early-boot keys
@@ -1050,9 +1055,6 @@ on boot
     class_start hal
 
     class_start core
-
-    # Requires keystore (currently a core service) to be ready first.
-    exec -- /system/bin/fsverity_init
 
 on nonencrypted
     class_start main
