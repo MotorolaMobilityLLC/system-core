@@ -52,6 +52,19 @@
 #include "host_init_stubs.h"
 #endif
 
+#ifdef MTK_LOG
+#if defined(__linux__)
+#include <sys/uio.h>
+#endif
+
+#include <mutex>
+#include <queue>
+#include <android-base/stringprintf.h>
+#include <android-base/chrono_utils.h>
+#include <android-base/parseint.h>
+using android::base::StringPrintf;
+#endif
+
 using android::base::boot_clock;
 using android::base::StartsWith;
 using namespace std::literals::string_literals;
@@ -723,6 +736,481 @@ void InitKernelLogging(char** argv) {
 bool IsRecoveryMode() {
     return access("/system/bin/recovery", F_OK) == 0;
 }
+
+#ifdef MTK_LOG
+#if defined(__linux__)
+#define DEFAULT_RATELIMIT_INTERVALMS 5000
+#define DEFAULT_RATELIMIT_BURST 9
+
+#define __MAXLOGFD__ 2
+static int klogfd[__MAXLOGFD__] = {-1};
+static uint64_t log_time[__MAXLOGFD__];
+static int log_printed[__MAXLOGFD__] = {0};
+static int inited[__MAXLOGFD__] = {0};
+static uint64_t *plog_time[__MAXLOGFD__] = {NULL};
+
+static bool while_flag[__MAXLOGFD__] = {false};
+static uint64_t while_nowms[__MAXLOGFD__] = {0};
+static uint64_t while_ep_duration[__MAXLOGFD__] = {0};
+static bool while_log_piggybacked[__MAXLOGFD__] = {false};
+
+#define _SPLIT_PROPSET_ 0
+#define _SPLIT_OTHER_ 1
+
+#define MTK_LOG_LINE_MAXCLEN 700
+#define MTK_LOG_LINE_MAXTIME 200
+
+struct PropSetLogInfo {
+    boot_clock::time_point log_time;
+    std::string log;
+};
+
+static std::queue<PropSetLogInfo> propsetlog_children;
+static size_t propsetlog_len = 0;
+
+static std::mutex _log_lock;
+
+static void _KernelLoggerLine_split_final(int fd, int level,
+                  const char* tag, const char* msg, int length);
+static int _GetSplitFD(int idx);
+
+int PropSetLogReap(int force) {
+    if (propsetlog_children.empty()) {
+        return -1;
+    }
+
+    auto& log = propsetlog_children.front();
+    auto duration = boot_clock::now() - log.log_time;
+    auto duration_ms =
+            std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
+
+    if (force ||
+        propsetlog_len >= MTK_LOG_LINE_MAXCLEN ||
+        duration_ms >= MTK_LOG_LINE_MAXTIME) {
+        std::string reap_log("ReapLog");
+
+        if (propsetlog_len >= MTK_LOG_LINE_MAXCLEN)
+            reap_log.append("C");
+        else if (force)
+            reap_log.append("F");
+        else
+            reap_log.append("T");
+
+        reap_log.append(" PropSet");
+
+        while (!propsetlog_children.empty()) {
+            auto& tmplog = propsetlog_children.front();
+
+            reap_log.append(" ");
+            reap_log.append(tmplog.log);
+
+            propsetlog_children.pop();
+        }
+
+        reap_log.append(" Done");
+        propsetlog_len = 0;
+
+        int fklog_fd = _GetSplitFD(_SPLIT_PROPSET_);
+        if (fklog_fd == -1) return -1;
+
+        _KernelLoggerLine_split_final(fklog_fd, 6, "init", reap_log.c_str(), reap_log.length());
+    }
+    else {
+        return (MTK_LOG_LINE_MAXTIME - duration_ms);
+    }
+
+    return -1;
+}
+
+int PropSetHook(const char* msg) {
+  int force = 0;
+  int vRet = 0;
+
+  if (android::base::StartsWith(msg, "PropSet ")) {
+
+    struct PropSetLogInfo LogInfo;
+    LogInfo.log_time = boot_clock::now();
+
+    LogInfo.log.append(StringPrintf("%s%llu",
+                       msg + 8,
+                       std::chrono::duration_cast<std::chrono::milliseconds>(LogInfo.log_time.time_since_epoch()).count()));
+
+    propsetlog_len += LogInfo.log.length();
+    propsetlog_children.push(LogInfo);
+
+    vRet = 1;
+  } else if (!propsetlog_children.empty()) {
+    force = 1;
+  }
+
+  PropSetLogReap(force);
+
+  return vRet;
+}
+
+#if defined(__linux__)
+static int OpenKmsg() {
+#if defined(__ANDROID__)
+  // pick up 'file w /dev/kmsg' environment from daemon's init rc file
+  const auto val = getenv("ANDROID_FILE__dev_kmsg");
+  if (val != nullptr) {
+    int fd;
+    if (android::base::ParseInt(val, &fd, 0)) {
+      auto flags = fcntl(fd, F_GETFL);
+      if ((flags != -1) && ((flags & O_ACCMODE) == O_WRONLY)) return fd;
+    }
+  }
+#endif
+  return -1;
+}
+#endif
+
+static int _GetSplitFD(int idx)
+{
+  if (idx < 0 || idx >= __MAXLOGFD__)
+    return -1;
+
+  if (!inited[idx]) {
+    klogfd[idx] = TEMP_FAILURE_RETRY(open("/dev/kmsg", O_WRONLY | O_CLOEXEC));
+    inited[idx] = 1;
+  }
+
+  uint64_t nowms = std::chrono::duration_cast<std::chrono::milliseconds>(boot_clock::now().time_since_epoch()).count();
+
+  if (plog_time[idx] == NULL) {
+    log_time[idx] = nowms;
+    plog_time[idx] = &log_time[idx];
+  }
+
+  if (log_printed[idx] >= DEFAULT_RATELIMIT_BURST) {
+    int newfd;
+    newfd = TEMP_FAILURE_RETRY(open("/dev/kmsg", O_WRONLY | O_CLOEXEC));
+
+    if (newfd >= 0) {
+       close(klogfd[idx]);
+       klogfd[idx] = newfd;
+       *plog_time[idx] = nowms;
+       log_printed[idx] = 0;
+    }
+  }
+  if (nowms >= *plog_time[idx] + DEFAULT_RATELIMIT_INTERVALMS) {
+    *plog_time[idx] = nowms;
+    log_printed[idx] = 0;
+  }
+
+  log_printed[idx]++;
+
+  return klogfd[idx];
+}
+
+void PropSetLogReset()
+{
+  log_printed[_SPLIT_OTHER_] = DEFAULT_RATELIMIT_BURST;
+}
+
+#define _TOO_LONG_FIX_ 300
+
+static void _KernelLoggerLine_split_final(int fd, int level,
+                  const char* tag, const char* msg, int length) {
+
+  // The kernel's printk buffer is only 1024 bytes.
+  // TODO: should we automatically break up long lines into multiple lines?
+  // Or we could log but with something like "..." at the end?
+  char buf[1024]  __attribute__((__uninitialized__));
+  size_t size;
+
+  if (gettid() == 1 && while_flag[_SPLIT_OTHER_]) {
+    size = snprintf(buf, sizeof(buf), "<%d>%s %d: [%llu][%llu]%.*s\n", level, tag, fd,
+      (unsigned long long) while_nowms[_SPLIT_OTHER_],
+      (unsigned long long) while_ep_duration[_SPLIT_OTHER_], length, msg);
+    while_log_piggybacked[_SPLIT_OTHER_] = true;
+  } else if (PropServThrGetTid() == gettid() && while_flag[_SPLIT_PROPSET_]) {
+    size = snprintf(buf, sizeof(buf), "<%d>%s %d: [%llu][%llu]%.*s\n", level, tag, fd,
+      (unsigned long long) while_nowms[_SPLIT_PROPSET_],
+      (unsigned long long) while_ep_duration[_SPLIT_PROPSET_], length, msg);
+    while_log_piggybacked[_SPLIT_PROPSET_] = true;
+  } else {
+    size = snprintf(buf, sizeof(buf), "<%d>%s %d: %.*s\n", level, tag, fd, length, msg);
+  }
+
+  if (size > sizeof(buf) && length == -1) {
+    size = snprintf(buf + _TOO_LONG_FIX_, sizeof(buf) - _TOO_LONG_FIX_, "../~/..%.*s\n",
+      _TOO_LONG_FIX_, msg + (strlen(msg) - _TOO_LONG_FIX_)) + _TOO_LONG_FIX_;
+  }
+
+  if (size > sizeof(buf)) {
+    size = snprintf(buf, sizeof(buf), "<%d>%s: %zu-byte message too long for printk\n",
+                    level, tag, size);
+  }
+
+  if (size <= 0)
+    return;
+
+  iovec iov[1];
+  iov[0].iov_base = buf;
+  iov[0].iov_len = size;
+  TEMP_FAILURE_RETRY(writev(fd, iov, 1));
+}
+
+static void _KernelLoggerLine_split_lock(int level,
+                  const char* tag, const char* msg, int length) {
+    _log_lock.lock();
+
+    int fklog_fd = _GetSplitFD(_SPLIT_OTHER_);
+    if (fklog_fd == -1) {
+        _log_lock.unlock();
+        return;
+    }
+
+    _KernelLoggerLine_split_final(fklog_fd, level, tag, msg, length);
+    _log_lock.unlock();
+}
+
+// This splits the message up line by line, by calling log_function with a pointer to the start of
+// each line and the size up to the newline character.  It sends size = -1 for the final line.
+template <typename F, typename... Args>
+static void SplitByLines(const char* msg, const F& log_function, Args&&... args) {
+  const char* newline = strchr(msg, '\n');
+  while (newline != nullptr) {
+    log_function(msg, newline - msg, args...);
+    msg = newline + 1;
+    newline = strchr(msg, '\n');
+  }
+
+  log_function(msg, -1, args...);
+}
+
+static void KernelLoggerLine_split(const char* msg, int length, android::base::LogSeverity severity,
+                          const char* tag) {
+  // clang-format off
+  static constexpr int kLogSeverityToKernelLogLevel[] = {
+      [android::base::VERBOSE] = 7,              // KERN_DEBUG (there is no verbose kernel log
+                                                 //             level)
+      [android::base::DEBUG] = 7,                // KERN_DEBUG
+      [android::base::INFO] = 6,                 // KERN_INFO
+      [android::base::WARNING] = 4,              // KERN_WARNING
+      [android::base::ERROR] = 3,                // KERN_ERROR
+      [android::base::FATAL_WITHOUT_ABORT] = 2,  // KERN_CRIT
+      [android::base::FATAL] = 2,                // KERN_CRIT
+  };
+  // clang-format on
+  static_assert(arraysize(kLogSeverityToKernelLogLevel) == android::base::FATAL + 1,
+                "Mismatch in size of kLogSeverityToKernelLogLevel and values in LogSeverity");
+
+  int fklog_fd;
+
+  if (isPropServThrStart() == 0 || PropServThrGetTid() == gettid()) {
+    if (PropSetHook(msg))
+      return;
+  }
+
+  if (getpid() != 1) {
+    int klog_fd = _GetSplitFD(_SPLIT_OTHER_);
+    if (klog_fd == -1) return;
+    int level = kLogSeverityToKernelLogLevel[severity];
+    _KernelLoggerLine_split_final(klog_fd, level, tag, msg, length);
+  } else if (PropServThrGetTid() == gettid()) {
+    fklog_fd = _GetSplitFD(_SPLIT_PROPSET_);
+
+    if (fklog_fd == -1) return;
+
+    int level = kLogSeverityToKernelLogLevel[severity];
+
+    _KernelLoggerLine_split_final(fklog_fd, level, tag, msg, length);
+  } else {
+    int level = kLogSeverityToKernelLogLevel[severity];
+
+    _KernelLoggerLine_split_lock(level, tag, msg, length);
+  }
+}
+
+void KernelLogger_split(android::base::LogId, android::base::LogSeverity severity, const char* tag,
+                  const char*, unsigned int, const char* full_message) {
+  SplitByLines(full_message, KernelLoggerLine_split, severity, tag);
+}
+#endif // #if defined(__linux__)
+
+void InitKernelLogging_split(char** argv) {
+    if (OpenKmsg() != -1)
+        return InitKernelLogging(argv);
+
+    SetFatalRebootTarget();
+    android::base::InitLogging(argv, KernelLogger_split, InitAborter);
+}
+
+#if 0
+int selinux_klog_split_callback(int type, const char *fmt, ...) {
+    android::base::LogSeverity severity = android::base::ERROR;
+    if (type == SELINUX_WARNING) {
+        severity = android::base::WARNING;
+    } else if (type == SELINUX_INFO) {
+        severity = android::base::INFO;
+    }
+    char buf[1024];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    _KernelLogger_split(android::base::MAIN, severity, "selinux", nullptr, 0, buf);
+    return 0;
+}
+#endif // #if 0
+
+// This function sets up SELinux logging to be written to kmsg, to match init's logging.
+int SelinuxSetupKernelLogging_split_check() {
+    return OpenKmsg();
+}
+
+static int PropServThrStart = 0;
+static pid_t PropServThrTid = 0;
+
+void SetPropServThrStart(int flag) {
+    PropServThrStart = flag;
+}
+
+int isPropServThrStart(void) {
+    return PropServThrStart;
+}
+
+void PropServThrSetTid(pid_t newtid) {
+    PropServThrTid = newtid;
+}
+
+pid_t PropServThrGetTid(void) {
+    return PropServThrTid;
+}
+
+void Setwhiletime(int target, uint64_t duration, uint64_t nowms) {
+
+    if (target != _SPLIT_OTHER_ && target != _SPLIT_PROPSET_)
+        return;
+
+    while_nowms[target] = nowms;
+    while_ep_duration[target] = duration;
+
+    if (!while_flag[target])
+        while_flag[target] = true;
+
+    while_log_piggybacked[target] = false;
+}
+
+bool Getwhilepiggybacketed(int target) {
+    if (target != _SPLIT_OTHER_ && target != _SPLIT_PROPSET_)
+        return true;
+
+    return while_log_piggybacked[target];
+}
+
+uint64_t Getwhileepduration(int target) {
+    if (target != _SPLIT_OTHER_ && target != _SPLIT_PROPSET_)
+        return 0;
+
+    return while_ep_duration[target];
+}
+
+static android::base::Timer _PropertyFlowTraceTimer;
+static std::queue<std::string> _PropertyFlowTraceQueue;
+static bool _isInPropertyFlowTrace = false;
+
+void StartPropertyFlowTraceLog(void) {
+    android::base::Timer t;
+    _PropertyFlowTraceTimer = t;
+
+    while (!_PropertyFlowTraceQueue.empty())
+        _PropertyFlowTraceQueue.pop();
+
+    _isInPropertyFlowTrace = true;
+
+    SnapshotPropertyFlowTraceLog("SPFTL");
+}
+
+void SnapshotPropertyFlowTraceLog(const std::string& log) {
+    std::string s;
+
+    if (!_isInPropertyFlowTrace)
+        return;
+
+    uint64_t nowms = std::chrono::duration_cast<std::chrono::milliseconds>(boot_clock::now().time_since_epoch()).count();
+
+    s.append(log);
+    s.append("[");
+    s.append(StringPrintf("%llu", (unsigned long long) nowms));
+    s.append("] ");
+
+    _PropertyFlowTraceQueue.push(s);
+}
+
+void EndPropertyFlowTraceLog(void) {
+    std::string s;
+    auto duration = _PropertyFlowTraceTimer.duration();
+
+    SnapshotPropertyFlowTraceLog("EPFTL");
+
+    if (_isInPropertyFlowTrace && duration >= 2000ms) {
+        s.append(StringPrintf("PropertyFlow took %llu ms, ", (unsigned long long) duration.count()));
+        while (!_PropertyFlowTraceQueue.empty()) {
+            s.append(_PropertyFlowTraceQueue.front());
+            _PropertyFlowTraceQueue.pop();
+        }
+
+        LOG(INFO) << s;
+    }
+
+    while (!_PropertyFlowTraceQueue.empty())
+        _PropertyFlowTraceQueue.pop();
+
+    _isInPropertyFlowTrace = false;
+}
+
+static int _mtklogdisableratelimit = 0;
+
+void SetMTKLOGDISABLERATELIMIT(void) {
+    _mtklogdisableratelimit = 1;
+}
+
+int GetMTKLOGDISABLERATELIMIT(void) {
+    return _mtklogdisableratelimit;
+}
+#endif
+
+#ifdef MTK_TRACE
+static int marker_fd = -1;
+
+static int OpenTrace(int force) {
+    if (marker_fd != -1 || !force)
+        return marker_fd;
+
+    marker_fd = open("/sys/kernel/debug/tracing/trace_marker", O_WRONLY | O_CLOEXEC);
+    if (marker_fd == -1)
+        marker_fd = open("/sys/kernel/tracing/trace_marker", O_WRONLY | O_CLOEXEC);
+
+    return marker_fd;
+}
+
+void StartWriteTrace(const char* tracemsg, int pid) {
+    int fd = OpenTrace(1);
+    int _pid = pid ? pid : getpid();
+    char msg[256];
+    int ret;
+
+    if (fd != -1) {
+        snprintf(msg, 256, "B|%d|%s", _pid, tracemsg);
+        ret = write(fd, msg, strlen(msg));
+    }
+}
+
+void EndWriteTrace(int pid) {
+    int fd = OpenTrace(0);
+    int _pid = pid ? pid : getpid();
+    char msg[256];
+    int ret;
+
+    if (fd != -1) {
+        snprintf(msg, 256, "E|%d", _pid);
+        ret = write(fd, msg, strlen(msg));
+    }
+}
+#endif
 
 }  // namespace init
 }  // namespace android

@@ -93,6 +93,12 @@ cc_defaults {
         "-DDUMP_ON_UMOUNT_FAILURE=0",
         "-DSHUTDOWN_ZERO_TIMEOUT=0",
         "-DINIT_FULL_SOURCES",
+        "-DMTK_RSC=1",
+        "-DMTK_LOG=1",
+        "-DMTK_TRACE=1",
+        "-DMTK_UMOUNT_RETRY=1",
+        "-DG1122717=1",
+        "-DMTK_PPS_CUT=1",
     ],
     product_variables: {
         debuggable: {
@@ -109,6 +115,8 @@ cc_defaults {
                 "-DWORLD_WRITABLE_KMSG=1",
                 "-UDUMP_ON_UMOUNT_FAILURE",
                 "-DDUMP_ON_UMOUNT_FAILURE=1",
+                "-DMTK_PROP_WDOG=1",
+                "-DMTK_LOG_DISABLERATELIMIT=1"
             ],
         },
         eng: {

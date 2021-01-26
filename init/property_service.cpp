@@ -36,6 +36,10 @@
 #include <unistd.h>
 #include <wchar.h>
 
+#if defined(MTK_LOG) && defined(MTK_PROP_WDOG)
+#include <sys/eventfd.h>
+#endif
+
 #define _REALLY_INCLUDE_SYS__SYSTEM_PROPERTIES_H_
 #include <sys/_system_properties.h>
 
@@ -60,6 +64,10 @@
 #include <selinux/android.h>
 #include <selinux/label.h>
 #include <selinux/selinux.h>
+
+#if defined(MTK_LOG) && defined(MTK_PROP_WDOG)
+#include <backtrace/Backtrace.h>
+#endif
 
 #include "debug_ramdisk.h"
 #include "epoll.h"
@@ -104,6 +112,168 @@ static std::mutex accept_messages_lock;
 static std::thread property_service_thread;
 
 static PropertyInfoAreaFile property_info_area;
+
+#if defined(MTK_LOG) && defined(MTK_PROP_WDOG)
+static std::mutex pending_wd_messages_lock;
+static std::queue<std::string> pending_wd_messages;
+
+static std::thread props_wd_thread;
+
+static int wake_wd_thread_fd = -1;
+static uint64_t wd_wait_time = 0;
+
+enum class WDThreadState {
+    kNotStarted,  // Initial state when starting the program or when restarting with no items to
+                  // process.
+    kWaiting_1,   // The thread is running and is in a state that it will process new items if
+                  // are run.
+};
+
+WDThreadState wd_thread_state_ = WDThreadState::kNotStarted;
+
+static void UnwindPropertythreadStack() {
+    std::unique_ptr<Backtrace> backtrace(Backtrace::Create(BACKTRACE_CURRENT_PROCESS, PropServThrGetTid()));
+    if (!backtrace->Unwind(0)) {
+        LOG(ERROR) << __FUNCTION__ << ": Failed to unwind callstack.";
+    }
+
+    LOG(ERROR) << "Dump Stack of Property Thread TID " << PropServThrGetTid();
+    for (size_t i = 0; i < backtrace->NumFrames(); i++) {
+        LOG(ERROR) << backtrace->FormatFrameData(i);
+    }
+}
+
+static void UnwindPropertythreadKernelStack() {
+    std::string stack;
+
+    android::base::ReadFileToString(StringPrintf("/proc/%d/stack", PropServThrGetTid()), &stack);
+
+    LOG(ERROR) << "Dump Kernel Stack of Property Thread TID " << PropServThrGetTid();
+    LOG(ERROR) << stack;
+}
+
+static void DebugPropertyThreadLogging() {
+    UnwindPropertythreadKernelStack();
+    UnwindPropertythreadStack();
+}
+
+static void DropWDSocket() {
+    uint64_t counter;
+    TEMP_FAILURE_RETRY(read(wake_wd_thread_fd, &counter, sizeof(counter)));
+}
+
+static void HandleWDSocket() {
+    auto lock = std::unique_lock{pending_wd_messages_lock};
+
+    uint64_t nowms = std::chrono::duration_cast<std::chrono::milliseconds>(boot_clock::now().time_since_epoch()).count();
+
+    while (!pending_wd_messages.empty()) {
+        auto wd_message = pending_wd_messages.front();
+        pending_wd_messages.pop();
+
+        switch (wd_thread_state_) {
+            case WDThreadState::kNotStarted:
+                if (wd_message == "start") {
+                    wd_thread_state_ = WDThreadState::kWaiting_1;
+                    wd_wait_time = nowms + 500;
+                }
+                break;
+            case WDThreadState::kWaiting_1:
+                if (wd_message == "end") {
+                    wd_thread_state_ = WDThreadState::kNotStarted;
+                    wd_wait_time = 0;
+                }
+                break;
+            default:
+                break;
+        }
+    }
+}
+
+static void HandleWDSocket_wrap() {
+    DropWDSocket();
+    HandleWDSocket();
+}
+
+static void CheckWDTimeout(uint64_t nowms) {
+    auto lock = std::unique_lock{pending_wd_messages_lock};
+    bool dump_stack = false;
+
+    switch (wd_thread_state_) {
+        case WDThreadState::kWaiting_1:
+            if (nowms >= wd_wait_time) {
+                dump_stack = true;
+                wd_wait_time = nowms + 500;
+            }
+            break;
+        default:
+            break;
+    }
+
+    if (dump_stack) {
+        lock.unlock();
+        DebugPropertyThreadLogging();
+        lock.lock();
+    }
+}
+
+static void InstallWDNotifier(Epoll* epoll) {
+    wake_wd_thread_fd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
+    if (wake_wd_thread_fd == -1) {
+        PLOG(FATAL) << "Failed to create eventfd for waking property watchdog.";
+    }
+
+    if (auto result = epoll->RegisterHandler(wake_wd_thread_fd, HandleWDSocket_wrap); !result.ok()) {
+        LOG(FATAL) << result.error();
+    }
+}
+
+static void WakePROPWDThread() {
+    uint64_t counter = 1;
+    TEMP_FAILURE_RETRY(write(wake_wd_thread_fd, &counter, sizeof(counter)));
+}
+
+static void QueuePropWDMessage(const std::string& msg) {
+    auto lock = std::lock_guard{pending_wd_messages_lock};
+
+    pending_wd_messages.push(msg);
+    WakePROPWDThread();
+}
+
+static void PropWDThread() {
+    Epoll epoll;
+    if (auto result = epoll.Open(); !result.ok()) {
+        LOG(FATAL) << result.error();
+    }
+
+    InstallWDNotifier(&epoll);
+
+    while (true) {
+        auto epoll_timeout = std::optional<std::chrono::milliseconds>{};
+
+        uint64_t nowms = std::chrono::duration_cast<std::chrono::milliseconds>(boot_clock::now().time_since_epoch()).count();
+
+        CheckWDTimeout(nowms);
+
+        if (wd_wait_time) {
+            epoll_timeout = 0ms;
+
+            if (nowms < wd_wait_time)
+                epoll_timeout = std::chrono::milliseconds(wd_wait_time - nowms);
+        }
+
+        auto pending_functions = epoll.Wait(epoll_timeout);
+
+        if (!pending_functions.ok()) {
+            LOG(ERROR) << pending_functions.error();
+        } else {
+            for (const auto& function : *pending_functions) {
+                (*function)();
+            }
+        }
+    }
+}
+#endif
 
 struct PropertyAuditData {
     const ucred* cr;
@@ -165,6 +335,65 @@ static bool CheckMacPerms(const std::string& name, const char* target_context,
     return has_access;
 }
 
+#ifdef MTK_LOG
+static void PropSetMask(const std::string& name, std::string& value)
+{
+    if (android::base::StartsWith(name, "vendor.ril.iccid.sim")) {
+        if (value.length() > 9) {
+            value.replace(9, value.length() - 9, value.length() - 9, '*');
+        }
+    }
+}
+
+static int PropSetFilter(const std::string& name)
+{
+#if 0
+    if ((android::base::StartsWith(name, "ro.") &&
+         !android::base::StartsWith(name, "ro.boottime."))
+#else
+    if (0
+#endif
+        || android::base::StartsWith(name, "persist.log.tag")
+        || android::base::StartsWith(name, "cache_key.")
+        // || android::base::StartsWith(name, "ro.")
+        // || android::base::StartsWith(name, "vold.encrypt_")
+        // || android::base::StartsWith(name, "vendor.debug.mtk.aee")
+        // || android::base::StartsWith(name, "init.svc.")
+       )
+    {
+        return 1;
+    }
+
+    return 0;
+}
+
+static void PropSetLog(const std::string& name, const std::string& value, std::string* error)
+{
+    if (PropSetFilter(name))
+        return;
+
+    std::string new_value(value.c_str());
+    std::size_t found = new_value.find_first_of("\n");
+    while (found!=std::string::npos)
+    {
+        new_value[found]=' ';
+        found = new_value.find_first_of("\n", found + 1);
+    }
+
+    PropSetMask(name, new_value);
+
+    std::string s;
+
+    s.append("PropSet [");
+    s.append(name);
+    s.append("]=[");
+    s.append(new_value);
+    s.append("]");
+
+    LOG(INFO) << s;
+}
+#endif
+
 static uint32_t PropertySet(const std::string& name, const std::string& value, std::string* error) {
     size_t valuelen = value.size();
 
@@ -177,7 +406,9 @@ static uint32_t PropertySet(const std::string& name, const std::string& value, s
         *error = result.error().message();
         return PROP_ERROR_INVALID_VALUE;
     }
-
+#ifdef MTK_LOG
+    SnapshotPropertyFlowTraceLog("_spf");
+#endif
     prop_info* pi = (prop_info*) __system_property_find(name.c_str());
     if (pi != nullptr) {
         // ro.* properties are actually "write-once".
@@ -186,8 +417,14 @@ static uint32_t PropertySet(const std::string& name, const std::string& value, s
             return PROP_ERROR_READ_ONLY_PROPERTY;
         }
 
+#ifdef MTK_LOG
+        SnapshotPropertyFlowTraceLog("_spu");
+#endif
         __system_property_update(pi, value.c_str(), valuelen);
     } else {
+#ifdef MTK_LOG
+        SnapshotPropertyFlowTraceLog("_spa");
+#endif
         int rc = __system_property_add(name.c_str(), name.size(), value.c_str(), valuelen);
         if (rc < 0) {
             *error = "__system_property_add failed";
@@ -204,8 +441,17 @@ static uint32_t PropertySet(const std::string& name, const std::string& value, s
     // anyway, so there's no need to try to send them.
     auto lock = std::lock_guard{accept_messages_lock};
     if (accept_messages) {
+#ifdef MTK_LOG
+        SnapshotPropertyFlowTraceLog("SPC");
+#endif
         PropertyChanged(name, value);
     }
+
+#ifdef MTK_LOG
+    if (GetMTKLOGDISABLERATELIMIT()) // MTK add log
+        PropSetLog(name, value, error);
+#endif
+
     return PROP_SUCCESS;
 }
 
@@ -473,6 +719,9 @@ uint32_t CheckPermissions(const std::string& name, const std::string& value,
 uint32_t HandlePropertySet(const std::string& name, const std::string& value,
                            const std::string& source_context, const ucred& cr,
                            SocketConnection* socket, std::string* error) {
+#ifdef MTK_LOG
+    SnapshotPropertyFlowTraceLog("CPs " + name);
+#endif
     if (auto ret = CheckPermissions(name, value, source_context, cr, error); ret != PROP_SUCCESS) {
         return ret;
     }
@@ -519,6 +768,9 @@ uint32_t HandlePropertySet(const std::string& name, const std::string& value,
 static void handle_property_set_fd() {
     static constexpr uint32_t kDefaultSocketTimeout = 2000; /* ms */
 
+#ifdef MTK_LOG
+    SnapshotPropertyFlowTraceLog("accept4");
+#endif
     int s = accept4(property_set_fd, nullptr, nullptr, SOCK_CLOEXEC);
     if (s == -1) {
         return;
@@ -607,7 +859,21 @@ static void handle_property_set_fd() {
         socket.SendUint32(PROP_ERROR_INVALID_CMD);
         break;
     }
+
+#ifdef MTK_LOG
+    SnapshotPropertyFlowTraceLog("hpsfE");
+#endif
 }
+
+#if defined(MTK_LOG) && defined(MTK_PROP_WDOG)
+static void handle_property_set_fd_wrap() {
+    QueuePropWDMessage("start");
+
+    handle_property_set_fd();
+
+    QueuePropWDMessage("end");
+}
+#endif
 
 uint32_t InitPropertySet(const std::string& name, const std::string& value) {
     uint32_t result = 0;
@@ -787,6 +1053,48 @@ static void load_override_properties() {
     }
 }
 
+#ifdef MTK_RSC
+static void LoadRscRoProps() {
+    const std::string rscname_org = android::base::GetProperty("ro.boot.rsc", "");
+    const std::string rscname_ago = android::base::GetProperty("ro.boot.rsc.ago", "");
+    const std::string rscname = rscname_org == "" ? rscname_ago : rscname_org;
+    const std::string rscpath = rscname == "" ? "" : "etc/rsc/"+rscname+"/";
+    std::map<std::string, std::string> properties;
+    load_properties_from_file(
+        std::string("/system/" + rscpath + "ro.prop").c_str(), nullptr, &properties);
+    load_properties_from_file(
+        std::string("/vendor/" + rscpath + "ro.prop").c_str(), nullptr, &properties);
+
+    for (const auto& [name, value] : properties) {
+        std::string error;
+        if (PropertySet(name, value, &error) != PROP_SUCCESS) {
+            LOG(ERROR) << "Could not set '" << name << "' to '" << value
+                       << "' while loading RSC ro.prop files" << error;
+        }
+    }
+}
+
+static void LoadRscRwProps() {
+    const std::string rscname_org = android::base::GetProperty("ro.boot.rsc", "");
+    const std::string rscname_ago = android::base::GetProperty("ro.boot.rsc.ago", "");
+    const std::string rscname = rscname_org == "" ? rscname_ago : rscname_org;
+    const std::string rscpath = rscname == "" ? "" : "etc/rsc/"+rscname+"/";
+    std::map<std::string, std::string> properties;
+    load_properties_from_file(
+        std::string("/system/" + rscpath + "rw.prop").c_str(), nullptr, &properties);
+    load_properties_from_file(
+        std::string("/vendor/" + rscpath + "rw.prop").c_str(), nullptr, &properties);
+
+    for (const auto& [name, value] : properties) {
+        std::string error;
+        if (PropertySet(name, value, &error) != PROP_SUCCESS) {
+            LOG(ERROR) << "Could not set '" << name << "' to '" << value
+                       << "' while loading RSC rw.prop files" << error;
+        }
+    }
+}
+#endif
+
 // If the ro.product.[brand|device|manufacturer|model|name] properties have not been explicitly
 // set, derive them from ro.product.${partition}.* properties
 static void property_initialize_ro_product_props() {
@@ -957,6 +1265,9 @@ void PropertyLoadBootDefaults() {
     // We read the properties and their values into a map, in order to always allow properties
     // loaded in the later property files to override the properties in loaded in the earlier
     // property files, regardless of if they are "ro." properties or not.
+#ifdef MTK_RSC
+    LoadRscRoProps();
+#endif
     std::map<std::string, std::string> properties;
 
     if (IsRecoveryMode()) {
@@ -1222,6 +1533,9 @@ static void HandleInitSocket() {
     switch (init_message.msg_case()) {
         case InitMessage::kLoadPersistentProperties: {
             load_override_properties();
+#ifdef MTK_RSC
+            LoadRscRwProps();
+#endif
             // Read persistent properties after all default values have been loaded.
             auto persistent_properties = LoadPersistentProperties();
             for (const auto& persistent_property_record : persistent_properties.properties()) {
@@ -1237,13 +1551,27 @@ static void HandleInitSocket() {
     }
 }
 
+#ifdef MTK_LOG
+static int _LogReap() {
+    int log_ms = -1;
+
+    log_ms = PropSetLogReap(0);
+
+    return log_ms;
+}
+#endif
+
 static void PropertyServiceThread() {
     Epoll epoll;
     if (auto result = epoll.Open(); !result.ok()) {
         LOG(FATAL) << result.error();
     }
 
+#if defined(MTK_LOG) && defined(MTK_PROP_WDOG)
+    if (auto result = epoll.RegisterHandler(property_set_fd, handle_property_set_fd_wrap);
+#else
     if (auto result = epoll.RegisterHandler(property_set_fd, handle_property_set_fd);
+#endif
         !result.ok()) {
         LOG(FATAL) << result.error();
     }
@@ -1252,13 +1580,62 @@ static void PropertyServiceThread() {
         LOG(FATAL) << result.error();
     }
 
+#ifdef MTK_LOG
+    PropServThrSetTid(gettid());
+    LOG(INFO) << "PropertyServiceThread start pid:" << getpid() << ", tid:" << gettid();
+#endif
+
     while (true) {
+
+#ifdef MTK_LOG
+        auto epoll_timeout = std::optional<std::chrono::milliseconds>{};
+
+        if (GetMTKLOGDISABLERATELIMIT()) {
+            int log_ms = _LogReap();//PropSetLogReap();
+
+            if (!Getwhilepiggybacketed(0) && Getwhileepduration(0) > 1999) {
+                if (log_ms == -1) {
+                    std::string s;
+
+                    s.append("Lastest epoll wait tooks ");
+                    s.append(StringPrintf("%llu", (unsigned long long) Getwhileepduration(0)));
+                    s.append("ms");
+
+                    LOG(INFO) << s;
+                } else {
+                    PropSetLogReap(1);
+                    log_ms = _LogReap();
+                }
+            }
+
+            if (log_ms > -1)
+                epoll_timeout = std::chrono::milliseconds(log_ms);
+        }
+
+        android::base::Timer t;
+
+        auto pending_functions = epoll.Wait(epoll_timeout);
+
+        if (GetMTKLOGDISABLERATELIMIT()) {
+            uint64_t duration = t.duration().count();
+            uint64_t nowms = std::chrono::duration_cast<std::chrono::milliseconds>(boot_clock::now().time_since_epoch()).count();
+
+            Setwhiletime(0, duration, nowms);
+        }
+#else
         auto pending_functions = epoll.Wait(std::nullopt);
+#endif
         if (!pending_functions.ok()) {
             LOG(ERROR) << pending_functions.error();
         } else {
             for (const auto& function : *pending_functions) {
+#ifndef MTK_LOG
                 (*function)();
+#else
+                StartPropertyFlowTraceLog();
+                (*function)();
+                EndPropertyFlowTraceLog();
+#endif
             }
         }
     }
@@ -1284,6 +1661,15 @@ void StartPropertyService(int* epoll_socket) {
     }
 
     listen(property_set_fd, 8);
+
+#ifdef MTK_LOG
+    SetPropServThrStart(1);
+
+#ifdef MTK_PROP_WDOG
+    auto new_wd_thread = std::thread{PropWDThread};
+    props_wd_thread.swap(new_wd_thread);
+#endif
+#endif
 
     auto new_thread = std::thread{PropertyServiceThread};
     property_service_thread.swap(new_thread);
