@@ -52,7 +52,7 @@
       "File": "cpu.uclamp.latency_sensitive"
     },
     {
-      "Name": "Freezer",
+      "Name": "FreezerState",
       "Controller": "freezer",
       "File": "cgroup.freeze"
     }
@@ -76,11 +76,11 @@
       "Name": "Frozen",
       "Actions": [
         {
-          "Name": "SetAttribute",
+          "Name": "JoinCgroup",
           "Params":
           {
-            "Name": "Freezer",
-            "Value": "1"
+            "Controller": "freezer",
+            "Path": ""
           }
         }
       ]
@@ -89,11 +89,11 @@
       "Name": "Unfrozen",
       "Actions": [
         {
-          "Name": "SetAttribute",
+          "Name": "JoinCgroup",
           "Params":
           {
-            "Name": "Freezer",
-            "Value": "0"
+            "Controller": "freezer",
+            "Path": "../"
           }
         }
       ]

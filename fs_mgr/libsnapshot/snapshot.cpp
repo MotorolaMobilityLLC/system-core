@@ -676,6 +676,8 @@ bool SnapshotManager::InitiateMerge(uint64_t* cow_file_size) {
         }
     }
 
+    bool compression_enabled = false;
+
     uint64_t total_cow_file_size = 0;
     DmTargetSnapshot::Status initial_target_values = {};
     for (const auto& snapshot : snapshots) {
@@ -692,6 +694,8 @@ bool SnapshotManager::InitiateMerge(uint64_t* cow_file_size) {
             return false;
         }
         total_cow_file_size += snapshot_status.cow_file_size();
+
+        compression_enabled |= snapshot_status.compression_enabled();
     }
 
     if (cow_file_size) {
@@ -703,6 +707,7 @@ bool SnapshotManager::InitiateMerge(uint64_t* cow_file_size) {
     initial_status.set_sectors_allocated(initial_target_values.sectors_allocated);
     initial_status.set_total_sectors(initial_target_values.total_sectors);
     initial_status.set_metadata_sectors(initial_target_values.metadata_sectors);
+    initial_status.set_compression_enabled(compression_enabled);
 
     // Point of no return - mark that we're starting a merge. From now on every
     // snapshot must be a merge target.
@@ -1247,6 +1252,10 @@ bool SnapshotManager::CollapseSnapshotDevice(const std::string& name,
         return false;
     }
 
+    if (status.compression_enabled()) {
+        UnmapDmUserDevice(name);
+    }
+
     // Cleanup the base device as well, since it is no longer used. This does
     // not block cleanup.
     auto base_name = GetBaseDeviceName(name);
@@ -1291,12 +1300,13 @@ bool SnapshotManager::HandleCancelledUpdate(LockedFile* lock,
     return RemoveAllUpdateState(lock, before_cancel);
 }
 
-bool SnapshotManager::PerformSecondStageTransition() {
-    LOG(INFO) << "Performing second-stage transition for snapuserd.";
+bool SnapshotManager::PerformInitTransition(InitTransition transition,
+                                            std::vector<std::string>* snapuserd_argv) {
+    LOG(INFO) << "Performing transition for snapuserd.";
 
     // Don't use EnsuerSnapuserdConnected() because this is called from init,
     // and attempting to do so will deadlock.
-    if (!snapuserd_client_) {
+    if (!snapuserd_client_ && transition != InitTransition::SELINUX_DETACH) {
         snapuserd_client_ = SnapuserdClient::Connect(kSnapuserdSocket, 10s);
         if (!snapuserd_client_) {
             LOG(ERROR) << "Unable to connect to snapuserd";
@@ -1343,6 +1353,9 @@ bool SnapshotManager::PerformSecondStageTransition() {
         }
 
         auto misc_name = user_cow_name;
+        if (transition == InitTransition::SELINUX_DETACH) {
+            misc_name += "-selinux";
+        }
 
         DmTable table;
         table.Emplace<DmTargetUser>(0, target.spec.length, misc_name);
@@ -1378,6 +1391,17 @@ bool SnapshotManager::PerformSecondStageTransition() {
             continue;
         }
 
+        if (transition == InitTransition::SELINUX_DETACH) {
+            auto message = misc_name + "," + cow_image_device + "," + backing_device;
+            snapuserd_argv->emplace_back(std::move(message));
+
+            // Do not attempt to connect to the new snapuserd yet, it hasn't
+            // been started. We do however want to wait for the misc device
+            // to have been created.
+            ok_cows++;
+            continue;
+        }
+
         uint64_t base_sectors =
                 snapuserd_client_->InitDmUserCow(misc_name, cow_image_device, backing_device);
         if (base_sectors == 0) {
@@ -1386,7 +1410,7 @@ bool SnapshotManager::PerformSecondStageTransition() {
             return false;
         }
 
-        CHECK(base_sectors == target.spec.length);
+        CHECK(base_sectors <= target.spec.length);
 
         if (!snapuserd_client_->AttachDmUser(misc_name)) {
             // This error is unrecoverable. We cannot proceed because reads to
@@ -2048,27 +2072,8 @@ bool SnapshotManager::UnmapCowDevices(LockedFile* lock, const std::string& name)
 
     auto& dm = DeviceMapper::Instance();
 
-    auto dm_user_name = GetDmUserCowName(name);
-    if (IsCompressionEnabled() && dm.GetState(dm_user_name) != DmDeviceState::INVALID) {
-        if (!EnsureSnapuserdConnected()) {
-            return false;
-        }
-        if (!dm.DeleteDeviceIfExists(dm_user_name)) {
-            LOG(ERROR) << "Cannot unmap " << dm_user_name;
-            return false;
-        }
-
-        if (!snapuserd_client_->WaitForDeviceDelete(dm_user_name)) {
-            LOG(ERROR) << "Failed to wait for " << dm_user_name << " control device to delete";
-            return false;
-        }
-
-        // Ensure the control device is gone so we don't run into ABA problems.
-        auto control_device = "/dev/dm-user/" + dm_user_name;
-        if (!android::fs_mgr::WaitForFileDeleted(control_device, 10s)) {
-            LOG(ERROR) << "Timed out waiting for " << control_device << " to unlink";
-            return false;
-        }
+    if (IsCompressionEnabled() && !UnmapDmUserDevice(name)) {
+        return false;
     }
 
     auto cow_name = GetCowName(name);
@@ -2080,6 +2085,37 @@ bool SnapshotManager::UnmapCowDevices(LockedFile* lock, const std::string& name)
     std::string cow_image_name = GetCowImageDeviceName(name);
     if (!images_->UnmapImageIfExists(cow_image_name)) {
         LOG(ERROR) << "Cannot unmap image " << cow_image_name;
+        return false;
+    }
+    return true;
+}
+
+bool SnapshotManager::UnmapDmUserDevice(const std::string& snapshot_name) {
+    auto& dm = DeviceMapper::Instance();
+
+    if (!EnsureSnapuserdConnected()) {
+        return false;
+    }
+
+    auto dm_user_name = GetDmUserCowName(snapshot_name);
+    if (dm.GetState(dm_user_name) == DmDeviceState::INVALID) {
+        return true;
+    }
+
+    if (!dm.DeleteDeviceIfExists(dm_user_name)) {
+        LOG(ERROR) << "Cannot unmap " << dm_user_name;
+        return false;
+    }
+
+    if (!snapuserd_client_->WaitForDeviceDelete(dm_user_name)) {
+        LOG(ERROR) << "Failed to wait for " << dm_user_name << " control device to delete";
+        return false;
+    }
+
+    // Ensure the control device is gone so we don't run into ABA problems.
+    auto control_device = "/dev/dm-user/" + dm_user_name;
+    if (!android::fs_mgr::WaitForFileDeleted(control_device, 10s)) {
+        LOG(ERROR) << "Timed out waiting for " << control_device << " to unlink";
         return false;
     }
     return true;
@@ -2254,9 +2290,15 @@ SnapshotUpdateStatus SnapshotManager::ReadSnapshotUpdateStatus(LockedFile* lock)
 }
 
 bool SnapshotManager::WriteUpdateState(LockedFile* lock, UpdateState state) {
-    SnapshotUpdateStatus status = {};
+    SnapshotUpdateStatus status;
     status.set_state(state);
-    status.set_compression_enabled(IsCompressionEnabled());
+
+    // If we're transitioning between two valid states (eg, we're not beginning
+    // or ending an OTA), then make sure to propagate the compression bit.
+    if (!(state == UpdateState::Initiated || state == UpdateState::None)) {
+        SnapshotUpdateStatus old_status = ReadSnapshotUpdateStatus(lock);
+        status.set_compression_enabled(old_status.compression_enabled());
+    }
     return WriteSnapshotUpdateStatus(lock, status);
 }
 
@@ -2446,6 +2488,12 @@ Return SnapshotManager::CreateUpdateSnapshots(const DeltaArchiveManifest& manife
     auto lock = LockExclusive();
     if (!lock) return Return::Error();
 
+    auto update_state = ReadUpdateState(lock.get());
+    if (update_state != UpdateState::Initiated) {
+        LOG(ERROR) << "Cannot create update snapshots in state " << update_state;
+        return Return::Error();
+    }
+
     // TODO(b/134949511): remove this check. Right now, with overlayfs mounted, the scratch
     // partition takes up a big chunk of space in super, causing COW images to be created on
     // retrofit Virtual A/B devices.
@@ -2537,6 +2585,14 @@ Return SnapshotManager::CreateUpdateSnapshots(const DeltaArchiveManifest& manife
     if (!UpdatePartitionTable(opener, device_->GetSuperDevice(target_slot),
                               *exported_target_metadata, target_slot)) {
         LOG(ERROR) << "Cannot write target metadata";
+        return Return::Error();
+    }
+
+    SnapshotUpdateStatus status = {};
+    status.set_state(update_state);
+    status.set_compression_enabled(cow_creator.compression_enabled);
+    if (!WriteSnapshotUpdateStatus(lock.get(), status)) {
+        LOG(ERROR) << "Unable to write new update state";
         return Return::Error();
     }
 
@@ -3309,6 +3365,14 @@ bool SnapshotManager::IsSnapuserdRequired() {
 
     auto status = ReadSnapshotUpdateStatus(lock.get());
     return status.state() != UpdateState::None && status.compression_enabled();
+}
+
+bool SnapshotManager::DetachSnapuserdForSelinux(std::vector<std::string>* snapuserd_argv) {
+    return PerformInitTransition(InitTransition::SELINUX_DETACH, snapuserd_argv);
+}
+
+bool SnapshotManager::PerformSecondStageInitTransition() {
+    return PerformInitTransition(InitTransition::SECOND_STAGE);
 }
 
 }  // namespace snapshot

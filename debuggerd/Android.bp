@@ -224,9 +224,6 @@ cc_library_static {
         debuggable: {
             cflags: ["-DROOT_POSSIBLE"],
         },
-        experimental_mte: {
-            cflags: ["-DANDROID_EXPERIMENTAL_MTE"],
-        },
     },
 }
 
@@ -296,12 +293,6 @@ cc_test {
     },
 
     test_suites: ["device-tests"],
-
-    product_variables: {
-        experimental_mte: {
-            cflags: ["-DANDROID_EXPERIMENTAL_MTE"],
-        },
-    },
 }
 
 cc_benchmark {
@@ -352,12 +343,6 @@ cc_binary {
     apex_available: [
         "com.android.runtime",
     ],
-
-    product_variables: {
-        experimental_mte: {
-            cflags: ["-DANDROID_EXPERIMENTAL_MTE"],
-        },
-    },
 }
 
 cc_binary {
