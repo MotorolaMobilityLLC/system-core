@@ -586,6 +586,43 @@ void SelinuxSetupKernelLogging() {
     selinux_set_callback(SELINUX_CB_LOG, cb);
 }
 
+#ifdef MTK_LOG
+static int SelinuxKlogCallback_split(int type, const char* fmt, ...) {
+    android::base::LogSeverity severity = android::base::ERROR;
+    if (type == SELINUX_WARNING) {
+        severity = android::base::WARNING;
+    } else if (type == SELINUX_INFO) {
+        severity = android::base::INFO;
+    }
+    char buf[kKlogMessageSize];
+    va_list ap;
+    va_start(ap, fmt);
+    int length_written = vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    if (length_written <= 0) {
+        return 0;
+    }
+    if (type == SELINUX_AVC) {
+        SelinuxAvcLog(buf, sizeof(buf));
+    } else {
+        if (buf[length_written - 1] == '\n')
+           buf[length_written - 1] = 0;
+        KernelLogger_split(android::base::MAIN, severity, "selinux", nullptr, 0, buf);
+    }
+    return 0;
+}
+
+// This function sets up SELinux logging to be written to kmsg, to match init's logging.
+void SelinuxSetupKernelLogging_split() {
+    if (SelinuxSetupKernelLogging_split_check() >= 0)
+        return SelinuxSetupKernelLogging();
+
+    selinux_callback cb;
+    cb.func_log = SelinuxKlogCallback_split;
+    selinux_set_callback(SELINUX_CB_LOG, cb);
+}
+#endif
+
 int SelinuxGetVendorAndroidVersion() {
     static int vendor_android_version = [] {
         if (!IsSplitPolicyDevice()) {
@@ -705,7 +742,25 @@ static void LoadSelinuxPolicy(std::string& policy) {
 // After this sequence, it is safe to enable enforcing mode and continue booting.
 int SetupSelinux(char** argv) {
     SetStdioToDevNull(argv);
+#ifdef MTK_LOG
+#ifndef MTK_LOG_DISABLERATELIMIT
+    {
+        std::string cmdline;
+        android::base::ReadFileToString("/proc/cmdline", &cmdline);
+
+        if (cmdline.find("init.mtklogdebuggable=1") != std::string::npos)
+            SetMTKLOGDISABLERATELIMIT();
+    }
+#else
+    SetMTKLOGDISABLERATELIMIT();
+#endif // MTK_LOG_DISABLERATELIMIT
+    if (GetMTKLOGDISABLERATELIMIT())
+        InitKernelLogging_split(argv);
+    else
+        InitKernelLogging(argv);
+#else
     InitKernelLogging(argv);
+#endif
 
     if (REBOOT_BOOTLOADER_ON_PANIC) {
         InstallRebootSignalHandlers();
@@ -715,7 +770,14 @@ int SetupSelinux(char** argv) {
 
     MountMissingSystemPartitions();
 
+#ifdef MTK_LOG
+    if (GetMTKLOGDISABLERATELIMIT())
+        SelinuxSetupKernelLogging_split();
+    else
+        SelinuxSetupKernelLogging();
+#else
     SelinuxSetupKernelLogging();
+#endif
 
     LOG(INFO) << "Opening SELinux policy";
 

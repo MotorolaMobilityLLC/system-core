@@ -254,7 +254,21 @@ int FirstStageMain(int argc, char** argv) {
     SetStdioToDevNull(argv);
     // Now that tmpfs is mounted on /dev and we have /dev/kmsg, we can actually
     // talk to the outside world...
+#ifdef MTK_LOG
+#ifndef MTK_LOG_DISABLERATELIMIT
+    if (cmdline.find("init.mtklogdrl=1") != std::string::npos)
+        SetMTKLOGDISABLERATELIMIT();
+#else
+    SetMTKLOGDISABLERATELIMIT();
+#endif // MTK_LOG_DISABLERATELIMIT
+
+    if (GetMTKLOGDISABLERATELIMIT())
+        InitKernelLogging_split(argv);
+    else
+        InitKernelLogging(argv);
+#else
     InitKernelLogging(argv);
+#endif
 
     if (!errors.empty()) {
         for (const auto& [error_string, error_errno] : errors) {
@@ -278,6 +292,11 @@ int FirstStageMain(int argc, char** argv) {
 
     auto want_console = ALLOW_FIRST_STAGE_CONSOLE ? FirstStageConsole(cmdline) : 0;
 
+#ifdef MTK_LOG
+    android::base::Timer t;
+    LOG(INFO) << "LoadKernelModules starting!";
+#endif
+
     if (!LoadKernelModules(IsRecoveryMode() && !ForceNormalBoot(cmdline), want_console)) {
         if (want_console != FirstStageConsoleParam::DISABLED) {
             LOG(ERROR) << "Failed to load kernel modules, starting console";
@@ -285,6 +304,10 @@ int FirstStageMain(int argc, char** argv) {
             LOG(FATAL) << "Failed to load kernel modules";
         }
     }
+
+#ifdef MTK_LOG
+    LOG(INFO) << "LoadKernelModules exited! It took " << t.duration().count() << "ms.";
+#endif
 
     if (want_console == FirstStageConsoleParam::CONSOLE_ON_FAILURE) {
         StartConsole(cmdline);
@@ -324,6 +347,9 @@ int FirstStageMain(int argc, char** argv) {
         } else {
             // setenv for second-stage init to read above kDebugRamdisk* files.
             setenv("INIT_FORCE_DEBUGGABLE", "true", 1);
+#ifdef MTK_LOG
+            LOG(INFO) << "setenv (INIT_FORCE_DEBUGGABLE,true) for second-stage init to read above kDebugRamdisk* files";
+#endif
         }
     }
 

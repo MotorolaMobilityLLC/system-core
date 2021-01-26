@@ -172,6 +172,9 @@ Result<PersistentProperties> LoadPersistentPropertyFile() {
 
 Result<void> WritePersistentPropertyFile(const PersistentProperties& persistent_properties) {
     const std::string temp_filename = persistent_property_filename + ".tmp";
+#ifdef MTK_LOG
+    SnapshotPropertyFlowTraceLog("WPPFo");
+#endif
     unique_fd fd(TEMP_FAILURE_RETRY(
         open(temp_filename.c_str(), O_WRONLY | O_CREAT | O_NOFOLLOW | O_TRUNC | O_CLOEXEC, 0600)));
     if (fd == -1) {
@@ -181,12 +184,24 @@ Result<void> WritePersistentPropertyFile(const PersistentProperties& persistent_
     if (!persistent_properties.SerializeToString(&serialized_string)) {
         return Error() << "Unable to serialize properties";
     }
+#ifdef MTK_LOG
+    SnapshotPropertyFlowTraceLog("WPPFWSTF");
+#endif
     if (!WriteStringToFd(serialized_string, fd)) {
         return ErrnoError() << "Unable to write file contents";
     }
+#ifdef MTK_LOG
+    SnapshotPropertyFlowTraceLog("WPPFf");
+#endif
     fsync(fd);
+#ifdef MTK_LOG
+    SnapshotPropertyFlowTraceLog("WPPFfr");
+#endif
     fd.reset();
 
+#ifdef MTK_LOG
+    SnapshotPropertyFlowTraceLog("WPPFrn");
+#endif
     if (rename(temp_filename.c_str(), persistent_property_filename.c_str())) {
         int saved_errno = errno;
         unlink(temp_filename.c_str());
@@ -198,10 +213,16 @@ Result<void> WritePersistentPropertyFile(const PersistentProperties& persistent_
     // Note in this case, that the source and destination directories are the same, so only one
     // fsync() is required.
     auto dir = Dirname(persistent_property_filename);
+#ifdef MTK_LOG
+    SnapshotPropertyFlowTraceLog("WPPFod");
+#endif
     auto dir_fd = unique_fd{open(dir.c_str(), O_DIRECTORY | O_RDONLY | O_CLOEXEC)};
     if (dir_fd < 0) {
         return ErrnoError() << "Unable to open persistent properties directory for fsync()";
     }
+#ifdef MTK_LOG
+    SnapshotPropertyFlowTraceLog("WPPFfd");
+#endif
     fsync(dir_fd);
 
     return {};
@@ -210,6 +231,9 @@ Result<void> WritePersistentPropertyFile(const PersistentProperties& persistent_
 // Persistent properties are not written often, so we rather not keep any data in memory and read
 // then rewrite the persistent property file for each update.
 void WritePersistentProperty(const std::string& name, const std::string& value) {
+#ifdef MTK_LOG
+    SnapshotPropertyFlowTraceLog("WPPLPPF");
+#endif
     auto persistent_properties = LoadPersistentPropertyFile();
 
     if (!persistent_properties.ok()) {
@@ -221,6 +245,12 @@ void WritePersistentProperty(const std::string& name, const std::string& value) 
                            persistent_properties->mutable_properties()->end(),
                            [&name](const auto& record) { return record.name() == name; });
     if (it != persistent_properties->mutable_properties()->end()) {
+#ifdef MTK_PPS_CUT
+        if (it->has_value() && it->value() == value) {
+            //LOG(INFO) << "WritePersistentProperty shortcut " << name << "=" << value;
+            return;
+        }
+#endif
         it->set_name(name);
         it->set_value(value);
     } else {

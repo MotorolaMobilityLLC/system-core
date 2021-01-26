@@ -198,6 +198,21 @@ static class PropWaiterState {
         return static_cast<bool>(waiting_for_prop_);
     }
 
+#ifdef MTK_LOG
+    bool MightBeWaiting(uint64_t& Count, std::string& name, std::string& value) {
+        auto lock = std::lock_guard{lock_};
+
+        Count = 0;
+        if (waiting_for_prop_) {
+            Count = waiting_for_prop_->duration().count();
+            name = wait_prop_name_;
+            value = wait_prop_value_;
+        }
+
+        return static_cast<bool>(waiting_for_prop_);
+    }
+#endif
+
   private:
     void ResetWaitForPropLocked() {
         wait_prop_name_.clear();
@@ -327,6 +342,11 @@ static void LoadBootScripts(ActionManager& action_manager, ServiceList& service_
 }
 
 void PropertyChanged(const std::string& name, const std::string& value) {
+#ifdef G1122717
+    if (!ActionManager::GetInstance().WatchingPropertyCount(name))
+        return;
+#endif
+
     // If the property is sys.powerctl, we bypass the event queue and immediately handle it.
     // This is to ensure that init will always and immediately shutdown/reboot, regardless of
     // if there are other pending events to process or if init is waiting on an exec service or
@@ -664,6 +684,50 @@ void HandleKeychord(const std::vector<int>& keycodes) {
     }
 }
 
+#ifdef MTK_LOG
+static int _LogReap() {
+    int wait_ = -1;
+    int log_ms = -1;
+    uint64_t prop_wait_;
+    std::string name;
+    std::string value;
+
+    if (Service::is_exec_service_running()) {
+
+        Service *pService = Service::get_pexec_service_();
+
+        if (pService) {
+            wait_ = pService->DumpExecState();
+        }
+    } else if (prop_waiter_state.MightBeWaiting(prop_wait_, name, value)) {
+        wait_ = prop_wait_ / 1000;
+
+        if (wait_ >= 60) {
+            LOG(INFO) << "Have been waiting property '" << name << "=" << value
+                      << "' for " << prop_wait_ << "ms";
+        }
+    }
+
+    if (wait_ >= 60)
+        wait_ = 1000;
+    else if (wait_ >= 0)
+        wait_ = (60 - wait_) * 1000;
+
+    if (GetMTKLOGDISABLERATELIMIT() && !isPropServThrStart()) {
+        log_ms = PropSetLogReap(0);
+
+        if (log_ms == -1)
+            return wait_;
+        else if (wait_ == -1)
+            return log_ms;
+        else if (log_ms <= wait_)
+            return log_ms;
+    }
+
+    return wait_;
+}
+#endif
+
 static void UmountDebugRamdisk() {
     if (umount("/debug_ramdisk") != 0) {
         PLOG(ERROR) << "Failed to umount /debug_ramdisk";
@@ -764,7 +828,31 @@ int SecondStageMain(int argc, char** argv) {
     trigger_shutdown = [](const std::string& command) { shutdown_state.TriggerShutdown(command); };
 
     SetStdioToDevNull(argv);
+#ifdef MTK_LOG
+#ifndef MTK_LOG_DISABLERATELIMIT
+    {
+        std::string cmdline;
+        android::base::ReadFileToString("/proc/cmdline", &cmdline);
+
+        if (cmdline.find("init.mtklogdrl=1") != std::string::npos)
+            SetMTKLOGDISABLERATELIMIT();
+
+        const char* force_debuggable_env = getenv("INIT_FORCE_DEBUGGABLE");
+        if (force_debuggable_env && AvbHandle::IsDeviceUnlocked()) {
+            SetMTKLOGDISABLERATELIMIT();
+        }
+    }
+#else
+    SetMTKLOGDISABLERATELIMIT();
+#endif // MTK_LOG_DISABLERATELIMIT
+
+    if (GetMTKLOGDISABLERATELIMIT())
+        InitKernelLogging_split(argv);
+    else
+        InitKernelLogging(argv);
+#else
     InitKernelLogging(argv);
+#endif
     LOG(INFO) << "init second stage started!";
 
     // Update $PATH in the case the second stage init is newer than first stage init, where it is
@@ -827,7 +915,14 @@ int SecondStageMain(int argc, char** argv) {
     MountExtraFilesystems();
 
     // Now set up SELinux for second stage.
+#ifdef MTK_LOG
+    if (GetMTKLOGDISABLERATELIMIT())
+        SelinuxSetupKernelLogging_split();
+    else
+        SelinuxSetupKernelLogging();
+#else
     SelinuxSetupKernelLogging();
+#endif
     SelabelInitialize();
     SelinuxRestoreContext();
 
@@ -835,6 +930,14 @@ int SecondStageMain(int argc, char** argv) {
     if (auto result = epoll.Open(); !result.ok()) {
         PLOG(FATAL) << result.error();
     }
+
+#ifdef G1122717
+    // Watch properties with specific meanings to init.
+    LOG(INFO) << "Apply watching properties with specific meanings to init.";
+    ActionManager::GetInstance().StartWatchingProperty("sys.powerctl");
+    ActionManager::GetInstance().StartWatchingProperty("ro.persistent_properties.ready");
+    ActionManager::GetInstance().StartWatchingProperty(kColdBootDoneProp);
+#endif
 
     InstallSignalFdHandler(&epoll);
     InstallInitNotifier(&epoll);
@@ -966,7 +1069,28 @@ int SecondStageMain(int argc, char** argv) {
             if (am.HasMoreCommands()) epoll_timeout = 0ms;
         }
 
+#ifdef MTK_LOG
+        int log_ms = _LogReap();//PropSetLogReap();
+        if (log_ms > -1 && (!epoll_timeout || epoll_timeout->count() > log_ms))
+            epoll_timeout = std::chrono::milliseconds(log_ms);
+
+        if (GetMTKLOGDISABLERATELIMIT()) {
+            if (!Getwhilepiggybacketed(1) && Getwhileepduration(1) > 1999)
+                LOG(INFO) << "Lastest epoll wait tooks " << Getwhileepduration(1) << "ms";
+        }
+
+        android::base::Timer t;
+
         auto pending_functions = epoll.Wait(epoll_timeout);
+
+        if (GetMTKLOGDISABLERATELIMIT()) {
+            uint64_t duration = t.duration().count();
+            uint64_t nowms = std::chrono::duration_cast<std::chrono::milliseconds>(boot_clock::now().time_since_epoch()).count();
+            Setwhiletime(1, duration, nowms);
+        }
+#else
+        auto pending_functions = epoll.Wait(epoll_timeout);
+#endif
         if (!pending_functions.ok()) {
             LOG(ERROR) << pending_functions.error();
         } else if (!pending_functions->empty()) {
