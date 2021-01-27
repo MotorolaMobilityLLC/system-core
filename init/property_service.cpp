@@ -1053,6 +1053,7 @@ void PropertyLoadBootDefaults() {
             std::string prop_barnd = properties["ro.product.brand"];
             std::string prop_name = properties["ro.product.name"];
             std::string prop_device = properties["ro.product.device"];
+            std::string prop_lenovo_version = properties["ro.pt.lenovo_version"];
             if(prop_barnd != "")
                 fps[0] = prop_barnd;
             if(prop_name != "")
@@ -1063,11 +1064,13 @@ void PropertyLoadBootDefaults() {
 
             LOG(INFO) << "moto fingerprint:PropSet [" << properties["ro.build.fingerprint"] <<"] change to [" << carrier_fp << "]";
             properties["ro.build.fingerprint"] = carrier_fp;
-
-            for (const auto& ro_props_fingerprint_target : RO_PROPS_FINGERPRINT_TARGETS) {
-                std::string target_base_prop("ro.");
-                std::string ro_props_fingerprint_target_suffix = target_base_prop + ro_props_fingerprint_target + ".build.fingerprint";   
-                properties[ro_props_fingerprint_target_suffix] = carrier_fp;
+            // only lenovo version need update all fingerprint .
+            if (base::EqualsIgnoreCase(prop_lenovo_version,"true")) {
+                for (const auto& ro_props_fingerprint_target : RO_PROPS_FINGERPRINT_TARGETS) {
+                    std::string target_base_prop("ro.");
+                    std::string ro_props_fingerprint_target_suffix = target_base_prop + ro_props_fingerprint_target + ".build.fingerprint";   
+                    properties[ro_props_fingerprint_target_suffix] = carrier_fp;
+                }
             }
         }
 #endif //MOTO_LATAM_FEATURE_4176
