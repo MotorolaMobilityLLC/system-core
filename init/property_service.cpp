@@ -1127,7 +1127,7 @@ void set_hwsku_from_hwinfo() {
     int len = strlen("band_id=");
 
     if (ReadFileToString(cmdline_path, &file_content)) {
-        file_band = file_content.substr(len,8);
+        file_band = file_content.substr(len, (file_content.length() - 2 - len));
         property_set("ro.boot.hardware.sku",file_band);
         property_set("ro.vendor.hardware.sku",file_band);
     } else {

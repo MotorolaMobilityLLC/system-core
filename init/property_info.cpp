@@ -130,8 +130,13 @@ void set_system_properties(){
         } else if(hw_sku == "XT2097") {
             property_set("ro.maltalite", "1");
             property_set("ro.mot.product_wave", "2021.1");
-            set_product_model("moto e(7) power");
-            set_product_display("moto e⁷ power");
+            if (carrier_ontim == "retin_mfi") {
+                set_product_model("moto e(7n) power");
+                set_product_display("moto e⁷ⁿ power");
+            } else {
+                set_product_model("moto e(7) power");
+                set_product_display("moto e⁷ power");
+            }
             isMaltaLite = true;
         }
     }
