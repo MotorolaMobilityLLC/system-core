@@ -178,7 +178,11 @@ void set_system_properties() {
         std::string fingerprint = get_fingerprint_property_maltalite(prop_product_value);
         set_fingerprint(fingerprint);
 
-        property_set(prop_product_display, "moto e⁷ⁱ power");
+        if(build_name == "lenovo") {
+             property_set(prop_product_display, "Lenovo K13");
+        } else {
+             property_set(prop_product_display, "moto e⁷ⁱ power");
+        }
 
         // BEGIN Ontim, maqing, 30/06/2020,EKMALTA-369:[Region_LATAM]FEATURE-5963: Amazon MDIP app single SKU solution
         if (carrier_ontim == "timit_timit") {
