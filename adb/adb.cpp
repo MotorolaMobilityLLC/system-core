@@ -319,7 +319,7 @@ static void handle_new_connection(atransport* t, apacket* p) {
 #if ADB_HOST
     handle_online(t);
 #else
-#if defined(JOURNEY_FEATURE_DEBUG_MODE) || defined(JOURNEY_FEATURE_FACTORY_SUPPORT)
+/* #if defined(JOURNEY_FEATURE_DEBUG_MODE) || defined(JOURNEY_FEATURE_FACTORY_SUPPORT)
     LOG(INFO) << android::base::GetBoolProperty("ro.journey.factory.mode", false) << " for ro.journey.factory.mode ";
     if(auth_required) {
         // RescueParty will use this to disable auth in some Rescue mode
@@ -330,8 +330,8 @@ static void handle_new_connection(atransport* t, apacket* p) {
             LOG(INFO) << "handle_new_connection disable usb auth for ro.journey.factory.mode";
         }
     }
-#endif
-
+#endif */
+    LOG(INFO) << "auth_required is " << auth_required << " for handle_new_connection ";
     ADB_LOG(Connection) << "received CNXN: version=" << p->msg.arg0 << ", maxdata = " << p->msg.arg1
                         << ", banner = '" << banner << "'";
 
