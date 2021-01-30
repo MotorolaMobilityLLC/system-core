@@ -807,8 +807,24 @@ static void load_factory_properties() {
                            << "' in /data/local.prop: " << error;
             }
         }
+		
+        // fenghui.zou disable usb auth for ro.journey.factory.mode begin
+        bool is_factory_mode = android::base::GetBoolProperty("ro.journey.factory.mode", false);
+
+        if(is_factory_mode) {
+            LOG(INFO) << "start  SetProperty in journey.factory mode";
+            InitPropertySet("ro.adb.secure","0");
+            InitPropertySet("ro.debuggable","1");
+        }
+		
         update_sys_usb_config(); // if load successed , we need update the usb config again    
+    }else{
+        bool is_user_build = android::base::GetProperty("ro.build.type", "") == "user";
+        if(is_user_build) {
+            InitPropertySet("ro.adb.secure","1");
+        }
     }
+    // fenghui.zou disable usb auth for ro.journey.factory.mode end    
 }
 #endif
 // If the ro.product.[brand|device|manufacturer|model|name] properties have not been explicitly
@@ -1277,6 +1293,7 @@ void PropertyInit() {
     // Propagate the kernel variables to internal variables
     // used by init as well as the current required properties.
     ExportKernelBootProps();
+
 #ifdef JOURNEY_FEATURE_ROOT_MODE
     if(journey_root_mode) {
         LOG(INFO) << "start  SetProperty in journey.root mode";
@@ -1285,6 +1302,7 @@ void PropertyInit() {
         InitPropertySet("ro.debuggable","1");
     }
 #endif
+
     PropertyLoadBootDefaults();
 }
 
