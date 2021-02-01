@@ -822,6 +822,7 @@ static void load_factory_properties() {
         bool is_user_build = android::base::GetProperty("ro.build.type", "") == "user";
         if(is_user_build) {
             InitPropertySet("ro.adb.secure","1");
+            InitPropertySet("ro.debuggable","0");
         }
     }
     // fenghui.zou disable usb auth for ro.journey.factory.mode end    
