@@ -698,6 +698,16 @@ static Result<void> do_mount_all(const BuiltinArguments& args) {
     auto mount_fstab_result = fs_mgr_mount_all(&fstab, mount_all->mode);
     SetProperty(prop_name, std::to_string(t.duration().count()));
 
+    /* Moto huangzq2: check zram config in fstab */
+    if (android::base::GetProperty("ro.boot.using_zram_from_fstab", "").empty()) {
+        for (const auto& entry : fstab) {
+            if (entry.fs_type == "swap" && entry.zram_size > 0) {
+                SetProperty("ro.boot.using_zram_from_fstab", "true");
+                break;
+            }
+        }
+    }
+
     if (mount_all->import_rc) {
         import_late(mount_all->rc_paths);
     }
