@@ -374,6 +374,13 @@ void RebootMonitorThread(unsigned int cmd, const std::string& reboot_target,
                              "like "
                              "blocked in mutex or hardware register access:";
                 WriteStringToFile("w", PROC_SYSRQ);
+
+                LOG(INFO) << "show vold or vdc process trace to dumptrace_xxx: ";
+                const char* vdc_argv[] = {"/system/bin/dumpstate","-t"};
+                int status;
+                logwrap_fork_execvp(arraysize(vdc_argv), vdc_argv, &status, false, LOG_KLOG,
+                                        true, nullptr);
+
             }
 
             // In shutdown case,notify kernel to sync and umount fs to read-only before shutdown.
