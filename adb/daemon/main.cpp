@@ -82,7 +82,7 @@ static bool should_drop_privileges() {
 #if defined(JOURNEY_FEATURE_ROOT_MODE)
         if(journey_root_mode) {
             LOG(INFO) << "reject drop privileges in journey root mode, it will root always,so just keep code and log";
-            //return false; // dont drop anything if we are in root mode
+            return false; // dont drop anything if we are in root mode
         }
 #endif
     }
