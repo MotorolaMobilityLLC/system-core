@@ -394,7 +394,11 @@ int main(int argc, char* argv[]) {
 
     LogListener* swl = new LogListener(logBuf, reader);
     // Backlog and /proc/sys/net/unix/max_dgram_qlen set to large value
+#ifdef JOURNEY_FEATURE_DEBUG_MODE
+    if (swl->startListener(1200)) {
+#else
     if (swl->startListener(600)) {
+#endif
         return EXIT_FAILURE;
     }
 
