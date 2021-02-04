@@ -29,6 +29,10 @@
 
 #include "adb.h"
 
+#ifdef JOURNEY_FEATURE_ROOT_MODE
+#include <android-base/file.h>
+#endif
+
 #define MAX_PACKET_SIZE_FS 64
 #define MAX_PACKET_SIZE_HS 512
 #define MAX_PACKET_SIZE_SS 1024
@@ -303,8 +307,14 @@ bool open_functionfs(android::base::unique_fd* out_control, android::base::uniqu
     }
 #ifdef JOURNEY_FEATURE_ROOT_MODE
     // it's use in journey.init.rc,should set /dev/usb-ffs/adb/ep 660
-    android::base::SetProperty("service.adb.journey.root", "11");
-    usleep(500000);
+    std::string cmdline;
+    android::base::ReadFileToString("/proc/cmdline", &cmdline);
+    if (cmdline.find("androidboot.journey.root=1") != std::string::npos) { 
+        android::base::SetProperty("service.adb.journey.root", "11");
+        usleep(500000);
+    } else {
+        LOG(INFO) << "not set root mode, keep AOSP ";
+    }
 #endif
     bulk_out.reset(adb_open(USB_FFS_ADB_OUT, O_RDONLY));
     if (bulk_out < 0) {
