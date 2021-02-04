@@ -85,27 +85,6 @@ void LogdClose() {
   logd_socket = 0;
 }
 
-char* pidToName(pid_t pid) {
-    char* retval = NULL;
-
-        char buffer[512];
-        snprintf(buffer, sizeof(buffer), "/proc/%u/cmdline", pid);
-        int fd = open(buffer, O_RDONLY);
-        if (fd >= 0) {
-            ssize_t ret = read(fd, buffer, sizeof(buffer));
-            if (ret > 0) {
-                buffer[sizeof(buffer) - 1] = '\0';
-               // frameworks intermediate state
-                if (strcmp(buffer, "<pre-initialized>")) {
-                    retval = strdup(buffer);
-                }
-            }
-            close(fd);
-        }
-
-    return retval;
-}
-
 int LogdWrite(log_id_t logId, struct timespec* ts, struct iovec* vec, size_t nr) {
   ssize_t ret;
   static const unsigned headerLength = 1;
@@ -188,35 +167,7 @@ int LogdWrite(log_id_t logId, struct timespec* ts, struct iovec* vec, size_t nr)
       break;
     }
   }
-  static int do_log_retry = 0;
-  static int prop_read = 0;
-  if (0 == prop_read) {
-        do_log_retry=1;
-        prop_read = 1;
-    }
-    int trycount = 0;
-    int loop_count = 512;
-
-    static int is_system_server=-1;
-    if(-1 == is_system_server) {
-       if(getpid()<gettid()) {
-           char* pname = pidToName(getpid());
-           if(pname){
-                if(strstr(pname,"system_server")!=0){
-                  is_system_server=1;
-                }else{
-                  is_system_server=0;
-                }
-                free(pname);
-           }
-        }
-   }
-
-   if(1 == is_system_server) {
-        loop_count = 32;
-   }
-
-
+  
   // The write below could be lost, but will never block.
   // EAGAIN occurs if logd is overloaded, other errors indicate that something went wrong with
   // the connection, so we reset it and try again.
@@ -230,32 +181,6 @@ int LogdWrite(log_id_t logId, struct timespec* ts, struct iovec* vec, size_t nr)
   if (ret < 0) {
     ret = -errno;
   }
-
-  if ((ret == -EBUSY) || (ret == -EAGAIN)) {
-    RETRY_WRITE:
-       if(0 == do_log_retry) {
-            //dummy,no more retry
-       } else {
-            ret = TEMP_FAILURE_RETRY(writev(logd_socket, newVec, i));
-            if (ret < 0) {
-                ret = -errno;
-                if ((ret == -EBUSY)||(ret == -EAGAIN)) {
-                     trycount++;
-                    if (trycount<=2) {
-                        usleep(1000);
-                        goto RETRY_WRITE;
-                    } else {
-                        trycount=0;
-                        if ((loop_count--)>1) {
-                            usleep(1000*2);
-                            trycount=0;
-                            goto RETRY_WRITE;
-                    }
-                 }
-             }
-        }
-      }
-   }
 
   if (ret > (ssize_t)sizeof(header)) {
     ret -= sizeof(header);
