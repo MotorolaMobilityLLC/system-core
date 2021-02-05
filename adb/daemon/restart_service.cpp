@@ -28,11 +28,29 @@
 #include "adb_io.h"
 #include "adb_unique_fd.h"
 
+#ifdef JOURNEY_FEATURE_FACTORY_SUPPORT
+#include <android-base/properties.h>
+#endif
+
 void restart_root_service(unique_fd fd) {
     if (getuid() == 0) {
         WriteFdExactly(fd.get(), "adbd is already running as root\n");
         return;
     }
+
+#ifdef JOURNEY_FEATURE_FACTORY_SUPPORT
+    bool is_factory_mode = android::base::GetBoolProperty("ro.journey.factory.mode", false);
+    bool journey_root_mode = android::base::GetBoolProperty("ro.boot.journey.root", false);
+    bool is_user_build = android::base::GetProperty("ro.build.type", "") == "user";
+
+    if (is_factory_mode && is_user_build) {
+        if (!journey_root_mode) {
+            WriteFdExactly(fd.get(), "adbd cannot run as root in production factory builds\n");
+            return;
+        }
+    }
+#endif
+
     if (!__android_log_is_debuggable()) {
         WriteFdExactly(fd.get(), "adbd cannot run as root in production builds\n");
         return;
