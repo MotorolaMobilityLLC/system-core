@@ -154,7 +154,7 @@ static int do_remount(int argc, char* argv[]) {
         if (journey_root_mode) {
             LOG(INFO) << "but we in journey root mode.";
         } else {
-            LOG(INFO) << "we  are not ro.debuggable = 1.";
+            LOG(INFO) << "not userdebug version,not in journey root mode";
             return NOT_USERDEBUG;
         }
 #else
