@@ -1041,7 +1041,7 @@ void PropertyLoadBootDefaults() {
 
         if(!moto_product_suffix.empty()) {
     	    const char* MOTO_OVERLAY_PROPS[] = {
-                "brand","name",
+                "brand","name","model",
             };
             const char* RO_PROPS_TARGETS[] = {
                 "odm", "product", "system_ext", "system", "vendor",
@@ -1092,6 +1092,7 @@ void PropertyLoadBootDefaults() {
                     std::string ro_props_fingerprint_target_suffix = target_base_prop + ro_props_fingerprint_target + ".build.fingerprint";   
                     properties[ro_props_fingerprint_target_suffix] = carrier_fp;
                 }
+                properties["ro.product.display"] = properties["ro.product.model"];
             }
         }
 #endif //MOTO_LATAM_FEATURE_4176
