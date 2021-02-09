@@ -95,6 +95,9 @@ cc_defaults {
         journey_feature_factory_support: {
             cflags: ["-DJOURNEY_FEATURE_FACTORY_SUPPORT"],
         },
+        journey_feature_factory_version: {
+            cflags: ["-DJOURNEY_FEATURE_FACTORY_VERSION"],
+        },
         journey_feature_root_mode: {
             cflags: ["-DJOURNEY_FEATURE_ROOT_MODE"],
         },
