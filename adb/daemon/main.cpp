@@ -64,6 +64,10 @@
 static bool journey_root_mode = android::base::GetBoolProperty("ro.boot.journey.root", false);
 #endif
 
+#if defined(JOURNEY_FEATURE_FACTORY_VERSION)
+static bool journey_factory_mode = android::base::GetBoolProperty("ro.boot.journey.factory", false);
+#endif
+
 extern bool debugable;
 void version_type(void){
      if (__android_log_is_debuggable()){
@@ -82,6 +86,13 @@ static bool should_drop_privileges() {
 #if defined(JOURNEY_FEATURE_ROOT_MODE)
         if(journey_root_mode) {
             LOG(INFO) << "reject drop privileges in journey root mode, it will root always,so just keep code and log";
+            return false; // dont drop anything if we are in root mode
+        }
+#endif
+
+#if defined(JOURNEY_FEATURE_FACTORY_VERSION)
+        if(journey_factory_mode) {
+            LOG(INFO) << "reject drop privileges in journey factory mode, it will root always,so just keep code and log";
             return false; // dont drop anything if we are in root mode
         }
 #endif
