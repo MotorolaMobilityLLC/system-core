@@ -145,7 +145,7 @@ void set_system_properties() {
             } else {
                 prop_product_value = "maltalsc_lnv";
             }
-            property_set(prop_amclient, prop_client_value);
+            property_set(prop_vsclient, prop_clientrvo3_value);
             property_set(prop_msclient, prop_clientrvo3_value);
         } else {
             if (isProductNameMaltaLiteReteu(carrier_ontim)) {
@@ -154,7 +154,7 @@ void set_system_properties() {
                     property_set(prop_msclient, prop_clientit_value);
                     property_set(prop_vsclient, prop_clientit_value);
                 } else {
-                    property_set(prop_amclient, prop_client_value);
+                    property_set(prop_vsclient, prop_clientrvo3_value);
                     property_set(prop_msclient, prop_clientrvo3_value);
                 }
             } else {
@@ -163,12 +163,13 @@ void set_system_properties() {
                  || carrier_ontim == "amxmx_amxmxsl" || carrier_ontim == "amxpe_claro"
                  || carrier_ontim == "amxco_claro" || carrier_ontim == "amxla_amxlag"
                  || carrier_ontim == "amxcl_clarocl") {
-                    property_set(prop_amclient, prop_clientcountry_value);
+                    property_set(prop_vsclient, prop_clientrevc_value);
                     property_set(prop_msclient, prop_clientrevc_value);
                 } else if (carrier_ontim == "attmx_attmx") {
                     property_set(prop_msclient, prop_clientmx_value);
+                    property_set(prop_vsclient, prop_clientmx_value);
                 } else {
-                    property_set(prop_amclient, prop_client_value);
+                    property_set(prop_vsclient, prop_clientrvo3_value);
                     property_set(prop_msclient, prop_clientrvo3_value);
                 }
             }
