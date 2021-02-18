@@ -257,19 +257,19 @@ void set_system_properties(){
                 property_set(prop_vsclient, prop_clientuk_value);
             } else if (carrier_ontim == "o2gb_teluk") {
                 property_set(prop_msclient, prop_cliento2_value);
+                property_set(prop_vsclient, prop_cliento2_value);
             } else if (carrier_ontim == "reteu_dtag") {
-                property_set(prop_amclient, prop_clienttmobile_value);
                 property_set(prop_msclient, prop_clientdtrevc3_value);
                 property_set(prop_vsclient, prop_clientdtrevc3_value);
             } else {
-                property_set(prop_amclient, prop_client_value);
                 property_set(prop_msclient, prop_clientrvo3_value);
+                property_set(prop_vsclient, prop_clientrvo3_value);
             }
         } else if (isProductNameMaltaRetru(carrier_ontim)) {
             prop_product_value = "malta_retru";
             prop_carrier_value = "retru";
-            property_set(prop_amclient, prop_client_value);
             property_set(prop_msclient, prop_clientrvo3_value);
+            property_set(prop_vsclient, prop_clientrvo3_value);
         } else {
             prop_product_value = "malta";
             if (carrier_ontim == "openmx_retmx" || carrier_ontim == "amxmx_amxmx"
@@ -277,15 +277,17 @@ void set_system_properties(){
              || carrier_ontim == "amxco_claro" || carrier_ontim == "amxbr_clarobr"
              || carrier_ontim == "amxbr_brmanaus" || carrier_ontim == "amxcl_clarocl"
              || carrier_ontim == "amxla_amxlag") {
-                property_set(prop_amclient, prop_clientcountry_value);
                 property_set(prop_msclient, prop_clientrevc_value);
+                property_set(prop_vsclient, prop_clientrevc_value);
             } else if (carrier_ontim == "attmx_attmx") {
                 property_set(prop_msclient, prop_clientmx_value);
+                property_set(prop_vsclient, prop_clientmx_value);
             } else if (carrier_ontim == "timbr_timbr" || carrier_ontim == "timbr_brmanaus") {
                 property_set(prop_msclient, prop_clientbr_value);
+                property_set(prop_vsclient, prop_clientbr_value);
             } else {
-                property_set(prop_amclient, prop_client_value);
                 property_set(prop_msclient, prop_clientrvo3_value);
+                property_set(prop_vsclient, prop_clientrvo3_value);
             }
         }
 
@@ -314,8 +316,8 @@ void set_system_properties(){
     } else if(prop_product_value == "malta" && isMaltaLite) {
         if(build_name == "lenovo") {
             prop_product_value = "malta_l_lnv";
-            property_set(prop_amclient, prop_client_value);
             property_set(prop_msclient, prop_clientrvo3_value);
+            property_set(prop_vsclient, prop_clientrvo3_value);
             set_product_name(prop_product_value);
 
             std::string fingerprint = get_fingerprint_property_malta(prop_product_value);
@@ -332,32 +334,35 @@ void set_system_properties(){
                 property_set(prop_msclient, prop_clientit_value);
                 property_set(prop_vsclient, prop_clientit_value);
             } else {
-                property_set(prop_amclient, prop_client_value);
                 property_set(prop_msclient, prop_clientrvo3_value);
+                property_set(prop_vsclient, prop_clientrvo3_value);
             }
         } else if (isProductNameMaltaRetru(carrier_ontim)) {
             prop_product_value = "malta_l_retru";
             prop_carrier_value = "retru";
-            property_set(prop_amclient, prop_client_value);
             property_set(prop_msclient, prop_clientrvo3_value);
+            property_set(prop_vsclient, prop_clientrvo3_value);
         } else {
             prop_product_value = "malta_l";
             if (carrier_ontim == "openmx_retmx" || carrier_ontim == "amxmx_amxmx"
              || carrier_ontim == "amxmx_amxmxsl" || carrier_ontim == "amxpe_claro"
              || carrier_ontim == "amxco_claro" || carrier_ontim == "amxbr_clarobr"
-             || carrier_ontim == "amxcl_clarocl" || carrier_ontim == "amxla_amxlag") {
-                property_set(prop_amclient, prop_clientcountry_value);
+             || carrier_ontim == "amxcl_clarocl" || carrier_ontim == "amxla_amxlag"
+             || carrier_ontim == "amxbr_brmanaus") {
                 property_set(prop_msclient, prop_clientrevc_value);
+                property_set(prop_vsclient, prop_clientrevc_value);
             } else if (carrier_ontim == "attmx_attmx") {
                 property_set(prop_msclient, prop_clientmx_value);
-            } else if (carrier_ontim == "timbr_timbr") {
+                property_set(prop_vsclient, prop_clientmx_value);
+            } else if (carrier_ontim == "timbr_timbr" || carrier_ontim == "timbr_brmanaus") {
                 property_set(prop_msclient, prop_clientbr_value);
+                property_set(prop_vsclient, prop_clientbr_value);
             } else if (carrier_ontim == "vfau_vfau") {
-                property_set(prop_amclient, prop_client_value);
                 property_set(prop_msclient, prop_clientvfau_value);
+                property_set(prop_vsclient, prop_clientvfau_value);
             } else {
-                property_set(prop_amclient, prop_client_value);
                 property_set(prop_msclient, prop_clientrvo3_value);
+                property_set(prop_vsclient, prop_clientrvo3_value);
             }
         }
 
@@ -388,8 +393,8 @@ void set_system_properties(){
 
         if(build_name == "lenovo") {
             prop_product_value = "malta_lnv";
-            property_set(prop_amclient, prop_client_value);
             property_set(prop_msclient, prop_clientrvo3_value);
+            property_set(prop_vsclient, prop_clientrvo3_value);
             set_product_name(prop_product_value);
 
             std::string fingerprint = get_fingerprint_property_malta(prop_product_value);
@@ -401,13 +406,14 @@ void set_system_properties(){
         }
 
         if (carrier_ontim == "amxbr_clarobr" || carrier_ontim == "amxbr_brmanaus") {
-            property_set(prop_amclient, prop_clientcountry_value);
             property_set(prop_msclient, prop_clientrevc_value);
+            property_set(prop_vsclient, prop_clientrevc_value);
         } else if (carrier_ontim == "timbr_timbr" || carrier_ontim == "timbr_brmanaus") {
             property_set(prop_msclient, prop_clientbr_value);
+            property_set(prop_vsclient, prop_clientbr_value);
         } else {
-            property_set(prop_amclient, prop_client_value);
             property_set(prop_msclient, prop_clientrvo3_value);
+            property_set(prop_vsclient, prop_clientrvo3_value);
         }
 
         set_product_name(prop_product_value);
@@ -434,8 +440,8 @@ void set_system_properties(){
 
         if(build_name == "lenovo") {
             prop_product_value = "malta_l_lnv_64";
-            property_set(prop_amclient, prop_client_value);
             property_set(prop_msclient, prop_clientrvo3_value);
+            property_set(prop_vsclient, prop_clientrvo3_value);
             set_product_name(prop_product_value);
 
             std::string fingerprint = get_fingerprint_property_malta(prop_product_value);
@@ -450,12 +456,12 @@ void set_system_properties(){
          || carrier_ontim == "playpl_playpl") {
             prop_product_value = "malta_l_reteu_64";
 
-            property_set(prop_amclient, prop_client_value);
             property_set(prop_msclient, prop_clientrvo3_value);
+            property_set(prop_vsclient, prop_clientrvo3_value);
         } else {
             prop_product_value = "malta_l_64";
-            property_set(prop_amclient, prop_client_value);
             property_set(prop_msclient, prop_clientrvo3_value);
+            property_set(prop_vsclient, prop_clientrvo3_value);
         }
 
         set_product_name(prop_product_value);
