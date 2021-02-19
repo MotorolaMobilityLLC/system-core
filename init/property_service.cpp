@@ -762,7 +762,7 @@ static void update_sys_usb_config() {
     }
 #endif
 #ifdef JOURNEY_FEATURE_FACTORY_SUPPORT
-    bool is_factory_mode = android::base::GetBoolProperty("ro.journey.factory.mode", false);
+    bool is_factory_mode = android::base::GetBoolProperty("ro.journey.factory.mode2", false);
     if(is_factory_mode) {
         config = "";
         is_debuggable = true;
@@ -810,7 +810,7 @@ static void load_factory_properties() {
         }
 		
         // fenghui.zou disable usb auth for ro.journey.factory.mode begin
-        bool is_factory_mode = android::base::GetBoolProperty("ro.journey.factory.mode", false);
+        bool is_factory_mode = android::base::GetBoolProperty("ro.journey.factory.mode2", false);
 
         if(is_user_build && is_factory_mode) {
             LOG(INFO) << "start  SetProperty in journey.factory mode";
@@ -818,10 +818,10 @@ static void load_factory_properties() {
             InitPropertySet("ro.debuggable","1");
             update_sys_usb_config(); // if load successed , we need update the usb config again  
 
-	    if(!base::GetBoolProperty("ro.boot.journey.debug", false) && !base::GetBoolProperty("ro.journey.secure.safemode", false)){
+	    if(/* !base::GetBoolProperty("ro.boot.journey.debug", false) && */!base::GetBoolProperty("ro.journey.secure.safemode", false)){
 	        InitPropertySet("ro.journey.secure.safemode", "1"); // keep it in safe mode on in cfc version
-	        InitPropertySet("ro.journey.secure.reason", "Factory Mode"); // tell the framework reason
-            }
+		InitPropertySet("ro.journey.secure.reason", "Factory Mode"); // tell the framework reason
+	    }
         }
     }else{
         if(is_user_build) {
