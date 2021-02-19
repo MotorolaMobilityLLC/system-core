@@ -2160,6 +2160,11 @@ static bool PrepareZramBackingDevice(off64_t size) {
     constexpr const char* file_path = "/data/per_boot/zram_swap";
     if (size == 0) return true;
 
+    // Moto huangzq2: skip this if zram writeback was disabled.
+    if (!android::base::GetBoolProperty("persist.sys.zram_wb_enabled", true)) {
+        return true;
+    }
+
     // Prepare target path
     unique_fd target_fd(TEMP_FAILURE_RETRY(open(file_path, O_RDWR | O_CREAT | O_CLOEXEC, 0600)));
     if (target_fd.get() == -1) {
