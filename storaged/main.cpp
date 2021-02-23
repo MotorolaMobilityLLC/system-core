@@ -76,6 +76,8 @@ int main(int argc, char** argv) {
     bool flag_dump_perf = false;
     int opt;
 
+    signal(SIGPIPE, SIG_IGN);
+
     for (;;) {
         int opt_idx = 0;
         static struct option long_options[] = {
