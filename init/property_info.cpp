@@ -100,11 +100,11 @@ void set_system_properties() {
         } else {
             prop_product_value = "fijisc";
             if (carrier_ontim == "openmx_retmx" || carrier_ontim == "amxmx_amxmx"
-             || carrier_ontim == "amxmx_amxmxsl" || carrier_ontim == "amxbr_clarobr") {
+             || carrier_ontim == "amxmx_amxmxsl" || carrier_ontim == "amxbr_clarobr" || carrier_ontim == "amxbr_brmanaus") {
                 property_set(prop_msclient, prop_clientrevc_value);
             } else if (carrier_ontim == "attmx_attmx") {
                 property_set(prop_msclient, prop_clientmx_value);
-            } else if (carrier_ontim == "timbr_timbr") {
+            } else if (carrier_ontim == "timbr_timbr" || carrier_ontim == "timbr_brmanaus") {
                 property_set(prop_msclient, prop_clientbr_value);
             } else {
                 property_set(prop_msclient, prop_clientrvo3_value);
