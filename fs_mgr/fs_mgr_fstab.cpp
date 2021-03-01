@@ -296,8 +296,19 @@ void ParseFsMgrFlags(const std::string& flags, FstabEntry* entry) {
             // The path to trigger device gc by idle-maint of vold.
             entry->sysfs_path = arg;
         } else if (StartsWith(flag, "zram_backingdev_size=")) {
-            if (!ParseByteCount(arg, &entry->zram_backingdev_size)) {
-                LWARNING << "Warning: zram_backingdev_size= flag malformed: " << arg;
+            // Moto huangzq2: support format like zram_backingdev_size=25%.
+            if (!arg.empty() && arg.back() == '%') {
+                arg.pop_back();
+                int val;
+                if (ParseInt(arg, &val, 0, 100)) {
+                    entry->zram_backingdev_size = CalculateZramSize(val);
+                } else {
+                    LWARNING << "Warning: zram_backingdev_size= flag malformed: " << arg;
+                }
+            } else {
+                 if (!ParseByteCount(arg, &entry->zram_backingdev_size)) {
+                    LWARNING << "Warning: zram_backingdev_size= flag malformed: " << arg;
+                }
             }
         } else {
             LWARNING << "Warning: unknown flag: " << flag;
