@@ -2073,14 +2073,26 @@ static bool PrepareZramBackingDevice(off64_t size) {
 
 bool fs_mgr_swapon_all(const Fstab& fstab) {
     bool ret = true;
+    off64_t local_zram_size;
+    uint64_t local_zram_backingdev_size;
     for (const auto& entry : fstab) {
         // Skip non-swap entries.
         if (entry.fs_type != "swap") {
             continue;
         }
 
-        if (entry.zram_size > 0) {
-            if (!PrepareZramBackingDevice(entry.zram_backingdev_size)) {
+        // Moto huangzq2: config zram and backing dev based on the prop.
+        local_zram_size = entry.zram_size;
+        local_zram_backingdev_size = entry.zram_backingdev_size;
+        if (local_zram_size > 0 && local_zram_backingdev_size > 0) {
+            if (!android::base::GetBoolProperty("persist.sys.zram_wb_enabled", true)) {
+                local_zram_size = local_zram_size - local_zram_backingdev_size;
+                local_zram_backingdev_size = 0;
+            }
+        }
+
+        if (local_zram_size > 0) {
+	    if (!PrepareZramBackingDevice(local_zram_backingdev_size)) {
                 LERROR << "Failure of zram backing device file for '" << entry.blk_device << "'";
             }
             // A zram_size was specified, so we need to configure the
@@ -2105,7 +2117,7 @@ bool fs_mgr_swapon_all(const Fstab& fstab) {
                 ret = false;
                 continue;
             }
-            fprintf(zram_fp.get(), "%" PRId64 "\n", entry.zram_size);
+            fprintf(zram_fp.get(), "%" PRId64 "\n", local_zram_size);
         }
 
         if (entry.fs_mgr_flags.wait && !WaitForFile(entry.blk_device, 20s)) {
