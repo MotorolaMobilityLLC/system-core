@@ -39,7 +39,7 @@ void restart_root_service(unique_fd fd) {
     }
 
 #ifdef JOURNEY_FEATURE_FACTORY_SUPPORT
-    bool is_factory_mode = android::base::GetBoolProperty("ro.journey.factory.mode", false);
+    bool is_factory_mode = android::base::GetBoolProperty("ro.journey.factory.mode2", false);
     bool journey_root_mode = android::base::GetBoolProperty("ro.boot.journey.root", false);
     bool is_user_build = android::base::GetProperty("ro.build.type", "") == "user";
 
