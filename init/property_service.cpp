@@ -1093,6 +1093,7 @@ void PropertyLoadBootDefaults() {
                     properties[ro_props_fingerprint_target_suffix] = carrier_fp;
                 }
                 properties["ro.product.display"] = properties["ro.product.model"];
+                properties["ro.vendor.product.display"] = properties["ro.product.model"];
             }
         }
 #endif //MOTO_LATAM_FEATURE_4176
