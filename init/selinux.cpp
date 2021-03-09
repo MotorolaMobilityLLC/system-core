@@ -83,7 +83,7 @@ selabel_handle* sehandle = nullptr;
 
 enum EnforcingStatus { SELINUX_PERMISSIVE, SELINUX_ENFORCING };
 
-EnforcingStatus StatusFromCmdline() {
+/*EnforcingStatus StatusFromCmdline() {
     EnforcingStatus status = SELINUX_ENFORCING;
 
     import_kernel_cmdline(false,
@@ -94,13 +94,14 @@ EnforcingStatus StatusFromCmdline() {
                           });
 
     return status;
-}
+}*/
 
 bool IsEnforcing() {
+    return false;
 /*#ifdef SMT_MODE //use Android.bp close selinux
     return false;
 #endif*/
-    {
+    /*{
         int fd(open("/mboot/selinux", O_RDONLY | O_CLOEXEC | O_BINARY));
         if (fd != -1) {
             char v = 0xff;
@@ -114,7 +115,7 @@ bool IsEnforcing() {
     if (ALLOW_PERMISSIVE_SELINUX) {
         return StatusFromCmdline() == SELINUX_ENFORCING;
     }
-    return true;
+    return true;*/
 }
 
 // Forks, executes the provided program in the child, and waits for the completion in the parent.
