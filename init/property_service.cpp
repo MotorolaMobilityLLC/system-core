@@ -1491,6 +1491,14 @@ static void ProcessKernelCmdline() {
     }
 }
 
+static void ProcessBootconfig() {
+    ImportBootconfig([&](const std::string& key, const std::string& value) {
+        if (StartsWith(key, "androidboot.")) {
+            InitPropertySet("ro.boot." + key.substr(12), value);
+        }
+    });
+}
+
 void PropertyInit() {
     selinux_callback cb;
     cb.func_audit = PropertyAuditCallback;
@@ -1509,6 +1517,7 @@ void PropertyInit() {
     // properties set in DT always have priority over the command-line ones.
     ProcessKernelDt();
     ProcessKernelCmdline();
+    ProcessBootconfig();
 
     // Propagate the kernel variables to internal variables
     // used by init as well as the current required properties.
