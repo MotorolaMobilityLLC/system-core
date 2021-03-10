@@ -73,7 +73,7 @@ static bool should_drop_capabilities_bounding_set() {
 
 static bool should_drop_privileges() {
     // "adb root" not allowed, always drop privileges.
-    //if (!ALLOW_ADBD_ROOT && !is_device_unlocked()) return true;
+    if (!ALLOW_ADBD_ROOT && !is_device_unlocked()) return true;
 
     // The properties that affect `adb root` and `adb unroot` are ro.secure and
     // ro.debuggable. In this context the names don't make the expected behavior
@@ -102,8 +102,8 @@ static bool should_drop_privileges() {
     if (adb_unroot) {
         drop = true;
     }
-    //return drop;
-    return false;
+
+    return drop;
 }
 
 static void drop_privileges(int server_port) {
