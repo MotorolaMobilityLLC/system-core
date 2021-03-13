@@ -1033,7 +1033,7 @@ void PropertyLoadBootDefaults() {
         if (base::EqualsIgnoreCase(ro_software_sku,"XT2128-3")) {
             moto_product_suffix = "_apac_l";
             properties["ro.pt.lenovo_version"] = "true";
-        } else if (base::EqualsIgnoreCase(ro_carrier,"retapac") || base::EqualsIgnoreCase(ro_carrier,"releu") ) {
+        } else if (base::EqualsIgnoreCase(ro_carrier,"retapac") || base::EqualsIgnoreCase(ro_carrier,"teleu") ) {
             moto_product_suffix = "_apac_m";
         } else if(base::EqualsIgnoreCase(ro_carrier,"reteu")) {
             moto_product_suffix = "_emea";
