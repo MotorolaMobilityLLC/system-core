@@ -36,6 +36,7 @@ std::string prop_build_fullversion = "ro.build.version.full";
 std::string prop_build_id = "ro.build.id";
 std::string prop_carrier_ontim = "ro.carrier.ontim";
 std::string prop_carrier = "ro.carrier";
+std::string prop_amclient = "ro.com.google.clientidbase.am";
 std::string prop_msclient = "ro.com.google.clientidbase.ms";
 std::string prop_vsclient = "ro.com.google.clientidbase.vs";
 std::string prop_fingerprint = "ro.build.fingerprint";
@@ -101,6 +102,7 @@ void set_system_properties() {
             prop_product_value = "fijisc";
             if (carrier_ontim == "openmx_retmx" || carrier_ontim == "amxmx_amxmx"
              || carrier_ontim == "amxmx_amxmxsl" || carrier_ontim == "amxbr_clarobr" || carrier_ontim == "amxbr_brmanaus") {
+                property_set(prop_amclient, prop_clientcountry_value);
                 property_set(prop_msclient, prop_clientrevc_value);
             } else if (carrier_ontim == "attmx_attmx") {
                 property_set(prop_msclient, prop_clientmx_value);
