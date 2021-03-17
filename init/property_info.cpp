@@ -259,6 +259,7 @@ void set_system_properties(){
                 property_set(prop_msclient, prop_cliento2_value);
                 property_set(prop_vsclient, prop_cliento2_value);
             } else if (carrier_ontim == "reteu_dtag") {
+                property_set(prop_amclient, prop_clienttmobile_value);
                 property_set(prop_msclient, prop_clientdtrevc3_value);
                 property_set(prop_vsclient, prop_clientdtrevc3_value);
             } else {
@@ -277,6 +278,7 @@ void set_system_properties(){
              || carrier_ontim == "amxco_claro" || carrier_ontim == "amxbr_clarobr"
              || carrier_ontim == "amxbr_brmanaus" || carrier_ontim == "amxcl_clarocl"
              || carrier_ontim == "amxla_amxlag") {
+                property_set(prop_amclient, prop_clientcountry_value);
                 property_set(prop_msclient, prop_clientrevc_value);
                 property_set(prop_vsclient, prop_clientrevc_value);
             } else if (carrier_ontim == "attmx_attmx") {
@@ -346,9 +348,12 @@ void set_system_properties(){
             prop_product_value = "malta_l";
             if (carrier_ontim == "openmx_retmx" || carrier_ontim == "amxmx_amxmx"
              || carrier_ontim == "amxmx_amxmxsl" || carrier_ontim == "amxpe_claro"
-             || carrier_ontim == "amxco_claro" || carrier_ontim == "amxbr_clarobr"
-             || carrier_ontim == "amxcl_clarocl" || carrier_ontim == "amxla_amxlag"
-             || carrier_ontim == "amxbr_brmanaus") {
+             || carrier_ontim == "amxco_claro" || carrier_ontim == "amxcl_clarocl"
+             || carrier_ontim == "amxla_amxlag") {
+                property_set(prop_msclient, prop_clientrevc_value);
+                property_set(prop_vsclient, prop_clientrevc_value);
+            } else if (carrier_ontim == "amxbr_clarobr" || carrier_ontim == "amxbr_brmanaus") {
+                property_set(prop_amclient, prop_clientcountry_value);
                 property_set(prop_msclient, prop_clientrevc_value);
                 property_set(prop_vsclient, prop_clientrevc_value);
             } else if (carrier_ontim == "attmx_attmx") {
@@ -406,6 +411,7 @@ void set_system_properties(){
         }
 
         if (carrier_ontim == "amxbr_clarobr" || carrier_ontim == "amxbr_brmanaus") {
+            property_set(prop_amclient, prop_clientcountry_value);
             property_set(prop_msclient, prop_clientrevc_value);
             property_set(prop_vsclient, prop_clientrevc_value);
         } else if (carrier_ontim == "timbr_timbr" || carrier_ontim == "timbr_brmanaus") {
