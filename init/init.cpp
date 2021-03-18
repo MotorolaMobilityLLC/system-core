@@ -889,7 +889,9 @@ int SecondStageMain(int argc, char** argv) {
      */
     auto api_level = android::base::GetIntProperty("ro.product.first_api_level", 0);
     bool is_debuggable = android::base::GetBoolProperty("ro.debuggable", false);
-    auto mount_debugfs = (is_debuggable && (api_level >= 31)) ? "1" : "0";
+    bool first_api_level_override = android::base::GetBoolProperty("debug.mount_debugfs", false);
+    auto mount_debugfs =
+            (is_debuggable && ((api_level >= 31) || first_api_level_override)) ? "1" : "0";
     SetProperty("init.mount_debugfs", mount_debugfs);
 
     am.QueueBuiltinAction(SetupCgroupsAction, "SetupCgroups");
