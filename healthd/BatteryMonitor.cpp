@@ -696,12 +696,6 @@ void BatteryMonitor::init(struct healthd_config *hc) {
                     }
                 }
                 // Begin Motorola, kalathik, 29/09/2020, IKSWR-5849
-                if (mHealthdConfig->batteryCapacityLevelPath.isEmpty()) {
-                    path.clear();
-                    path.appendFormat("%s/%s/capacity_level", POWER_SUPPLY_SYSFS_PATH, name);
-                    if (access(path, R_OK) == 0) mHealthdConfig->batteryCapacityLevelPath = path;
-                }
-
                 if (mHealthdConfig->batteryChargeTimeToFullNowPath.isEmpty()) {
                     path.clear();
                     path.appendFormat("%s/%s/time_to_full_now", POWER_SUPPLY_SYSFS_PATH, name);
