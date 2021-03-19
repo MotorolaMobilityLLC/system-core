@@ -85,6 +85,7 @@ void LogdClose() {
   logd_socket = 0;
 }
 
+<<<<<<< HEAD
 // [JSTINNO_SRC xiaoyan.yu,  control the code lines sprd added which will cause system block , -01 START
 #ifdef SPRD_LOGD_ENHANCED 
 char* pidToName(pid_t pid) {
@@ -110,6 +111,8 @@ char* pidToName(pid_t pid) {
 #endif/*SPRD_LOGD_ENHANCED*/
 // JSTINNO_SRC xiaoyan.yu, -01 END]
 
+=======
+>>>>>>> tinno/BASELINE_SPRDROIDR_TRUNK
 int LogdWrite(log_id_t logId, struct timespec* ts, struct iovec* vec, size_t nr) {
   ssize_t ret;
   static const unsigned headerLength = 1;
@@ -193,6 +196,7 @@ int LogdWrite(log_id_t logId, struct timespec* ts, struct iovec* vec, size_t nr)
     }
   }
   
+<<<<<<< HEAD
 // [JSTINNO_SRC xiaoyan.yu,  control the code lines sprd added which will cause system block , -01 START
 #ifdef SPRD_LOGD_ENHANCED 
   static int do_log_retry = 0;
@@ -225,6 +229,8 @@ int LogdWrite(log_id_t logId, struct timespec* ts, struct iovec* vec, size_t nr)
 #endif/*SPRD_LOGD_ENHANCED*/
 // JSTINNO_SRC xiaoyan.yu, -01 END]
 
+=======
+>>>>>>> tinno/BASELINE_SPRDROIDR_TRUNK
   // The write below could be lost, but will never block.
   // EAGAIN occurs if logd is overloaded, other errors indicate that something went wrong with
   // the connection, so we reset it and try again.
@@ -238,6 +244,7 @@ int LogdWrite(log_id_t logId, struct timespec* ts, struct iovec* vec, size_t nr)
   if (ret < 0) {
     ret = -errno;
   }
+<<<<<<< HEAD
   
 // [JSTINNO_SRC xiaoyan.yu,  control the code lines sprd added which will cause system block , -01 START
 #ifdef SPRD_LOGD_ENHANCED 
@@ -269,6 +276,8 @@ int LogdWrite(log_id_t logId, struct timespec* ts, struct iovec* vec, size_t nr)
    }
   #endif/*SPRD_LOGD_ENHANCED*/
 // JSTINNO_SRC xiaoyan.yu, -01 END]
+=======
+>>>>>>> tinno/BASELINE_SPRDROIDR_TRUNK
 
   if (ret > (ssize_t)sizeof(header)) {
     ret -= sizeof(header);
