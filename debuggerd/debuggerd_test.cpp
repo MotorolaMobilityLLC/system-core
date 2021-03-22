@@ -69,7 +69,7 @@ using android::base::unique_fd;
 #define ARCH_SUFFIX ""
 #endif
 
-constexpr char kWaitForGdbKey[] = "debug.debuggerd.wait_for_gdb";
+constexpr char kWaitForDebuggerKey[] = "debug.debuggerd.wait_for_debugger";
 
 #define TIMEOUT(seconds, expr)                                     \
   [&]() {                                                          \
@@ -157,7 +157,7 @@ static void tombstoned_intercept(pid_t target_pid, unique_fd* intercept_fd, uniq
 class CrasherTest : public ::testing::Test {
  public:
   pid_t crasher_pid = -1;
-  bool previous_wait_for_gdb;
+  bool previous_wait_for_debugger;
   unique_fd crasher_pipe;
   unique_fd intercept_fd;
 
@@ -178,8 +178,13 @@ class CrasherTest : public ::testing::Test {
 };
 
 CrasherTest::CrasherTest() {
-  previous_wait_for_gdb = android::base::GetBoolProperty(kWaitForGdbKey, false);
-  android::base::SetProperty(kWaitForGdbKey, "0");
+  previous_wait_for_debugger = android::base::GetBoolProperty(kWaitForDebuggerKey, false);
+  android::base::SetProperty(kWaitForDebuggerKey, "0");
+
+  // Clear the old property too, just in case someone's been using it
+  // on this device. (We only document the new name, but we still support
+  // the old name so we don't break anyone's existing setups.)
+  android::base::SetProperty("debug.debuggerd.wait_for_gdb", "0");
 }
 
 CrasherTest::~CrasherTest() {
@@ -189,7 +194,7 @@ CrasherTest::~CrasherTest() {
     TEMP_FAILURE_RETRY(waitpid(crasher_pid, &status, WUNTRACED));
   }
 
-  android::base::SetProperty(kWaitForGdbKey, previous_wait_for_gdb ? "1" : "0");
+  android::base::SetProperty(kWaitForDebuggerKey, previous_wait_for_debugger ? "1" : "0");
 }
 
 void CrasherTest::StartIntercept(unique_fd* output_fd, DebuggerdDumpType intercept_type) {
@@ -374,11 +379,11 @@ TEST_F(CrasherTest, heap_addr_in_register) {
   ConsumeFd(std::move(output_fd), &result);
 
 #if defined(__aarch64__)
-  ASSERT_MATCH(result, "memory near x0");
+  ASSERT_MATCH(result, "memory near x0 \\(\\[anon:");
 #elif defined(__arm__)
-  ASSERT_MATCH(result, "memory near r0");
+  ASSERT_MATCH(result, "memory near r0 \\(\\[anon:");
 #elif defined(__x86_64__)
-  ASSERT_MATCH(result, "memory near rdi");
+  ASSERT_MATCH(result, "memory near rdi \\(\\[anon:");
 #else
   ASSERT_TRUE(false) << "unsupported architecture";
 #endif
@@ -392,7 +397,11 @@ static void SetTagCheckingLevelSync() {
 }
 #endif
 
-TEST_F(CrasherTest, mte_uaf) {
+struct SizeParamCrasherTest : CrasherTest, testing::WithParamInterface<size_t> {};
+
+INSTANTIATE_TEST_SUITE_P(Sizes, SizeParamCrasherTest, testing::Values(16, 131072));
+
+TEST_P(SizeParamCrasherTest, mte_uaf) {
 #if defined(__aarch64__)
   if (!mte_supported()) {
     GTEST_SKIP() << "Requires MTE";
@@ -400,9 +409,9 @@ TEST_F(CrasherTest, mte_uaf) {
 
   int intercept_result;
   unique_fd output_fd;
-  StartProcess([]() {
+  StartProcess([&]() {
     SetTagCheckingLevelSync();
-    volatile int* p = (volatile int*)malloc(16);
+    volatile int* p = (volatile int*)malloc(GetParam());
     free((void *)p);
     p[0] = 42;
   });
@@ -417,8 +426,9 @@ TEST_F(CrasherTest, mte_uaf) {
   std::string result;
   ConsumeFd(std::move(output_fd), &result);
 
-  ASSERT_MATCH(result, R"(signal 11 \(SIGSEGV\), code 9 \(SEGV_MTESERR\))");
-  ASSERT_MATCH(result, R"(Cause: \[MTE\]: Use After Free, 0 bytes into a 16-byte allocation.*
+  ASSERT_MATCH(result, R"(signal 11 \(SIGSEGV\))");
+  ASSERT_MATCH(result, R"(Cause: \[MTE\]: Use After Free, 0 bytes into a )" +
+                           std::to_string(GetParam()) + R"(-byte allocation.*
 
 allocated by thread .*
       #00 pc)");
@@ -429,7 +439,7 @@ allocated by thread .*
 #endif
 }
 
-TEST_F(CrasherTest, mte_overflow) {
+TEST_P(SizeParamCrasherTest, mte_overflow) {
 #if defined(__aarch64__)
   if (!mte_supported()) {
     GTEST_SKIP() << "Requires MTE";
@@ -437,10 +447,10 @@ TEST_F(CrasherTest, mte_overflow) {
 
   int intercept_result;
   unique_fd output_fd;
-  StartProcess([]() {
+  StartProcess([&]() {
     SetTagCheckingLevelSync();
-    volatile int* p = (volatile int*)malloc(16);
-    p[4] = 42;
+    volatile char* p = (volatile char*)malloc(GetParam());
+    p[GetParam()] = 42;
   });
 
   StartIntercept(&output_fd);
@@ -454,7 +464,8 @@ TEST_F(CrasherTest, mte_overflow) {
   ConsumeFd(std::move(output_fd), &result);
 
   ASSERT_MATCH(result, R"(signal 11 \(SIGSEGV\))");
-  ASSERT_MATCH(result, R"(Cause: \[MTE\]: Buffer Overflow, 0 bytes right of a 16-byte allocation.*
+  ASSERT_MATCH(result, R"(Cause: \[MTE\]: Buffer Overflow, 0 bytes right of a )" +
+                           std::to_string(GetParam()) + R"(-byte allocation.*
 
 allocated by thread .*
       #00 pc)");
@@ -463,7 +474,7 @@ allocated by thread .*
 #endif
 }
 
-TEST_F(CrasherTest, mte_underflow) {
+TEST_P(SizeParamCrasherTest, mte_underflow) {
 #if defined(__aarch64__)
   if (!mte_supported()) {
     GTEST_SKIP() << "Requires MTE";
@@ -471,9 +482,9 @@ TEST_F(CrasherTest, mte_underflow) {
 
   int intercept_result;
   unique_fd output_fd;
-  StartProcess([]() {
+  StartProcess([&]() {
     SetTagCheckingLevelSync();
-    volatile int* p = (volatile int*)malloc(16);
+    volatile int* p = (volatile int*)malloc(GetParam());
     p[-1] = 42;
   });
 
@@ -488,7 +499,8 @@ TEST_F(CrasherTest, mte_underflow) {
   ConsumeFd(std::move(output_fd), &result);
 
   ASSERT_MATCH(result, R"(signal 11 \(SIGSEGV\), code 9 \(SEGV_MTESERR\))");
-  ASSERT_MATCH(result, R"(Cause: \[MTE\]: Buffer Underflow, 4 bytes left of a 16-byte allocation.*
+  ASSERT_MATCH(result, R"(Cause: \[MTE\]: Buffer Underflow, 4 bytes left of a )" +
+                           std::to_string(GetParam()) + R"(-byte allocation.*
 
 allocated by thread .*
       #00 pc)");
@@ -727,9 +739,9 @@ TEST_F(CrasherTest, intercept_timeout) {
   AssertDeath(SIGABRT);
 }
 
-TEST_F(CrasherTest, wait_for_gdb) {
-  if (!android::base::SetProperty(kWaitForGdbKey, "1")) {
-    FAIL() << "failed to enable wait_for_gdb";
+TEST_F(CrasherTest, wait_for_debugger) {
+  if (!android::base::SetProperty(kWaitForDebuggerKey, "1")) {
+    FAIL() << "failed to enable wait_for_debugger";
   }
   sleep(1);
 

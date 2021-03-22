@@ -389,6 +389,15 @@ static std::string init_android_dt_dir() {
             android_dt_dir = value;
         }
     });
+    // ..Or bootconfig
+    if (android_dt_dir == kDefaultAndroidDtDir) {
+        ImportBootconfig([&](const std::string& key, const std::string& value) {
+            if (key == "androidboot.android_dt_dir") {
+                android_dt_dir = value;
+            }
+        });
+    }
+
     LOG(INFO) << "Using Android DT directory " << android_dt_dir;
     return android_dt_dir;
 }
@@ -748,6 +757,17 @@ void InitKernelLogging(char** argv) {
 
 bool IsRecoveryMode() {
     return access("/system/bin/recovery", F_OK) == 0;
+}
+
+// Check if default mount namespace is ready to be used with APEX modules
+static bool is_default_mount_namespace_ready = false;
+
+bool IsDefaultMountNamespaceReady() {
+    return is_default_mount_namespace_ready;
+}
+
+void SetDefaultMountNamespaceReady() {
+    is_default_mount_namespace_ready = true;
 }
 
 #ifdef MTK_LOG

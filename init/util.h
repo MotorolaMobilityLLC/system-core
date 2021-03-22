@@ -105,6 +105,9 @@ void SetStdioToDevNull(char** argv);
 void InitKernelLogging(char** argv);
 bool IsRecoveryMode();
 
+bool IsDefaultMountNamespaceReady();
+void SetDefaultMountNamespaceReady();
+
 #ifdef MTK_LOG
 int PropSetLogReap(int);
 void PropSetLogReset();
