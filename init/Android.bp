@@ -151,6 +151,7 @@ cc_defaults {
         "libcgrouprc_format",
         "liblmkd_utils",
         "libmodprobe",
+        "libprocinfo",
         "libprotobuf-cpp-lite",
         "libpropertyinfoserializer",
         "libpropertyinfoparser",
@@ -335,6 +336,7 @@ cc_binary {
         "libsnapshot_cow",
         "libsnapshot_init",
         "update_metadata-protos",
+        "libprocinfo",
     ],
 
     static_executable: true,
