@@ -15,7 +15,6 @@
  */
 
 #include "TrustyApp.h"
-#include "TrustyIpc.h"
 
 #include <BufferAllocator/BufferAllocator.h>
 #include <android-base/logging.h>
@@ -27,6 +26,7 @@
 
 namespace android {
 namespace trusty {
+namespace confirmationui {
 
 using ::android::base::unique_fd;
 
@@ -107,11 +107,6 @@ TrustyApp::TrustyApp(const std::string& path, const std::string& appname)
         return;
     }
 
-    if (dma_buf < 0) {
-        LOG(ERROR) << AT << "failed to allocate shared memory buffer";
-        return;
-    }
-
     confirmationui_hdr hdr = {
         .cmd = CONFIRMATIONUI_CMD_INIT,
     };
@@ -167,5 +162,6 @@ TrustyApp::~TrustyApp() {
     LOG(INFO) << "Done shutting down TrustyApp";
 }
 
+}  // namespace confirmationui
 }  // namespace trusty
 }  // namespace android
