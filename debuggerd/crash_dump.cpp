@@ -303,6 +303,7 @@ static void ReadCrashInfo(unique_fd& fd, siginfo_t* siginfo,
       process_info->gwp_asan_metadata = crash_info->data.d.gwp_asan_metadata;
       process_info->scudo_stack_depot = crash_info->data.d.scudo_stack_depot;
       process_info->scudo_region_info = crash_info->data.d.scudo_region_info;
+      process_info->scudo_ring_buffer = crash_info->data.d.scudo_ring_buffer;
       FALLTHROUGH_INTENDED;
     case 1:
     case 2:
@@ -390,7 +391,7 @@ int main(int argc, char** argv) {
 
   // There appears to be a bug in the kernel where our death causes SIGHUP to
   // be sent to our process group if we exit while it has stopped jobs (e.g.
-  // because of wait_for_gdb). Use setsid to create a new process group to
+  // because of wait_for_debugger). Use setsid to create a new process group to
   // avoid hitting this.
   setsid();
 
@@ -547,15 +548,17 @@ int main(int argc, char** argv) {
   fork_exit_write.reset();
 
   // Defer the message until later, for readability.
-  bool wait_for_gdb = android::base::GetBoolProperty("debug.debuggerd.wait_for_gdb", false);
+  bool wait_for_debugger = android::base::GetBoolProperty(
+      "debug.debuggerd.wait_for_debugger",
+      android::base::GetBoolProperty("debug.debuggerd.wait_for_gdb", false));
   if (siginfo.si_signo == BIONIC_SIGNAL_DEBUGGER) {
-    wait_for_gdb = false;
+    wait_for_debugger = false;
   }
 
   // Detach from all of our attached threads before resuming.
   for (const auto& [tid, thread] : thread_info) {
     int resume_signal = thread.signo == BIONIC_SIGNAL_DEBUGGER ? 0 : thread.signo;
-    if (wait_for_gdb) {
+    if (wait_for_debugger) {
       resume_signal = 0;
       if (tgkill(target_process, tid, SIGSTOP) != 0) {
         PLOG(WARNING) << "failed to send SIGSTOP to " << tid;
@@ -640,12 +643,12 @@ int main(int argc, char** argv) {
     }
   }
 
-  if (wait_for_gdb) {
+  if (wait_for_debugger) {
     // Use ALOGI to line up with output from engrave_tombstone.
     ALOGI(
         "***********************************************************\n"
         "* Process %d has been suspended while crashing.\n"
-        "* To attach gdbserver and start gdb, run this on the host:\n"
+        "* To attach the debugger, run this on the host:\n"
         "*\n"
         "*     gdbclient.py -p %d\n"
         "*\n"

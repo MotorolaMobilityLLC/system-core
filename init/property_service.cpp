@@ -44,6 +44,7 @@
 #include <mutex>
 #include <optional>
 #include <queue>
+#include <string_view>
 #include <thread>
 #include <vector>
 
@@ -1265,28 +1266,55 @@ static void ProcessKernelDt() {
     }
 }
 
+constexpr auto ANDROIDBOOT_PREFIX = "androidboot."sv;
+
+// emulator specific, should be removed once emulator is migrated to
+// bootconfig, see b/182291166.
+static std::string RemapEmulatorPropertyName(const std::string_view qemu_key) {
+    if (StartsWith(qemu_key, "dalvik."sv) || StartsWith(qemu_key, "opengles."sv) ||
+        StartsWith(qemu_key, "config."sv)) {
+        return std::string(qemu_key);
+    } else if (qemu_key == "uirenderer"sv) {
+        return "debug.hwui.renderer"s;
+    } else if (qemu_key == "media.ccodec"sv) {
+        return "debug.stagefright.ccodec"s;
+    } else {
+        return ""s;  // TBD
+    }
+}
+
 static void ProcessKernelCmdline() {
-    bool for_emulator = false;
     ImportKernelCmdline([&](const std::string& key, const std::string& value) {
-        if (key == "qemu") {
-            for_emulator = true;
-        } else if (StartsWith(key, "androidboot.")) {
-            InitPropertySet("ro.boot." + key.substr(12), value);
+        constexpr auto qemu_prefix = "qemu."sv;
+
+        if (StartsWith(key, ANDROIDBOOT_PREFIX)) {
+            InitPropertySet("ro.boot." + key.substr(ANDROIDBOOT_PREFIX.size()), value);
+        } else if (StartsWith(key, qemu_prefix)) {
+            InitPropertySet("ro.kernel." + key, value);  // emulator specific, deprecated
+
+            // emulator specific, should be retired once emulator migrates to
+            // androidboot.
+            const auto new_name =
+                    RemapEmulatorPropertyName(std::string_view(key).substr(qemu_prefix.size()));
+            if (!new_name.empty()) {
+                InitPropertySet("ro.boot." + new_name, value);
+            }
+        } else if (key == "qemu") {
+            // emulator specific, should be retired once emulator migrates to
+            // androidboot.
+            InitPropertySet("ro.boot." + key, value);
         }
     });
-
-    if (for_emulator) {
-        ImportKernelCmdline([&](const std::string& key, const std::string& value) {
-            // In the emulator, export any kernel option with the "ro.kernel." prefix.
-            InitPropertySet("ro.kernel." + key, value);
-        });
-    }
 }
 
 static void ProcessBootconfig() {
     ImportBootconfig([&](const std::string& key, const std::string& value) {
-        if (StartsWith(key, "androidboot.")) {
-            InitPropertySet("ro.boot." + key.substr(12), value);
+        if (StartsWith(key, ANDROIDBOOT_PREFIX)) {
+            InitPropertySet("ro.boot." + key.substr(ANDROIDBOOT_PREFIX.size()), value);
+        } else if (key == "hardware") {
+            // "hardware" in bootconfig replaces "androidboot.hardware" kernel
+            // cmdline parameter
+            InitPropertySet("ro.boot." + key, value);
         }
     });
 }
