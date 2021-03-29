@@ -368,6 +368,7 @@ int FirstStageMain(int argc, char** argv) {
 
     setenv(kEnvFirstStageStartedAt, std::to_string(start_time.time_since_epoch().count()).c_str(),
            1);
+    LOG(INFO) << "init first stage completed!";
 
     const char* path = "/system/bin/init";
     const char* args[] = {path, "selinux_setup", nullptr};
