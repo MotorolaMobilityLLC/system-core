@@ -60,6 +60,9 @@
 #include "libdebuggerd/backtrace.h"
 #include "libdebuggerd/tombstone.h"
 #include "libdebuggerd/utility.h"
+#ifdef MSSI_HAVE_AEE_FEATURE
+#include <mini_coredump.h>
+#endif
 
 #include "debuggerd/handler.h"
 #include "tombstoned/tombstoned.h"
@@ -619,6 +622,23 @@ int main(int argc, char** argv) {
   }
 
   std::string amfd_data;
+
+#ifdef MSSI_HAVE_AEE_FEATURE
+  bool need_notify_aee = false;
+  char tombstone_path[PATH_MAX] = {};
+  if (fatal_signal && is_debuggerd_register_signal(signo)) {
+    ssize_t ret = -1;
+    char buf[256];
+
+    snprintf(buf, sizeof(buf), "/proc/%d/task/%d/fd/%d", getpid(), gettid(), g_output_fd.get());
+    ret = readlink(buf, tombstone_path, sizeof(tombstone_path));
+    if (ret != -1)
+        need_notify_aee = true;
+    else
+        PLOG(WARNING) << "readlink fail: " << strerror(errno);
+  }
+#endif
+
   if (backtrace) {
     ATRACE_NAME("dump_backtrace");
     dump_backtrace(std::move(g_output_fd), &unwinder, thread_info, g_target_thread);
@@ -635,6 +655,13 @@ int main(int argc, char** argv) {
                         g_target_thread, process_info, &open_files, &amfd_data);
     }
   }
+
+#ifdef MSSI_HAVE_AEE_FEATURE
+  if (need_notify_aee) {
+    LOG(INFO) << "start notify aee_aed: " << tombstone_path;
+    crash_mini_dump_notify(tombstone_path, vm_pid, target_process, g_target_thread, siginfo, thread_info);
+  }
+#endif
 
   if (fatal_signal) {
     // Don't try to notify ActivityManager if it just crashed, or we might hang until timeout.
