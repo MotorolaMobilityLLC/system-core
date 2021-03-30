@@ -356,7 +356,10 @@ cc_binary {
         "crash_dump.cpp",
         "util.cpp",
     ],
-    defaults: ["debuggerd_defaults"],
+    defaults: [
+        "debuggerd_defaults",
+        "mtk_crash_dump_extra_defaults",
+    ],
 
     compile_multilib: "both",
     multilib: {
@@ -376,7 +379,6 @@ cc_binary {
         "libtombstoned_client_static",
         "libdebuggerd",
         "libcutils",
-
         "libtombstone_proto",
         "libprotobuf-cpp-lite",
     ],
@@ -417,7 +419,10 @@ cc_binary {
         "tombstoned/intercept_manager.cpp",
         "tombstoned/tombstoned.cpp",
     ],
-    defaults: ["debuggerd_defaults"],
+    defaults: [
+        "debuggerd_defaults",
+        "mtk_crash_dump_extra_simple",
+    ],
 
     header_libs: [
         "bionic_libc_platform_headers",
@@ -478,4 +483,25 @@ prebuilt_etc {
             src: "seccomp_policy/crash_dump.x86.policy",
         },
     },
+}
+
+bootstrap_go_package {
+    name: "soong-crash_dump_extra-mediatek",
+    pkgPath: "android/soong/crash_dump_extra/mediatek",
+    deps: [
+        "soong-android",
+        "soong-cc",
+    ],
+    srcs: [
+        "crash_dump_extra.go",
+    ],
+    pluginFor: ["soong_build"],
+}
+
+mtk_crash_dump_extra_defaults {
+    name: "mtk_crash_dump_extra_defaults",
+}
+
+mtk_crash_dump_extra_simple {
+    name: "mtk_crash_dump_extra_simple",
 }
