@@ -171,7 +171,7 @@ int fs_mgr_do_format(const FstabEntry& entry, bool crypt_footer) {
         return format_ext4(entry.blk_device, entry.mount_point, crypt_footer, needs_projid,
                            entry.fs_mgr_flags.ext_meta_csum);
     } else if (entry.fs_type == "vfat") {
-        std::vector<const char*> args = {"/system/bin/newfs_msdos", "-F", "16",
+        std::vector<const char*> args = {"/system/bin/newfs_msdos",
                                          entry.blk_device.c_str()};
         return logwrap_fork_execvp(args.size(), args.data(), nullptr, false, LOG_KLOG, false, nullptr);
     } else {
