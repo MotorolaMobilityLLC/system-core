@@ -77,6 +77,9 @@
 #include "usb.h"
 #include "util.h"
 
+// Support SPRD/Unisoc pac file parsing and flashing.
+#include "sprd_pac.h"
+
 using android::base::ReadFully;
 using android::base::Split;
 using android::base::Trim;
@@ -374,6 +377,10 @@ static int show_help() {
             "                            Secondary images may be flashed to inactive slot.\n"
             " flash PARTITION [FILENAME] Flash given partition, using the image from\n"
             "                            $ANDROID_PRODUCT_OUT if no filename is given.\n"
+            "UniSoc/SPRD PAC:\n"
+            " flash-pac  [PAC-FILENAME]  Flash phone with files in SPRD/UniSoc pac, ERASE user data.\n"
+            " flash-pack [PAC-FILENAME]  Flash phone with files in SPRD/UniSoc pac, KEEP user data.\n"
+            " parse-pac  [PAC-FILENAME]  Parse SPRD/UniSoc pac content to a temporary folder named as the base name of the pac.\n"
             "\n"
             "basics:\n"
             " devices [-l]               List devices in bootloader (-l: with device paths).\n"
@@ -1948,6 +1955,14 @@ int FastBootTool::Main(int argc, char* argv[]) {
         return show_help();
     }
 
+    if (argc > 0 && !strcmp(*argv, FB_CMD_PARSE_PAC)) {
+        std::vector<std::string> args(argv, argv + argc);
+        std::string command = next_arg(&args);
+        std::string pacFilename = next_arg(&args);
+        parse_pac(pacFilename);
+        return 0;
+    }
+
     Transport* transport = open_device();
     if (transport == nullptr) {
         return 1;
@@ -2208,6 +2223,11 @@ int FastBootTool::Main(int argc, char* argv[]) {
 	    } else {
 	        syntax_error("unknown command %s", command.c_str());
 	    }
+        } else if (command == FB_CMD_FLASH_PAC || command == FB_CMD_FLASH_PACK) {
+            if (isFusedDevice()) die("The command can't be done in a fused device!");
+            const bool eraseUserData = (command == FB_CMD_FLASH_PAC);
+            flashSprdPac(args, eraseUserData, slot_override, force_flash, set_fbe_marker);
+            wants_reboot = true;
         } else {
             syntax_error("unknown command %s", command.c_str());
         }
@@ -2281,3 +2301,192 @@ void FastBootTool::ParseOsVersion(boot_img_hdr_v1* hdr, const char* arg) {
     }
     hdr->SetOsVersion(major, minor, patch);
 }
+
+// Begin - SPRD/Unisoc PAC
+static bool isFusedDevice() {
+    // Check whether this is a fused device.
+    std::string var = "lcs";
+    std::string lcs;
+    if (fb->GetVar(var, &lcs) != fastboot::SUCCESS) {
+        fprintf(stderr, "\nFailed! getvar for '%s' (%s)\n", var.c_str(), fb->Error().c_str());
+        die("Failed to get fuse mode!");
+    }
+    if (strcmp(lcs.c_str(), "1") == 0) return false; // Not a fused device.
+    if (strcmp(lcs.c_str(), "5") == 0) return true;  // A fused device.
+    die("Invalid/unknown fuse mode: %s", lcs.c_str());
+}
+
+static std::string getProductName() {
+    std::string var = "product_name";
+    std::string curProductName;
+    if (fb->GetVar(var, &curProductName) != fastboot::SUCCESS) {
+        fprintf(stderr, "\nFailed! getvar for '%s' (%s)\n", var.c_str(), fb->Error().c_str());
+        die("Failed to get the target product name!");
+    }
+    return curProductName;
+}
+
+static void flashSprdPac(std::vector<std::string> &args, const bool eraseUserData,
+                         const std::string& slot_override, const bool force_flash,
+                         const bool set_fbe_marker) {
+    std::string pacFilename = next_arg(&args);
+    if (pacFilename.empty() || pacFilename.length() <= 0) {
+        die("\nFailed flash-pac! - EMPTY pac filename!");
+    }
+    PacInfo pacInfo;
+    pacInfo.tempDirectory = getFilename(pacFilename);
+    std::string curProductName = getProductName();
+    if (curProductName.empty()) {
+        die("\nFailed to get product name! Flash Abort!!!");
+    }
+    pacInfo.splloaderStorage = getSplloaderStorageByProduct(curProductName);
+    if (!readPacToImgs(pacFilename, pacInfo, curProductName)) {
+        die("\nFailed flash-pac! Abort!!!");
+    }
+    if (pacInfo.pacImgList.size() <= 0) {
+        die("\nFailed to parse files from SPRD pac file!\n(Error: %s)\n-> '%s'\n",
+            strerror(errno), pacFilename.c_str());
+    }
+    int flashFileCount = loadXmlInfo(pacInfo);
+    // Firstly erase the specified partitions.
+    if (eraseUserData) wipeUserData(set_fbe_marker);
+    removeUserDataPartitionsFromEraseItems(pacInfo.eraseFileItems);
+    if (pacInfo.eraseFileItems.size() > 0) {
+        erasePartitions(pacInfo.eraseFileItems, slot_override);
+    }
+    // Flash the specified partitions.
+    if (flashFileCount > 0) {
+        fprintf(stdout, "\n - Unisoc backup NV will be done.");
+        fb->RawCommand("oem backupnv", "Unisoc set flag to backup NV");
+        fprintf(stdout, "\n - Unisoc flag to backup NV has been set!");
+
+        flashPacImgs(pacInfo.tempDirectory, pacInfo.flashFileItems, slot_override,
+                     force_flash, eraseUserData);
+    }
+    deletePath(pacInfo.tempDirectory.c_str());
+
+    showDone();
+}
+
+static void parse_pac(std::string &pacFilename) {
+    if (pacFilename.empty() || pacFilename.length() <= 0) {
+        die("\nFailed parse-pac! - EMPTY pac filename!");
+    }
+    PacInfo pacInfo;
+    pacInfo.tempDirectory = getFilename(pacFilename);
+
+    if (!readPacToImgs(pacFilename, pacInfo)) {
+        die("\nFailed parse-pac! Abort!!!");
+    }
+    if (pacInfo.pacImgList.size() <= 0) {
+        die("\nFailed to parse files from SPRD pac file!\n(Error: %s)\n-> '%s'\n",
+            strerror(errno), pacFilename.c_str());
+    }
+}
+
+static void flashPacImgs(std::string &tempDirPath, std::vector<FileItem>& flashFileItems,
+                         const std::string& slot_override, const bool force_flash,
+                         const bool eraseUserData) {
+    const int count = flashFileItems.size();
+    fprintf(stdout, "\n - Flashing files into device ...");
+    int curIndex = 0;
+    for (auto& fileItem : flashFileItems) {
+        curIndex++;
+        //fprintf(stdout, "\n   - %d/%d%s", curIndex, count, fileItemString(fileItem).c_str());
+        if (fileItem.flashFile.length() <= 0) {
+            fprintf(stdout, "\n   --- %02d/%d Ignore '%s' - no flash file!", curIndex, count,
+                    fileItem.id.c_str());
+            continue;
+        }
+        std::string pname = fileItem.block.id;
+        if (pname.length() <= 0) {
+            fprintf(stdout, "\n   --- %02d/%d Ignore '%s' - no partition!", curIndex, count,
+                    fileItem.id.c_str());
+            continue;
+        }
+        if (!fileItem.partitionAvailable) {
+            fprintf(stdout, "\n   --- %02d/%d Ignore '%s' - partition(%s) not listed! (file: %s)",
+                    curIndex, count, fileItem.id.c_str(), pname.c_str(), fileItem.flashFile.c_str());
+            continue;
+        }
+        if (!eraseUserData && isPartitionForUserData(pname)) {
+            fprintf(stdout, "\n   --- %02d/%d Ignore '%s' - keep user data!", curIndex, count,
+                    fileItem.id.c_str());
+            continue;
+        }
+        if (isPartitionSkipped(pname)) {
+            fprintf(stdout, "\n   --- %02d/%d Skip '%s' - factory data!", curIndex, count,
+                fileItem.id.c_str());
+            continue;
+        }
+        std::string fname = getTempFilePath(tempDirPath, fileItem.flashFile);
+        auto flash = [&](const std::string &partition) {
+            if (should_flash_in_userspace(partition) && !is_userspace_fastboot() &&
+                !force_flash) {
+                fprintf(stderr, "\nFailed to flash partition(%s) because it is dynamic, and "
+                    "should be flashed via fastbootd. Please run:\n"
+                    "\n"
+                    "    fastboot reboot fastboot\n"
+                    "\n"
+                    "And try again. If you are intentionally trying to "
+                    "overwrite a fixed partition, use --force.", partition.c_str());
+                return;
+            }
+            do_flash(partition.c_str(), fname.c_str());
+            fprintf(stdout, "\n   -- %d/%d partition '%s' ( %ld bytes) flashed!\n", curIndex, count,
+                    partition.c_str(), fileItem.fileSize);
+        };
+        do_for_partitions(pname, slot_override, flash, true);
+    }
+}
+
+static void wipeUserData(const bool set_fbe_marker) {
+    std::vector<std::string> partitions = { "userdata", "metadata" };
+    for (const auto& partition : partitions) {
+        std::string partition_type;
+        if (fb->GetVar("partition-type:" + partition, &partition_type) != fastboot::SUCCESS) {
+            continue;
+        }
+        if (partition_type.empty()) continue;
+        fb->Erase(partition);
+        if (partition == "userdata" && set_fbe_marker) {
+            fprintf(stderr, "setting FBE marker on initial userdata...\n");
+            std::string initial_userdata_dir = create_fbemarker_tmpdir();
+            fb_perform_format(partition, 1, "", "", initial_userdata_dir);
+            delete_fbemarker_tmpdir(initial_userdata_dir);
+        } else {
+            fb_perform_format(partition, 1, "", "", "");
+        }
+        fprintf(stdout, "partition '%s' erased!", partition.c_str());
+    }
+}
+
+static void erasePartitions(std::vector<FileItem>& eraseFileItems, const std::string& slot_override) {
+    const int count = eraseFileItems.size();
+    fprintf(stdout, "\n - Erasing %d partitions ...\n", count);
+    int curIndex = 0;
+    for (auto& fileItem : eraseFileItems) {
+        curIndex++;
+        //fprintf(stdout, "\n   - %d/%d%s", curIndex, count, fileItemString(fileItem).c_str());
+        std::string pname = fileItem.block.id;
+        if (pname.length() <= 0) {
+            fprintf(stdout, "\n   --- %d/%d '%s' ignored - no partition!", curIndex, count,
+                    fileItem.id.c_str());
+            continue;
+        }
+        //fprintf(stdout, "\n   -- Erasing partition '%s' ...", pname.c_str());
+        auto erase = [&](const std::string &partition) {
+            std::string partition_type;
+            if (fb->GetVar("partition-type:" + partition, &partition_type) == fastboot::SUCCESS &&
+                fs_get_generator(partition_type) != nullptr) {
+                fprintf(stderr, "******** Did you mean to fastboot format this %s partition?\n",
+                            partition_type.c_str());
+            }
+            fb->Erase(partition);
+            fprintf(stdout, "\n   -- %d/%d partition '%s' erased!", curIndex, count, partition.c_str());
+        };
+        do_for_partitions(pname, slot_override, erase, true);
+    }
+}
+// End - SPRD/Unisoc PAC
+
