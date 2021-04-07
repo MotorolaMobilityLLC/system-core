@@ -125,6 +125,11 @@ ifdef BOARD_CACHEIMAGE_FILE_SYSTEM_TYPE
 else
   LOCAL_POST_INSTALL_CMD += ; ln -sf /data/cache $(TARGET_ROOT_OUT)/cache
 endif
+ifdef BOARD_ELABELIMAGE_FILE_SYSTEM_TYPE
+  LOCAL_POST_INSTALL_CMD += ; mkdir -p $(TARGET_ROOT_OUT)/elabel
+else
+  LOCAL_POST_INSTALL_CMD += ; ln -sf /data/elabel $(TARGET_ROOT_OUT)/elabel
+endif
 ifdef BOARD_ROOT_EXTRA_SYMLINKS
 # BOARD_ROOT_EXTRA_SYMLINKS is a list of <target>:<link_name>.
   LOCAL_POST_INSTALL_CMD += $(foreach s, $(BOARD_ROOT_EXTRA_SYMLINKS),\
