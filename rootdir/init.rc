@@ -432,6 +432,7 @@ on late-init
     # /system and /vendor must be mounted by the end of the fs stage,
     # while /data is optional.
     trigger fs
+    mount ext4 /dev/block/by-name/elabel /elabel noatime nosuid nodev barrier=1
     trigger post-fs
 
     # Mount fstab in init.{$device}.rc by mount_all with '--late' parameter
