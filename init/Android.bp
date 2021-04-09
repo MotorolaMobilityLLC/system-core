@@ -93,6 +93,9 @@ cc_defaults {
         "-DDUMP_ON_UMOUNT_FAILURE=0",
         "-DSHUTDOWN_ZERO_TIMEOUT=0",
         "-DINIT_FULL_SOURCES",
+//APP_SMT
+        "-DALLOW_DISABLE_SELINUX=0",
+//APP_SMT_END
     ],
     product_variables: {
         debuggable: {
@@ -120,6 +123,14 @@ cc_defaults {
         uml: {
             cppflags: ["-DUSER_MODE_LINUX"],
         },
+//APP_SMT
+        enable_smt: {
+            cppflags: [
+                "-UALLOW_DISABLE_SELINUX",
+                "-DALLOW_DISABLE_SELINUX=1",
+            ],
+        },
+//APP_SMT_END 
     },
     static_libs: [
         "libavb",

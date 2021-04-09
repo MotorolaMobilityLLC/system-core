@@ -24,6 +24,16 @@ init_options += \
     -DDUMP_ON_UMOUNT_FAILURE=0
 endif
 
+#APP_SMT
+ifneq (,$(filter YES,$(BUILD_SMT)))
+init_options += \
+    -DALLOW_DISABLE_SELINUX=1
+else
+init_options += \
+    -DALLOW_DISABLE_SELINUX=0
+endif
+#APP_SMT_END
+
 ifneq (,$(filter eng,$(TARGET_BUILD_VARIANT)))
 init_options += \
     -DSHUTDOWN_ZERO_TIMEOUT=1
