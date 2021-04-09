@@ -1088,7 +1088,36 @@ void PropertyInit() {
 
 void set_property_all_fingerprint(){
     std::string all_fingerprint = "motorola/aruba/aruba:11/RON31.201005.001/14331:user/release-keys";
+    std::string all_brand="motorola";
+    std::string all_name="aruba";
+    std::string all_device="aruba";
+    std::string prop_clientid="android-motorola";
+
     allow_change_ro_property = true;
+
+    InitPropertySet("ro.com.google.clientidbase", prop_clientid);
+
+    InitPropertySet("ro.product.name", all_name);
+    InitPropertySet("ro.product.odm.name", all_name);
+    InitPropertySet("ro.product.product.name", all_name);
+    InitPropertySet("ro.product.system.name", all_name);
+    InitPropertySet("ro.product.system_ext.name", all_name);
+    InitPropertySet("ro.product.vendor.name", all_name);
+
+    InitPropertySet("ro.product.brand", all_brand);
+    InitPropertySet("ro.product.odm.brand", all_brand);
+    InitPropertySet("ro.product.product.brand", all_brand);
+    InitPropertySet("ro.product.system.brand", all_brand);
+    InitPropertySet("ro.product.system_ext.brand", all_brand);
+    InitPropertySet("ro.product.vendor.brand", all_brand);
+
+    InitPropertySet("ro.product.device", all_device);
+    InitPropertySet("ro.product.odm.device", all_device);
+    InitPropertySet("ro.product.product.device", all_device);
+    InitPropertySet("ro.product.system.device", all_device);
+    InitPropertySet("ro.product.system_ext.device", all_device);
+    InitPropertySet("ro.product.vendor.device", all_device);
+
     InitPropertySet("ro.bootimage.build.fingerprint", all_fingerprint);
     InitPropertySet("ro.build.fingerprint", all_fingerprint);
     InitPropertySet("ro.odm.build.fingerprint", all_fingerprint);
