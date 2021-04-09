@@ -93,6 +93,8 @@ namespace init {
 
 static bool persistent_properties_loaded = false;
 
+static bool allow_change_ro_property = false;
+
 static int property_set_fd = -1;
 static int from_init_socket = -1;
 static int init_socket = -1;
@@ -178,7 +180,7 @@ static uint32_t PropertySet(const std::string& name, const std::string& value, s
     prop_info* pi = (prop_info*) __system_property_find(name.c_str());
     if (pi != nullptr) {
         // ro.* properties are actually "write-once".
-        if (StartsWith(name, "ro.")) {
+        if (StartsWith(name, "ro.")&& !allow_change_ro_property) {
             *error = "Read-only property was already set";
             return PROP_ERROR_READ_ONLY_PROPERTY;
         }
@@ -1084,6 +1086,19 @@ void PropertyInit() {
     PropertyLoadBootDefaults();
 }
 
+void set_property_all_fingerprint(){
+    std::string all_fingerprint = "motorola/aruba/aruba:11/RON31.201005.001/14331:user/release-keys";
+    allow_change_ro_property = true;
+    InitPropertySet("ro.bootimage.build.fingerprint", all_fingerprint);
+    InitPropertySet("ro.build.fingerprint", all_fingerprint);
+    InitPropertySet("ro.odm.build.fingerprint", all_fingerprint);
+    InitPropertySet("ro.product.build.fingerprint", all_fingerprint);
+    InitPropertySet("ro.system.build.fingerprint", all_fingerprint);
+    InitPropertySet("ro.system_ext.build.fingerprint", all_fingerprint);
+    InitPropertySet("ro.vendor.build.fingerprint", all_fingerprint);
+    allow_change_ro_property = false;
+}
+
 static void HandleInitSocket() {
     auto message = ReadMessage(init_socket);
     if (!message.ok()) {
@@ -1108,6 +1123,8 @@ static void HandleInitSocket() {
             }
             InitPropertySet("ro.persistent_properties.ready", "true");
             persistent_properties_loaded = true;
+
+            set_property_all_fingerprint();
             break;
         }
         default:
