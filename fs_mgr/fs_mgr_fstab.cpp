@@ -17,6 +17,7 @@
 #include <ctype.h>
 #include <dirent.h>
 #include <errno.h>
+#include <fnmatch.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -254,6 +255,13 @@ void ParseFsMgrFlags(const std::string& flags, FstabEntry* entry) {
                 LWARNING << "Warning: reservedsize= flag malformed: " << arg;
             } else {
                 entry->reserved_size = static_cast<off64_t>(size);
+            }
+        } else if (StartsWith(flag, "readahead_size_kb=")) {
+            int val;
+            if (ParseInt(arg, &val, 0, 16 * 1024)) {
+                entry->readahead_size_kb = val;
+            } else {
+                LWARNING << "Warning: readahead_size_kb= flag malformed (0 ~ 16MB): " << arg;
             }
         } else if (StartsWith(flag, "eraseblk=")) {
             // The erase block size flag is followed by an = and the flash erase block size. Get it,
@@ -780,21 +788,31 @@ bool SkipMountingPartitions(Fstab* fstab, bool verbose) {
         return true;
     }
 
-    for (const auto& skip_mount_point : Split(skip_config, "\n")) {
-        if (skip_mount_point.empty()) {
+    std::vector<std::string> skip_mount_patterns;
+    for (const auto& line : Split(skip_config, "\n")) {
+        if (line.empty() || StartsWith(line, "#")) {
             continue;
         }
-        auto it = std::remove_if(fstab->begin(), fstab->end(),
-                                 [&skip_mount_point](const auto& entry) {
-                                     return entry.mount_point == skip_mount_point;
-                                 });
-        if (it == fstab->end()) continue;
-        fstab->erase(it, fstab->end());
-        if (verbose) {
-            LINFO << "Skip mounting partition: " << skip_mount_point;
-        }
+        skip_mount_patterns.push_back(line);
     }
 
+    // Returns false if mount_point matches any of the skip mount patterns, so that the FstabEntry
+    // would be partitioned to the second group.
+    auto glob_pattern_mismatch = [&skip_mount_patterns](const FstabEntry& entry) -> bool {
+        for (const auto& pattern : skip_mount_patterns) {
+            if (!fnmatch(pattern.c_str(), entry.mount_point.c_str(), 0 /* flags */)) {
+                return false;
+            }
+        }
+        return true;
+    };
+    auto remove_from = std::stable_partition(fstab->begin(), fstab->end(), glob_pattern_mismatch);
+    if (verbose) {
+        for (auto it = remove_from; it != fstab->end(); ++it) {
+            LINFO << "Skip mounting mountpoint: " << it->mount_point;
+        }
+    }
+    fstab->erase(remove_from, fstab->end());
     return true;
 }
 #endif
