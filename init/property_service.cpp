@@ -1009,6 +1009,8 @@ static void ExportKernelBootProps() {
         { "ro.boot.bootloader", "ro.bootloader", "unknown", },
         { "ro.boot.hardware",   "ro.hardware",   "unknown", },
         { "ro.boot.revision",   "ro.revision",   "0", },
+        { "ro.boot.carrier",    "ro.carrier.ontim",    "unknown", },
+        { "ro.boot.psn",        "ro.psn",        "unknown", },
             // clang-format on
     };
     for (const auto& prop : prop_map) {
