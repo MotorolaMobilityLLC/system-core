@@ -105,9 +105,9 @@ EnforcingStatus StatusFromCmdline() {
 
 bool IsEnforcing() {
 //APP_SMT
-    if (ALLOW_DISABLE_SELINUX) {
-        return false;
-    }
+    //if (ALLOW_DISABLE_SELINUX) {
+    //    return false;
+    //}
 //APP_SMT_END
     {
         int fd(open("/mboot/selinux", O_RDONLY | O_CLOEXEC | O_BINARY));
