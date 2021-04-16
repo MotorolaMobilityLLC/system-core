@@ -75,6 +75,7 @@
 #include "mount_namespace.h"
 #include "parser.h"
 #include "property_service.h"
+#include "property_info.h"
 #include "reboot.h"
 #include "rlimit_parser.h"
 #include "selabel.h"
@@ -737,6 +738,11 @@ static Result<void> do_swapon_all(const BuiltinArguments& args) {
     return {};
 }
 
+static Result<void> do_set_elabel_property(const BuiltinArguments& args) {
+    setElabelProperty();
+    return {};
+}
+
 static Result<void> do_setprop(const BuiltinArguments& args) {
     if (StartsWith(args[1], "ctl.")) {
         return Error()
@@ -1387,6 +1393,7 @@ const BuiltinFunctionMap& GetBuiltinFunctionMap() {
         {"restorecon_recursive",    {1,     kMax, {true,   do_restorecon_recursive}}},
         {"rm",                      {1,     1,    {true,   do_rm}}},
         {"rmdir",                   {1,     1,    {true,   do_rmdir}}},
+        {"set_elabel_property",     {0,     0,    {false,  do_set_elabel_property}}},
         {"setprop",                 {2,     2,    {true,   do_setprop}}},
         {"setrlimit",               {3,     3,    {false,  do_setrlimit}}},
         {"start",                   {1,     1,    {false,  do_start}}},
