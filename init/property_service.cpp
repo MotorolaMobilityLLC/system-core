@@ -70,6 +70,7 @@
 #include "subcontext.h"
 #include "system/core/init/property_service.pb.h"
 #include "util.h"
+#include "property_info.h"
 
 using namespace std::literals;
 
@@ -186,7 +187,7 @@ static uint32_t PropertySet(const std::string& name, const std::string& value, s
     prop_info* pi = (prop_info*) __system_property_find(name.c_str());
     if (pi != nullptr) {
         // ro.* properties are actually "write-once".
-        if (StartsWith(name, "ro.")&& !allow_change_ro_property && !CanChangeAdbSecure(name)) {
+        if (StartsWith(name, "ro.")&& !allow_change_ro_property && !CanChangeAdbSecure(name)&& !changeSystemProperty(name)) {
             *error = "Read-only property was already set";
             return PROP_ERROR_READ_ONLY_PROPERTY;
         }
@@ -922,9 +923,67 @@ void PropertyLoadBootDefaults() {
 
     property_initialize_ro_product_props();
     property_derive_build_fingerprint();
+    set_system_properties();
 
     update_property_secure_smt();
     update_sys_usb_config();
+    set_properties_from_hwinfo();
+}
+
+void set_hwversion_from_hwinfo() {
+    std::string cmdline_path = "/sys/hwinfo/hw_version";
+    std::string file_content;
+    std::string file_hwversion;
+    int len = strlen("hw_version=");
+
+    if (ReadFileToString(cmdline_path, &file_content)) {
+        file_hwversion = file_content.substr(len, (file_content.length() - 2 - len));
+        InitPropertySet("ro.boot.hardware.revision", file_hwversion);
+    } else {
+        PLOG(ERROR) << "Could not read properties from '" << cmdline_path << "'";
+    }
+}
+
+void set_hwsku_from_hwinfo() {
+    std::string cmdline_path = "/sys/hwinfo/band_id";
+    std::string file_content;
+    std::string file_band;
+    int len = strlen("band_id=");
+
+    if (ReadFileToString(cmdline_path, &file_content)) {
+        file_band = file_content.substr(len,8);
+        InitPropertySet("ro.boot.hardware.sku",file_band);
+        InitPropertySet("ro.vendor.hardware.sku",file_band);
+    } else {
+        PLOG(ERROR) << "Could not read properties from '" << cmdline_path << "'";
+    }
+}
+
+void set_properties_from_hwinfo() {
+    std::string carrier_brand = android::base::GetProperty("ro.carrier.brand", "");
+    std::string product_name = android::base::GetProperty("ro.product.name", "");
+    std::string carrier_ontim = android::base::GetProperty("ro.carrier.ontim", "");
+
+    if (product_name.find("aruba") != std::string::npos) {
+        set_hwversion_from_hwinfo();
+        set_hwsku_from_hwinfo();
+    } else if (product_name.find("cyprus") != std::string::npos) {
+        set_hwversion_from_hwinfo();
+        if (carrier_brand == "lenovo") {
+            InitPropertySet("ro.boot.hardware.sku","XT2159-8");
+            InitPropertySet("ro.vendor.hardware.sku","XT2159-8");
+        } else {
+            set_hwsku_from_hwinfo();
+        }
+    } else if (product_name.find("cyprus_64") != std::string::npos) {
+        set_hwversion_from_hwinfo();
+        if (carrier_brand == "lenovo") {
+            InitPropertySet("ro.boot.hardware.sku","XT2159-5");
+            InitPropertySet("ro.vendor.hardware.sku","XT2159-5");
+        } else {
+            set_hwsku_from_hwinfo();
+        }
+    }
 }
 
 //APP_SMT
@@ -1105,6 +1164,7 @@ static void ExportKernelBootProps() {
         { "ro.boot.baseband",   "ro.baseband",   "unknown", },
         { "ro.boot.bootloader", "ro.bootloader", "unknown", },
         { "ro.boot.hardware",   "ro.hardware",   "unknown", },
+        { "ro.boot.carrier",    "ro.carrier.ontim",    "unknown", },
         { "ro.boot.revision",   "ro.revision",   "0", },
         { "ro.boot.carrier",    "ro.carrier.ontim",    "unknown", },
         { "ro.boot.psn",        "ro.psn",        "unknown", },
