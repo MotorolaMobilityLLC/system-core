@@ -54,6 +54,7 @@ init_device_sources = [
     "persistent_properties.cpp",
     "persistent_properties.proto",
     "property_service.cpp",
+    "property_info.cpp",
     "property_service.proto",
     "reboot.cpp",
     "reboot_utils.cpp",

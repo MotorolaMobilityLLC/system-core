@@ -521,6 +521,10 @@ on post-fs
 
     mkdir /metadata/apex 0700 root system
     mkdir /metadata/apex/sessions 0700 root system
+
+    #set elabel properties
+    set_elabel_property
+
     # On some devices we see a weird behaviour in which /metadata/apex doesn't
     # have a correct label. To workaround this bug, explicitly call restorecon
     # on /metadata/apex. For most of the boot sequences /metadata/apex will
