@@ -411,6 +411,13 @@ static int show_help() {
             " gsi wipe|disable           Wipe or disable a GSI installation (fastbootd only).\n"
             " wipe-super [SUPER_EMPTY]   Wipe the super partition. This will reset it to\n"
             "                            contain an empty set of default dynamic partitions.\n"
+            " create-logical-partition NAME SIZE\n"
+            "                            Create a logical partition with the given name and\n"
+            "                            size, in the super partition.\n"
+            " delete-logical-partition NAME\n"
+            "                            Delete a logical partition with the given name.\n"
+            " resize-logical-partition NAME SIZE\n"
+            "                            Change the size of the named logical partition.\n"
             " snapshot-update cancel     On devices that support snapshot-based updates, cancel\n"
             "                            an in-progress update. This may make the device\n"
             "                            unbootable until it is reflashed.\n"
@@ -673,7 +680,7 @@ static unique_fd unzip_to_file(ZipArchiveHandle zip, const char* entry_name) {
     return fd;
 }
 
-static void CheckRequirement(const std::string& cur_product, const std::string& var,
+static bool CheckRequirement(const std::string& cur_product, const std::string& var,
                              const std::string& product, bool invert,
                              const std::vector<std::string>& options) {
     Status("Checking '" + var + "'");
@@ -685,7 +692,7 @@ static void CheckRequirement(const std::string& cur_product, const std::string& 
             double split = now();
             fprintf(stderr, "IGNORE, product is %s required only for %s [%7.3fs]\n",
                     cur_product.c_str(), product.c_str(), (split - start));
-            return;
+            return true;
         }
     }
 
@@ -694,7 +701,7 @@ static void CheckRequirement(const std::string& cur_product, const std::string& 
         fprintf(stderr, "FAILED\n\n");
         fprintf(stderr, "Could not getvar for '%s' (%s)\n\n", var.c_str(),
                 fb->Error().c_str());
-        die("requirements not met!");
+        return false;
     }
 
     bool match = false;
@@ -714,7 +721,7 @@ static void CheckRequirement(const std::string& cur_product, const std::string& 
     if (match) {
         double split = now();
         fprintf(stderr, "OKAY [%7.3fs]\n", (split - start));
-        return;
+        return true;
     }
 
     fprintf(stderr, "FAILED\n\n");
@@ -724,7 +731,7 @@ static void CheckRequirement(const std::string& cur_product, const std::string& 
         fprintf(stderr, " or '%s'", it->c_str());
     }
     fprintf(stderr, ".\n\n");
-    die("requirements not met!");
+    return false;
 }
 
 bool ParseRequirementLine(const std::string& line, std::string* name, std::string* product,
@@ -788,7 +795,7 @@ static void HandlePartitionExists(const std::vector<std::string>& options) {
     }
 }
 
-static void CheckRequirements(const std::string& data) {
+static void CheckRequirements(const std::string& data, bool force_flash) {
     std::string cur_product;
     if (fb->GetVar("product", &cur_product) != fastboot::SUCCESS) {
         fprintf(stderr, "getvar:product FAILED (%s)\n", fb->Error().c_str());
@@ -812,7 +819,14 @@ static void CheckRequirements(const std::string& data) {
         if (name == "partition-exists") {
             HandlePartitionExists(options);
         } else {
-            CheckRequirement(cur_product, name, product, invert, options);
+            bool met = CheckRequirement(cur_product, name, product, invert, options);
+            if (!met) {
+                if (!force_flash) {
+                  die("requirements not met!");
+                } else {
+                  fprintf(stderr, "requirements not met! but proceeding due to --force\n");
+                }
+            }
         }
     }
 }
@@ -1405,7 +1419,8 @@ class ImageSource {
 
 class FlashAllTool {
   public:
-    FlashAllTool(const ImageSource& source, const std::string& slot_override, bool skip_secondary, bool wipe);
+    FlashAllTool(const ImageSource& source, const std::string& slot_override, bool skip_secondary,
+                 bool wipe, bool force_flash);
 
     void Flash();
 
@@ -1421,16 +1436,19 @@ class FlashAllTool {
     std::string slot_override_;
     bool skip_secondary_;
     bool wipe_;
+    bool force_flash_;
     std::string secondary_slot_;
     std::vector<std::pair<const Image*, std::string>> boot_images_;
     std::vector<std::pair<const Image*, std::string>> os_images_;
 };
 
-FlashAllTool::FlashAllTool(const ImageSource& source, const std::string& slot_override, bool skip_secondary, bool wipe)
+FlashAllTool::FlashAllTool(const ImageSource& source, const std::string& slot_override,
+                           bool skip_secondary, bool wipe, bool force_flash)
    : source_(source),
      slot_override_(slot_override),
      skip_secondary_(skip_secondary),
-     wipe_(wipe)
+     wipe_(wipe),
+     force_flash_(force_flash)
 {
 }
 
@@ -1478,7 +1496,7 @@ void FlashAllTool::CheckRequirements() {
     if (!source_.ReadFile("android-info.txt", &contents)) {
         die("could not read android-info.txt");
     }
-    ::CheckRequirements({contents.data(), contents.size()});
+    ::CheckRequirements({contents.data(), contents.size()}, force_flash_);
 }
 
 void FlashAllTool::DetermineSecondarySlot() {
@@ -1598,14 +1616,15 @@ unique_fd ZipImageSource::OpenFile(const std::string& name) const {
     return unzip_to_file(zip_, name.c_str());
 }
 
-static void do_update(const char* filename, const std::string& slot_override, bool skip_secondary) {
+static void do_update(const char* filename, const std::string& slot_override, bool skip_secondary,
+                      bool force_flash) {
     ZipArchiveHandle zip;
     int error = OpenArchive(filename, &zip);
     if (error != 0) {
         die("failed to open zip file '%s': %s", filename, ErrorCodeString(error));
     }
 
-    FlashAllTool tool(ZipImageSource(zip), slot_override, skip_secondary, false);
+    FlashAllTool tool(ZipImageSource(zip), slot_override, skip_secondary, false, force_flash);
     tool.Flash();
 
     CloseArchive(zip);
@@ -1630,8 +1649,9 @@ unique_fd LocalImageSource::OpenFile(const std::string& name) const {
     return unique_fd(TEMP_FAILURE_RETRY(open(path.c_str(), O_RDONLY | O_BINARY)));
 }
 
-static void do_flashall(const std::string& slot_override, bool skip_secondary, bool wipe) {
-    FlashAllTool tool(LocalImageSource(), slot_override, skip_secondary, wipe);
+static void do_flashall(const std::string& slot_override, bool skip_secondary, bool wipe,
+                        bool force_flash) {
+    FlashAllTool tool(LocalImageSource(), slot_override, skip_secondary, wipe, force_flash);
     tool.Flash();
 }
 
@@ -2179,9 +2199,9 @@ int FastBootTool::Main(int argc, char* argv[]) {
         } else if (command == "flashall") {
             if (slot_override == "all") {
                 fprintf(stderr, "Warning: slot set to 'all'. Secondary slots will not be flashed.\n");
-                do_flashall(slot_override, true, wants_wipe);
+                do_flashall(slot_override, true, wants_wipe, force_flash);
             } else {
-                do_flashall(slot_override, skip_secondary, wants_wipe);
+                do_flashall(slot_override, skip_secondary, wants_wipe, force_flash);
             }
             wants_reboot = true;
         } else if (command == "update") {
@@ -2193,7 +2213,7 @@ int FastBootTool::Main(int argc, char* argv[]) {
             if (!args.empty()) {
                 filename = next_arg(&args);
             }
-            do_update(filename.c_str(), slot_override, skip_secondary || slot_all);
+            do_update(filename.c_str(), slot_override, skip_secondary || slot_all, force_flash);
             wants_reboot = true;
         } else if (command == FB_CMD_SET_ACTIVE) {
             std::string slot = verify_slot(next_arg(&args), false);
