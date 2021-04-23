@@ -186,6 +186,7 @@ typedef struct tagPacInfo {
 } PacInfo;
 
 const char* PAC_BP_R2_0_1 = "BP_R2.0.1";
+const char* PAC_BP_R1_0_0 = "BP_R1.0.0";
 const char* partition_splloader = "splloader";
 const char* partition_userdata  = "userdata";
 
@@ -319,6 +320,16 @@ static void removeUserDataPartitionsFromEraseItems(std::vector<FileItem> &eraseF
                    }), eraseFileItems.end());
 }
 
+static bool isCompatibleProduct(std::string &pacProduct, const std::string &curProduct) {
+    if (pacProduct == curProduct) return true;
+    const char *pac_product = pacProduct.c_str();
+    const char *cur_product = curProduct.c_str();
+    if (strcmp(pac_product, "ums9230_aruba_go") == 0) {
+        return strcmp(cur_product, "aruba") == 0;
+    }
+    return false;
+}
+
 static bool readPacToImgs(const std::string& pacFilename, PacInfo& pacInfo,
                           const std::string& productName = "") {
     const bool onlyParse = productName.empty();
@@ -355,7 +366,7 @@ static bool readPacToImgs(const std::string& pacFilename, PacInfo& pacInfo,
         fprintf(stderr, "\n ** Empty product name in pac file?!\n->'%s'", pacFilename.c_str());
         goto READ_ERROR;
     }
-    if (!onlyParse && strcmp(pacInfo.productName.c_str(), productName.c_str()) != 0) {
+    if (!onlyParse && !isCompatibleProduct(pacInfo.productName, productName)) {
         fprintf(stderr, "\n ** Not the same product!\n  - Pac product: %s, Current product: %s\n",
                 pacInfo.productName.c_str(), productName.c_str());
         goto READ_ERROR;
@@ -524,6 +535,11 @@ static void readPacInfo(FILE *fp, PacInfo& pacInfo) {
         std::string pacVersion = tcharsString(szVersion, MAX_PAC_VER_LEN);
         const char *pac_version = pacVersion.c_str();
         if (strcmp(PAC_BP_R2_0_1, pac_version) == 0) {
+            readPacHeaderBP_R2_0_1(fp, pacInfo);
+            return;
+        }
+        if (strcmp(PAC_BP_R1_0_0, pac_version) == 0) {
+            // SPRD confirmed that 2.0.1 is compatible with 1.0.0
             readPacHeaderBP_R2_0_1(fp, pacInfo);
             return;
         }
