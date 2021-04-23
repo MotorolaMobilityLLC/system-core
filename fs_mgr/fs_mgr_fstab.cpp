@@ -286,8 +286,13 @@ void ParseFsMgrFlags(const std::string& flags, FstabEntry* entry) {
             // The path to trigger device gc by idle-maint of vold.
             entry->sysfs_path = arg;
         } else if (StartsWith(flag, "zram_backingdev_size=")) {
-            // Moto huangzq2: support format like zram_backingdev_size=25%.
-            if (!arg.empty() && arg.back() == '%') {
+            // Moto huangzq2: support format like zram_backingdev_size=25% or =prop.
+            if (!arg.empty() && arg == "prop") {
+                std::string prop = android::base::GetProperty("persist.sys.zram_wb_size", "0");
+                if (!ParseByteCount(prop, &entry->zram_backingdev_size)) {
+                    LWARNING << "Warning: persist.sys.zram_wb_size malformed: " << prop;
+                }
+            } else if (!arg.empty() && arg.back() == '%') {
                 arg.pop_back();
                 int val;
                 if (ParseInt(arg, &val, 0, 100)) {
