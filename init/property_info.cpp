@@ -105,9 +105,10 @@ void set_system_properties(){
     if (position != positionlast){
         std::string  islnv = carrier_ontim.substr(positionlast + 1,3);
         if (islnv == "lnv"){
-        InitPropertySet(prop_carrier_brand,"lenovo");
+        InitPropertySet(prop_carrier_brand,"lnv");
         }
-        carrier_ontim = carrier_ontim.substr(0, positionlast);
+        carrier_ontim = carrier_ontim.erase(positionlast,4);
+        InitPropertySet(prop_carrier_ontim,carrier_ontim);
     }
     std::string  carrier_value = carrier_ontim.substr(0, position);
     prop_product_value = android::base::GetProperty(prop_product, "");
@@ -170,7 +171,7 @@ void set_system_properties(){
     //cyprus
     } else if(prop_product_value == "cyprus") {
 
-        if(carrier_brand == "lenovo") {
+        if(carrier_brand == "lnv") {
             prop_product_value = "cyprus_lnv";
             InitPropertySet(prop_msclient, prop_clientrvo3_value);
             InitPropertySet(prop_vsclient, prop_clientrvo3_value);
@@ -216,7 +217,7 @@ void set_system_properties(){
     //cyprus_64
     } else if(prop_product_value == "cyprus_64") {
 
-        if(carrier_brand == "lenovo") {
+        if(carrier_brand == "lnv") {
             prop_product_value = "cyprus_lnv_64";
             InitPropertySet(prop_msclient, prop_clientrvo3_value);
             InitPropertySet(prop_vsclient, prop_clientrvo3_value);
@@ -367,7 +368,7 @@ bool changeSystemProperty(std::string key) {
       || key == prop_carrier || key == prop_build_product
       || key == prop_product_board ||  key == prop_boot_bootloader
       || key == prop_bootloader|| key == prop_build_description
-      || key == prop_build_flavor
+      || key == prop_build_flavor|| key == prop_carrier_ontim
       || key == prop_adb_secure || key == prop_secure || key == prop_local
       || key == prop_skip_setup_wizard || key == prop_amclient
       || key == prop_msclient || key == prop_vsclient) {
