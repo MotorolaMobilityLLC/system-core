@@ -1290,8 +1290,6 @@ static void ProcessKernelCmdline() {
         if (StartsWith(key, ANDROIDBOOT_PREFIX)) {
             InitPropertySet("ro.boot." + key.substr(ANDROIDBOOT_PREFIX.size()), value);
         } else if (StartsWith(key, qemu_prefix)) {
-            InitPropertySet("ro.kernel." + key, value);  // emulator specific, deprecated
-
             // emulator specific, should be retired once emulator migrates to
             // androidboot.
             const auto new_name =
