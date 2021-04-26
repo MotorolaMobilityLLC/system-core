@@ -103,6 +103,7 @@ std::string prop_secure = "ro.secure";
 std::string prop_adb_secure = "ro.adb.secure";
 std::string prop_local = "ro.product.locale";
 std::string prop_skip_setup_wizard = "ro.setupwizard.skip";
+std::string prop_build_base_os = "ro.build.version.base_os";
 
 void set_system_properties(){
     std::ifstream stream_product(product_version_file);
@@ -251,6 +252,7 @@ void set_system_properties(){
     } else if(prop_product_value == "malta" && !isMaltaLite) {
         if (isProductNameMaltaReteu(carrier_ontim)) {
             prop_product_value = "malta_reteu";
+            property_set(prop_build_base_os, get_base_os_property(prop_product_value));
             if (carrier_ontim == "timit_timit") {
                 property_set(prop_msclient, prop_clientit_value);
                 property_set(prop_vsclient, prop_clientit_value);
@@ -633,7 +635,8 @@ bool changeSystemProperty(std::string key) {
       || key == prop_product_vendor_model || key == prop_product_vendor_display
       || key == prop_product_odm_model || key == prop_product_odm_display
       || key == prop_product_system_model || key == prop_product_system_display
-      || key == prop_product_product_model || key == prop_product_product_display) {
+      || key == prop_product_product_model || key == prop_product_product_display
+      || key == prop_build_base_os) {
         return true;
     }
     return false;
@@ -666,6 +669,13 @@ std::string get_product_property(std::string prop_name, std::string value) {
     std::vector<std::string> product = android::base::Split(product_name, "-");
     product[0] = value;
     return android::base::Join(product, "-");
+}
+
+std::string get_base_os_property(std::string value) {
+    std::string  build_base_os = android::base::GetProperty(prop_build_base_os, "");
+    std::vector<std::string> base_os = android::base::Split(build_base_os, "/");
+    base_os[1] = value;
+    return android::base::Join(base_os, "/");
 }
 
 std::string get_version_property(std::string value) {

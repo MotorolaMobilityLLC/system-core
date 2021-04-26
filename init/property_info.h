@@ -34,6 +34,7 @@ std::string get_fingerprint_property(std::string value);
 std::string get_fingerprint_property_malta(std::string value);
 std::string get_version_property(std::string value);
 std::string get_product_property(std::string prop_name,std::string value);
+std::string get_base_os_property(std::string value);
 void set_some_vendor_properties(std::string prop_product_value);
 void set_fingerprint(std::string fingerprint) ;
 void set_product_device(std::string product_device);
