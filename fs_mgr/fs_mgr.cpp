@@ -1281,7 +1281,7 @@ static void WrapUserdata(FstabEntry* entry, dev_t dev, const std::string& block_
 
     std::string dm_path;
     if (!dm.CreateDevice(kUserdataWrapperName, table, &dm_path, 20s)) {
-        LOG(ERROR) << "Failed to create userdata wrapper device";
+        LOG(ERROR) << "Failed to create userdata wrapper device, took 20s";
         return;
     }
     entry->blk_device = dm_path;
@@ -1558,7 +1558,7 @@ int fs_mgr_mount_all(Fstab* fstab, int mount_mode)
         }
 
         if (current_entry.fs_mgr_flags.wait && !WaitForFile(current_entry.blk_device, 20s)) {
-            LERROR << "Skipping '" << current_entry.blk_device << "' during mount_all";
+            LERROR << "Skipping '" << current_entry.blk_device << "' during mount_all, took 20s";
             continue;
         }
 
@@ -1987,7 +1987,7 @@ int fs_mgr_remount_userdata_into_checkpointing(Fstab* fstab) {
 int fs_mgr_do_mount_one(const FstabEntry& entry, const std::string& mount_point) {
     // First check the filesystem if requested.
     if (entry.fs_mgr_flags.wait && !WaitForFile(entry.blk_device, 20s)) {
-        LERROR << "Skipping mounting '" << entry.blk_device << "'";
+        LERROR << "Skipping mounting '" << entry.blk_device << "', took 20s";
     }
 
     // Run fsck if needed
@@ -2049,7 +2049,7 @@ static int fs_mgr_do_mount_helper(Fstab* fstab, const std::string& n_name,
 
         // First check the filesystem if requested.
         if (fstab_entry.fs_mgr_flags.wait && !WaitForFile(n_blk_device, 20s)) {
-            LERROR << "Skipping mounting '" << n_blk_device << "'";
+            LERROR << "Skipping mounting '" << n_blk_device << "', took 20s";
             continue;
         }
 
@@ -2238,7 +2238,7 @@ bool fs_mgr_swapon_all(const Fstab& fstab) {
         }
 
         if (entry.fs_mgr_flags.wait && !WaitForFile(entry.blk_device, 20s)) {
-            LERROR << "Skipping mkswap for '" << entry.blk_device << "'";
+            LERROR << "Skipping mkswap for '" << entry.blk_device << "', took 20s";
             ret = false;
             continue;
         }
