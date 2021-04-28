@@ -175,6 +175,7 @@ cc_library_static {
         "init_defaults",
         "selinux_policy_version",
     ],
+    cflags: ["-DONTIM_FASTBOOT_PROPERTY"],
     srcs: init_common_sources + init_device_sources,
     whole_static_libs: [
         "libcap",
