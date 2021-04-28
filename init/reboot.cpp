@@ -448,6 +448,54 @@ static UmountStat TryUmountAndFsck(unsigned int cmd, bool run_fsck,
     return stat;
 }
 
+#ifdef ONTIM_FASTBOOT_PROPERTY
+#include <cutils/properties.h>
+// Store properities to factory partition
+#define FACTORY_PATH "/dev/block/by-name/factory"
+
+#define BUILD_FINGERPRINT "ro.build.fingerprint"
+#define BUILD_FINGERPRINT_LEN 128
+#define BUILD_FINGERPRINT_OFFSET 3088
+
+#define BUILD_NUMBER "ro.build.version.incremental"
+#define BUILD_NUMBER_LEN 64
+#define BUILD_NUMBER_OFFSET 3216
+
+void OntimWriteFactoryProperties(void)
+{
+    FILE *factory = fopen(FACTORY_PATH, "rb+");
+    if (factory == NULL) {
+        LOG(INFO) << "Open factory failed ";
+        return;
+    }
+    char build_fingerprint_buf[PROPERTY_VALUE_MAX] = {0};
+    property_get(BUILD_FINGERPRINT, build_fingerprint_buf, "0");
+    LOG(INFO) << "PropGet " << BUILD_FINGERPRINT << "=[" << build_fingerprint_buf << "] Done.";
+    fseek(factory, BUILD_FINGERPRINT_OFFSET, SEEK_SET);
+    if (fwrite(build_fingerprint_buf, sizeof(char), PROPERTY_VALUE_MAX, factory) < 0) {
+        LOG(INFO) << "Write factory failed " << BUILD_FINGERPRINT;
+    }
+
+    char build_number_buf[PROPERTY_VALUE_MAX] = {0};
+    property_get(BUILD_NUMBER, build_number_buf, "0");
+    LOG(INFO) << "PropGet " << BUILD_NUMBER << "=[" << build_number_buf << "] Done.";
+    fseek(factory, BUILD_NUMBER_OFFSET, SEEK_SET);
+    if (fwrite(build_number_buf, sizeof(char), BUILD_NUMBER_LEN, factory) < 0) {
+        LOG(INFO) << "Write factory failed " << BUILD_NUMBER;
+    }
+
+    fseek(factory, BUILD_NUMBER_OFFSET, SEEK_SET);
+    char bug[PROPERTY_VALUE_MAX] = {0};
+    if (fread(bug, sizeof(char), BUILD_NUMBER_LEN, factory) < 0) {
+        LOG(INFO) << "Read factory failed " << BUILD_FINGERPRINT;
+    } else {
+        LOG(INFO) << "Read factory ok: " << BUILD_FINGERPRINT << " = " << bug;
+    }
+
+    fclose(factory);
+}
+#endif
+
 // zram is able to use backing device on top of a loopback device.
 // In order to unmount /data successfully, we have to kill the loopback device first
 #define ZRAM_DEVICE   "/dev/block/zram0"
@@ -558,6 +606,10 @@ static void DoReboot(unsigned int cmd, const std::string& reason, const std::str
                      bool run_fsck) {
     Timer t;
     LOG(INFO) << "Reboot start, reason: " << reason << ", reboot_target: " << reboot_target;
+
+#ifdef ONTIM_FASTBOOT_PROPERTY
+    OntimWriteFactoryProperties();
+#endif
 
     bool is_thermal_shutdown = cmd == ANDROID_RB_THERMOFF;
 
