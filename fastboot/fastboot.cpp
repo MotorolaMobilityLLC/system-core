@@ -1561,6 +1561,22 @@ static void do_bypass_unlock_command(std::vector<std::string>* args) {
     fb->RawCommand("flashing unlock_bootloader", "unlocking bootloader");
 }
 
+static void ontim_do_signature_command(std::vector<std::string>* args) {
+    if (args->empty()) syntax_error("missing ontim signature request");
+
+    std::string subcmd = next_arg(args);
+    std::string filename = next_arg(args);
+
+    std::vector<char> data;
+    if (!ReadFileToVector(filename, &data)) {
+        die("could not load '%s': %s", filename.c_str(), strerror(errno));
+    }
+    if (data.size() != 256) die("signature must be 256 bytes (got %zu)", data.size());
+
+    fb->Download("signature", data);
+    fb->RawCommand("signature" + subcmd, subcmd);
+}
+
 static void do_oem_command(const std::string& cmd, std::vector<std::string>* args) {
     if (args->empty()) syntax_error("empty oem command");
 
@@ -2007,14 +2023,21 @@ int FastBootTool::Main(int argc, char* argv[]) {
             };
             do_for_partitions(partition, slot_override, format, true);
         } else if (command == "signature") {
-            std::string filename = next_arg(&args);
-            std::vector<char> data;
-            if (!ReadFileToVector(filename, &data)) {
-                die("could not load '%s': %s", filename.c_str(), strerror(errno));
+            //ontim add password
+            if (args.empty()) {
+                syntax_error("missing 'flashing' command");
+            } else if (args.size() == 2) {
+                ontim_do_signature_command(&args);
+            } else {
+                std::string filename = next_arg(&args);
+                std::vector<char> data;
+                if (!ReadFileToVector(filename, &data)) {
+                    die("could not load '%s': %s", filename.c_str(), strerror(errno));
+                }
+                if (data.size() != 256) die("signature must be 256 bytes (got %zu)", data.size());
+                fb->Download("signature", data);
+                fb->RawCommand("signature", "installing signature");
             }
-            if (data.size() != 256) die("signature must be 256 bytes (got %zu)", data.size());
-            fb->Download("signature", data);
-            fb->RawCommand("signature", "installing signature");
         } else if (command == FB_CMD_REBOOT) {
             wants_reboot = true;
 
