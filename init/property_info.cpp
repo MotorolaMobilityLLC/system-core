@@ -33,6 +33,7 @@ namespace init {
 std::string prop_build_customerid = "ro.mot.build.customerid";
 std::string prop_build_fullversion = "ro.build.version.full";
 std::string prop_product_locale = "ro.product.locale";
+std::string prop_vendor_locale = "ro.vendor.locale";
 std::string prop_build_id = "ro.build.id";
 std::string prop_carrier_ontim = "ro.carrier.ontim";
 std::string prop_carrier_brand = "ro.carrier.brand";
@@ -91,7 +92,6 @@ std::string prop_build_description = "ro.build.description";
 std::string prop_build_flavor = "ro.build.flavor";
 std::string prop_secure = "ro.secure";
 std::string prop_adb_secure = "ro.adb.secure";
-std::string prop_local = "ro.product.locale";
 std::string prop_skip_setup_wizard = "ro.setupwizard.skip";
 
 void set_system_properties(){
@@ -165,9 +165,6 @@ void set_system_properties(){
         std::string fingerprint = get_fingerprint_property_aruba(prop_product_value);
         set_fingerprint(fingerprint);
 
-        if (carrier_ontim == "retru_retru") {
-              InitPropertySet("ro.product.locale","ru-RU");
-        }
     //cyprus
     } else if(prop_product_value == "cyprus") {
 
@@ -266,14 +263,23 @@ void set_system_properties(){
         std::string fingerprint = get_fingerprint_property_cyprus(prop_product_value);
         set_fingerprint(fingerprint);
 
-        if (carrier_ontim == "retru_retru") {
-              InitPropertySet("ro.product.locale","ru-RU");
-        }
     }
 
+    if (carrier_ontim == "timit_timit") {
+         InitPropertySet(prop_amazon_partnerid, carrier_value);
+     } else if (carrier_ontim == "windit_windds") {
+         InitPropertySet(prop_amazon_partnerid, "3it");
+     } else if (carrier_ontim == "attmx_attmx") {
+         InitPropertySet(prop_amazon_partnerid,carrier_value);
+     } else if (carrier_ontim == "vfau_vfau") {
+         InitPropertySet(prop_amazon_partnerid,"vfau");
+     } else if (carrier_ontim == "retru_retru") {
+        InitPropertySet(prop_product_locale,"ru-RU");
+     }
     InitPropertySet("persist.vendor.normal", "1");//表示正常版本，非 VTS 版本，prop 正常设置.
     InitPropertySet(prop_build_fullversion, get_version_property());
     InitPropertySet(prop_build_customerid, prop_carrier_value);
+    InitPropertySet(prop_vendor_locale, android::base::GetProperty(prop_product_locale, "en-US"));
 }
 
 void set_some_vendor_properties(std::string prop_product_value) {
@@ -369,9 +375,10 @@ bool changeSystemProperty(std::string key) {
       || key == prop_product_board ||  key == prop_boot_bootloader
       || key == prop_bootloader|| key == prop_build_description
       || key == prop_build_flavor|| key == prop_carrier_ontim
-      || key == prop_adb_secure || key == prop_secure || key == prop_local
+      || key == prop_adb_secure || key == prop_secure || key == prop_product_locale
       || key == prop_skip_setup_wizard || key == prop_amclient
-      || key == prop_msclient || key == prop_vsclient) {
+      || key == prop_msclient || key == prop_vsclient || key == prop_vendor_locale
+      || key == prop_amazon_partnerid) {
         return true;
     }
     return false;
