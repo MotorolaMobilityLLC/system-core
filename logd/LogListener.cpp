@@ -104,6 +104,19 @@ bool LogListener::onDataAvailable(SocketClient* cli) {
 
     // NB: hdr.msg_flags & MSG_TRUNC is not tested, silently passing a
     // truncated message to the logs.
+    {
+        static uint32_t last_log_time = 0;
+        char value[PROPERTY_VALUE_MAX];
+        property_get("ro.tiny", value, "");
+        int elps = last_log_time - header->realtime.tv_sec;
+        if ((last_log_time != 0)&&(elps > 10)) {
+            android::prdebug("logd will reinit by reboot:systemtime changed %d",elps);
+            if (!strcmp(value, "")) {
+                exit(0);
+            }
+        }
+        last_log_time = header->realtime.tv_sec;
+    }
 
     int res = logbuf->log(logId, header->realtime, cred->uid, cred->pid, header->tid, msg,
                           ((size_t)n <= UINT16_MAX) ? (uint16_t)n : UINT16_MAX);
