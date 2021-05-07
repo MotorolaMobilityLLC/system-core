@@ -1,8 +1,7 @@
 {
   "requireLibs": [
-    // Keep in sync with the "platform" namespace in art/build/apex/ld.config.txt.
-    "libdexfile_external.so",
-    "libdexfiled_external.so",
+    "libdexfile.so",
+    "libdexfiled.so",
     "libnativebridge.so",
     "libnativehelper.so",
     "libnativeloader.so",
@@ -19,6 +18,7 @@
     "libnetd_resolv.so",
     // nn
     "libneuralnetworks.so",
+    "libneuralnetworks_shim.so",
     // statsd
     "libstatspull.so",
     "libstatssocket.so",
