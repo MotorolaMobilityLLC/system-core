@@ -983,9 +983,9 @@ void PropertyLoadBootDefaults() {
         std::string product_name_suffix = "";
         if(base::EqualsIgnoreCase(ro_carrier,"eea")) {
             product_name_suffix = "_eea";
-        } else if (base::EndsWith(ro_carrier,"ru")) {
+        } /*else if (base::EndsWith(ro_carrier,"ru")) {
             product_name_suffix = "_ru";
-        }
+        } */
 
 
         if(!product_name_suffix.empty()) {
@@ -1043,6 +1043,8 @@ void PropertyLoadBootDefaults() {
             moto_product_suffix = "_apac_m";
         } else if(base::EqualsIgnoreCase(ro_carrier,"reteu")) {
             moto_product_suffix = "_emea";
+        } else if(base::EqualsIgnoreCase(ro_carrier,"retru")) {
+            moto_product_suffix = "_ru";
         }
 
         if(!moto_product_suffix.empty()) {
