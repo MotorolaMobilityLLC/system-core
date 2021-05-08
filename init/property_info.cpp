@@ -38,6 +38,7 @@ std::string prop_build_id = "ro.build.id";
 std::string prop_carrier_ontim = "ro.carrier.ontim";
 std::string prop_carrier_brand = "ro.carrier.brand";
 std::string prop_carrier = "ro.carrier";
+std::string prop_client = "ro.com.google.clientidbase";
 std::string prop_amclient = "ro.com.google.clientidbase.am";
 std::string prop_msclient = "ro.com.google.clientidbase.ms";
 std::string prop_vsclient = "ro.com.google.clientidbase.vs";
@@ -115,6 +116,7 @@ void set_system_properties(){
     std::string  carrier_brand = android::base::GetProperty(prop_carrier_brand, "");
     InitPropertySet(prop_carrier,carrier_value);
     InitPropertySet("ro.oem.key1",carrier_value);
+    InitPropertySet(prop_client,"android-motorola");
     InitPropertySet("ro.product.ontim.version", fileContent_product);
     InitPropertySet("ro.vendor.product.version", fileContent_product);
 
@@ -376,8 +378,8 @@ bool changeSystemProperty(std::string key) {
       || key == prop_bootloader|| key == prop_build_description
       || key == prop_build_flavor|| key == prop_carrier_ontim
       || key == prop_adb_secure || key == prop_secure || key == prop_product_locale
-      || key == prop_skip_setup_wizard || key == prop_amclient
-      || key == prop_msclient || key == prop_vsclient || key == prop_vendor_locale
+      || key == prop_skip_setup_wizard || key == prop_client
+      || key == prop_vendor_locale
       || key == prop_amazon_partnerid) {
         return true;
     }
