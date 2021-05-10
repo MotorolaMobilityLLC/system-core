@@ -34,6 +34,10 @@ void StartPropertyService(int* epoll_socket);
 
 void StartSendingMessages();
 void StopSendingMessages();
-
+//APP_SMT
+void set_properties_from_proinfo();
+void update_usb_config_factory();
+uint8_t read_data_of_factory(int position);
+//APP_SMT_END
 }  // namespace init
 }  // namespace android
