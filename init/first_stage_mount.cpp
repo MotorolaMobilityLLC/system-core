@@ -620,6 +620,13 @@ bool FirstStageMount::MountPartitions() {
     }
 
     if (!DeferOverlayfsMount()) {
+        for (auto current = fstab_.begin(); current != fstab_.end(); ) {
+            if (current->fs_type == "overlay") {
+                fs_mgr_overlayfs_mount_fstab_entry(current->lowerdir, current->mount_point);
+            }
+            ++current;
+        }
+
         fs_mgr_overlayfs_mount_all(&fstab_);
     }
 
