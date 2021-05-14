@@ -101,6 +101,12 @@ static std::mutex accept_messages_lock;
 static std::thread property_service_thread;
 
 static PropertyInfoAreaFile property_info_area;
+//APP_SMT
+static bool smt_change_ro = false;
+
+bool CanChangeAdbSecure(std::string key);
+void update_property_secure_smt();
+//APP_SMT_END
 
 struct PropertyAuditData {
     const ucred* cr;
@@ -178,7 +184,9 @@ static uint32_t PropertySet(const std::string& name, const std::string& value, s
     prop_info* pi = (prop_info*) __system_property_find(name.c_str());
     if (pi != nullptr) {
         // ro.* properties are actually "write-once".
-        if (StartsWith(name, "ro.")) {
+//APP_SMT
+        if (StartsWith(name, "ro.") && !CanChangeAdbSecure(name)) {
+//APP_SMT_END
             *error = "Read-only property was already set";
             return PROP_ERROR_READ_ONLY_PROPERTY;
         }
@@ -915,8 +923,101 @@ void PropertyLoadBootDefaults() {
     property_initialize_ro_product_props();
     property_derive_build_fingerprint();
 
+//APP_SMT
+    update_property_secure_smt();
+//APP_SMT_END
     update_sys_usb_config();
 }
+
+//APP_SMT
+void set_properties_from_proinfo() {
+    uint8_t ontim_factory_buffer = 0;
+
+    ontim_factory_buffer = read_data_of_factory(3022);
+    if (ontim_factory_buffer == 1) {
+        InitPropertySet("ro.vendor.ontim_factory", "1");
+    }
+
+    ontim_factory_buffer = read_data_of_factory(210);
+    if (ontim_factory_buffer == 1) {
+        InitPropertySet("ro.setupwizard.skip", "1");
+    } else {
+        InitPropertySet("ro.setupwizard.skip", "0");
+    }
+}
+
+uint8_t read_data_of_factory(int position){
+    uint8_t ontim_factory_buffer = 0;
+
+    int fd = open("/dev/block/by-name/factory", O_RDONLY | O_CLOEXEC);
+    if (fd == -1) {
+        LOG(ERROR) << "proinfo fd open fail!";
+        return 2;
+    } else {
+        lseek(fd, position, SEEK_SET);
+        read(fd, &ontim_factory_buffer, 1);
+    }
+    close(fd);
+    return ontim_factory_buffer;
+}
+
+bool isSmtVersion() {
+    std::string smt = android::base::GetProperty("ro.odm.build.smt.ver", "");
+    return smt == "1"? true:false;
+}
+
+bool CanChangeAdbSecure(std::string key) {
+    if (smt_change_ro == false) {
+        return false;
+    }
+    if (key == "ro.adb.secure"|| key == "ro.secure") {
+        return true;
+    }
+    return false;
+}
+
+void update_property_secure_smt() {
+    if (isSmtVersion()) {
+        LOG(ERROR) << "smt version, colse the adb secure.";
+        smt_change_ro = true;
+        InitPropertySet("ro.adb.secure", "0" );
+        InitPropertySet("ro.secure", "0" );
+        smt_change_ro = false;
+    }
+}
+
+bool is_cache_file_exists() {
+    int fd = open("/data/adb_enable", O_RDONLY);
+    if (fd < 0) {
+        return false;
+    } else {
+        close(fd);
+        return true;
+    }
+}
+
+void update_usb_config_factory() {
+    std::string buildtype = android::base::GetProperty("ro.build.type", "");
+
+    if (buildtype == "user"){
+        bool exist = is_cache_file_exists();
+        if(exist){
+            InitPropertySet("persist.sys.usb.fc.reseted", "1");
+            InitPropertySet("persist.sys.usb.config", "adb");
+            smt_change_ro = true;
+            InitPropertySet("ro.adb.secure", "0" );
+            smt_change_ro = false;
+        } else {
+            std::string reseted = android::base::GetProperty("persist.sys.usb.fc.reseted", "");
+            if (reseted != "2") {
+                InitPropertySet("persist.sys.usb.fc.reseted", "2");
+                InitPropertySet("persist.sys.usb.config", "none");
+            }
+        }
+    }
+}
+
+//APP_SMT_END
 
 bool LoadPropertyInfoFromFile(const std::string& filename,
                               std::vector<PropertyInfoEntry>* property_infos) {
