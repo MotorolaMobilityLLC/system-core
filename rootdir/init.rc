@@ -789,6 +789,11 @@ on property:vold.decrypt=trigger_restart_framework
     setprop service.bootanim.exit 0
     start bootanim
 
+on property:ro.bootmode=wdgreboot && property:init.svc.bootanim=running
+    stop bootanim
+on property:ro.bootmode=apwdgreboot && property:init.svc.bootanim=runnin
+    stop bootanim
+
 on property:vold.decrypt=trigger_shutdown_framework
     class_reset late_start
     class_reset main
