@@ -267,15 +267,15 @@ void set_system_properties(){
 
     }
 
-    if (prop_carrier == "timit") {
-         InitPropertySet(prop_amazon_partnerid, prop_carrier);
-     } else if (prop_carrier == "windit") {
+    if (carrier_value == "timit") {
+         InitPropertySet(prop_amazon_partnerid, carrier_value);
+     } else if (carrier_value == "windit") {
          InitPropertySet(prop_amazon_partnerid, "3it");
-     } else if (prop_carrier == "attmx") {
-         InitPropertySet(prop_amazon_partnerid,prop_carrier);
-     } else if (prop_carrier == "vfau") {
+     } else if (carrier_value == "attmx") {
+         InitPropertySet(prop_amazon_partnerid,carrier_value);
+     } else if (carrier_value == "vfau") {
          InitPropertySet(prop_amazon_partnerid,"vfau");
-     } else if (prop_carrier == "retru") {
+     } else if (carrier_value == "retru") {
         InitPropertySet(prop_product_locale,"ru-RU");
      }
     InitPropertySet("persist.vendor.normal", "1");//表示正常版本，非 VTS 版本，prop 正常设置.
