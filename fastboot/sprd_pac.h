@@ -292,20 +292,14 @@ static bool _mkdir(const char* dirPath, const bool cleanDir);
 static bool isPartitionForUserData(std::string& partition) {
     if (partition == "userdata") return true;
     if (partition == "metadata") return true;
-    if (partition == "persist") return true;
     return false;
 }
 
 static bool isPartitionSkipped(std::string& partition) {
-    if (partition == "l_fixnv1_a") return true;
-    if (partition == "l_fixnv2_a") return true;
-    if (partition == "l_fixnv1_b") return true;
-    if (partition == "l_fixnv2_b") return true;
     if (partition == "factory") return true;
     if (partition == "miscdata") return true;
     if (partition == "prodnv") return true;
-    if (partition == "l_deltanv_a") return true;
-    if (partition == "l_deltanv_b") return true;
+    if (partition == "persist") return true;
     return false;
 }
 
