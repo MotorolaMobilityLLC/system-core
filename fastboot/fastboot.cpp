@@ -2361,6 +2361,10 @@ static void flashSprdPac(std::vector<std::string> &args, const bool eraseUserDat
     }
     // Flash the specified partitions.
     if (flashFileCount > 0) {
+        fprintf(stdout, "\n - Unisoc backup NV will be done.");
+        fb->RawCommand("oem backupnv", "Unisoc set flag to backup NV");
+        fprintf(stdout, "\n - Unisoc flag to backup NV has been set!");
+
         flashPacImgs(pacInfo.tempDirectory, pacInfo.flashFileItems, slot_override,
                      force_flash, eraseUserData);
     }
@@ -2416,12 +2420,11 @@ static void flashPacImgs(std::string &tempDirPath, std::vector<FileItem>& flashF
             continue;
         }
         if (isPartitionSkipped(pname)) {
-            fprintf(stdout, "\n   --- %02d/%d Skip '%s' - NV or factory data!", curIndex, count,
+            fprintf(stdout, "\n   --- %02d/%d Skip '%s' - factory data!", curIndex, count,
                 fileItem.id.c_str());
             continue;
         }
         std::string fname = getTempFilePath(tempDirPath, fileItem.flashFile);
-        //fprintf(stdout, "\n   -- Flashing partition '%s' ( %ld bytes, %s) ...\n", pname.c_str(), fileItem.fileSize, fileItem.flashFile.c_str());
         auto flash = [&](const std::string &partition) {
             if (should_flash_in_userspace(partition) && !is_userspace_fastboot() &&
                 !force_flash) {
