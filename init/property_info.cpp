@@ -38,6 +38,7 @@ std::string prop_build_id = "ro.build.id";
 std::string prop_carrier_ontim = "ro.carrier.ontim";
 std::string prop_carrier_brand = "ro.carrier.brand";
 std::string prop_carrier = "ro.carrier";
+std::string prop_vendor_carrier = "persist.sys.vendor.carrier";
 std::string prop_client = "ro.com.google.clientidbase";
 std::string prop_amclient = "ro.com.google.clientidbase.am";
 std::string prop_msclient = "ro.com.google.clientidbase.ms";
@@ -101,6 +102,7 @@ void set_system_properties(){
     fileStream_product << stream_product.rdbuf();
     std::string fileContent_product = fileStream_product.str().substr(0,3);
     std::string  carrier_ontim = android::base::GetProperty(prop_carrier_ontim, "");
+    std::string vendor_carrier_value = android::base::GetProperty(prop_vendor_carrier, "");
     size_t position = carrier_ontim.find("_");
     size_t positionlast = carrier_ontim.find_last_of("_");
     if (position != positionlast){
@@ -119,6 +121,11 @@ void set_system_properties(){
     InitPropertySet(prop_client,"android-motorola");
     InitPropertySet("ro.product.ontim.version", fileContent_product);
     InitPropertySet("ro.vendor.product.version", fileContent_product);
+
+    //initialize at fist time to persist.sys.vendor.carrier
+    if (vendor_carrier_value.empty()) {
+        InitPropertySet(prop_vendor_carrier, carrier_value);
+    }
 
     //Fully disable DuraSpeed service for all carriers in LATAM/Europe/Brazil, and only enable it for APEM.
     if(carrier_value == "retapac" || carrier_value == "retin" || carrier_value == "optus") {
