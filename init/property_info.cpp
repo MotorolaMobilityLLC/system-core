@@ -141,6 +141,20 @@ void set_system_properties(){
         set_product_device("aruba");
         set_some_vendor_properties("aruba");
 
+        if(carrier_brand == "lnv") {
+            prop_product_value = "aruba_lnv";
+            InitPropertySet(prop_msclient, prop_clientrvo3_value);
+            InitPropertySet(prop_vsclient, prop_clientrvo3_value);
+            set_product_name(prop_product_value);
+
+            std::string fingerprint = get_fingerprint_property_aruba(prop_product_value);
+            set_fingerprint(fingerprint);
+            InitPropertySet("persist.vendor.normal", "1");//表示正常版本，非 VTS 版本，prop 正常设置.
+            InitPropertySet(prop_build_fullversion, get_version_property());
+            InitPropertySet(prop_build_customerid, prop_carrier_value);
+            return;
+        }
+
         if (isProductNameArubaReteu(carrier_ontim)) {
             prop_product_value = "aruba_reteu";
             InitPropertySet(prop_vsclient, prop_clientrvo3_value);
@@ -331,7 +345,6 @@ void set_fingerprint(std::string fingerprint) {
 bool isProductNameArubaReteu(std::string carrier_ontim) {
     if (carrier_ontim == "retgb_retgbds") return true;
     if (carrier_ontim == "reteu_reteu") return true;
-    if (carrier_ontim == "reteu_retfr") return true;
     return false;
 }
 
