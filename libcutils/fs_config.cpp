@@ -162,6 +162,7 @@ static const struct fs_path_config android_files[] = {
     { 00444, AID_ROOT,      AID_ROOT,      0, product_conf_dir + 1 },
     { 00444, AID_ROOT,      AID_ROOT,      0, product_conf_file + 1 },
     { 00600, AID_ROOT,      AID_ROOT,      0, "system_ext/build.prop" },
+    { 00750, AID_ROOT,      AID_SHELL,     0, "system_ext/bin/minidumpd" },
     { 00444, AID_ROOT,      AID_ROOT,      0, system_ext_conf_dir + 1 },
     { 00444, AID_ROOT,      AID_ROOT,      0, system_ext_conf_file + 1 },
     { 00755, AID_ROOT,      AID_SHELL,     0, "system/bin/crash_dump32" },
