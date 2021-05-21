@@ -14,8 +14,7 @@
 
 cc_library {
     name: "libtrusty",
-    vendor_available: true,
-    recovery_available: true,
+    vendor: true,
 
     srcs: ["trusty.c"],
     export_include_dirs: ["include"],
