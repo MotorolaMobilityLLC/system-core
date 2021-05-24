@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2007 The Android Open Source Project
+ * Copyright (C) 2017 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,31 +14,18 @@
  * limitations under the License.
  */
 
-#pragma once
-
-#include <sys/socket.h>
+#ifndef _INIT_PROPERTY_INFO_H
+#define _INIT_PROPERTY_INFO_H
 
 #include <string>
-
-#include "epoll.h"
 
 namespace android {
 namespace init {
 
-extern uint32_t InitPropertySet(const std::string& name, const std::string& value);
-static constexpr const char kRestoreconProperty[] = "selinux.restorecon_recursive";
-
-bool CanReadProperty(const std::string& source_context, const std::string& name);
-
-void PropertyInit();
-void StartPropertyService(int* epoll_socket);
-
-void StartSendingMessages();
-void StopSendingMessages();
-//APP_SMT
-void set_properties_from_proinfo();
-void update_usb_config_factory();
-uint8_t read_data_of_factory(int position);
-//APP_SMT_END
+void set_system_properties();
+bool changeSystemProperty(std::string key);
+void set_product_device(std::string product_device);
 }  // namespace init
 }  // namespace android
+
+#endif
