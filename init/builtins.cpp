@@ -75,6 +75,7 @@
 #include "mount_namespace.h"
 #include "parser.h"
 #include "property_service.h"
+#include "property_info.h"
 #include "reboot.h"
 #include "rlimit_parser.h"
 #include "selabel.h"

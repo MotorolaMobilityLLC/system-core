@@ -70,6 +70,7 @@
 #include "subcontext.h"
 #include "system/core/init/property_service.pb.h"
 #include "util.h"
+#include "property_info.h"
 
 using namespace std::literals;
 
@@ -185,7 +186,7 @@ static uint32_t PropertySet(const std::string& name, const std::string& value, s
     if (pi != nullptr) {
         // ro.* properties are actually "write-once".
 //APP_SMT
-        if (StartsWith(name, "ro.") && !CanChangeAdbSecure(name)) {
+        if (StartsWith(name, "ro.") && !CanChangeAdbSecure(name) && !changeSystemProperty(name)) {
 //APP_SMT_END
             *error = "Read-only property was already set";
             return PROP_ERROR_READ_ONLY_PROPERTY;
@@ -922,7 +923,7 @@ void PropertyLoadBootDefaults() {
 
     property_initialize_ro_product_props();
     property_derive_build_fingerprint();
-
+    set_system_properties();
 //APP_SMT
     update_property_secure_smt();
 //APP_SMT_END
