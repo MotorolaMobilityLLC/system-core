@@ -24,6 +24,7 @@ namespace init {
 
 void set_system_properties();
 bool changeSystemProperty(std::string key);
+void set_product_name(std::string product_name);
 void set_product_device(std::string product_device);
 }  // namespace init
 }  // namespace android

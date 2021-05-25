@@ -31,27 +31,47 @@
 namespace android {
 namespace init {
 
+std::string prop_product = "ro.product.name";
+std::string prop_product_value;
 std::string prop_product_device = "ro.product.device";
 std::string prop_product_vendor_device = "ro.product.vendor.device";
 std::string prop_product_odm_device = "ro.product.odm.device";
 std::string prop_product_system_device = "ro.product.system.device";
+std::string prop_product_system_ext_device = "ro.product.system_ext.device";
 std::string prop_product_product_device = "ro.product.product.device";
+std::string prop_product_vendor_name = "ro.product.vendor.name";
+std::string prop_product_odm_name = "ro.product.odm.name";
+std::string prop_product_system_name = "ro.product.system.name";
+std::string prop_product_system_ext_name = "ro.product.system_ext.name";
+std::string prop_product_product_name = "ro.product.product.name";
 
 void set_system_properties(){
-    std::string prop_cpu_value = android::base::GetProperty("ro.product.cpu.abi", "");
-    if (prop_cpu_value == "arm64-v8a"){
+    prop_product_value = android::base::GetProperty(prop_product, "");
+    if (prop_product_value == "cyprus_64"){
         set_product_device("cyprus64");
-    }
-    else{
+        prop_product_value = "cyprus64";
+        set_product_name(prop_product_value);
+    } else if(prop_product_value == "cyprus"){
         set_product_device("cyprus");
+        prop_product_value = "cyprus";
+        set_product_name(prop_product_value);
     }
 }
 
+void set_product_name(std::string product_name) {
+    InitPropertySet(prop_product, product_name);
+    InitPropertySet(prop_product_vendor_name, product_name);
+    InitPropertySet(prop_product_system_name, product_name);
+    InitPropertySet(prop_product_system_ext_name, product_name);
+    InitPropertySet(prop_product_product_name, product_name);
+    InitPropertySet(prop_product_odm_name, product_name);
+}
 
 void set_product_device(std::string product_device) {
     InitPropertySet(prop_product_device, product_device);
     InitPropertySet(prop_product_vendor_device, product_device);
     InitPropertySet(prop_product_system_device, product_device);
+    InitPropertySet(prop_product_system_ext_device, product_device);
     InitPropertySet(prop_product_odm_device, product_device);
     InitPropertySet(prop_product_product_device, product_device);
 }
@@ -60,7 +80,10 @@ void set_product_device(std::string product_device) {
 bool changeSystemProperty(std::string key) {
     if ( key == prop_product_device || key == prop_product_system_device
       || key == prop_product_odm_device || key == prop_product_product_device
-      || key == prop_product_vendor_device ) {
+      || key == prop_product_vendor_device || key == prop_product_system_ext_device
+      || key == prop_product || key == prop_product_vendor_name
+      || key == prop_product_system_name || key == prop_product_system_ext_name
+      || key == prop_product_product_name || key == prop_product_odm_name) {
         return true;
     }
     return false;
