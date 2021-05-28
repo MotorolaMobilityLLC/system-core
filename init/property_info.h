@@ -21,10 +21,20 @@
 
 namespace android {
 namespace init {
-
+bool isProductNameCyprusReteu(std::string carrier_ontim);
+bool isProductNameCyprus64Reteu(std::string carrier_ontim);
+bool isProductNameCyprus64Retru(std::string carrier_ontim);
+bool changeSystemProperty(std::string key);
+std::string get_fingerprint_property_cyprus(std::string value);
+std::string get_product_property(std::string prop_name,std::string value);
+std::string get_version_property();
 void set_system_properties();
 bool changeSystemProperty(std::string key);
 void set_product_name(std::string product_name);
+void set_some_vendor_properties(std::string prop_product_value);
+void set_fingerprint(std::string fingerprint) ;
+void setElabelProperty();
+
 }  // namespace init
 }  // namespace android
 
