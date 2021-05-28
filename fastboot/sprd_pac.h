@@ -319,6 +319,9 @@ static bool isCompatibleProduct(std::string &pacProduct, const std::string &curP
     if (pacProduct == curProduct) return true;
     const char *pac_product = pacProduct.c_str();
     const char *cur_product = curProduct.c_str();
+    if (strcmp(pac_product, "ums9230_aruba_go") == 0) {
+         return strcmp(cur_product, "aruba") == 0;
+    }
     if (strcmp(pac_product, "ums512_1h10") == 0) {
         return strcmp(cur_product, "cyprus_64") == 0;
     }
