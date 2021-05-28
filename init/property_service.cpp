@@ -928,6 +928,50 @@ void PropertyLoadBootDefaults() {
     update_property_secure_smt();
 //APP_SMT_END
     update_sys_usb_config();
+    set_properties_from_hwinfo();
+}
+
+void set_hwversion_from_hwinfo() {
+    std::string cmdline_path = "/sys/hwinfo/hw_version";
+    std::string file_content;
+    std::string file_hwversion;
+    int len = strlen("hw_version=");
+
+    if (ReadFileToString(cmdline_path, &file_content)) {
+        file_hwversion = file_content.substr(len, (file_content.length() - 2 - len));
+        InitPropertySet("ro.boot.hardware.revision", file_hwversion);
+    } else {
+        PLOG(ERROR) << "Could not read properties from '" << cmdline_path << "'";
+    }
+}
+
+void set_hwsku_from_hwinfo() {
+    std::string cmdline_path = "/sys/hwinfo/band_id";
+    std::string file_content;
+    std::string file_band;
+    int len = strlen("band_id=");
+
+    if (ReadFileToString(cmdline_path, &file_content)) {
+        file_band = file_content.substr(len,8);
+        InitPropertySet("ro.boot.hardware.sku",file_band);
+        InitPropertySet("ro.vendor.hardware.sku",file_band);
+    } else {
+        PLOG(ERROR) << "Could not read properties from '" << cmdline_path << "'";
+    }
+}
+
+void set_properties_from_hwinfo() {
+    std::string carrier_brand = android::base::GetProperty("ro.carrier.brand", "");
+    std::string product_name = android::base::GetProperty("ro.product.name", "");
+    std::string carrier_ontim = android::base::GetProperty("ro.carrier.ontim", "");
+
+    if (product_name.find("cyprus") != std::string::npos) {
+        set_hwversion_from_hwinfo();
+        set_hwsku_from_hwinfo();
+    } else if (product_name.find("cyprus_64") != std::string::npos) {
+        set_hwversion_from_hwinfo();
+        set_hwsku_from_hwinfo();
+    }
 }
 
 //APP_SMT
@@ -1109,6 +1153,7 @@ static void ExportKernelBootProps() {
         { "ro.boot.bootloader", "ro.bootloader", "unknown", },
         { "ro.boot.hardware",   "ro.hardware",   "unknown", },
         { "ro.boot.revision",   "ro.revision",   "0", },
+        { "ro.boot.carrier",    "ro.carrier.ontim",    "unknown", },
             // clang-format on
     };
     for (const auto& prop : prop_map) {
