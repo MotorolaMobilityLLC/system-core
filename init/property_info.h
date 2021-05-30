@@ -24,7 +24,6 @@ namespace init {
 bool isProductNameCyprusReteu(std::string carrier_ontim);
 bool isProductNameCyprus64Reteu(std::string carrier_ontim);
 bool isProductNameCyprus64Retru(std::string carrier_ontim);
-bool changeSystemProperty(std::string key);
 std::string get_fingerprint_property_cyprus(std::string value);
 std::string get_product_property(std::string prop_name,std::string value);
 std::string get_version_property();

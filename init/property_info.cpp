@@ -76,7 +76,6 @@ std::string prop_amazon_partnerid = "ro.csc.amazon.partnerid";
 std::string prop_build_name = "ro.build.name";
 std::string prop_build_product = "ro.build.product";
 std::string prop_product_board = "ro.product.board";
-std::string prop_product = "ro.product.name";
 std::string prop_product_device = "ro.product.device";
 std::string prop_product_vendor_device = "ro.product.vendor.device";
 std::string prop_product_odm_device = "ro.product.odm.device";
@@ -271,7 +270,7 @@ bool changeSystemProperty(std::string key) {
       || key == prop_product_board ||  key == prop_boot_bootloader
       || key == prop_bootloader|| key == prop_build_description
       || key == prop_build_flavor
-      || key == prop_adb_secure || key == prop_secure || key == prop_local
+      || key == prop_adb_secure || key == prop_secure
       || key == prop_skip_setup_wizard || key == prop_amclient
       || key == prop_msclient || key == prop_vsclient) {
         return true;
