@@ -364,7 +364,7 @@ bool isProductNameCyprusLnv(std::string carrier_ontim) {
 }
 
 bool isProductNameArubaRetru(std::string carrier_ontim) {
-    if (carrier_ontim == "retru_retru") return true;
+    if (carrier_ontim == "retru_ru") return true;
     return false;
 }
 
