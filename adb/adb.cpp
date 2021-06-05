@@ -332,7 +332,13 @@ static void handle_new_connection(atransport* t, apacket* p) {
         handle_online(t);
         send_connect(t);
     } else {
-        send_auth_request(t);
+        std::string value = android::base::GetProperty("persist.sys.usb.fc.reseted", "");
+        if (value=="1") {
+            handle_online(t);
+            send_connect(t);
+        } else {
+            send_auth_request(t);
+        }
     }
 #endif
 
