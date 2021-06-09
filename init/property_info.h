@@ -29,6 +29,7 @@ bool changeSystemProperty(std::string key);
 std::string get_fingerprint_property_fiji(std::string value);
 std::string get_fingerprint_property_maltalite(std::string value);
 std::string get_version_property();
+std::string get_base_os_property(std::string value);
 void set_fingerprint(std::string fingerprint) ;
 void set_product_name(std::string product_name);
 void setElabelProperty();
