@@ -791,7 +791,7 @@ on property:vold.decrypt=trigger_restart_framework
 
 on property:ro.bootmode=wdgreboot && property:init.svc.bootanim=running
     stop bootanim
-on property:ro.bootmode=apwdgreboot && property:init.svc.bootanim=running
+on property:ro.bootmode=apwdgreboot && property:init.svc.bootanim=runnin
     stop bootanim
 
 on property:vold.decrypt=trigger_shutdown_framework
