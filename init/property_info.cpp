@@ -150,21 +150,14 @@ void set_system_properties(){
         } else {
             prop_product_value = "cyprus64";
             if (carrier_ontim == "amxpe_claro" || carrier_ontim == "amxco_claro"
-             || carrier_ontim == "amxbr_clarobr" || carrier_ontim == "retapac_retwm"
-             || carrier_ontim == "amxla_amxlag" ) {
+             || carrier_ontim == "amxbr_clarobr" || carrier_ontim == "amxla_amxlag" ) {
                 InitPropertySet(prop_amclient, prop_clientcountry_value);
                 InitPropertySet(prop_msclient, prop_clientrevc_value);
                 InitPropertySet(prop_vsclient, prop_clientrevc_value);
-            } else if (carrier_ontim == "retapac_retwm") {
-                InitPropertySet(prop_msclient, prop_clientcht_value);
-                InitPropertySet(prop_vsclient, prop_clientcht_value);
             } else if (carrier_ontim == "timbr_timbr") {
                 InitPropertySet(prop_msclient, prop_clientbr_value);
                 InitPropertySet(prop_vsclient, prop_clientbr_value);
-            } else if (carrier_ontim == "vfau_vfau") {
-                InitPropertySet(prop_msclient, prop_clientvf_value);
-                InitPropertySet(prop_vsclient, prop_clientvf_value);
-            }else {
+            } else {
                 InitPropertySet(prop_msclient, prop_clientrvo3_value);
                 InitPropertySet(prop_vsclient, prop_clientrvo3_value);
             }
@@ -204,6 +197,11 @@ void set_system_properties(){
         std::string fingerprint = get_fingerprint_property_cyprus(prop_product_value);
         set_fingerprint(fingerprint);
     }
+
+    InitPropertySet("persist.vendor.normal", "1");//表示正常版本，非 VTS 版本，prop 正常设置.
+    InitPropertySet(prop_build_fullversion, get_version_property());
+    InitPropertySet(prop_build_customerid, prop_carrier_value);
+
 }
 
 void set_some_vendor_properties(std::string prop_product_value) {
@@ -236,7 +234,6 @@ void set_fingerprint(std::string fingerprint) {
 
 bool isProductNameCyprusReteu(std::string carrier_ontim) {
     if (carrier_ontim == "retgb_retgbds") return true;
-    if (carrier_ontim == "tescogb_tescogb") return true;
     if (carrier_ontim == "o2gb_teluk") return true;
     if (carrier_ontim == "reteu_reteu") return true;
     return false;
@@ -269,7 +266,7 @@ bool changeSystemProperty(std::string key) {
       || key == prop_carrier || key == prop_build_product
       || key == prop_product_board ||  key == prop_boot_bootloader
       || key == prop_bootloader|| key == prop_build_description
-      || key == prop_build_flavor
+      || key == prop_build_flavor || key == prop_client
       || key == prop_adb_secure || key == prop_secure
       || key == prop_skip_setup_wizard || key == prop_amclient
       || key == prop_msclient || key == prop_vsclient) {
