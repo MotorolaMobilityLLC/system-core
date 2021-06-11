@@ -1106,8 +1106,16 @@ bool fs_mgr_overlayfs_create_scratch(const Fstab& fstab, std::string* scratch_de
 
     // If that fails, see if we can land on super.
     bool is_virtual_ab;
+    bool is_iot_test = (android::base::GetProperty("ro.boot.is_iot_test", "false") == "true");
     if (CanUseSuperPartition(fstab, &is_virtual_ab)) {
         bool can_use_data = false;
+        if (is_iot_test && is_virtual_ab) {
+            if(CreateDynamicScratch(scratch_device, partition_exists, change)) {
+                LINFO << "create dynamic scratch on super for IOT test successfully.";
+                return true;
+            }
+            LINFO << "create dynamic scratch on super failed for IOT test, trying to create scratch on data then.";
+        }
         if (is_virtual_ab && FilesystemHasReliablePinning("/data", &can_use_data) && can_use_data) {
             return CreateScratchOnData(scratch_device, partition_exists, change);
         }
