@@ -123,6 +123,11 @@ void set_system_properties(){
     InitPropertySet("ro.product.ontim.version", fileContent_product);
     InitPropertySet("ro.vendor.product.version", fileContent_product);
 
+    //initialize at fist time to persist.sys.vendor.carrier
+    if (vendor_carrier_value.empty()) {
+        InitPropertySet(prop_vendor_carrier, carrier_value);
+    }
+
     if (prop_product_value == "cyprus64"){
         if(carrier_brand == "lnv") {
             if (isProductNameCyprus64Retru(carrier_ontim)) {
