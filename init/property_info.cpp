@@ -202,10 +202,21 @@ void set_system_properties(){
         std::string fingerprint = get_fingerprint_property_cyprus(prop_product_value);
         set_fingerprint(fingerprint);
     }
-
+     if (carrier_value == "timit") {
+         InitPropertySet(prop_amazon_partnerid, carrier_value);
+     } else if (carrier_value == "windit") {
+         InitPropertySet(prop_amazon_partnerid, "3it");
+     } else if (carrier_value == "attmx") {
+         InitPropertySet(prop_amazon_partnerid,carrier_value);
+     } else if (carrier_value == "vfau") {
+         InitPropertySet(prop_amazon_partnerid,"vfau");
+     } else if (carrier_value == "retru") {
+        InitPropertySet(prop_product_locale,"ru-RU");
+     }
     InitPropertySet("persist.vendor.normal", "1");//表示正常版本，非 VTS 版本，prop 正常设置.
     InitPropertySet(prop_build_fullversion, get_version_property());
     InitPropertySet(prop_build_customerid, prop_carrier_value);
+    InitPropertySet(prop_vendor_locale, android::base::GetProperty(prop_product_locale, "en-US"));
 
 }
 
@@ -274,7 +285,9 @@ bool changeSystemProperty(std::string key) {
       || key == prop_build_flavor || key == prop_client
       || key == prop_adb_secure || key == prop_secure
       || key == prop_skip_setup_wizard || key == prop_amclient
-      || key == prop_msclient || key == prop_vsclient) {
+      || key == prop_msclient || key == prop_vsclient
+      || key == prop_vendor_locale || key == prop_amazon_partnerid
+      || key == prop_product_locale) {
         return true;
     }
     return false;
