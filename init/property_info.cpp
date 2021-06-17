@@ -50,8 +50,9 @@ std::string prop_product_fingerprint = "ro.product.build.fingerprint";
 std::string prop_client_value = "android-motorola";
 std::string prop_clientrev_value = "android-motorola-rev2";
 std::string prop_clientrvo3_value = "android-motorola-rvo3";
+std::string prop_clientvfa_value = "android-vf-au";
 std::string prop_clientvfau_value = "android-vf-au-revc3";
-std::string prop_clientvfaun_value = "android-vf-au-revc";
+std::string prop_clientvfaun_value = "android-vf-au-rvc1";
 std::string prop_clientcountry_value = "android-americamovil-{country}";
 std::string prop_clientrevc_value = "android-americamovil-{country}-revc";
 std::string prop_clientwindit_value = "android-h3g-{country}-revc";
@@ -423,6 +424,7 @@ void set_system_properties(){
             property_set(prop_msclient, prop_clientbr_value);
             property_set(prop_vsclient, prop_clientbr_value);
         } else if (carrier_ontim == "vfau_vfau") {
+            property_set(prop_amclient, prop_clientvfa_value);
             property_set(prop_msclient, prop_clientvfaun_value);
             property_set(prop_vsclient, prop_clientvfaun_value);
         } else {
