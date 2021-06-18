@@ -11,6 +11,8 @@
 #include <direct.h>
 #endif
 
+typedef unsigned long long FILE_SIZE_TYPE;
+
 #if defined(_WIN32)
     #define wchar_t   unsigned short
     #define _TCHAR    wchar_t
@@ -44,6 +46,7 @@ typedef struct tagPacHeaderBP_R2_0_1 {
         memset(this, 0, sizeof(tagPacHeaderBP_R2_0_1));
         dwMagic = PAC_MAGIC;
     }
+
     _TCHAR szVersion[22];       // packet struct version; V1->V2 : 24*2 -> 22*2
     DWORD  dwHiSize;            // the whole packet hight size;
     DWORD  dwLoSize;            // the whole packet low size;
@@ -77,18 +80,21 @@ typedef struct _FILE_T {
         memset(this, 0, sizeof(_FILE_T));
         dwSize = sizeof(_FILE_T);
     }
+
     DWORD  dwSize;              // size of this struct itself
     _TCHAR szFileID[256];       // file ID,such as FDL,Fdl2,NV and etc.
     _TCHAR szFileName[256];     // file name,in the packet bin file,it only stores file name
                                 // but after unpacketing, it stores the full path of bin file
-    _TCHAR szFileVersion[256];  // Reserved now
-    DWORD  nFileSize;           // file size
+    _TCHAR szFileVersion[252];  // Reserved now; V1->V2 : 256*2 --> 252*2
+    DWORD  dwHiFileSize;        // hight file size
+    DWORD  dwHiDataOffset;      // hight file offset
+    DWORD  dwLoFileSize;        // file size
     int    nFileFlag;           // if "0", means that it need not a file, and
                                 // it is only an operation or a list of operations, such as file ID is "FLASH"
                                 // if "1", means that it need a file
     DWORD  nCheckFlag;          // if "1", this file must be downloaded;
                                 // if "0", this file can not be downloaded;
-    DWORD  dwDataOffset;        // the offset from the packet file header to this file data
+    DWORD  dwLoDataOffset;      // the offset from the packet file header to this file data
     DWORD  dwCanOmitFlag;       // if "1", this file can not be downloaded and not check it as "All files"
                                 // in download and spupgrade tool.
     DWORD  dwAddrNum;
@@ -100,8 +106,8 @@ typedef struct tagPacImg {
     std::string partition_name;
     std::string img_file_name;
 
-    unsigned long dataOffset;
-    unsigned long fileSize;
+    FILE_SIZE_TYPE dataOffset;
+    FILE_SIZE_TYPE fileSize;
 } PacImg;
 
 // The following structs are for XML parsing. - Begin.
@@ -140,7 +146,7 @@ typedef struct tagFileItem {
     std::string description;
     // The following fields are NOT in XML, got from parsed PAC files.
     std::string flashFile;
-    unsigned long fileSize;
+    FILE_SIZE_TYPE fileSize;
     bool partitionAvailable;
 } FileItem;
 // The info from XML - End.
@@ -168,7 +174,7 @@ typedef struct tagPacInfo {
     std::string productAlias;
     std::string productVersion;
 
-    unsigned long pacFileSize;
+    FILE_SIZE_TYPE pacFileSize;
     int  headerSize;
     int  nFileCount;
 
@@ -384,6 +390,11 @@ READ_ERROR:
     return done;
 }
 
+static FILE_SIZE_TYPE FillSize(const DWORD loValue, const DWORD hiValue) {
+    FILE_SIZE_TYPE value = hiValue;
+    return (value << 32) + loValue; // 32: 4 bytes is 32 bits
+}
+
 static bool readImgFilesInfo(FILE *fp, PacInfo& pacInfo) {
     int ignored = 0;
 #if defined(_WIN32)
@@ -391,7 +402,7 @@ static bool readImgFilesInfo(FILE *fp, PacInfo& pacInfo) {
 #else
     fseek(fp, pacInfo.headerSize, SEEK_SET);
 #endif
-    unsigned long expectedSize = pacInfo.headerSize + pacInfo.nFileCount * sizeof(FILE_T);
+    FILE_SIZE_TYPE expectedSize = pacInfo.headerSize + pacInfo.nFileCount * sizeof(FILE_T);
     for (int fileIndex = 0; fileIndex < pacInfo.nFileCount; fileIndex++) {
         FILE_T fileStruct;
         memset(&fileStruct, 0, sizeof(FILE_T));
@@ -402,24 +413,24 @@ static bool readImgFilesInfo(FILE *fp, PacInfo& pacInfo) {
         }
         std::string partition = tcharsString(fileStruct.szFileID, 256);
         std::string filename = tcharsString(fileStruct.szFileName, 256);
-        if (fileStruct.nFileSize <= 0) {
+        if (fileStruct.dwHiFileSize <= 0 && fileStruct.dwLoDataOffset <= 0) {
             ignored++;
             continue;
         }
         PacImg pacImg;
         pacImg.partition_name = partition;
         pacImg.img_file_name = filename;
-        pacImg.dataOffset = fileStruct.dwDataOffset;
-        pacImg.fileSize = fileStruct.nFileSize;
+        pacImg.dataOffset = FillSize(fileStruct.dwLoDataOffset, fileStruct.dwHiDataOffset);
+        pacImg.fileSize = FillSize(fileStruct.dwLoFileSize, fileStruct.dwHiFileSize);
         pacInfo.pacImgList.push_back(pacImg);
-        expectedSize += fileStruct.nFileSize;
+        expectedSize += pacImg.fileSize;
         if (feof(fp)) {
             fprintf(stderr, "\nFailed to read file info %d!\nError: Unexpected EOF!\n", fileIndex + 1);
             break;
         }
     }
     if (expectedSize != pacInfo.pacFileSize) {
-        fprintf(stderr, "\nExpected Size: %lu bytes\nPAC file size: %lu bytes\nPlease check why not same!!",
+        fprintf(stderr, "\nExpected Size: %llu bytes\nPAC file size: %llu bytes\nPlease check why not same!!",
                 expectedSize, pacInfo.pacFileSize);
         return false;
     }
@@ -428,8 +439,8 @@ static bool readImgFilesInfo(FILE *fp, PacInfo& pacInfo) {
     return true;
 }
 
-static bool writeFile(FILE *fp, std::string outputFilepath, const unsigned long offset,
-                      const unsigned long size) {
+static bool writeFile(FILE *fp, std::string outputFilepath, const FILE_SIZE_TYPE offset,
+                      const FILE_SIZE_TYPE size) {
     const char* filename = outputFilepath.c_str();
     const unsigned long K = 1024L;
     const unsigned long M = 1024L * K;
@@ -445,14 +456,14 @@ static bool writeFile(FILE *fp, std::string outputFilepath, const unsigned long 
         return false;
     }
     bool done = true;
-    unsigned long curWritten = 0;
+    FILE_SIZE_TYPE curWritten = 0;
     do {
 #if defined(_WIN32)
         _fseeki64(fp, 0, offset + curWritten);
 #else
         fseek(fp, 0, offset + curWritten);
 #endif
-        unsigned long toRead = size - curWritten;
+        FILE_SIZE_TYPE toRead = size - curWritten;
         if (toRead > BLOCK_SIZE) toRead = BLOCK_SIZE;
         if (fread(data, toRead, 1, fp) == 1) {
             fwrite(data, toRead, 1, os);
@@ -508,16 +519,16 @@ static void writeImgTempFiles(FILE *fp, PacInfo& pacInfo, const bool onlyParse) 
         }
 
         if (extType == NULL) {
-            fprintf(stdout, "\n  -- [%02d/%d] Unknown file?! -[%s] (%lu bytes)", curIndex, count,
+            fprintf(stdout, "\n  -- [%02d/%d] Unknown file?! -[%s] (%llu bytes)", curIndex, count,
                     pacImg.img_file_name.c_str(), pacImg.fileSize);
         }
         if (onlyParse) {
-            fprintf(stdout, "\n  -- [%02d/%d](%-20s) %s (%lu bytes)", curIndex, count,
+            fprintf(stdout, "\n  -- [%02d/%d](%-20s) %s (%llu bytes)", curIndex, count,
                     pacImg.partition_name.c_str(),   pacImg.img_file_name.c_str(), pacImg.fileSize);
             if (extType == XML) fprintf(stdout, " *--* in the current folder!");
         }
         if (!writeFile(fp, curTempFile, pacImg.dataOffset, pacImg.fileSize)) {
-            fprintf(stderr, "\n[%02d/%d] Failed to create temp file for %s (%lu bytes)", curIndex,
+            fprintf(stderr, "\n[%02d/%d] Failed to create temp file for %s (%llu bytes)", curIndex,
                     count, pacImg.img_file_name.c_str(), pacImg.fileSize);
         }
     }
@@ -762,7 +773,7 @@ static void readFileItems(char* data, const char* productName, PacInfo &pacInfo)
     }
 }
 
-static void parseXml(std::string xml_file, const unsigned long sizeBytes, PacInfo &pacInfo) {
+static void parseXml(std::string xml_file, const FILE_SIZE_TYPE sizeBytes, PacInfo &pacInfo) {
     char* data = (char*)malloc(sizeBytes + 1);
     if (!data) return;
     memset(data, 0, sizeBytes + 1);
@@ -794,7 +805,7 @@ static bool partitionListed(std::vector<Partition>& partitions, const char* inpu
 static int loadXmlInfo(PacInfo& pacInfo) {
     for (const auto& pacImg : pacInfo.pacImgList) {
         if (!endsWith(pacImg.img_file_name, XML)) continue;
-        fprintf(stdout, "\n --- loading XML ... %s, %ld bytes", pacImg.img_file_name.c_str(),
+        fprintf(stdout, "\n --- loading XML ... %s, %llu bytes", pacImg.img_file_name.c_str(),
                 pacImg.fileSize);
         parseXml(pacImg.img_file_name, pacImg.fileSize, pacInfo);
     }
