@@ -90,6 +90,7 @@ std::string prop_secure = "ro.secure";
 std::string prop_adb_secure = "ro.adb.secure";
 std::string prop_skip_setup_wizard = "ro.setupwizard.skip";
 std::string prop_product = "ro.product.name";
+std::string prop_product_brand = "ro.product.brand";
 std::string prop_product_value;
 std::string prop_product_vendor_name = "ro.product.vendor.name";
 std::string prop_product_odm_name = "ro.product.odm.name";
@@ -110,6 +111,7 @@ void set_system_properties(){
         std::string  islnv = carrier_ontim.substr(positionlast + 1,3);
         if (islnv == "lnv"){
         InitPropertySet(prop_carrier_brand,"lnv");
+        InitPropertySet(prop_product_brand,"Lenovo");
         }
         carrier_ontim = carrier_ontim.erase(positionlast,4);
         InitPropertySet(prop_carrier_ontim,carrier_ontim);
@@ -162,6 +164,9 @@ void set_system_properties(){
             } else if (carrier_ontim == "timbr_timbr") {
                 InitPropertySet(prop_msclient, prop_clientbr_value);
                 InitPropertySet(prop_vsclient, prop_clientbr_value);
+            } else if (carrier_ontim == "retapac_twm") {
+                InitPropertySet(prop_msclient, prop_clientcht_value);
+                InitPropertySet(prop_vsclient, prop_clientcht_value);
             } else {
                 InitPropertySet(prop_msclient, prop_clientrvo3_value);
                 InitPropertySet(prop_vsclient, prop_clientrvo3_value);
@@ -287,7 +292,7 @@ bool changeSystemProperty(std::string key) {
       || key == prop_skip_setup_wizard || key == prop_amclient
       || key == prop_msclient || key == prop_vsclient
       || key == prop_vendor_locale || key == prop_amazon_partnerid
-      || key == prop_product_locale) {
+      || key == prop_product_locale || key == prop_product_brand) {
         return true;
     }
     return false;
