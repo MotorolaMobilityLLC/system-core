@@ -2433,7 +2433,7 @@ static void flashPacImgs(std::string &tempDirPath, std::vector<FileItem>& flashF
                 return;
             }
             do_flash(partition.c_str(), fname.c_str());
-            fprintf(stdout, "\n   -- %d/%d partition '%s' ( %ld bytes) flashed!\n", curIndex, count,
+            fprintf(stdout, "\n   -- %d/%d partition '%s' ( %llu bytes) flashed!\n", curIndex, count,
                     partition.c_str(), fileItem.fileSize);
         };
         do_for_partitions(pname, slot_override, flash, true);
