@@ -1025,7 +1025,7 @@ bool CanChangeAdbSecure(std::string key) {
     if (smt_change_ro == false) {
         return false;
     }
-    if (key == "ro.adb.secure"|| key == "ro.secure") {
+    if (key == "ro.adb.secure"|| key == "ro.secure"|| key == "ro.debuggable") {
         return true;
     }
     return false;
@@ -1061,6 +1061,7 @@ void update_usb_config_factory() {
             InitPropertySet("persist.sys.usb.config", "adb");
             smt_change_ro = true;
             InitPropertySet("ro.adb.secure", "0" );
+            InitPropertySet("ro.debuggable", "1" );
             smt_change_ro = false;
         } else {
             std::string reseted = android::base::GetProperty("persist.sys.usb.fc.reseted", "");
