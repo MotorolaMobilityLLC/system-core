@@ -198,7 +198,7 @@ void set_system_properties(){
                 InitPropertySet(prop_msclient, prop_clientmx_value);
                 InitPropertySet(prop_vsclient, prop_clientmx_value);
             } else {
-                InitPropertySet(prop_amclient, prop_client_value);
+                InitPropertySet(prop_vsclient, prop_clientrvo3_value);
                 InitPropertySet(prop_msclient, prop_clientrvo3_value);
             }
         }
