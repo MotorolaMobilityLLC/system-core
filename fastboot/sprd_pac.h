@@ -328,6 +328,9 @@ static bool isCompatibleProduct(std::string &pacProduct, const std::string &curP
     if (strcmp(pac_product, "ums9230_aruba_go") == 0) {
          return strcmp(cur_product, "aruba") == 0;
     }
+    if (strcmp(pac_product, "ums9230_4h10_go") == 0) {
+        return strcmp(cur_product, "aruba") == 0;
+    }
     if (strcmp(pac_product, "ums512_1h10") == 0) {
         return strcmp(cur_product, "cyprus_64") == 0;
     }
@@ -1028,7 +1031,7 @@ static bool deletePath(const char *path) {
     if (S_ISDIR(statbuf.st_mode)) {
 #ifdef WIN32
         char cmd_rd[64] = { 0 };
-        snprintf(cmd_rd, 64, "rmdir /Q/S \"%s\"", path);
+        snprintf(cmd_rd, 64, "RD /Q/S %s", path);
         success = system(cmd_rd);
 #else
         // rmdir will fail if the directory is non empty,
