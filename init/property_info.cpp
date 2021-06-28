@@ -76,6 +76,8 @@ std::string prop_amazon_partnerid = "ro.csc.amazon.partnerid";
 std::string prop_build_name = "ro.build.name";
 std::string prop_build_product = "ro.build.product";
 std::string prop_product_board = "ro.product.board";
+std::string prop_product_brand = "ro.product.brand";
+std::string prop_product_display = "ro.product.display";
 std::string prop_product = "ro.product.name";
 std::string prop_product_device = "ro.product.device";
 std::string prop_product_vendor_device = "ro.product.vendor.device";
@@ -95,6 +97,12 @@ std::string prop_build_flavor = "ro.build.flavor";
 std::string prop_secure = "ro.secure";
 std::string prop_adb_secure = "ro.adb.secure";
 std::string prop_skip_setup_wizard = "ro.setupwizard.skip";
+std::string prop_product_model = "ro.product.model";
+std::string prop_product_vendor_model = "ro.product.vendor.model";
+std::string prop_product_system_model = "ro.product.system.model";
+std::string prop_product_system_ext_model = "ro.product.system_ext.model";
+std::string prop_product_odm_model = "ro.product.odm.model";
+std::string prop_product_product_model = "ro.product.product.model";
 
 void set_system_properties(){
     std::ifstream stream_product(product_version_file);
@@ -109,13 +117,21 @@ void set_system_properties(){
         std::string  islnv = carrier_ontim.substr(positionlast + 1,3);
         if (islnv == "lnv"){
         InitPropertySet(prop_carrier_brand,"lnv");
+        InitPropertySet(prop_product_brand,"lenovo");
+        set_product_model("Lenovo K14");
         }
         carrier_ontim = carrier_ontim.erase(positionlast,4);
         InitPropertySet(prop_carrier_ontim,carrier_ontim);
     }
+
     std::string  carrier_value = carrier_ontim.substr(0, position);
     prop_product_value = android::base::GetProperty(prop_product, "");
     std::string  carrier_brand = android::base::GetProperty(prop_carrier_brand, "");
+    if (carrier_brand == "lnv"){
+        InitPropertySet(prop_product_display, "Lenovo K14");
+    } else {
+        InitPropertySet(prop_product_display, "moto e20");
+    }
     InitPropertySet(prop_carrier,carrier_value);
     InitPropertySet("ro.oem.key1",carrier_value);
     InitPropertySet(prop_client,"android-motorola");
@@ -314,6 +330,15 @@ void set_some_vendor_properties(std::string prop_product_value) {
     InitPropertySet(prop_build_flavor, get_product_property(prop_build_flavor,prop_product_value));
 }
 
+void set_product_model(std::string product_model) {
+    InitPropertySet(prop_product_model, product_model);
+    InitPropertySet(prop_product_vendor_model, product_model);
+    InitPropertySet(prop_product_system_model, product_model);
+    InitPropertySet(prop_product_system_ext_model, product_model);
+    InitPropertySet(prop_product_product_model, product_model);
+    InitPropertySet(prop_product_odm_model, product_model);
+}
+
 void set_product_name(std::string product_name) {
     InitPropertySet(prop_product, product_name);
     InitPropertySet(prop_product_vendor_name, product_name);
@@ -399,8 +424,11 @@ bool changeSystemProperty(std::string key) {
       || key == prop_build_flavor|| key == prop_carrier_ontim
       || key == prop_adb_secure || key == prop_secure || key == prop_product_locale
       || key == prop_skip_setup_wizard || key == prop_client
-      || key == prop_vendor_locale
-      || key == prop_amazon_partnerid) {
+      || key == prop_vendor_locale || key == prop_product_brand
+      || key == prop_amazon_partnerid || key == prop_product_vendor_model
+      || key == prop_product_system_model || key == prop_product_system_ext_model
+      || key == prop_product_product_model|| key == prop_product_odm_model
+      || key == prop_product_model) {
         return true;
     }
     return false;
