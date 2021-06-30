@@ -204,104 +204,6 @@ void set_system_properties(){
         std::string fingerprint = get_fingerprint_property_aruba(prop_product_value);
         set_fingerprint(fingerprint);
 
-    //cyprus
-    } else if(prop_product_value == "cyprus") {
-
-        if(carrier_brand == "lnv") {
-            prop_product_value = "cyprus_lnv";
-            InitPropertySet(prop_msclient, prop_clientrvo3_value);
-            InitPropertySet(prop_vsclient, prop_clientrvo3_value);
-            set_product_name(prop_product_value);
-
-            std::string fingerprint = get_fingerprint_property_cyprus(prop_product_value);
-            set_fingerprint(fingerprint);
-            InitPropertySet("persist.vendor.normal", "1");//表示正常版本，非 VTS 版本，prop 正常设置.
-            InitPropertySet(prop_build_fullversion, get_version_property());
-            InitPropertySet(prop_build_customerid, prop_carrier_value);
-            return;
-        }
-
-        if (isProductNameCyprusReteu(carrier_ontim)) {
-            prop_product_value = "cyprus_reteu";
-            if (carrier_ontim == "o2gb_teluk") {
-                InitPropertySet(prop_msclient, prop_cliento2_value);
-                InitPropertySet(prop_vsclient, prop_cliento2_value);
-            } else {
-                InitPropertySet(prop_msclient, prop_clientrvo3_value);
-                InitPropertySet(prop_vsclient, prop_clientrvo3_value);
-            }
-        } else {
-            prop_product_value = "cyprus";
-            if (carrier_ontim == "openmx_retmx" || carrier_ontim == "amxmx_amxmx"
-             || carrier_ontim == "amxmx_amxmxsl" || carrier_ontim == "amxpe_claro"
-             || carrier_ontim == "amxcl_clarocl" || carrier_ontim == "amxla_amxlag" ) {
-                InitPropertySet(prop_amclient, prop_clientcountry_value);
-                InitPropertySet(prop_msclient, prop_clientrevc_value);
-                InitPropertySet(prop_vsclient, prop_clientrevc_value);
-            } else if (carrier_ontim == "attmx_attmx") {
-                InitPropertySet(prop_msclient, prop_clientmx_value);
-                InitPropertySet(prop_vsclient, prop_clientmx_value);
-            } else {
-                InitPropertySet(prop_amclient, prop_client_value);
-                InitPropertySet(prop_msclient, prop_clientrvo3_value);
-            }
-        }
-
-        set_product_name(prop_product_value);
-        std::string fingerprint = get_fingerprint_property_cyprus(prop_product_value);
-        set_fingerprint(fingerprint);
-    //cyprus_64
-    } else if(prop_product_value == "cyprus_64") {
-
-        if(carrier_brand == "lnv") {
-            prop_product_value = "cyprus_lnv_64";
-            InitPropertySet(prop_msclient, prop_clientrvo3_value);
-            InitPropertySet(prop_vsclient, prop_clientrvo3_value);
-            set_product_name(prop_product_value);
-
-            std::string fingerprint = get_fingerprint_property_cyprus(prop_product_value);
-            set_fingerprint(fingerprint);
-            InitPropertySet("persist.vendor.normal", "1");//表示正常版本，非 VTS 版本，prop 正常设置.
-            InitPropertySet(prop_build_fullversion, get_version_property());
-            InitPropertySet(prop_build_customerid, prop_carrier_value);
-            return;
-        }
-        if (isProductNameCyprus64Reteu(carrier_ontim)) {
-            prop_product_value = "cyprus_reteu_64";
-            InitPropertySet(prop_vsclient, prop_clientrvo3_value);
-            InitPropertySet(prop_msclient, prop_clientrvo3_value);
-        } else if (isProductNameCyprus64Retru(carrier_ontim)) {
-            prop_product_value = "cyprus_retru_64";
-            prop_carrier_value = "retru";
-            InitPropertySet(prop_msclient, prop_clientrvo3_value);
-            InitPropertySet(prop_vsclient, prop_clientrvo3_value);
-        } else {
-            prop_product_value = "cyprus_64";
-            if (carrier_ontim == "amxpe_claro" || carrier_ontim == "amxco_claro"
-             || carrier_ontim == "amxbr_clarobr" || carrier_ontim == "retapac_retwm"
-             || carrier_ontim == "amxla_amxlag" ) {
-                InitPropertySet(prop_amclient, prop_clientcountry_value);
-                InitPropertySet(prop_msclient, prop_clientrevc_value);
-                InitPropertySet(prop_vsclient, prop_clientrevc_value);
-            } else if (carrier_ontim == "retapac_retwm") {
-                InitPropertySet(prop_msclient, prop_clientcht_value);
-                InitPropertySet(prop_vsclient, prop_clientcht_value);
-            } else if (carrier_ontim == "timbr_timbr") {
-                InitPropertySet(prop_msclient, prop_clientbr_value);
-                InitPropertySet(prop_vsclient, prop_clientbr_value);
-            } else if (carrier_ontim == "vfau_vfau") {
-                InitPropertySet(prop_msclient, prop_clientvf_value);
-                InitPropertySet(prop_vsclient, prop_clientvf_value);
-            }else {
-                InitPropertySet(prop_msclient, prop_clientrvo3_value);
-                InitPropertySet(prop_vsclient, prop_clientrvo3_value);
-            }
-        }
-
-        set_product_name(prop_product_value);
-        std::string fingerprint = get_fingerprint_property_cyprus(prop_product_value);
-        set_fingerprint(fingerprint);
-
     }
 
     if (carrier_value == "timit") {
@@ -370,40 +272,13 @@ void set_fingerprint(std::string fingerprint) {
 bool isProductNameArubaReteu(std::string carrier_ontim) {
     if (carrier_ontim == "retgb_retgbds") return true;
     if (carrier_ontim == "reteu_reteu") return true;
+    if (carrier_ontim == "pluspl_pluspl") return true;
     return false;
 }
 
-bool isProductNameCyprusReteu(std::string carrier_ontim) {
-    if (carrier_ontim == "retgb_retgbds") return true;
-    if (carrier_ontim == "tescogb_tescogb") return true;
-    if (carrier_ontim == "o2gb_teluk") return true;
-    if (carrier_ontim == "reteu_reteu") return true;
-    if (carrier_ontim == "reteu_retfr") return true;
-    return false;
-}
-
-bool isProductNameCyprusLnv(std::string carrier_ontim) {
-    if (carrier_ontim == "retapac_reteuuae") return true;
-    if (carrier_ontim == "retapac_rettld") return true;
-    return false;
-}
 
 bool isProductNameArubaRetru(std::string carrier_ontim) {
     if (carrier_ontim == "retru_ru") return true;
-    return false;
-}
-
-bool isProductNameCyprus64Retru(std::string carrier_ontim) {
-    if (carrier_ontim == "retru_retru") return true;
-    return false;
-}
-
-bool isProductNameCyprus64Reteu(std::string carrier_ontim) {
-    if (carrier_ontim == "retgb_retgbds") return true;
-    if (carrier_ontim == "reteu_reteu") return true;
-    if (carrier_ontim == "playpl_playpl") return true;
-    if (carrier_ontim == "timit_timit") return true;
-    if (carrier_ontim == "reteu_retfr") return true;
     return false;
 }
 
@@ -432,17 +307,6 @@ bool changeSystemProperty(std::string key) {
         return true;
     }
     return false;
-}
-
-std::string get_fingerprint_property_cyprus(std::string value) {
-    std::string  buildFingerprint = android::base::GetProperty(prop_fingerprint, "");
-    std::vector<std::string> fingerprint = android::base::Split(buildFingerprint, ":");
-
-    std::vector<std::string> name = android::base::Split(fingerprint[0], "/");
-    name[1] = value;
-    name[2] = "cyprus";
-    fingerprint[0] = android::base::Join(name, "/");
-    return android::base::Join(fingerprint, ":");
 }
 
 std::string get_fingerprint_property_aruba(std::string value) {
