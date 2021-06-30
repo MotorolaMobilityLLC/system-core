@@ -24,13 +24,8 @@ namespace init {
 
 void set_system_properties();
 bool isProductNameArubaReteu(std::string carrier_ontim);
-bool isProductNameCyprusLnv(std::string carrier_ontim);
 bool isProductNameArubaRetru(std::string carrier_ontim);
-bool isProductNameCyprusReteu(std::string carrier_ontim);
-bool isProductNameCyprus64Reteu(std::string carrier_ontim);
-bool isProductNameCyprus64Retru(std::string carrier_ontim);
 bool changeSystemProperty(std::string key);
-std::string get_fingerprint_property_cyprus(std::string value);
 std::string get_fingerprint_property_aruba(std::string value);
 std::string get_version_property();
 std::string get_product_property(std::string prop_name,std::string value);
