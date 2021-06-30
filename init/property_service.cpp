@@ -1049,9 +1049,6 @@ void update_usb_config_factory() {
         if(exist){
             InitPropertySet("persist.sys.usb.fc.reseted", "1");
             InitPropertySet("persist.sys.usb.config", "adb");
-            smt_change_ro = true;
-            InitPropertySet("ro.adb.secure", "0" );
-            smt_change_ro = false;
         } else {
             std::string reseted = android::base::GetProperty("persist.sys.usb.fc.reseted", "");
             if (reseted != "2") {
