@@ -117,7 +117,7 @@ void set_system_properties(){
         std::string  islnv = carrier_ontim.substr(positionlast + 1,3);
         if (islnv == "lnv"){
         InitPropertySet(prop_carrier_brand,"lnv");
-        InitPropertySet(prop_product_brand,"lenovo");
+        InitPropertySet(prop_product_brand,"Lenovo");
         set_product_model("Lenovo K14");
         }
         carrier_ontim = carrier_ontim.erase(positionlast,4);
@@ -158,7 +158,11 @@ void set_system_properties(){
         set_some_vendor_properties("aruba");
 
         if(carrier_brand == "lnv") {
-            prop_product_value = "aruba_lnv";
+            if (isProductNameArubaRetru(carrier_ontim)) {
+                prop_product_value = "aruba_retru_lnv";
+            } else {
+                prop_product_value = "aruba_lnv";
+            }
             InitPropertySet(prop_msclient, prop_clientrvo3_value);
             InitPropertySet(prop_vsclient, prop_clientrvo3_value);
             set_product_name(prop_product_value);
@@ -311,9 +315,11 @@ bool changeSystemProperty(std::string key) {
 
 std::string get_fingerprint_property_aruba(std::string value) {
     std::string  buildFingerprint = android::base::GetProperty(prop_fingerprint, "");
+    std::string  brandvalue = android::base::GetProperty("ro.product.brand", "");
     std::vector<std::string> fingerprint = android::base::Split(buildFingerprint, ":");
 
     std::vector<std::string> name = android::base::Split(fingerprint[0], "/");
+    name[0] = brandvalue;
     name[1] = value;
     name[2] = "aruba";
     fingerprint[0] = android::base::Join(name, "/");
