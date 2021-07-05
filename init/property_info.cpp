@@ -300,9 +300,11 @@ bool changeSystemProperty(std::string key) {
 
 std::string get_fingerprint_property_cyprus(std::string value) {
     std::string  buildFingerprint = android::base::GetProperty(prop_fingerprint, "");
+    std::string  brandvalue = android::base::GetProperty("ro.product.brand", "");
     std::vector<std::string> fingerprint = android::base::Split(buildFingerprint, ":");
 
     std::vector<std::string> name = android::base::Split(fingerprint[0], "/");
+    name[0] = brandvalue;
     name[1] = value;
     fingerprint[0] = android::base::Join(name, "/");
     return android::base::Join(fingerprint, ":");
