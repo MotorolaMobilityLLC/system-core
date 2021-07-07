@@ -148,6 +148,10 @@ void set_system_properties(){
             InitPropertySet("persist.vendor.normal", "1");//表示正常版本，非 VTS 版本，prop 正常设置.
             InitPropertySet(prop_build_fullversion, get_version_property());
             InitPropertySet(prop_build_customerid, prop_carrier_value);
+            if (carrier_value == "retru") {
+               InitPropertySet(prop_product_locale,"ru-RU");
+              }
+            InitPropertySet(prop_vendor_locale, android::base::GetProperty(prop_product_locale, "en-US"));
             return;
         }
         if (isProductNameCyprus64Reteu(carrier_ontim)) {
