@@ -25,6 +25,10 @@
 #include <android-base/stringprintf.h>
 #endif
 
+#if defined(MTK_LOG) && defined(MTK_COMMAND_WDOG)
+#include "action_manager.h"
+#endif
+
 #include "util.h"
 
 using android::base::Join;
@@ -162,7 +166,7 @@ void Action::ExecuteAllCommands() const {
 
 void Action::ExecuteCommand(const Command& command) const {
     android::base::Timer t;
-#ifndef MTK_TRACE
+#if !defined(MTK_TRACE) && !(defined(MTK_LOG) && defined(MTK_COMMAND_WDOG))
     auto result = command.InvokeFunc(subcontext_);
 #else
     std::string tr_log("Command '");
@@ -179,16 +183,29 @@ void Action::ExecuteCommand(const Command& command) const {
     tr_log.append(android::base::StringPrintf("%d", command.line()));
     tr_log.append(")");
 
+#if defined(MTK_LOG) && defined(MTK_COMMAND_WDOG)
+    auto isWrite = false;
+    if (cmd_str.find("write ") != std::string::npos) {
+        isWrite = true;
+        ActionManager::GetInstance().QueueCommWDMessage(tr_log, true);
+    }
+#endif
+
     StartWriteTrace(tr_log.c_str(), 0);
     auto result = command.InvokeFunc(subcontext_);
     EndWriteTrace(0);
+
+#if defined(MTK_LOG) && defined(MTK_COMMAND_WDOG)
+    if (isWrite)
+        ActionManager::GetInstance().QueueCommWDMessage("", false);
+#endif
 #endif
     auto duration = t.duration();
 
     // Any action longer than 50ms will be warned to user as slow operation
     if (!result.has_value() || duration > 50ms ||
         android::base::GetMinimumLogSeverity() <= android::base::DEBUG) {
-#ifndef MTK_TRACE
+#if !defined(MTK_TRACE) && !(defined(MTK_LOG) && defined(MTK_COMMAND_WDOG))
         std::string trigger_name = BuildTriggersString();
         std::string cmd_str = command.BuildCommandString();
 #endif

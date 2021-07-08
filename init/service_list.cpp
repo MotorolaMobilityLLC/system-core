@@ -102,5 +102,20 @@ void ServiceList::DelayService(const Service& service) {
     delayed_service_names_.emplace_back(service.name());
 }
 
+#ifdef MTK_BORDER_CTL
+void ServiceList::StartWatchingInterface(const std::string& name) {
+    auto lock = std::lock_guard{border_control_lock_};
+    init_watched_interfaces.emplace(name);
+}
+
+bool ServiceList::WatchingInterfaceCount(const std::string& name) {
+    auto lock = std::lock_guard{border_control_lock_};
+    if (init_watched_interfaces.count(name))
+        return true;
+
+    return false;
+}
+#endif
+
 }  // namespace init
 }  // namespace android

@@ -477,7 +477,50 @@ static bool HandleControlMessage(std::string_view message, const std::string& na
     return true;
 }
 
+#ifdef MTK_BORDER_CTL
+static void GetProcessCmdline(std::string& pscl, pid_t from_pid) {
+    std::string cmdline_path = StringPrintf("proc/%d/cmdline", from_pid);
+    std::string process_cmdline;
+    if (ReadFileToString(cmdline_path, &process_cmdline)) {
+        std::replace(process_cmdline.begin(), process_cmdline.end(), '\0', ' ');
+        process_cmdline = Trim(process_cmdline);
+    } else {
+        process_cmdline = "unknown process";
+    }
+
+    pscl = process_cmdline;
+}
+
+static bool CheckBorderControlMessage(std::string_view message, const std::string& name, pid_t from_pid) {
+    auto action = message;
+    if (ConsumePrefix(&action, "interface_")) {
+        if (!ServiceList::GetInstance().WatchingInterfaceCount(name)) {
+            std::string process_cmdline;
+            GetProcessCmdline(process_cmdline, from_pid);
+            LOG(ERROR) << "NtQ Control message: Could not find '" << name << "' for ctl." << message
+                       << " from pid: " << from_pid << " (" << process_cmdline << ")";
+            return false;
+        }
+    }
+
+    const auto& map = GetControlMessageMap();
+    const auto it = map.find(action);
+    if (it == map.end()) {
+        LOG(ERROR) << "NtQ Unknown control msg '" << message << "'";
+        return false;
+    }
+
+    return true;
+}
+#endif
+
 bool QueueControlMessage(const std::string& message, const std::string& name, pid_t pid, int fd) {
+
+#ifdef MTK_BORDER_CTL
+    if (!CheckBorderControlMessage(message, name, pid))
+        return false;
+#endif
+
     auto lock = std::lock_guard{pending_control_messages_lock};
     if (pending_control_messages.size() > 100) {
         LOG(ERROR) << "Too many pending control messages, dropped '" << message << "' for '" << name
@@ -939,6 +982,10 @@ int SecondStageMain(int argc, char** argv) {
 
     ActionManager& am = ActionManager::GetInstance();
     ServiceList& sm = ServiceList::GetInstance();
+
+#if defined(MTK_LOG) && defined(MTK_COMMAND_WDOG)
+    am.StartCommandWDOG();
+#endif
 
     LoadBootScripts(am, sm);
 

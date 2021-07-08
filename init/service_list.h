@@ -16,6 +16,11 @@
 
 #pragma once
 
+#ifdef MTK_BORDER_CTL
+#include <mutex>
+#include <android-base/thread_annotations.h>
+#endif
+
 #include <memory>
 #include <vector>
 
@@ -79,12 +84,23 @@ class ServiceList {
         services_update_finished_ = false;
     }
 
+#ifdef MTK_BORDER_CTL
+    void StartWatchingInterface(const std::string& name);
+    bool WatchingInterfaceCount(const std::string& name);
+#endif
+
   private:
     std::vector<std::unique_ptr<Service>> services_;
 
     bool post_data_ = false;
     bool services_update_finished_ = false;
     std::vector<std::string> delayed_service_names_;
+
+#ifdef MTK_BORDER_CTL
+    mutable std::mutex border_control_lock_;
+    std::set<std::string> init_watched_interfaces GUARDED_BY(border_control_lock_);
+    std::set<std::string> init_watched_services GUARDED_BY(border_control_lock_);
+#endif
 };
 
 }  // namespace init

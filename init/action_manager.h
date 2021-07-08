@@ -51,6 +51,11 @@ class ActionManager {
     bool WatchingPropertyCount(const std::string& property);
 #endif
 
+#if defined(MTK_LOG) && defined(MTK_COMMAND_WDOG)
+    void StartCommandWDOG(void);
+    void QueueCommWDMessage(const std::string& msg, bool isStart);
+#endif
+
   private:
     ActionManager(ActionManager const&) = delete;
     void operator=(ActionManager const&) = delete;
