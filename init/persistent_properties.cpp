@@ -235,6 +235,9 @@ void WritePersistentProperty(const std::string& name, const std::string& value) 
     SnapshotPropertyFlowTraceLog("WPPLPPF");
 #endif
     auto persistent_properties = LoadPersistentPropertyFile();
+#ifdef MTK_PPS_CUT
+    auto loadfileok = persistent_properties.ok();
+#endif
 
     if (!persistent_properties.ok()) {
         LOG(ERROR) << "Recovering persistent properties from memory: "
@@ -246,7 +249,7 @@ void WritePersistentProperty(const std::string& name, const std::string& value) 
                            [&name](const auto& record) { return record.name() == name; });
     if (it != persistent_properties->mutable_properties()->end()) {
 #ifdef MTK_PPS_CUT
-        if (it->has_value() && it->value() == value) {
+        if (it->has_value() && it->value() == value && loadfileok) {
             //LOG(INFO) << "WritePersistentProperty shortcut " << name << "=" << value;
             return;
         }

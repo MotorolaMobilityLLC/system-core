@@ -136,7 +136,7 @@ enum class WDThreadState {
                   // are run.
 };
 
-WDThreadState wd_thread_state_ = WDThreadState::kNotStarted;
+static WDThreadState wd_thread_state_ = WDThreadState::kNotStarted;
 
 static void UnwindPropertythreadStack() {
     std::unique_ptr<Backtrace> backtrace(Backtrace::Create(BACKTRACE_CURRENT_PROCESS, PropServThrGetTid()));
