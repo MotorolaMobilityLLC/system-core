@@ -145,12 +145,12 @@ void set_system_properties(){
             set_product_name(prop_product_value);
             std::string fingerprint = get_fingerprint_property_cyprus(prop_product_value);
             set_fingerprint(fingerprint);
-            InitPropertySet("persist.vendor.normal", "1");//表示正常版本，非 VTS 版本，prop 正常设置.
-            InitPropertySet(prop_build_fullversion, get_version_property());
-            InitPropertySet(prop_build_customerid, prop_carrier_value);
             if (carrier_value == "retru") {
                InitPropertySet(prop_product_locale,"ru-RU");
               }
+            InitPropertySet("persist.vendor.normal", "1");//表示正常版本，非 VTS 版本，prop 正常设置.
+            InitPropertySet(prop_build_fullversion, get_version_property());
+            InitPropertySet(prop_build_customerid, prop_carrier_value);
             InitPropertySet(prop_vendor_locale, android::base::GetProperty(prop_product_locale, "en-US"));
             return;
         }
