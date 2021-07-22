@@ -957,6 +957,10 @@ int SecondStageMain(int argc, char** argv) {
     InstallInitNotifier(&epoll);
     StartPropertyService(&property_fd);
 
+#if defined(MTK_LOG) && defined(MTK_COMMAND_WDOG)
+    ActionManager::GetInstance().StartCommandWDOG();
+#endif
+
     // Make the time that init stages started available for bootstat to log.
     RecordStageBoottimes(start_time);
 
@@ -982,10 +986,6 @@ int SecondStageMain(int argc, char** argv) {
 
     ActionManager& am = ActionManager::GetInstance();
     ServiceList& sm = ServiceList::GetInstance();
-
-#if defined(MTK_LOG) && defined(MTK_COMMAND_WDOG)
-    am.StartCommandWDOG();
-#endif
 
     LoadBootScripts(am, sm);
 

@@ -116,6 +116,7 @@ cc_defaults {
         "-DG1122717=1",
         "-DMTK_PPS_CUT=1",
         "-DMTK_BORDER_CTL=1",
+        "-DMTK_COMMAND_WDOG=1",
     ],
     product_variables: {
         debuggable: {
@@ -133,7 +134,6 @@ cc_defaults {
                 "-UDUMP_ON_UMOUNT_FAILURE",
                 "-DDUMP_ON_UMOUNT_FAILURE=1",
                 "-DMTK_PROP_WDOG=1",
-                "-DMTK_COMMAND_WDOG=1",
                 "-DMTK_LOG_DISABLERATELIMIT=1"
             ],
         },
