@@ -160,6 +160,9 @@ Return<void> TrustyGateKeeperDevice::deleteUser(uint32_t uid, deleteUser_cb _hid
     } else if (response.error == ERROR_NOT_IMPLEMENTED) {
         LOG(INFO) << "TrustyGateKeeper  deleteUser return fail:" << response.error <<" =========<<<<<<<<<<<<";
         _hidl_cb({GatekeeperStatusCode::ERROR_NOT_IMPLEMENTED, 0, {}});
+    } else if (response.error == ERROR_UNKNOWN) { //workaround
+        LOG(INFO) << "TrustyGateKeeper  deleteUser return fail:" << response.error <<" =========<<<<<<<<<<<<";
+        _hidl_cb({GatekeeperStatusCode::ERROR_NOT_IMPLEMENTED, 0, {}});
     } else if (response.error != ERROR_NONE) {
         LOG(INFO) << "TrustyGateKeeper  deleteUser return fail:" << response.error <<" =========<<<<<<<<<<<<";
         _hidl_cb({GatekeeperStatusCode::ERROR_GENERAL_FAILURE, 0, {}});
@@ -188,11 +191,14 @@ Return<void> TrustyGateKeeperDevice::deleteAllUsers(deleteAllUsers_cb _hidl_cb) 
     } else if (response.error == ERROR_NOT_IMPLEMENTED) {
         LOG(INFO) << "TrustyGateKeeper  deleteAllUsers return fail:" << response.error <<" =========<<<<<<<<<<<<";
         _hidl_cb({GatekeeperStatusCode::ERROR_NOT_IMPLEMENTED, 0, {}});
+    } else if (response.error == ERROR_UNKNOWN) { //workaround
+         LOG(INFO) << "TrustyGateKeeper  deleteAllUsers return fail:" << response.error <<" =========<<<<<<<<<<<<";
+        _hidl_cb({GatekeeperStatusCode::ERROR_NOT_IMPLEMENTED, 0, {}});
     } else if (response.error != ERROR_NONE) {
         LOG(INFO) << "TrustyGateKeeper  deleteAllUsers return fail:" << response.error <<" =========<<<<<<<<<<<<";
         _hidl_cb({GatekeeperStatusCode::ERROR_GENERAL_FAILURE, 0, {}});
     } else {
-        LOG(INFO) << "TrustyGateKeeper deleteAllUsers timeout:" << response.retry_timeout <<"=========<<<<<<<<<<<<";
+        LOG(INFO) << "TrustyGateKeeper  deleteAllUsers timeout:" << response.retry_timeout <<"=========<<<<<<<<<<<<";
         _hidl_cb({GatekeeperStatusCode::STATUS_OK, response.retry_timeout, {}});
     }
 
