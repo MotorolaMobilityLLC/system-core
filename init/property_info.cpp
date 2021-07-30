@@ -131,6 +131,7 @@ void set_system_properties(){
     }
 
     if (prop_product_value == "cyprus64"){
+        set_some_vendor_properties("cyprus64");
         if(carrier_brand == "lnv") {
             if (isProductNameCyprus64Retru(carrier_ontim)) {
                 prop_product_value = "cyprus64_retru_lnv";
@@ -180,7 +181,7 @@ void set_system_properties(){
         std::string fingerprint = get_fingerprint_property_cyprus(prop_product_value);
         set_fingerprint(fingerprint);
     } else if(prop_product_value == "cyprus"){
-
+        set_some_vendor_properties("cyprus");
         if (isProductNameCyprusReteu(carrier_ontim)) {
             prop_product_value = "cyprus_reteu";
             if (carrier_ontim == "o2gb_teluk") {
