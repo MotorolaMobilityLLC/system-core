@@ -73,7 +73,6 @@ std::string prop_clientdt_value = "android-dt-{country}-revc";
 std::string prop_cliento2_value = "android-tef-{country}-revc";
 std::string prop_product_value = "fijisc";
 std::string prop_carrier_value = "retail";
-std::string prop_build_base_os = "ro.build.version.base_os";
 
 void set_system_properties() {
     prop_product_value = android::base::GetProperty(prop_product_name, "");
@@ -98,7 +97,6 @@ void set_system_properties() {
     if(prop_product_value.find("fijisc") != std::string::npos) {
         if (isProductNameFijiReteu(carrier_ontim)) {
             prop_product_value = "fijisc_reteu";
-            property_set(prop_build_base_os, get_base_os_property(prop_product_value));
             property_set(prop_msclient, prop_clientrvo3_value);
         } else {
             prop_product_value = "fijisc";
@@ -231,7 +229,7 @@ bool changeSystemProperty(std::string key) {
       || key == prop_product_system_name || key == prop_product_odm_name
       || key == prop_product_product_name || key == prop_product_vendor_name
       || key == prop_product_locale || key == prop_skip_setup_wizard
-      || key == prop_adb_secure || key == prop_secure || key == prop_build_base_os) {
+      || key == prop_adb_secure || key == prop_secure) {
         return true;
     }
     return false;
@@ -274,13 +272,6 @@ std::string get_fingerprint_property_maltalite(std::string value) {
     name[2] = "maltalsc";
     fingerprint[0] = android::base::Join(name, "/");
     return android::base::Join(fingerprint, ":");
-}
-
-std::string get_base_os_property(std::string value) {
-    std::string  build_base_os = android::base::GetProperty(prop_build_base_os, "");
-    std::vector<std::string> base_os = android::base::Split(build_base_os, "/");
-    base_os[1] = value;
-    return android::base::Join(base_os, "/");
 }
 
 std::string get_version_property() {
