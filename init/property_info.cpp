@@ -192,14 +192,15 @@ void set_system_properties(){
             if (carrier_ontim == "openmx_retmx" || carrier_ontim == "amxmx_amxmx"
              || carrier_ontim == "amxmx_amxmxsl" || carrier_ontim == "amxpe_claro"
              || carrier_ontim == "amxco_claro" || carrier_ontim == "amxbr_clarobr"
-             || carrier_ontim == "amxcl_clarocl"|| carrier_ontim == "amxla_amxlag") {
+             || carrier_ontim == "amxcl_clarocl"|| carrier_ontim == "amxla_amxlag"
+             || carrier_ontim == "amxbr_brmanaus") {
                 InitPropertySet(prop_amclient, prop_clientcountry_value);
                 InitPropertySet(prop_msclient, prop_clientrevc_value);
                 InitPropertySet(prop_vsclient, prop_clientrevc_value);
             } else if (carrier_ontim == "attmx_attmx") {
                 InitPropertySet(prop_msclient, prop_clientmx_value);
                 InitPropertySet(prop_vsclient, prop_clientmx_value);
-            } else if (carrier_ontim == "timbr_timbr") {
+            } else if (carrier_ontim == "timbr_timbr" || carrier_ontim == "timbr_brmanaus") {
                 InitPropertySet(prop_msclient, prop_clientbr_value);
                 InitPropertySet(prop_vsclient, prop_clientbr_value);
             } else {
