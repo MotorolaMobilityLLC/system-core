@@ -101,6 +101,12 @@ constexpr auto LEGACY_ID_PROP = "ro.build.legacy.id";
 constexpr auto VBMETA_DIGEST_PROP = "ro.boot.vbmeta.digest";
 constexpr auto DIGEST_SIZE_USED = 8;
 
+// Motorola: Incremental props, used for generating ro.build.incremental at run-time
+constexpr auto INCREMENTAL_PROP = "ro.build.version.incremental";
+constexpr auto SYSTEM_INCREMENTAL_PROP = "ro.system.build.version.incremental";
+constexpr auto VENDOR_INCREMENTAL_PROP = "ro.vendor.build.version.incremental";
+constexpr auto INCREMENTAL_SUFFIX_PROP = "ro.build.version.incremental.suffix";
+
 static bool persistent_properties_loaded = false;
 
 static int property_set_fd = -1;
@@ -951,6 +957,50 @@ static void property_initialize_build_id() {
     }
 }
 
+// Motorola: Set ro.build.incremental based on partition-specific
+//           incrementals and suffixes.
+//
+//           Used to guarantee a unique incremental for "split"
+//           vendor/system builds.
+//
+//           The incremental is set to:
+//           	<vendor incremental>-<system incremental><suffix>
+//
+//           or:
+//              <vendor incremental><suffix>
+//
+//           if the vendor and system incrementals are identical.
+//
+//           Note: Some back-end build scripts assume
+//                 this format when contructing the
+//                 possible run-time fingerprints.
+static void mmi_property_initialize_incremental() {
+    std::string incremental = GetProperty(INCREMENTAL_PROP, "");
+    if (!incremental.empty()) {
+        LOG(WARNING) << "Build incremental property " << INCREMENTAL_PROP << " is already set in a build property file.  Cannot apply vendor incremental or suffixes!";
+        return;
+    }
+
+    std::string vendor_incremental = GetProperty(VENDOR_INCREMENTAL_PROP, "");
+    std::string system_incremental = GetProperty(SYSTEM_INCREMENTAL_PROP, "");
+    if (system_incremental == vendor_incremental) {
+        incremental = vendor_incremental;
+    }
+    else {
+        incremental = vendor_incremental + "-" + system_incremental;
+    }
+    std::string incremental_suffix = GetProperty(INCREMENTAL_SUFFIX_PROP, "");
+    if (!incremental_suffix.empty()) {
+        incremental += incremental_suffix;
+    }
+
+    std::string error;
+    auto res = PropertySet(INCREMENTAL_PROP, incremental, &error);
+    if (res != PROP_SUCCESS) {
+        LOG(ERROR) << "Failed to set " << INCREMENTAL_PROP << " to " << incremental;
+    }
+}
+
 static std::string ConstructBuildFingerprint(bool legacy) {
     const std::string UNKNOWN = "unknown";
     std::string build_fingerprint = GetProperty("ro.product.brand", UNKNOWN);
@@ -1015,25 +1065,6 @@ static void property_derive_build_fingerprint() {
     if (res != PROP_SUCCESS) {
         LOG(ERROR) << "Error setting property '" << FINGERPRINT_PROP << "': err=" << res << " ("
                    << error << ")";
-    }
-}
-
-// tweak the incremental for run-time fingerprint variants
-static void mmi_modify_incremental(std::map<std::string, std::string>* properties) {
-
-    auto suffix = properties->find("ro.build.version.incremental.suffix");
-    if (suffix != properties->end()) {
-        LOG(INFO) << "mmi_modify_incremental(): Found incremental suffix";
-        auto suffix_val = suffix->second;
-        // an incremental suffix is set, so append it to the incremental property, if it's set
-        auto incremental = properties->find("ro.build.version.incremental");
-        if (incremental != properties->end()) {
-            auto incremental_val = incremental->second;
-            LOG(INFO) << "mmi_modify_incremental(): Found incremental " << incremental_val << ".  Appending " << suffix_val << "...";
-            // append the suffix to the incremental
-            incremental_val = incremental_val + suffix_val;
-            incremental->second = incremental_val;
-        }
     }
 }
 
@@ -1172,9 +1203,6 @@ void PropertyLoadBootDefaults() {
         load_properties_from_file(kDebugRamdiskProp, nullptr, &properties);
     }
 
-    // Motorola: Append the incremental suffix, if it's set
-    mmi_modify_incremental(&properties);
-
     for (const auto& [name, value] : properties) {
         std::string error;
         if (PropertySet(name, value, &error) != PROP_SUCCESS) {
@@ -1185,6 +1213,8 @@ void PropertyLoadBootDefaults() {
 
     property_initialize_ro_product_props();
     property_initialize_build_id();
+    // Motorola: Set the incremental if it hasn't been set
+    mmi_property_initialize_incremental();
     property_derive_build_fingerprint();
     property_derive_legacy_build_fingerprint();
     property_initialize_ro_cpu_abilist();
