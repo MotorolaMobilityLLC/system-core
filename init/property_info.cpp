@@ -169,9 +169,6 @@ void set_system_properties(){
             } else if (carrier_ontim == "timbr_timbr") {
                 InitPropertySet(prop_msclient, prop_clientbr_value);
                 InitPropertySet(prop_vsclient, prop_clientbr_value);
-            } else if (carrier_ontim == "retapac_twm") {
-                InitPropertySet(prop_msclient, prop_clientcht_value);
-                InitPropertySet(prop_vsclient, prop_clientcht_value);
             } else {
                 InitPropertySet(prop_msclient, prop_clientrvo3_value);
                 InitPropertySet(prop_vsclient, prop_clientrvo3_value);
