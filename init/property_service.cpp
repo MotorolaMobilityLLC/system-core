@@ -108,6 +108,8 @@ constexpr auto ID_PROP = "ro.build.id";
 constexpr auto LEGACY_ID_PROP = "ro.build.legacy.id";
 constexpr auto VBMETA_DIGEST_PROP = "ro.boot.vbmeta.digest";
 constexpr auto DIGEST_SIZE_USED = 8;
+// Motorola: vendor build ID, used in lieu of "legacy" build ID
+constexpr auto VENDOR_ID_PROP = "ro.vendor.build.id";
 
 static bool persistent_properties_loaded = false;
 
@@ -1267,9 +1269,18 @@ static void property_initialize_build_id() {
         return;
     }
 
+
     std::string legacy_build_id = GetProperty(LEGACY_ID_PROP, "");
     std::string vbmeta_digest = GetProperty(VBMETA_DIGEST_PROP, "");
-    if (vbmeta_digest.size() < DIGEST_SIZE_USED) {
+    // Motorola: Use the vendor BUILD ID, if it's set.
+    std::string vendor_build_id = GetProperty(VENDOR_ID_PROP, "");
+    if (!vendor_build_id.empty()) {
+	// Use the vendor build ID, if it's set. Also, don't add
+	// vbmeta, since we already make the fingerprint unique
+	// for system/vendor pairs via the incremental.
+        build_id = vendor_build_id;
+    }
+    else if (vbmeta_digest.size() < DIGEST_SIZE_USED) {
         LOG(ERROR) << "vbmeta digest size too small " << vbmeta_digest;
         // Still try to set the id field in the unexpected case.
         build_id = legacy_build_id;
