@@ -76,6 +76,7 @@ std::string prop_amazon_partnerid = "ro.csc.amazon.partnerid";
 std::string prop_build_name = "ro.build.name";
 std::string prop_build_product = "ro.build.product";
 std::string prop_product_board = "ro.product.board";
+std::string prop_product_display = "ro.product.display";
 std::string prop_product_device = "ro.product.device";
 std::string prop_product_vendor_device = "ro.product.vendor.device";
 std::string prop_product_odm_device = "ro.product.odm.device";
@@ -97,6 +98,12 @@ std::string prop_product_odm_name = "ro.product.odm.name";
 std::string prop_product_system_name = "ro.product.system.name";
 std::string prop_product_system_ext_name = "ro.product.system_ext.name";
 std::string prop_product_product_name = "ro.product.product.name";
+std::string prop_product_model = "ro.product.model";
+std::string prop_product_vendor_model = "ro.product.vendor.model";
+std::string prop_product_system_model = "ro.product.system.model";
+std::string prop_product_system_ext_model = "ro.product.system_ext.model";
+std::string prop_product_odm_model = "ro.product.odm.model";
+std::string prop_product_product_model = "ro.product.product.model";
 
 void set_system_properties(){
     std::ifstream stream_product(product_version_file);
@@ -144,6 +151,7 @@ void set_system_properties(){
             }
 
             set_product_name(prop_product_value);
+            set_product_model("Lenovo K14 Plus");
             std::string fingerprint = get_fingerprint_property_cyprus(prop_product_value);
             set_fingerprint(fingerprint);
             if (carrier_value == "retru") {
@@ -153,6 +161,7 @@ void set_system_properties(){
             InitPropertySet(prop_build_fullversion, get_version_property());
             InitPropertySet(prop_build_customerid, prop_carrier_value);
             InitPropertySet(prop_vendor_locale, android::base::GetProperty(prop_product_locale, "en-US"));
+            InitPropertySet(prop_product_display, "Lenovo K14 Plus");
             return;
         }
         if (isProductNameCyprus64Reteu(carrier_ontim)) {
@@ -175,8 +184,10 @@ void set_system_properties(){
             }
         }
         set_product_name(prop_product_value);
+        set_product_model("moto e40");
         std::string fingerprint = get_fingerprint_property_cyprus(prop_product_value);
         set_fingerprint(fingerprint);
+        InitPropertySet(prop_product_display, "moto e40");
     } else if(prop_product_value == "cyprus"){
         set_some_vendor_properties("cyprus");
         if (isProductNameCyprusReteu(carrier_ontim)) {
@@ -206,8 +217,10 @@ void set_system_properties(){
         }
 
         set_product_name(prop_product_value);
+        set_product_model("moto e30");
         std::string fingerprint = get_fingerprint_property_cyprus(prop_product_value);
         set_fingerprint(fingerprint);
+        InitPropertySet(prop_product_display, "moto e30");
     }
      if (carrier_value == "timit") {
          InitPropertySet(prop_amazon_partnerid, carrier_value);
@@ -234,6 +247,15 @@ void set_some_vendor_properties(std::string prop_product_value) {
     InitPropertySet(prop_bootloader, get_product_property(prop_bootloader,prop_product_value));
     InitPropertySet(prop_build_description, get_product_property(prop_build_description,prop_product_value));
     InitPropertySet(prop_build_flavor, get_product_property(prop_build_flavor,prop_product_value));
+}
+
+void set_product_model(std::string product_model) {
+    InitPropertySet(prop_product_model, product_model);
+    InitPropertySet(prop_product_vendor_model, product_model);
+    InitPropertySet(prop_product_system_model, product_model);
+    InitPropertySet(prop_product_system_ext_model, product_model);
+    InitPropertySet(prop_product_product_model, product_model);
+    InitPropertySet(prop_product_odm_model, product_model);
 }
 
 void set_product_name(std::string product_name) {
@@ -294,7 +316,11 @@ bool changeSystemProperty(std::string key) {
       || key == prop_skip_setup_wizard || key == prop_amclient
       || key == prop_msclient || key == prop_vsclient
       || key == prop_vendor_locale || key == prop_amazon_partnerid
-      || key == prop_product_locale || key == prop_product_brand) {
+      || key == prop_product_locale || key == prop_product_brand
+      || key == prop_product_model || key == prop_product_vendor_model
+      || key == prop_product_system_model || key == prop_product_system_ext_model
+      || key == prop_product_product_model || key == prop_product_odm_model
+      || key == prop_product_display) {
         return true;
     }
     return false;
