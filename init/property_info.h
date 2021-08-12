@@ -30,6 +30,7 @@ std::string get_version_property();
 void set_system_properties();
 bool changeSystemProperty(std::string key);
 void set_product_name(std::string product_name);
+void set_product_model(std::string product_model);
 void set_some_vendor_properties(std::string prop_product_value);
 void set_fingerprint(std::string fingerprint) ;
 void setElabelProperty();
