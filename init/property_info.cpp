@@ -292,6 +292,7 @@ bool isProductNameCyprus64Retru(std::string carrier_ontim) {
 bool isProductNameCyprus64Reteu(std::string carrier_ontim) {
     if (carrier_ontim == "retgb_retgbds") return true;
     if (carrier_ontim == "reteu_reteu") return true;
+    if (carrier_ontim == "pluspl_pluspl") return true;
     if (carrier_ontim == "playpl_playpl") return true;
     if (carrier_ontim == "timit_timit") return true;
     return false;
