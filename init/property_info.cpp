@@ -67,7 +67,8 @@ std::string prop_clientcht_value = "android-cht-{country}-rvo3";
 std::string prop_clientor_value = "android-orange-{country}-revc";
 std::string prop_clienttmobile_value = "android-tmobile-{country}";
 std::string prop_clientdt_value = "android-dt-{country}-revc";
-std::string prop_cliento2_value = "android-tef-{country}-revc";
+std::string prop_cliento2am_value = "android-tef-{country}";
+std::string prop_cliento2_value = "android-tef-{country}-rvc3";
 std::string prop_carrier_value = "retail";
 std::string prop_version_value;
 std::string product_version_file = "/product/version.txt";
@@ -193,6 +194,7 @@ void set_system_properties(){
         if (isProductNameCyprusReteu(carrier_ontim)) {
             prop_product_value = "cyprus_reteu";
             if (carrier_ontim == "o2gb_teluk") {
+                InitPropertySet(prop_amclient, prop_cliento2am_value);
                 InitPropertySet(prop_msclient, prop_cliento2_value);
                 InitPropertySet(prop_vsclient, prop_cliento2_value);
             } else {
