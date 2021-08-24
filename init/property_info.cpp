@@ -167,8 +167,14 @@ void set_system_properties(){
         }
         if (isProductNameCyprus64Reteu(carrier_ontim)) {
             prop_product_value = "cyprus64_reteu";
-            InitPropertySet(prop_vsclient, prop_clientrvo3_value);
-            InitPropertySet(prop_msclient, prop_clientrvo3_value);
+            if (carrier_ontim == "timit_timit") {
+                InitPropertySet(prop_amclient, prop_client_value);
+                InitPropertySet(prop_msclient, prop_clientit_value);
+                InitPropertySet(prop_vsclient, prop_clientit_value);
+            } else {
+                InitPropertySet(prop_vsclient, prop_clientrvo3_value);
+                InitPropertySet(prop_msclient, prop_clientrvo3_value);
+            }
         } else {
             prop_product_value = "cyprus64";
             if (carrier_ontim == "amxpe_claro" || carrier_ontim == "amxco_claro"
