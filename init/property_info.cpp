@@ -66,7 +66,7 @@ std::string prop_clientvf_value = "android-vf-au-revc3";
 std::string prop_clientcht_value = "android-cht-{country}-rvo3";
 std::string prop_clientor_value = "android-orange-{country}-revc";
 std::string prop_clienttmobile_value = "android-tmobile-{country}";
-std::string prop_clientdt_value = "android-dt-{country}-revc";
+std::string prop_clientdt_value = "android-dt-{country}-rvc3";
 std::string prop_cliento2am_value = "android-tef-{country}";
 std::string prop_cliento2_value = "android-tef-{country}-rvc3";
 std::string prop_carrier_value = "retail";
@@ -171,6 +171,9 @@ void set_system_properties(){
                 InitPropertySet(prop_amclient, prop_client_value);
                 InitPropertySet(prop_msclient, prop_clientit_value);
                 InitPropertySet(prop_vsclient, prop_clientit_value);
+            } else if (carrier_ontim == "reteu_dtag") {
+                InitPropertySet(prop_msclient, prop_clientdt_value);
+                InitPropertySet(prop_vsclient, prop_clientdt_value);
             } else {
                 InitPropertySet(prop_vsclient, prop_clientrvo3_value);
                 InitPropertySet(prop_msclient, prop_clientrvo3_value);
@@ -300,6 +303,7 @@ bool isProductNameCyprus64Retru(std::string carrier_ontim) {
 bool isProductNameCyprus64Reteu(std::string carrier_ontim) {
     if (carrier_ontim == "retgb_retgbds") return true;
     if (carrier_ontim == "reteu_reteu") return true;
+    if (carrier_ontim == "reteu_dtag") return true;
     if (carrier_ontim == "pluspl_pluspl") return true;
     if (carrier_ontim == "playpl_playpl") return true;
     if (carrier_ontim == "timit_timit") return true;
