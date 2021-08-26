@@ -32,6 +32,8 @@ on property:khungtask.enable=false
     write /proc/sys/kernel/hung_task_panic 0
 
 on property:llk.enable=true
+    # a leading comma preserves the prop defaults
+    setprop ro.llk.ignorelist.process ,ipacm
     start llkd-${ro.debuggable:-0}
 
 service llkd-0 /system/bin/llkd
