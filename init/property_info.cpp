@@ -58,7 +58,7 @@ std::string prop_clientcountry_value = "android-americamovil-{country}";
 std::string prop_clientrevc_value = "android-americamovil-{country}-revc";
 std::string prop_clientwindit_value = "android-h3g-{country}-revc";
 std::string prop_clientmx_value = "android-attmexico-mx-revc";
-std::string prop_clientuk_value = "android-ee-uk-revc";
+std::string prop_clientuk_value = "android-ee-uk-rvc3";
 std::string prop_clientbr_value = "android-tim-br-revc";
 std::string prop_clientit_value = "android-tim-it-revc";
 std::string prop_clientau_value = "android-optus-au-revc";
@@ -206,6 +206,9 @@ void set_system_properties(){
                 InitPropertySet(prop_amclient, prop_cliento2am_value);
                 InitPropertySet(prop_msclient, prop_cliento2_value);
                 InitPropertySet(prop_vsclient, prop_cliento2_value);
+            } else if (carrier_ontim == "eegb_uksl") {
+                InitPropertySet(prop_msclient, prop_clientuk_value);
+                InitPropertySet(prop_vsclient, prop_clientuk_value);
             } else {
                 InitPropertySet(prop_msclient, prop_clientrvo3_value);
                 InitPropertySet(prop_vsclient, prop_clientrvo3_value);
@@ -291,6 +294,7 @@ void set_fingerprint(std::string fingerprint) {
 bool isProductNameCyprusReteu(std::string carrier_ontim) {
     if (carrier_ontim == "retgb_retgbds") return true;
     if (carrier_ontim == "o2gb_teluk") return true;
+    if (carrier_ontim == "eegb_uksl") return true;
     if (carrier_ontim == "reteu_reteu") return true;
     return false;
 }
