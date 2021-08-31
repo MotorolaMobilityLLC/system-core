@@ -337,7 +337,7 @@ bool changeSystemProperty(std::string key) {
       || key == prop_product_model || key == prop_product_vendor_model
       || key == prop_product_system_model || key == prop_product_system_ext_model
       || key == prop_product_product_model || key == prop_product_odm_model
-      || key == prop_product_display) {
+      || key == prop_product_display || key == prop_carrier_ontim) {
         return true;
     }
     return false;
