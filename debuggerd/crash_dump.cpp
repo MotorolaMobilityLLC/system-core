@@ -626,6 +626,7 @@ int main(int argc, char** argv) {
 
 #ifdef MSSI_HAVE_AEE_FEATURE
   bool need_notify_aee = false;
+  int sfd = -1;
   char tombstone_path[PATH_MAX] = {};
   if (fatal_signal && is_debuggerd_register_signal(signo)) {
     ssize_t ret = -1;
@@ -659,8 +660,9 @@ int main(int argc, char** argv) {
 
 #ifdef MSSI_HAVE_AEE_FEATURE
   if (need_notify_aee) {
-    LOG(INFO) << "start notify aee_aed: " << tombstone_path;
-    crash_mini_dump_notify(tombstone_path, vm_pid, target_process, g_target_thread, siginfo, thread_info);
+    LOG(INFO) << "start notify aee_aed tombstone path: " << tombstone_path;
+    sfd = create_crash_dump_socket();
+    crash_temporary_file_notify(sfd, tombstone_path);
   }
 #endif
 
@@ -689,6 +691,13 @@ int main(int argc, char** argv) {
   if (g_tombstoned_connected && !tombstoned_notify_completion(g_tombstoned_socket.get())) {
     LOG(ERROR) << "failed to notify tombstoned of completion";
   }
+
+#ifdef MSSI_HAVE_AEE_FEATURE
+  if (need_notify_aee) {
+    LOG(INFO) << "start aee dumping";
+    crash_mini_dump_notify(sfd, vm_pid, target_process, g_target_thread, siginfo, thread_info);
+  }
+#endif
 
   return 0;
 }
