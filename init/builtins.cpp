@@ -41,6 +41,7 @@
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <sys/klog.h>
 #include <unistd.h>
 
 #include <map>
@@ -565,6 +566,59 @@ static void import_late(const std::vector<std::string>& rc_paths) {
     if (false) DumpState();
 }
 
+constexpr static const char* LAST_KMSG_DIR = "/cache/fslog";
+
+static void rotate_logs(const char* last_kmsg_file) {
+    // Logs should only be rotated once.
+    static bool rotated = false;
+    if (rotated) {
+        return;
+    }
+    rotated = true;
+
+    for (int i = 9; i >= 0; --i) {
+
+        std::string old_kmsg =
+            android::base::StringPrintf("%s", last_kmsg_file);
+        if (i > 0) {
+            old_kmsg += "." + std::to_string(i);
+        }
+        std::string new_kmsg =
+            android::base::StringPrintf("%s.%d", last_kmsg_file, i + 1);
+        rename(old_kmsg.c_str(), new_kmsg.c_str());
+    }
+}
+
+static void save_kernel_log(const char* destination_dir) {
+
+    int klog_buf_len = klogctl(KLOG_SIZE_BUFFER, 0, 0);
+    if (klog_buf_len <= 0) {
+        PLOG(ERROR) << "Error getting klog size";
+        return;
+    }
+
+    std::string buffer(klog_buf_len, 0);
+    int n = klogctl(KLOG_READ_ALL, &buffer[0], klog_buf_len);
+    if (n == -1) {
+        PLOG(ERROR) << "Error in reading klog";
+        return;
+    }
+    buffer.resize(n);
+    if (access(destination_dir, F_OK)) {
+        LOG(INFO) << destination_dir << " not exist, create it";
+        if (mkdir(destination_dir, 0700)) {
+            PLOG(ERROR) << "mkdir " << destination_dir << " fail";
+            return;
+        }
+    }
+
+    std::string kmsg_file = android::base::StringPrintf("%s/%s", destination_dir, "fs_log");
+    rotate_logs(kmsg_file.c_str());
+    android::base::WriteStringToFile(buffer, kmsg_file.c_str());
+    sync();
+    LOG(INFO) << "write buffer to " << kmsg_file << " done";
+}
+
 /* Queue event based on fs_mgr return code.
  *
  * code: return code of fs_mgr_mount_all
@@ -586,6 +640,7 @@ static Result<void> queue_fs_event(int code, bool userdata_remount) {
         }
         PLOG(ERROR) << "fs_mgr_mount_all suggested recovery, so wiping data via recovery.";
         const std::vector<std::string> options = {"--wipe_data", "--reason=fs_mgr_mount_all" };
+        save_kernel_log(LAST_KMSG_DIR);
         return reboot_into_recovery(options);
         /* If reboot worked, there is no return. */
     } else if (code == FS_MGR_MNTALL_DEV_FILE_ENCRYPTED) {
@@ -1183,6 +1238,7 @@ static Result<void> ExecVdcRebootOnFailure(const std::string& vdc_arg) {
         if (should_reboot_into_recovery) {
             if (fscrypt_is_native() && !android::gsi::IsGsiRunning()) {
                 LOG(ERROR) << message << ": Rebooting into recovery, reason: " << reboot_reason;
+                save_kernel_log(LAST_KMSG_DIR);
                 if (auto result = reboot_into_recovery(
                             {"--prompt_and_wipe_data", "--reason="s + reboot_reason});
                     !result.ok()) {
