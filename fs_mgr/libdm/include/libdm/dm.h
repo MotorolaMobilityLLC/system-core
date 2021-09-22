@@ -17,6 +17,7 @@
 #ifndef _LIBDM_DM_H_
 #define _LIBDM_DM_H_
 
+#include <dirent.h>
 #include <fcntl.h>
 #include <linux/dm-ioctl.h>
 #include <linux/kdev_t.h>
@@ -26,6 +27,7 @@
 #include <unistd.h>
 
 #include <chrono>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -114,6 +116,19 @@ class DeviceMapper final {
     // - SUSPENDED: suspend the device, or
     // - ACTIVE: resumes the device.
     bool ChangeState(const std::string& name, DmDeviceState state);
+
+    // Creates empty device.
+    // This supports a use case when a caller doesn't need a device straight away, but instead
+    // asks kernel to create it beforehand, thus avoiding blocking itself from waiting for ueventd
+    // to create user space paths.
+    // Callers are expected to then activate their device by calling LoadTableAndActivate function.
+    // To avoid race conditions, callers must still synchronize with ueventd by calling
+    // WaitForDevice function.
+    bool CreateEmptyDevice(const std::string& name);
+
+    // Waits for device paths to be created in the user space.
+    bool WaitForDevice(const std::string& name, const std::chrono::milliseconds& timeout_ms,
+                       std::string* path);
 
     // Creates a device, loads the given table, and activates it. If the device
     // is not able to be activated, it is destroyed, and false is returned.
@@ -241,6 +256,12 @@ class DeviceMapper final {
     //  * A dm device is based on top of more than one block devices.
     //  * A failure occurred.
     std::optional<std::string> GetParentBlockDeviceByPath(const std::string& path);
+
+    // Iterate the content over "/sys/block/dm-x/dm/name" and find
+    // all the dm-wrapped block devices.
+    //
+    // Returns mapping <partition-name, /dev/block/dm-x>
+    std::map<std::string, std::string> FindDmPartitions();
 
   private:
     // Maximum possible device mapper targets registered in the kernel.

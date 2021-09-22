@@ -453,6 +453,7 @@ on init
     # Start logd before any other services run to ensure we capture all of their logs.
     start logd
     # Start lmkd before any other services run so that it can register them
+    write /proc/sys/vm/watermark_boost_factor 0
     chown root system /sys/module/lowmemorykiller/parameters/adj
     chmod 0664 /sys/module/lowmemorykiller/parameters/adj
     chown root system /sys/module/lowmemorykiller/parameters/minfree
@@ -607,9 +608,10 @@ on late-fs
     # Load trusted keys from dm-verity protected partitions
     exec -- /system/bin/fsverity_init --load-verified-keys
 
+on late-fs && property:ro.product.cpu.abilist64=*
     # Set up a tracing instance for system_server to monitor error_report_end events.
     # These are sent by kernel tools like KASAN and KFENCE when a memory corruption
-    # is detected.
+    # is detected. This is only needed for 64-bit systems.
     mkdir /sys/kernel/tracing/instances/bootreceiver 0700 system system
     restorecon_recursive /sys/kernel/tracing/instances/bootreceiver
     write /sys/kernel/tracing/instances/bootreceiver/buffer_size_kb 1
@@ -766,6 +768,8 @@ on post-fs-data
     mkdir /data/misc/odrefresh 0777 system system
     # directory used for on-device signing key blob
     mkdir /data/misc/odsign 0700 root root
+    # Directory for VirtualizationService temporary image files.
+    mkdir /data/misc/virtualizationservice 0700 virtualizationservice virtualizationservice
 
     mkdir /data/preloads 0775 system system encryption=None
 
@@ -1017,11 +1021,11 @@ on boot
 
     # to access F2FS sysfs on dm-<num> directly
     mkdir /dev/sys/fs/by-name 0755 system system
-    symlink /sys/fs/f2fs/${dev.mnt.blk.data} /dev/sys/fs/by-name/userdata
+    symlink /sys/fs/f2fs/${dev.mnt.dev.data} /dev/sys/fs/by-name/userdata
 
     # to access dm-<num> sysfs
     mkdir /dev/sys/block/by-name 0755 system system
-    symlink /sys/devices/virtual/block/${dev.mnt.blk.data} /dev/sys/block/by-name/userdata
+    symlink /sys/devices/virtual/block/${dev.mnt.dev.data} /dev/sys/block/by-name/userdata
 
     # F2FS tuning. Set cp_interval larger than dirty_expire_centisecs, 30 secs,
     # to avoid power consumption when system becomes mostly idle. Be careful

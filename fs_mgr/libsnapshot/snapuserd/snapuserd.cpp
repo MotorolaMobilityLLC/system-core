@@ -16,11 +16,23 @@
 
 #include "snapuserd.h"
 
+#include <dirent.h>
+#include <fcntl.h>
+#include <linux/fs.h>
+#include <unistd.h>
+#include <algorithm>
+
 #include <csignal>
 #include <optional>
 #include <set>
 
-#include <libsnapshot/snapuserd_client.h>
+#include <android-base/file.h>
+#include <android-base/logging.h>
+#include <android-base/parseint.h>
+#include <android-base/properties.h>
+#include <android-base/strings.h>
+#include <android-base/unique_fd.h>
+#include <snapuserd/snapuserd_client.h>
 
 namespace android {
 namespace snapshot {
@@ -53,6 +65,10 @@ bool Snapuserd::InitializeWorkers() {
     return true;
 }
 
+std::unique_ptr<CowReader> Snapuserd::CloneReaderForWorker() {
+    return reader_->CloneCowReader();
+}
+
 bool Snapuserd::CommitMerge(int num_merge_ops) {
     struct CowHeader* ch = reinterpret_cast<struct CowHeader*>(mapped_addr_);
     ch->num_merge_ops += num_merge_ops;
@@ -64,7 +80,7 @@ bool Snapuserd::CommitMerge(int num_merge_ops) {
 
     int ret = msync(mapped_addr_, BLOCK_SZ, MS_SYNC);
     if (ret < 0) {
-        PLOG(ERROR) << "msync header failed: " << ret;
+        SNAP_PLOG(ERROR) << "msync header failed: " << ret;
         return false;
     }
 
@@ -266,14 +282,15 @@ chunk_t Snapuserd::GetNextAllocatableChunkId(chunk_t chunk) {
 
 void Snapuserd::CheckMergeCompletionStatus() {
     if (!merge_initiated_) {
-        SNAP_LOG(INFO) << "Merge was not initiated. Total-data-ops: " << reader_->total_data_ops();
+        SNAP_LOG(INFO) << "Merge was not initiated. Total-data-ops: "
+                       << reader_->get_num_total_data_ops();
         return;
     }
 
     struct CowHeader* ch = reinterpret_cast<struct CowHeader*>(mapped_addr_);
 
     SNAP_LOG(INFO) << "Merge-status: Total-Merged-ops: " << ch->num_merge_ops
-                   << " Total-data-ops: " << reader_->total_data_ops();
+                   << " Total-data-ops: " << reader_->get_num_total_data_ops();
 }
 
 /*
@@ -333,7 +350,7 @@ bool Snapuserd::ReadMetadata() {
     CowHeader header;
     CowOptions options;
     bool metadata_found = false;
-    int replace_ops = 0, zero_ops = 0, copy_ops = 0;
+    int replace_ops = 0, zero_ops = 0, copy_ops = 0, xor_ops = 0;
 
     SNAP_LOG(DEBUG) << "ReadMetadata: Parsing cow file";
 
@@ -352,7 +369,6 @@ bool Snapuserd::ReadMetadata() {
         return false;
     }
 
-    reader_->InitializeMerge();
     SNAP_LOG(DEBUG) << "Merge-ops: " << header.num_merge_ops;
 
     if (!MmapMetadata()) {
@@ -361,7 +377,7 @@ bool Snapuserd::ReadMetadata() {
     }
 
     // Initialize the iterator for reading metadata
-    cowop_riter_ = reader_->GetRevOpIter();
+    std::unique_ptr<ICowOpIter> cowop_rm_iter = reader_->GetRevMergeOpIter();
 
     exceptions_per_area_ = (CHUNK_SIZE << SECTOR_SHIFT) / sizeof(struct disk_exception);
 
@@ -379,15 +395,10 @@ bool Snapuserd::ReadMetadata() {
     // this memset will ensure that metadata read is completed.
     memset(de_ptr.get(), 0, (exceptions_per_area_ * sizeof(struct disk_exception)));
 
-    while (!cowop_riter_->Done()) {
-        const CowOperation* cow_op = &cowop_riter_->Get();
+    while (!cowop_rm_iter->Done()) {
+        const CowOperation* cow_op = &cowop_rm_iter->Get();
         struct disk_exception* de =
                 reinterpret_cast<struct disk_exception*>((char*)de_ptr.get() + offset);
-
-        if (IsMetadataOp(*cow_op)) {
-            cowop_riter_->Next();
-            continue;
-        }
 
         metadata_found = true;
         // This loop will handle all the replace and zero ops.
@@ -395,7 +406,7 @@ bool Snapuserd::ReadMetadata() {
         // handling of assigning chunk-id's. Furthermore, we make
         // sure that replace/zero and copy ops are not batch merged; hence,
         // the bump in the chunk_id before break of this loop
-        if (cow_op->type == kCowCopyOp) {
+        if (IsOrderedOp(*cow_op)) {
             data_chunk_id = GetNextAllocatableChunkId(data_chunk_id);
             break;
         }
@@ -410,12 +421,11 @@ bool Snapuserd::ReadMetadata() {
         de->old_chunk = cow_op->new_block;
         de->new_chunk = data_chunk_id;
 
-
         // Store operation pointer.
         chunk_vec_.push_back(std::make_pair(ChunkToSector(data_chunk_id), cow_op));
         num_ops += 1;
         offset += sizeof(struct disk_exception);
-        cowop_riter_->Next();
+        cowop_rm_iter->Next();
 
         SNAP_LOG(DEBUG) << num_ops << ":"
                         << " Old-chunk: " << de->old_chunk << " New-chunk: " << de->new_chunk;
@@ -432,7 +442,7 @@ bool Snapuserd::ReadMetadata() {
                                                  sizeof(struct disk_exception));
             memset(de_ptr.get(), 0, (exceptions_per_area_ * sizeof(struct disk_exception)));
 
-            if (cowop_riter_->Done()) {
+            if (cowop_rm_iter->Done()) {
                 vec_.push_back(std::move(de_ptr));
             }
         }
@@ -445,19 +455,16 @@ bool Snapuserd::ReadMetadata() {
     std::vector<const CowOperation*> vec;
     std::set<uint64_t> dest_blocks;
     std::set<uint64_t> source_blocks;
-    size_t pending_copy_ops = exceptions_per_area_ - num_ops;
-    uint64_t total_copy_ops = reader_->total_copy_ops();
+    size_t pending_ordered_ops = exceptions_per_area_ - num_ops;
+    uint64_t total_ordered_ops = reader_->get_num_ordered_ops_to_merge();
 
     SNAP_LOG(DEBUG) << " Processing copy-ops at Area: " << vec_.size()
                     << " Number of replace/zero ops completed in this area: " << num_ops
-                    << " Pending copy ops for this area: " << pending_copy_ops;
-    while (!cowop_riter_->Done()) {
+                    << " Pending copy ops for this area: " << pending_ordered_ops;
+
+    while (!cowop_rm_iter->Done()) {
         do {
-            const CowOperation* cow_op = &cowop_riter_->Get();
-            if (IsMetadataOp(*cow_op)) {
-                cowop_riter_->Next();
-                continue;
-            }
+            const CowOperation* cow_op = &cowop_rm_iter->Get();
 
             // We have two cases specific cases:
             //
@@ -502,28 +509,38 @@ bool Snapuserd::ReadMetadata() {
             // is no loss of data.
             //
             // Note that we will follow the same order of COW operations
-            // as present in the COW file. This will make sure that\
+            // as present in the COW file. This will make sure that
             // the merge of operations are done based on the ops present
             // in the file.
             //===========================================================
+            uint64_t block_source = cow_op->source;
+            uint64_t block_offset = 0;
+            if (cow_op->type == kCowXorOp) {
+                block_source /= BLOCK_SZ;
+                block_offset = cow_op->source % BLOCK_SZ;
+            }
             if (prev_id.has_value()) {
-                if (dest_blocks.count(cow_op->new_block) || source_blocks.count(cow_op->source)) {
+                if (dest_blocks.count(cow_op->new_block) || source_blocks.count(block_source) ||
+                    (block_offset > 0 && source_blocks.count(block_source + 1))) {
                     break;
                 }
             }
             metadata_found = true;
-            pending_copy_ops -= 1;
+            pending_ordered_ops -= 1;
             vec.push_back(cow_op);
-            dest_blocks.insert(cow_op->source);
+            dest_blocks.insert(block_source);
+            if (block_offset > 0) {
+                dest_blocks.insert(block_source + 1);
+            }
             source_blocks.insert(cow_op->new_block);
             prev_id = cow_op->new_block;
-            cowop_riter_->Next();
-        } while (!cowop_riter_->Done() && pending_copy_ops);
+            cowop_rm_iter->Next();
+        } while (!cowop_rm_iter->Done() && pending_ordered_ops);
 
         data_chunk_id = GetNextAllocatableChunkId(data_chunk_id);
-        SNAP_LOG(DEBUG) << "Batch Merge copy-ops of size: " << vec.size()
+        SNAP_LOG(DEBUG) << "Batch Merge copy-ops/xor-ops of size: " << vec.size()
                         << " Area: " << vec_.size() << " Area offset: " << offset
-                        << " Pending-copy-ops in this area: " << pending_copy_ops;
+                        << " Pending-ordered-ops in this area: " << pending_ordered_ops;
 
         for (size_t i = 0; i < vec.size(); i++) {
             struct disk_exception* de =
@@ -537,13 +554,18 @@ bool Snapuserd::ReadMetadata() {
             chunk_vec_.push_back(std::make_pair(ChunkToSector(data_chunk_id), cow_op));
             offset += sizeof(struct disk_exception);
             num_ops += 1;
-            copy_ops++;
+            if (cow_op->type == kCowCopyOp) {
+                copy_ops++;
+            } else {  // it->second->type == kCowXorOp
+                xor_ops++;
+            }
+
             if (read_ahead_feature_) {
                 read_ahead_ops_.push_back(cow_op);
             }
 
             SNAP_LOG(DEBUG) << num_ops << ":"
-                            << " Copy-op: "
+                            << " Ordered-op: "
                             << " Old-chunk: " << de->old_chunk << " New-chunk: " << de->new_chunk;
 
             if (num_ops == exceptions_per_area_) {
@@ -558,27 +580,27 @@ bool Snapuserd::ReadMetadata() {
                                                      sizeof(struct disk_exception));
                 memset(de_ptr.get(), 0, (exceptions_per_area_ * sizeof(struct disk_exception)));
 
-                if (cowop_riter_->Done()) {
+                if (cowop_rm_iter->Done()) {
                     vec_.push_back(std::move(de_ptr));
                     SNAP_LOG(DEBUG) << "ReadMetadata() completed; Number of Areas: " << vec_.size();
                 }
 
-                if (!(pending_copy_ops == 0)) {
-                    SNAP_LOG(ERROR)
-                            << "Invalid pending_copy_ops: expected: 0 found: " << pending_copy_ops;
+                if (!(pending_ordered_ops == 0)) {
+                    SNAP_LOG(ERROR) << "Invalid pending_ordered_ops: expected: 0 found: "
+                                    << pending_ordered_ops;
                     return false;
                 }
-                pending_copy_ops = exceptions_per_area_;
+                pending_ordered_ops = exceptions_per_area_;
             }
 
             data_chunk_id = GetNextAllocatableChunkId(data_chunk_id);
-            total_copy_ops -= 1;
+            total_ordered_ops -= 1;
             /*
              * Split the number of ops based on the size of read-ahead buffer
              * region. We need to ensure that kernel doesn't issue IO on blocks
              * which are not read by the read-ahead thread.
              */
-            if (read_ahead_feature_ && (total_copy_ops % num_ra_ops_per_iter == 0)) {
+            if (read_ahead_feature_ && (total_ordered_ops % num_ra_ops_per_iter == 0)) {
                 data_chunk_id = GetNextAllocatableChunkId(data_chunk_id);
             }
         }
@@ -607,9 +629,9 @@ bool Snapuserd::ReadMetadata() {
     SNAP_LOG(INFO) << "ReadMetadata completed. Final-chunk-id: " << data_chunk_id
                    << " Num Sector: " << ChunkToSector(data_chunk_id)
                    << " Replace-ops: " << replace_ops << " Zero-ops: " << zero_ops
-                   << " Copy-ops: " << copy_ops << " Areas: " << vec_.size()
-                   << " Num-ops-merged: " << header.num_merge_ops
-                   << " Total-data-ops: " << reader_->total_data_ops();
+                   << " Copy-ops: " << copy_ops << " Xor-ops: " << xor_ops
+                   << " Areas: " << vec_.size() << " Num-ops-merged: " << header.num_merge_ops
+                   << " Total-data-ops: " << reader_->get_num_total_data_ops();
 
     // Total number of sectors required for creating dm-user device
     num_sectors_ = ChunkToSector(data_chunk_id);
@@ -668,6 +690,74 @@ bool Snapuserd::InitCowDevice() {
     return ReadMetadata();
 }
 
+void Snapuserd::ReadBlocksToCache(const std::string& dm_block_device,
+                                  const std::string partition_name, off_t offset, size_t size) {
+    android::base::unique_fd fd(TEMP_FAILURE_RETRY(open(dm_block_device.c_str(), O_RDONLY)));
+    if (fd.get() == -1) {
+        SNAP_PLOG(ERROR) << "Error reading " << dm_block_device
+                         << " partition-name: " << partition_name;
+        return;
+    }
+
+    size_t remain = size;
+    off_t file_offset = offset;
+    // We pick 4M I/O size based on the fact that the current
+    // update_verifier has a similar I/O size.
+    size_t read_sz = 1024 * BLOCK_SZ;
+    std::vector<uint8_t> buf(read_sz);
+
+    while (remain > 0) {
+        size_t to_read = std::min(remain, read_sz);
+
+        if (!android::base::ReadFullyAtOffset(fd.get(), buf.data(), to_read, file_offset)) {
+            SNAP_PLOG(ERROR) << "Failed to read block from block device: " << dm_block_device
+                             << " at offset: " << file_offset
+                             << " partition-name: " << partition_name << " total-size: " << size
+                             << " remain_size: " << remain;
+            return;
+        }
+
+        file_offset += to_read;
+        remain -= to_read;
+    }
+
+    SNAP_LOG(INFO) << "Finished reading block-device: " << dm_block_device
+                   << " partition: " << partition_name << " size: " << size
+                   << " offset: " << offset;
+}
+
+void Snapuserd::ReadBlocks(const std::string partition_name, const std::string& dm_block_device) {
+    SNAP_LOG(DEBUG) << "Reading partition: " << partition_name
+                    << " Block-Device: " << dm_block_device;
+
+    uint64_t dev_sz = 0;
+
+    unique_fd fd(TEMP_FAILURE_RETRY(open(dm_block_device.c_str(), O_RDONLY | O_CLOEXEC)));
+    if (fd < 0) {
+        SNAP_LOG(ERROR) << "Cannot open block device";
+        return;
+    }
+
+    dev_sz = get_block_device_size(fd.get());
+    if (!dev_sz) {
+        SNAP_PLOG(ERROR) << "Could not determine block device size: " << dm_block_device;
+        return;
+    }
+
+    int num_threads = 2;
+    size_t num_blocks = dev_sz >> BLOCK_SHIFT;
+    size_t num_blocks_per_thread = num_blocks / num_threads;
+    size_t read_sz_per_thread = num_blocks_per_thread << BLOCK_SHIFT;
+    off_t offset = 0;
+
+    for (int i = 0; i < num_threads; i++) {
+        std::async(std::launch::async, &Snapuserd::ReadBlocksToCache, this, dm_block_device,
+                   partition_name, offset, read_sz_per_thread);
+
+        offset += read_sz_per_thread;
+    }
+}
+
 /*
  * Entry point to launch threads
  */
@@ -694,6 +784,39 @@ bool Snapuserd::Start() {
     for (int i = 0; i < worker_threads_.size(); i++) {
         threads.emplace_back(
                 std::async(std::launch::async, &WorkerThread::RunThread, worker_threads_[i].get()));
+    }
+
+    bool second_stage_init = true;
+
+    // We don't want to read the blocks during first stage init.
+    if (android::base::EndsWith(misc_name_, "-init") || is_socket_present_) {
+        second_stage_init = false;
+    }
+
+    if (second_stage_init) {
+        SNAP_LOG(INFO) << "Reading blocks to cache....";
+        auto& dm = DeviceMapper::Instance();
+        auto dm_block_devices = dm.FindDmPartitions();
+        if (dm_block_devices.empty()) {
+            SNAP_LOG(ERROR) << "No dm-enabled block device is found.";
+        } else {
+            auto parts = android::base::Split(misc_name_, "-");
+            std::string partition_name = parts[0];
+
+            const char* suffix_b = "_b";
+            const char* suffix_a = "_a";
+
+            partition_name.erase(partition_name.find_last_not_of(suffix_b) + 1);
+            partition_name.erase(partition_name.find_last_not_of(suffix_a) + 1);
+
+            if (dm_block_devices.find(partition_name) == dm_block_devices.end()) {
+                SNAP_LOG(ERROR) << "Failed to find dm block device for " << partition_name;
+            } else {
+                ReadBlocks(partition_name, dm_block_devices.at(partition_name));
+            }
+        }
+    } else {
+        SNAP_LOG(INFO) << "Not reading block device into cache";
     }
 
     bool ret = true;
