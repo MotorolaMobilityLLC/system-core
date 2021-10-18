@@ -280,6 +280,7 @@ void set_fingerprint(std::string fingerprint) {
 
 bool isProductNameArubaReteu(std::string carrier_ontim) {
     if (carrier_ontim == "retgb_retgbds") return true;
+    if (carrier_ontim == "o2gb_teluk") return true;
     if (carrier_ontim == "reteu_reteu") return true;
     if (carrier_ontim == "pluspl_pluspl") return true;
     return false;
