@@ -192,6 +192,7 @@ const char* partition_userdata  = "userdata";
 
 const char* SPLLoaderEMMC = "SPLLoaderEMMC";
 const char* SPLLoaderUFS  = "SPLLoaderUFS";
+const char* SPLLoader = "SPLLoader";
 
 const char* XML = ".xml";
 const char* BIN = ".bin";
@@ -270,7 +271,7 @@ static void flashPacImgs(std::string &tempDir, std::vector<FileItem>& flashFileI
                          const bool eraseUserData);
 static void erasePartitions(std::vector<FileItem>& eraseFileItems, const std::string& slot_override);
 static void wipeUserData(const bool set_fbe_marker);
-static SplloaderStorage getSplloaderStorageByProduct(std::string &productName);
+static SplloaderStorage getSplloaderStorage();
 
 // Accessory functions.
 static bool isFusedDevice();
@@ -545,13 +546,6 @@ static void readPacInfo(FILE *fp, PacInfo& pacInfo) {
     }
 }
 
-static SplloaderStorage getSplloaderStorageByProduct(std::string &productName) {
-    const char* product = productName.c_str();
-    if (strcmp(product, "aruba") == 0) return EMMC;
-    if (strcmp(product, "ums9230_aruba_go") == 0) return EMMC;
-    return NAND;
-}
-
 static bool readPacHeaderBP_R2_0_1(FILE *fp, PacInfo& pacInfo) {
     const int headerSize = sizeof(PacHeaderBP_R2_0_1);
 #if defined(_WIN32)
@@ -610,6 +604,9 @@ static void findFileForItem(std::vector<PacImg>& pacImgList, FileItem &fileItem)
         if (pacImg.partition_name == fileItem.id) {
             fileItem.flashFile = pacImg.img_file_name;
             fileItem.fileSize = pacImg.fileSize;
+//fprintf(stdout, "\n %s: %s", fileItem.id.c_str(), fileItem.flashFile.c_str());
+            fprintf(stdout, "\n backup,CheckCali,id,idAlias,type,flag,checkFlag,description,flashFile,fileSize");
+            fprintf(stdout, "\n %s,%s,%s,%s,%s,%s,%s,%s,%s,%lu", fileItem.backup.c_str(), fileItem.CheckCali.c_str(), fileItem.id.c_str(), fileItem.idAlias.c_str(), fileItem.type.c_str(), fileItem.flag.c_str(), fileItem.checkFlag.c_str(), fileItem.description.c_str(), fileItem.flashFile.c_str(), fileItem.fileSize);
             return;
         }
     }
@@ -681,7 +678,7 @@ static bool isExpectedPartition(FileItem &fileItem, PacInfo &pacInfo) {
             case UFS:
                 return strcmp(id, SPLLoaderUFS) == 0;
             default:
-                break;
+                return strcmp(id, SPLLoader) == 0;
         }
         return true;
     }

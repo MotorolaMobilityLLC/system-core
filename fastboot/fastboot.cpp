@@ -2331,6 +2331,17 @@ static std::string getProductName() {
     return curProductName;
 }
 
+static SplloaderStorage getSplloaderStorage() {
+    std::string var = "storage_type";
+    std::string val;
+    if (fb->GetVar(var, &val) != fastboot::SUCCESS) {
+        fprintf(stderr, "\nFailed! getvar for '%s' (%s)\n", var.c_str(), fb->Error().c_str());
+        die("Failed to get the storage_type!");
+    }
+    fprintf(stderr, "\nstorage_type: %s\n", val.c_str());
+    return (strcmp(val.c_str(), "UFS") == 0) ? UFS : EMMC;
+}
+
 static void flashSprdPac(std::vector<std::string> &args, const bool eraseUserData,
                          const std::string& slot_override, const bool force_flash,
                          const bool set_fbe_marker) {
@@ -2344,7 +2355,7 @@ static void flashSprdPac(std::vector<std::string> &args, const bool eraseUserDat
     if (curProductName.empty()) {
         die("\nFailed to get product name! Flash Abort!!!");
     }
-    pacInfo.splloaderStorage = getSplloaderStorageByProduct(curProductName);
+    pacInfo.splloaderStorage = getSplloaderStorage();
     if (!readPacToImgs(pacFilename, pacInfo, curProductName)) {
         die("\nFailed flash-pac! Abort!!!");
     }
