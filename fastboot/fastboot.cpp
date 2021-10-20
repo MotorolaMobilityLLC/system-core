@@ -2410,28 +2410,28 @@ static void flashPacImgs(std::string &tempDirPath, std::vector<FileItem>& flashF
         curIndex++;
         //fprintf(stdout, "\n   - %d/%d%s", curIndex, count, fileItemString(fileItem).c_str());
         if (fileItem.flashFile.length() <= 0) {
-            fprintf(stdout, "\n   --- %02d/%d Ignore '%s' - no flash file!", curIndex, count,
+            fprintf(stdout, "\n   --- %02d/%d Ignore '%s' - no flash file!\n", curIndex, count,
                     fileItem.id.c_str());
             continue;
         }
         std::string pname = fileItem.block.id;
         if (pname.length() <= 0) {
-            fprintf(stdout, "\n   --- %02d/%d Ignore '%s' - no partition!", curIndex, count,
+            fprintf(stdout, "\n   --- %02d/%d Ignore '%s' - no partition!\n", curIndex, count,
                     fileItem.id.c_str());
             continue;
         }
         if (!fileItem.partitionAvailable) {
-            fprintf(stdout, "\n   --- %02d/%d Ignore '%s' - partition(%s) not listed! (file: %s)",
+            fprintf(stdout, "\n   --- %02d/%d Ignore '%s' - partition(%s) not listed! (file: %s)\n",
                     curIndex, count, fileItem.id.c_str(), pname.c_str(), fileItem.flashFile.c_str());
             continue;
         }
         if (!eraseUserData && isPartitionForUserData(pname)) {
-            fprintf(stdout, "\n   --- %02d/%d Ignore '%s' - keep user data!", curIndex, count,
+            fprintf(stdout, "\n   --- %02d/%d Ignore '%s' - keep user data!\n", curIndex, count,
                     fileItem.id.c_str());
             continue;
         }
         if (isPartitionSkipped(pname)) {
-            fprintf(stdout, "\n   --- %02d/%d Skip '%s' - factory data!", curIndex, count,
+            fprintf(stdout, "\n   --- %02d/%d Skip '%s' - factory data!\n", curIndex, count,
                 fileItem.id.c_str());
             continue;
         }
@@ -2445,11 +2445,11 @@ static void flashPacImgs(std::string &tempDirPath, std::vector<FileItem>& flashF
                     "    fastboot reboot fastboot\n"
                     "\n"
                     "And try again. If you are intentionally trying to "
-                    "overwrite a fixed partition, use --force.", partition.c_str());
+                    "overwrite a fixed partition, use --force.\n", partition.c_str());
                 return;
             }
             do_flash(partition.c_str(), fname.c_str());
-            fprintf(stdout, "\n   -- %d/%d partition '%s' ( %ld bytes) flashed!\n", curIndex, count,
+            fprintf(stdout, "\n   -- %d/%d partition '%s' ( %llu bytes) flashed!\n", curIndex, count,
                     partition.c_str(), fileItem.fileSize);
         };
         do_for_partitions(pname, slot_override, flash, true);
