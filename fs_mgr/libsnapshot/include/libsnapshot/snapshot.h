@@ -110,6 +110,7 @@ class ISnapshotManager {
         virtual bool IsTestDevice() const { return false; }
         virtual bool IsFirstStageInit() const = 0;
         virtual std::unique_ptr<IImageManager> OpenImageManager() const = 0;
+        virtual android::dm::IDeviceMapper& GetDeviceMapper() = 0;
 
         // Helper method for implementing OpenImageManager.
         std::unique_ptr<IImageManager> OpenImageManager(const std::string& gsid_dir) const;
@@ -399,6 +400,7 @@ class SnapshotManager final : public ISnapshotManager {
     FRIEND_TEST(SnapshotTest, MergeFailureCode);
     FRIEND_TEST(SnapshotTest, NoMergeBeforeReboot);
     FRIEND_TEST(SnapshotTest, UpdateBootControlHal);
+    FRIEND_TEST(SnapshotUpdateTest, AddPartition);
     FRIEND_TEST(SnapshotUpdateTest, DaemonTransition);
     FRIEND_TEST(SnapshotUpdateTest, DataWipeAfterRollback);
     FRIEND_TEST(SnapshotUpdateTest, DataWipeRollbackInRecovery);
@@ -610,6 +612,14 @@ class SnapshotManager final : public ISnapshotManager {
     MergeFailureCode CheckMergeConsistency(LockedFile* lock, const std::string& name,
                                            const SnapshotStatus& update_status);
 
+    // Get status or table information about a device-mapper node with a single target.
+    enum class TableQuery {
+        Table,
+        Status,
+    };
+    bool GetSingleTarget(const std::string& dm_name, TableQuery query,
+                         android::dm::DeviceMapper::TargetInfo* target);
+
     // Interact with status files under /metadata/ota/snapshots.
     bool WriteSnapshotStatus(LockedFile* lock, const SnapshotStatus& status);
     bool ReadSnapshotStatus(LockedFile* lock, const std::string& name, SnapshotStatus* status);
@@ -772,9 +782,9 @@ class SnapshotManager final : public ISnapshotManager {
     bool DeleteDeviceIfExists(const std::string& name,
                               const std::chrono::milliseconds& timeout_ms = {});
 
-    std::string gsid_dir_;
-    std::string metadata_dir_;
+    android::dm::IDeviceMapper& dm_;
     std::unique_ptr<IDeviceInfo> device_;
+    std::string metadata_dir_;
     std::unique_ptr<IImageManager> images_;
     bool use_first_stage_snapuserd_ = false;
     bool in_factory_data_reset_ = false;
