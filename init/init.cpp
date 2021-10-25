@@ -781,6 +781,65 @@ static void UmountSecondStageRes() {
     }
 }
 
+#ifdef JOURNEY_FEATURE_ROOT_MODE
+bool journey_root_mode = false;
+static bool initJourneyRootMode() {
+    LOG(INFO) << "init journey.root  initJourneyRootMode!";
+    std::string cmdline;
+    android::base::ReadFileToString("/proc/cmdline", &cmdline);
+    if (cmdline.find("androidboot.journey.root=1") != std::string::npos) {
+        LOG(INFO) << "init:journey.root root =1 !";
+        journey_root_mode = true;
+    } else {
+        LOG(INFO) << "init:we are not in journey.root because cmdline not set";
+        journey_root_mode = false;
+    }
+    return journey_root_mode;
+}
+#endif
+
+#ifdef JOURNEY_FEATURE_SECURE
+static void SetJourneySafeMode(std::string reason) {
+    if (reason.empty()) return; // avoid unused function
+
+#ifdef JOURNEY_FEATURE_ROOT_MODE
+    if(journey_root_mode)  return; // disable safe mode in root mode
+#endif
+    if(base::GetBoolProperty("ro.boot.journey.factory", false)) return; // dont care when we are in factory.
+    if(base::GetBoolProperty("ro.journey.secure.safemode", false)) return; // dont need set it again.
+
+    SetProperty("ro.journey.secure.safemode", "1"); // keep it in safe mode on in cfc version
+    SetProperty("ro.journey.secure.reason", reason); // tell the framework reason
+}
+
+#ifndef JOURNEY_FEATURE_DEBUG_MODE
+static void CheckJourneyDebugMode() {
+    // debug ?
+    bool isDebug = base::GetBoolProperty("ro.boot.journey.debug", false);
+    if(isDebug) {
+        LOG(ERROR) << "this build not allow debug (without JOURNEY_FEATURE_DEBUG_MODE). force to safemode";
+        SetJourneySafeMode("Illegal Version");
+    }
+}
+#endif // JOURNEY_FEATURE_DEBUG_MODE
+void CheckUnknowCarrier() {
+    std::string carrier = base::GetProperty("ro.boot.carrier", "unknown");
+    if(carrier == "unknown") {
+        LOG(ERROR) << "carrier is unknown . force to safemode";
+        SetJourneySafeMode("Unknow Carrier");
+    }
+}
+
+static void CheckJourneySecureMode() {
+    SetJourneySafeMode(""); // always call this avoid unused function
+
+#ifndef JOURNEY_FEATURE_DEBUG_MODE
+    CheckJourneyDebugMode();
+#endif
+    CheckUnknowCarrier();
+}
+#endif // JOURNEY_FEATURE_SECURE
+
 static void MountExtraFilesystems() {
 #define CHECKCALL(x) \
     if ((x) != 0) PLOG(FATAL) << #x " failed.";
@@ -833,6 +892,9 @@ void SendLoadPersistentPropertiesMessage() {
 }
 
 int SecondStageMain(int argc, char** argv) {
+#ifdef JOURNEY_FEATURE_ROOT_MODE
+    initJourneyRootMode();
+#endif
     if (REBOOT_BOOTLOADER_ON_PANIC) {
         InstallRebootSignalHandlers();
     }
@@ -974,6 +1036,9 @@ int SecondStageMain(int argc, char** argv) {
     export_oem_lock_status();
     MountHandler mount_handler(&epoll);
     SetUsbController();
+#ifdef JOURNEY_FEATURE_SECURE
+    CheckJourneySecureMode();
+#endif
 
     const BuiltinFunctionMap& function_map = GetBuiltinFunctionMap();
     Action::set_function_map(&function_map);

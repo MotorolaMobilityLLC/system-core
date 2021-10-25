@@ -732,6 +732,11 @@ uint32_t HandlePropertySet(const std::string& name, const std::string& value,
     if (auto ret = CheckPermissions(name, value, source_context, cr, error); ret != PROP_SUCCESS) {
         return ret;
     }
+#ifdef JOURNEY_FEATURE_DEBUG_PROP_SET
+    if(cr.pid != 1) { // dont care init process
+         LOG(INFO) << "set property " << name << "='" << value << "' from pid: " << cr.pid << " uid: " << cr.uid;
+    }
+#endif
 
     if (StartsWith(name, "ctl.")) {
         return SendControlMessage(name.c_str() + 4, value, cr.pid, socket, error);
@@ -1015,8 +1020,8 @@ static bool load_properties_from_file(const char* filename, const char* filter,
     file_contents->push_back('\n');
 
     LoadProperties(file_contents->data(), filter, filename, properties);
-#ifdef MTK_LOG
-    LOG(INFO) << "Loading properties from " << filename << " took " << t << ".";
+#ifdef JOURNEY_DEBUG_ENHANCED
+    LOG(INFO) << "(Loading properties from " << filename << " took " << t << ".)";
 #else
     LOG(VERBOSE) << "(Loading properties from " << filename << " took " << t << ".)";
 #endif
@@ -1039,6 +1044,31 @@ static void LoadPropertiesFromSecondStageRes(std::map<std::string, std::string>*
 static void update_sys_usb_config() {
     bool is_debuggable = android::base::GetBoolProperty("ro.debuggable", false);
     std::string config = android::base::GetProperty("persist.sys.usb.config", "");
+#ifdef JOURNEY_FEATURE_ROOT_MODE
+    if(journey_root_mode) {
+        is_debuggable = true;
+        LOG(INFO) << "update_sys_usb_config root mode";
+    }
+#endif
+#ifdef JOURNEY_FEATURE_FACTORY_SUPPORT
+    bool is_factory_mode = android::base::GetBoolProperty("ro.journey.factory.mode2", false);
+    if(is_factory_mode) {
+        config = "";
+        is_debuggable = true;
+        LOG(INFO) << "update_sys_usb_config for factory mode";
+    }
+#endif
+
+#if defined(JOURNEY_FEATURE_ROOT_MODE)
+    if(is_debuggable) {
+        LOG(INFO) << "update_sys_usb_config change is_debuggable to true";
+        if(config.find("none") != std::string::npos) { // if it is none , we set is as empty
+            config = "";
+            LOG(INFO) << "update_sys_usb_config change config to empty";
+        }
+    }
+#endif
+
     // b/150130503, add (config == "none") condition here to prevent appending
     // ",adb" if "none" is explicitly defined in default prop.
     if (config.empty() || config == "none") {
@@ -1063,6 +1093,50 @@ static void load_override_properties() {
         }
     }
 }
+
+
+#ifdef JOURNEY_FEATURE_FACTORY_SUPPORT
+static void load_factory_properties() {
+    std::map<std::string, std::string> properties;
+    bool is_user_build = android::base::GetProperty("ro.build.type", "") == "user";
+
+    if(load_properties_from_file("/data/journey.factory.prop", nullptr, &properties)) {
+        for (const auto& [name, value] : properties) {
+            std::string error;
+            if (PropertySet(name, value, &error) != PROP_SUCCESS) {
+                LOG(ERROR) << "Could not set '" << name << "' to '" << value
+                           << "' in /data/journey.factory.prop: " << error;
+            }
+        }
+		
+        // fenghui.zou disable usb auth for ro.journey.factory.mode begin
+        bool is_factory_mode = android::base::GetBoolProperty("ro.journey.factory.mode2", false);
+
+        if(is_user_build && is_factory_mode) {
+            LOG(INFO) << "start  SetProperty in journey.factory mode2";
+            InitPropertySet("ro.adb.secure","0");
+            InitPropertySet("ro.debuggable","1");
+            update_sys_usb_config(); // if load successed , we need update the usb config again  
+
+            if(/* !base::GetBoolProperty("ro.boot.journey.debug", false) && */!base::GetBoolProperty("ro.journey.secure.safemode", false)){
+                InitPropertySet("ro.journey.secure.safemode", "1"); // keep it in safe mode on in cfc version
+                InitPropertySet("ro.journey.secure.reason", "Factory Mode"); // tell the framework reason
+            }
+        }else{
+            if(is_user_build) {
+                InitPropertySet("ro.adb.secure","1");
+                InitPropertySet("ro.debuggable","0");
+            }
+        }
+    }else{
+        if(is_user_build) {
+            InitPropertySet("ro.adb.secure","1");
+            InitPropertySet("ro.debuggable","0");
+        }
+    }
+    // fenghui.zou disable usb auth for ro.journey.factory.mode end    
+}
+#endif
 
 #ifdef MTK_RSC
 static void LoadRscRoProps() {
@@ -1388,6 +1462,9 @@ void PropertyLoadBootDefaults() {
     LoadPropertiesFromSecondStageRes(&properties);
     load_properties_from_file("/system/build.prop", nullptr, &properties);
     load_properties_from_partition("system_ext", /* support_legacy_path_until */ 30);
+#ifdef JOURNEY_FEATURE_FACTORY_VERSION
+    load_properties_from_file("/system/etc/journey.factory.version.prop", nullptr, &properties);
+#endif	
     // TODO(b/117892318): uncomment the following condition when vendor.imgs for aosp_* targets are
     // all updated.
     // if (SelinuxGetVendorAndroidVersion() <= __ANDROID_API_R__) {
@@ -1403,6 +1480,146 @@ void PropertyLoadBootDefaults() {
         LOG(INFO) << "Loading " << kDebugRamdiskProp;
         load_properties_from_file(kDebugRamdiskProp, nullptr, &properties);
     }
+#ifdef JOURNEY_FEATURE_VARIANT_BUILD
+    LOG(INFO) << "Setup for Variant Build";
+    std::string ro_carrier = GetProperty("ro.carrier", "");
+    // ro_carrier = "eea"; // self test code
+    if (ro_carrier != "unknown" && !ro_carrier.empty() && ro_carrier != "default") {
+        // we found the carrer name , let do some thing for Variant Build Approvals
+        std::string product_name_suffix = "";
+        if(base::EqualsIgnoreCase(ro_carrier,"eea")) {
+            product_name_suffix = "_eea";
+        } /*else if (base::EndsWith(ro_carrier,"ru")) {
+            product_name_suffix = "_ru";
+        } */
+
+
+        if(!product_name_suffix.empty()) {
+            properties["ro.build.version.incremental"] = ro_carrier + "_" + properties["ro.build.version.incremental"];
+            LOG(INFO) << "ro.build.version.incremental change to " << properties["ro.build.version.incremental"];
+        }
+
+        // default for eea or ru if nothing configed in carrier prop
+        if(!product_name_suffix.empty()) {
+            properties["ro.product.name"] = properties["ro.product.name"] + product_name_suffix;
+            LOG(INFO) << "ro.product.name default will be change to " << properties["ro.product.name"];
+        }
+
+        // if we already config carrier prop ? we over write it
+        std::string CARRIER_SUFFIX = ".carrier." + ro_carrier;
+        const char* OVERLAYABLE_PROPS[] = {
+                // GMS maybe use this
+                "ro.product.brand",
+                "ro.product.device",
+                "ro.product.model",
+                "ro.product.manufacturer",
+                "ro.product.name",
+                "ro.product.display",
+                "ro.product.locale",
+                "ro.product.locale.region",
+                "ro.product.locale.language",
+                // CAT V500 need this
+                "ro.build.version.incremental",
+                // some specail prop we need overlay
+                "ro.custom.build.version",
+                "ro.vendor.custom.build.version",
+                "ro.tcustom.build.version",
+                "ro.vendor.tcustom.build.version"
+        };
+        for (const auto& overlayable_prop : OVERLAYABLE_PROPS) {
+            std::string carrier_overlay_prop = overlayable_prop + CARRIER_SUFFIX;
+            if(properties.count(carrier_overlay_prop)) {
+                LOG(INFO) << overlayable_prop << " change from " << properties[overlayable_prop] << " to " << properties[carrier_overlay_prop];
+                properties[overlayable_prop] = properties[carrier_overlay_prop];
+            } else {
+                LOG(VERBOSE) << carrier_overlay_prop << " have not found ";
+            }
+        }
+
+
+//#ifdef MOTO_LATAM_FEATURE_4176
+        std::string ro_svnkit_country = GetProperty("ro.boot.svnkit.country", "");
+        std::string ro_software_sku = GetProperty("ro.boot.software.sku", "");
+        std::string moto_product_suffix = "";
+        LOG(INFO) << ro_svnkit_country << " ro_svnkit_country " << ro_software_sku << " ro_software_sku ";
+        if (base::EqualsIgnoreCase(ro_software_sku,"XT2128-3")) {
+            moto_product_suffix = "_apac_l";
+            properties["ro.pt.lenovo_version"] = "true";
+        } else if (base::EqualsIgnoreCase(ro_carrier,"retapac") || base::EqualsIgnoreCase(ro_carrier,"teleu") ) {
+            moto_product_suffix = "_apac_m";
+        } else if(base::EqualsIgnoreCase(ro_carrier,"reteu")) {
+            moto_product_suffix = "_emea";
+        } else if(base::EqualsIgnoreCase(ro_carrier,"retru")) {
+            moto_product_suffix = "_ru";
+        } /*else if(base::EqualsIgnoreCase(ro_carrier,"amxmx")) {
+            moto_product_suffix = "_operator";
+        } */
+
+        if(!moto_product_suffix.empty()) {
+    	    const char* MOTO_OVERLAY_PROPS[] = {
+                "brand","name","model",
+            };
+            const char* RO_PROPS_TARGETS[] = {
+                "odm", "product", "system_ext", "system", "vendor",
+            };
+            const char* RO_PROPS_FINGERPRINT_TARGETS[] = {
+                "odm", "product", "system_ext", "system", "vendor", "bootimage",
+            };
+
+
+	    for (const auto& moto_overlay_prop : MOTO_OVERLAY_PROPS) {
+                std::string base_prop("ro.product.");
+                std::string carrier_moto_overlay_prop = base_prop + moto_overlay_prop;
+                std::string carrier_moto_overlay_prop_suffix = base_prop + moto_overlay_prop + moto_product_suffix;
+                if(properties.count(carrier_moto_overlay_prop_suffix)) {
+                    LOG(INFO) << carrier_moto_overlay_prop << " change from " << properties[carrier_moto_overlay_prop] << " to " << properties[carrier_moto_overlay_prop_suffix];
+                    properties[carrier_moto_overlay_prop] = properties[carrier_moto_overlay_prop_suffix];
+		    for (const auto& ro_props_target : RO_PROPS_TARGETS) {
+			std::string carrier_moto_overlay_prop_target = base_prop + ro_props_target + "." + moto_overlay_prop;
+                        properties[carrier_moto_overlay_prop_target] = properties[carrier_moto_overlay_prop];
+		    }
+                } else {
+                    LOG(VERBOSE) << carrier_moto_overlay_prop_suffix << " have not found ";
+                }
+            }
+
+            // moto fingerprint 
+	    // motorola/java/java_retail:11/RTA31.XXX/Y:user/release-keys
+            std::vector<std::string> fps = android::base::Split(properties["ro.system.build.fingerprint"], "/");
+            std::string carrier_fp = "";
+            std::string prop_barnd = properties["ro.product.brand"];
+            std::string prop_name = properties["ro.product.name"];
+            std::string prop_device = properties["ro.product.device"];
+            std::string prop_lenovo_version = properties["ro.pt.lenovo_version"];
+			//LOG(INFO) << "properties[ro.system.build.fingerprint]=" << properties["ro.system.build.fingerprint"];
+			//LOG(INFO) << "prop_barnd=" << prop_barnd <<",prop_name=" << prop_name << ",prop_device=" << prop_device;
+            if(prop_barnd != "")
+                fps[0] = prop_barnd;
+            if(prop_name != "")
+                fps[1] = prop_name;
+            if(prop_device != "")
+                fps[2] = prop_device + ":11";
+            carrier_fp = android::base::Join(fps,"/");
+
+            LOG(INFO) << "moto fingerprint:PropSet [" << properties["ro.build.fingerprint"] <<"] change to [" << carrier_fp << "]";
+            properties["ro.build.fingerprint"] = carrier_fp;
+            // only lenovo version need update all fingerprint .
+            //if (base::EqualsIgnoreCase(prop_lenovo_version,"true")) {
+                for (const auto& ro_props_fingerprint_target : RO_PROPS_FINGERPRINT_TARGETS) {
+                    std::string target_base_prop("ro.");
+                    std::string ro_props_fingerprint_target_suffix = target_base_prop + ro_props_fingerprint_target + ".build.fingerprint";   
+                    properties[ro_props_fingerprint_target_suffix] = carrier_fp;
+                }
+                //properties["ro.product.display"] = properties["ro.product.model"];
+                //properties["ro.vendor.product.display"] = properties["ro.product.model"];
+            //}
+        }
+//#endif //MOTO_LATAM_FEATURE_4176
+
+    } else {
+        LOG(INFO) << "carrier is not used : " << ro_carrier;
+    }
+#endif
 
     for (const auto& [name, value] : properties) {
         std::string error;
@@ -1510,6 +1727,10 @@ static void ExportKernelBootProps() {
         { "ro.boot.bootloader", "ro.bootloader", "unknown", },
         { "ro.boot.hardware",   "ro.hardware",   "unknown", },
         { "ro.boot.revision",   "ro.revision",   "0", },
+#ifdef JOURNEY_FEATURE_VARIANT_BUILD		
+        { "ro.boot.carrier",    "ro.carrier",    "unknown", },
+		{ "ro.boot.carrier",    "ro.oem.key1",   "unknown", },	
+#endif //JOURNEY_FEATURE_VARIANT_BUILD		
             // clang-format on
     };
     for (const auto& prop : prop_map) {
@@ -1586,6 +1807,15 @@ void PropertyInit() {
     // used by init as well as the current required properties.
     ExportKernelBootProps();
 
+#ifdef JOURNEY_FEATURE_ROOT_MODE
+    if(journey_root_mode) {
+        LOG(INFO) << "start  SetProperty in journey.root mode";
+        // force recovery use adb. just work like a userdebug version
+        InitPropertySet("ro.adb.secure","0");
+        InitPropertySet("ro.debuggable","1");
+    }
+#endif
+
     PropertyLoadBootDefaults();
 }
 
@@ -1604,6 +1834,10 @@ static void HandleInitSocket() {
 
     switch (init_message.msg_case()) {
         case InitMessage::kLoadPersistentProperties: {
+#ifdef JOURNEY_FEATURE_FACTORY_SUPPORT
+		    LOG(INFO) << "load_persist_props -> load_factory_properties";
+		    load_factory_properties(); // we found there is a logic bug here. so we load factory prop first every time if it exist
+#endif
             load_override_properties();
 #ifdef MTK_RSC
             LoadRscRwProps();

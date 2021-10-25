@@ -45,6 +45,11 @@ bool QueueControlMessage(const std::string& message, const std::string& name, pi
 void DebugRebootLogging();
 
 int SecondStageMain(int argc, char** argv);
+#ifdef JOURNEY_FEATURE_ROOT_MODE
+ // shared in init domain (like Property_service)
+ // but except selinux part (different proc with exec)
+extern bool journey_root_mode;
+#endif
 
 }  // namespace init
 }  // namespace android
