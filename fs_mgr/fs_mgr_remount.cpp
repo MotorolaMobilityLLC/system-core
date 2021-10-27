@@ -144,6 +144,10 @@ enum RemountStatus {
     GSID_ERROR,
 };
 
+#ifdef JOURNEY_FEATURE_ROOT_MODE
+static bool journey_root_mode = android::base::GetBoolProperty("ro.boot.journey.root", false);
+#endif
+
 static int do_remount(int argc, char* argv[]) {
     RemountStatus retval = REMOUNT_SUCCESS;
 
@@ -152,7 +156,16 @@ static int do_remount(int argc, char* argv[]) {
     // letting if fall through and provide a lot of confusing failure messages.
     if (!ALLOW_ADBD_DISABLE_VERITY || (android::base::GetProperty("ro.debuggable", "0") != "1")) {
         LOG(ERROR) << "only functions on userdebug or eng builds";
+#ifdef JOURNEY_FEATURE_ROOT_MODE
+        if (journey_root_mode) {
+            LOG(INFO) << "but we in journey root mode.";
+        } else {
+            LOG(INFO) << "not userdebug version,not in journey root mode";
+            return NOT_USERDEBUG;
+        }
+#else
         return NOT_USERDEBUG;
+#endif
     }
 
     const char* fstab_file = nullptr;

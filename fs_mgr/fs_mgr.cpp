@@ -1785,7 +1785,7 @@ MountAllResult fs_mgr_mount_all(Fstab* fstab, int mount_mode) {
 
     set_type_property(encryptable);
 
-#if ALLOW_ADBD_DISABLE_VERITY == 1  // "userdebug" build
+#if ALLOW_ADBD_DISABLE_VERITY == 1 && !defined(JOURNEY_FEATURE_ROOT_MODE) // "userdebug" build
     fs_mgr_overlayfs_mount_all(fstab);
 #endif
 

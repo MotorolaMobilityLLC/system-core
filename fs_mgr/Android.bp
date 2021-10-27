@@ -53,6 +53,11 @@ cc_defaults {
         "-Werror",
         "-DMTK_FSTAB_FLAGS",
     ],
+    product_variables: {
+        journey_feature_root_mode: {
+            cflags: ["-DJOURNEY_FEATURE_ROOT_MODE"],
+        },
+    },
 }
 
 cc_defaults {
