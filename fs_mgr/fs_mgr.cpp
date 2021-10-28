@@ -72,6 +72,7 @@
 #include <log/log_properties.h>
 #include <logwrap/logwrap.h>
 
+#include "blockdev.h"
 #include "fs_mgr_priv.h"
 
 #define KEY_LOC_PROP   "ro.crypto.keyfile.userdata"
@@ -2134,6 +2135,8 @@ static bool PrepareZramBackingDevice(off64_t size) {
 
     ConfigureIoScheduler(loop_device);
 
+    ConfigureQueueDepth(loop_device, "/");
+
     // set block size & direct IO
     unique_fd loop_fd(TEMP_FAILURE_RETRY(open(loop_device.c_str(), O_RDWR | O_CLOEXEC)));
     if (loop_fd.get() == -1) {
@@ -2252,16 +2255,16 @@ bool fs_mgr_is_verity_enabled(const FstabEntry& entry) {
     return false;
 }
 
-std::string fs_mgr_get_hashtree_algorithm(const android::fs_mgr::FstabEntry& entry) {
+std::optional<HashtreeInfo> fs_mgr_get_hashtree_info(const android::fs_mgr::FstabEntry& entry) {
     if (!entry.fs_mgr_flags.verify && !entry.fs_mgr_flags.avb) {
-        return "";
+        return {};
     }
     DeviceMapper& dm = DeviceMapper::Instance();
     std::string device = GetVerityDeviceName(entry);
 
     std::vector<DeviceMapper::TargetInfo> table;
     if (dm.GetState(device) == DmDeviceState::INVALID || !dm.GetTableInfo(device, &table)) {
-        return "";
+        return {};
     }
     for (const auto& target : table) {
         if (strcmp(target.spec.target_type, "verity") != 0) {
@@ -2277,14 +2280,15 @@ std::string fs_mgr_get_hashtree_algorithm(const android::fs_mgr::FstabEntry& ent
         std::vector<std::string> tokens = android::base::Split(target.data, " \t\r\n");
         if (tokens[0] != "0" && tokens[0] != "1") {
             LOG(WARNING) << "Unrecognized device mapper version in " << target.data;
-            return "";
+            return {};
         }
 
-        // Hashtree algorithm is the 8th token in the output
-        return android::base::Trim(tokens[7]);
+        // Hashtree algorithm & root digest are the 8th & 9th token in the output.
+        return HashtreeInfo{.algorithm = android::base::Trim(tokens[7]),
+                            .root_digest = android::base::Trim(tokens[8])};
     }
 
-    return "";
+    return {};
 }
 
 bool fs_mgr_verity_is_check_at_most_once(const android::fs_mgr::FstabEntry& entry) {

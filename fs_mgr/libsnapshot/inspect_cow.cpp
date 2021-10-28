@@ -16,8 +16,10 @@
 #include <stdio.h>
 #include <unistd.h>
 
+#include <iomanip>
 #include <iostream>
 #include <string>
+#include <vector>
 
 #include <android-base/logging.h>
 #include <android-base/unique_fd.h>
@@ -39,17 +41,26 @@ static void usage(void) {
     LOG(ERROR) << "Usage: inspect_cow [-sd] <COW_FILE>";
     LOG(ERROR) << "\t -s Run Silent";
     LOG(ERROR) << "\t -d Attempt to decompress";
-    LOG(ERROR) << "\t -b Show data for failed decompress\n";
-    LOG(ERROR) << "\t -m Show ops in reverse merge order\n";
+    LOG(ERROR) << "\t -b Show data for failed decompress";
+    LOG(ERROR) << "\t -l Show ops";
+    LOG(ERROR) << "\t -m Show ops in reverse merge order";
+    LOG(ERROR) << "\t -n Show ops in merge order";
+    LOG(ERROR) << "\t -a Include merged ops in any merge order listing";
+    LOG(ERROR) << "\t -o Shows sequence op block order";
+    LOG(ERROR) << "\t -v Verifies merge order has no conflicts\n";
 }
 
-enum OpIter { Normal, RevMerge };
+enum OpIter { Normal, RevMerge, Merge };
 
 struct Options {
     bool silent;
     bool decompress;
+    bool show_ops;
     bool show_bad;
+    bool show_seq;
+    bool verify_sequence;
     OpIter iter_type;
+    bool include_merged;
 };
 
 // Sink that always appends to the end of a string.
@@ -126,18 +137,28 @@ static bool Inspect(const std::string& path, Options opt) {
         }
     }
 
+    if (opt.verify_sequence) {
+        if (reader.VerifyMergeOps()) {
+            std::cout << "\nMerge sequence is consistent.\n";
+        } else {
+            std::cout << "\nMerge sequence is inconsistent!\n";
+        }
+    }
+
     std::unique_ptr<ICowOpIter> iter;
     if (opt.iter_type == Normal) {
         iter = reader.GetOpIter();
     } else if (opt.iter_type == RevMerge) {
-        iter = reader.GetRevMergeOpIter();
+        iter = reader.GetRevMergeOpIter(opt.include_merged);
+    } else if (opt.iter_type == Merge) {
+        iter = reader.GetMergeOpIter(opt.include_merged);
     }
     StringSink sink;
     bool success = true;
     while (!iter->Done()) {
         const CowOperation& op = iter->Get();
 
-        if (!opt.silent) std::cout << op << "\n";
+        if (!opt.silent && opt.show_ops) std::cout << op << "\n";
 
         if (opt.decompress && op.type == kCowReplaceOp && op.compression != kCowCompressNone) {
             if (!reader.ReadData(op, &sink)) {
@@ -146,6 +167,24 @@ static bool Inspect(const std::string& path, Options opt) {
                 if (opt.show_bad) ShowBad(reader, op);
             }
             sink.Reset();
+        }
+
+        if (op.type == kCowSequenceOp && opt.show_seq) {
+            size_t read;
+            std::vector<uint32_t> merge_op_blocks;
+            size_t seq_len = op.data_length / sizeof(uint32_t);
+            merge_op_blocks.resize(seq_len);
+            if (!reader.GetRawBytes(op.source, merge_op_blocks.data(), op.data_length, &read)) {
+                PLOG(ERROR) << "Failed to read sequence op!";
+                return false;
+            }
+            if (!opt.silent) {
+                std::cout << "Sequence for " << op << " is :\n";
+                for (size_t i = 0; i < seq_len; i++) {
+                    std::cout << std::setfill('0') << std::setw(6) << merge_op_blocks[i] << ", ";
+                    if ((i + 1) % 10 == 0 || i + 1 == seq_len) std::cout << "\n";
+                }
+            }
         }
 
         iter->Next();
@@ -164,7 +203,9 @@ int main(int argc, char** argv) {
     opt.decompress = false;
     opt.show_bad = false;
     opt.iter_type = android::snapshot::Normal;
-    while ((ch = getopt(argc, argv, "sdbm")) != -1) {
+    opt.verify_sequence = false;
+    opt.include_merged = false;
+    while ((ch = getopt(argc, argv, "sdbmnolva")) != -1) {
         switch (ch) {
             case 's':
                 opt.silent = true;
@@ -177,6 +218,21 @@ int main(int argc, char** argv) {
                 break;
             case 'm':
                 opt.iter_type = android::snapshot::RevMerge;
+                break;
+            case 'n':
+                opt.iter_type = android::snapshot::Merge;
+                break;
+            case 'o':
+                opt.show_seq = true;
+                break;
+            case 'l':
+                opt.show_ops = true;
+                break;
+            case 'v':
+                opt.verify_sequence = true;
+                break;
+            case 'a':
+                opt.include_merged = true;
                 break;
             default:
                 android::snapshot::usage();

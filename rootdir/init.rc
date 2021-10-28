@@ -608,7 +608,20 @@ on late-fs
     # Load trusted keys from dm-verity protected partitions
     exec -- /system/bin/fsverity_init --load-verified-keys
 
-on late-fs && property:ro.product.cpu.abilist64=*
+# Only enable the bootreceiver tracing instance for kernels 5.10 and above.
+on late-fs && property:ro.kernel.version=4.9
+    setprop bootreceiver.enable 0
+on late-fs && property:ro.kernel.version=4.14
+    setprop bootreceiver.enable 0
+on late-fs && property:ro.kernel.version=4.19
+    setprop bootreceiver.enable 0
+on late-fs && property:ro.kernel.version=5.4
+    setprop bootreceiver.enable 0
+on late-fs
+    # Bootreceiver tracing instance is enabled by default.
+    setprop bootreceiver.enable ${bootreceiver.enable:-1}
+
+on property:ro.product.cpu.abilist64=* && property:bootreceiver.enable=1
     # Set up a tracing instance for system_server to monitor error_report_end events.
     # These are sent by kernel tools like KASAN and KFENCE when a memory corruption
     # is detected. This is only needed for 64-bit systems.
@@ -793,11 +806,13 @@ on post-fs-data
     # Create directories to push tests to for each linker namespace.
     # Create the subdirectories in case the first test is run as root
     # so it doesn't end up owned by root.
-    mkdir /data/local/tests 0700 shell shell
-    mkdir /data/local/tests/product 0700 shell shell
-    mkdir /data/local/tests/system 0700 shell shell
-    mkdir /data/local/tests/unrestricted 0700 shell shell
-    mkdir /data/local/tests/vendor 0700 shell shell
+    # Set directories to be executable by any process so that debuggerd,
+    # aka crash_dump, can read any executables/shared libraries.
+    mkdir /data/local/tests 0701 shell shell
+    mkdir /data/local/tests/product 0701 shell shell
+    mkdir /data/local/tests/system 0701 shell shell
+    mkdir /data/local/tests/unrestricted 0701 shell shell
+    mkdir /data/local/tests/vendor 0701 shell shell
 
     # create dalvik-cache, so as to enforce our permissions
     mkdir /data/dalvik-cache 0771 root root encryption=Require
@@ -1160,7 +1175,7 @@ on property:sys.boot_completed=1
 # and chown/chmod does not work for /proc/sys/ entries.
 # So proxy writes through init.
 on property:sys.sysctl.extra_free_kbytes=*
-    write /proc/sys/vm/extra_free_kbytes ${sys.sysctl.extra_free_kbytes}
+    exec -- /system/bin/extra_free_kbytes.sh ${sys.sysctl.extra_free_kbytes}
 
 # Allow users to drop caches
 on property:perf.drop_caches=3
