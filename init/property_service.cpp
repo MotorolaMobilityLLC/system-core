@@ -1542,7 +1542,7 @@ void PropertyLoadBootDefaults() {
         std::string ro_software_sku = GetProperty("ro.boot.software.sku", "");
         std::string moto_product_suffix = "";
         LOG(INFO) << ro_svnkit_country << " ro_svnkit_country " << ro_software_sku << " ro_software_sku ";
-        if (base::EqualsIgnoreCase(ro_software_sku,"XT2128-3")) {
+        if (base::EqualsIgnoreCase(ro_software_sku,"XT2231-4")) {
             moto_product_suffix = "_apac_l";
             properties["ro.pt.lenovo_version"] = "true";
         } else if (base::EqualsIgnoreCase(ro_carrier,"retapac") || base::EqualsIgnoreCase(ro_carrier,"teleu") ) {
@@ -1598,7 +1598,7 @@ void PropertyLoadBootDefaults() {
             if(prop_name != "")
                 fps[1] = prop_name;
             if(prop_device != "")
-                fps[2] = prop_device + ":11";
+                fps[2] = prop_device + ":12";
             carrier_fp = android::base::Join(fps,"/");
 
             LOG(INFO) << "moto fingerprint:PropSet [" << properties["ro.build.fingerprint"] <<"] change to [" << carrier_fp << "]";
