@@ -185,7 +185,7 @@ static uint32_t PropertySet(const std::string& name, const std::string& value, s
     prop_info* pi = (prop_info*) __system_property_find(name.c_str());
     if (pi != nullptr) {
         // ro.* properties are actually "write-once".
-        if (StartsWith(name, "ro.") && !CanChangeAdbSecure(name)&& !changeSystemProperty(name)) {
+        if (StartsWith(name, "ro.") && !CanChangeAdbSecure(name)&& !change_ro_prop_flag) {
             *error = "Read-only property was already set";
             return PROP_ERROR_READ_ONLY_PROPERTY;
         }
@@ -962,7 +962,7 @@ void set_properties_from_hwinfo() {
     std::string product_name = android::base::GetProperty("ro.product.name", "");
     std::string carrier_ontim = android::base::GetProperty("ro.carrier.ontim", "");
 
-    if (product_name.find("aruba") != std::string::npos) {
+    if (product_name.find("hawaii") != std::string::npos) {
         set_hwversion_from_hwinfo();
         set_hwsku_from_hwinfo();
     } else if (product_name.find("cyprus") != std::string::npos) {

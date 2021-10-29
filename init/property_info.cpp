@@ -61,7 +61,8 @@ std::string prop_clientuk_value = "android-ee-uk-revc";
 std::string prop_clientbr_value = "android-tim-br-revc";
 std::string prop_clientit_value = "android-tim-it-revc";
 std::string prop_clientau_value = "android-optus-au-revc";
-std::string prop_clientvf_value = "android-vf-au-revc3";
+std::string prop_clientvfam_value = "android-vf-au";
+std::string prop_clientvf_value = "android-vf-au-rvc3";
 std::string prop_clientcht_value = "android-cht-{country}-rvo3";
 std::string prop_clientor_value = "android-orange-{country}-revc";
 std::string prop_clienttmobile_value = "android-tmobile-{country}";
@@ -104,7 +105,10 @@ std::string prop_product_system_ext_model = "ro.product.system_ext.model";
 std::string prop_product_odm_model = "ro.product.odm.model";
 std::string prop_product_product_model = "ro.product.product.model";
 
+bool change_ro_prop_flag=false;
+
 void set_system_properties(){
+    change_ro_prop_flag=true;
     std::ifstream stream_product(product_version_file);
     std::stringstream fileStream_product;
     fileStream_product << stream_product.rdbuf();
@@ -118,7 +122,6 @@ void set_system_properties(){
         if (islnv == "lnv"){
         InitPropertySet(prop_carrier_brand,"lnv");
         InitPropertySet(prop_product_brand,"Lenovo");
-        set_product_model("Lenovo K14");
         }
         carrier_ontim = carrier_ontim.erase(positionlast,4);
         InitPropertySet(prop_carrier_ontim,carrier_ontim);
@@ -127,11 +130,6 @@ void set_system_properties(){
     std::string  carrier_value = carrier_ontim.substr(0, position);
     prop_product_value = android::base::GetProperty(prop_product, "");
     std::string  carrier_brand = android::base::GetProperty(prop_carrier_brand, "");
-    if (carrier_brand == "lnv"){
-        InitPropertySet(prop_product_display, "Lenovo K14");
-    } else {
-        InitPropertySet(prop_product_display, "moto e20");
-    }
     InitPropertySet(prop_carrier,carrier_value);
     InitPropertySet("ro.oem.key1",carrier_value);
     InitPropertySet(prop_client,"android-motorola");
@@ -152,22 +150,22 @@ void set_system_properties(){
         InitPropertySet("persist.vendor.duraspeed.support","0");
     }
 
-    //aruba
-    if (prop_product_value == "aruba") {
-        set_product_device("aruba");
-        set_some_vendor_properties("aruba");
+    //hawaii
+    if (prop_product_value == "hawaii") {
+        set_product_device("hawaii");
+        set_some_vendor_properties("hawaii");
 
         if(carrier_brand == "lnv") {
-            if (isProductNameArubaRetru(carrier_ontim)) {
-                prop_product_value = "aruba_retru_lnv";
+            if (isProductNameHawaiiRetru(carrier_ontim)) {
+                prop_product_value = "hawaii_retru_lnv";
             } else {
-                prop_product_value = "aruba_lnv";
+                prop_product_value = "hawaii_lnv";
             }
             InitPropertySet(prop_msclient, prop_clientrvo3_value);
             InitPropertySet(prop_vsclient, prop_clientrvo3_value);
             set_product_name(prop_product_value);
 
-            std::string fingerprint = get_fingerprint_property_aruba(prop_product_value);
+            std::string fingerprint = get_fingerprint_property_hawaii(prop_product_value);
             set_fingerprint(fingerprint);
             if (carrier_value == "retru") {
                InitPropertySet(prop_product_locale,"ru-RU");
@@ -179,30 +177,33 @@ void set_system_properties(){
             return;
         }
 
-        if (isProductNameArubaReteu(carrier_ontim)) {
-            prop_product_value = "aruba_reteu";
+        if (isProductNameHawaiiReteu(carrier_ontim)) {
+            prop_product_value = "hawaii_reteu";
             InitPropertySet(prop_vsclient, prop_clientrvo3_value);
             InitPropertySet(prop_msclient, prop_clientrvo3_value);
-        } else if (isProductNameArubaRetru(carrier_ontim)) {
-            prop_product_value = "aruba_retru";
+        } else if (isProductNameHawaiiRetru(carrier_ontim)) {
+            prop_product_value = "hawaii_retru";
             InitPropertySet(prop_vsclient, prop_clientrvo3_value);
             InitPropertySet(prop_msclient, prop_clientrvo3_value);
         } else {
-            prop_product_value = "aruba";
+            prop_product_value = "hawaii";
             if (carrier_ontim == "openmx_retmx" || carrier_ontim == "amxmx_amxmx"
              || carrier_ontim == "amxmx_amxmxsl" || carrier_ontim == "amxpe_claro"
              || carrier_ontim == "amxco_claro" || carrier_ontim == "amxbr_clarobr"
-             || carrier_ontim == "amxcl_clarocl"|| carrier_ontim == "amxla_amxlag"
-             || carrier_ontim == "amxbr_brmanaus") {
+             || carrier_ontim == "amxla_amxlag") {
                 InitPropertySet(prop_amclient, prop_clientcountry_value);
                 InitPropertySet(prop_msclient, prop_clientrevc_value);
                 InitPropertySet(prop_vsclient, prop_clientrevc_value);
             } else if (carrier_ontim == "attmx_attmx") {
                 InitPropertySet(prop_msclient, prop_clientmx_value);
                 InitPropertySet(prop_vsclient, prop_clientmx_value);
-            } else if (carrier_ontim == "timbr_timbr" || carrier_ontim == "timbr_brmanaus") {
+            } else if (carrier_ontim == "timbr_timbr") {
                 InitPropertySet(prop_msclient, prop_clientbr_value);
                 InitPropertySet(prop_vsclient, prop_clientbr_value);
+            } else if (carrier_ontim == "vfau_vfau") {
+                InitPropertySet(prop_amclient, prop_clientvfam_value);
+                InitPropertySet(prop_msclient, prop_clientvf_value);
+                InitPropertySet(prop_vsclient, prop_clientvf_value);
             } else {
                 InitPropertySet(prop_msclient, prop_clientrvo3_value);
                 InitPropertySet(prop_vsclient, prop_clientrvo3_value);
@@ -210,7 +211,7 @@ void set_system_properties(){
         }
 
         set_product_name(prop_product_value);
-        std::string fingerprint = get_fingerprint_property_aruba(prop_product_value);
+        std::string fingerprint = get_fingerprint_property_hawaii(prop_product_value);
         set_fingerprint(fingerprint);
 
     }
@@ -230,6 +231,7 @@ void set_system_properties(){
     InitPropertySet(prop_build_fullversion, get_version_property());
     InitPropertySet(prop_build_customerid, prop_carrier_value);
     InitPropertySet(prop_vendor_locale, android::base::GetProperty(prop_product_locale, "en-US"));
+    change_ro_prop_flag=false;
 }
 
 void set_some_vendor_properties(std::string prop_product_value) {
@@ -278,47 +280,19 @@ void set_fingerprint(std::string fingerprint) {
     InitPropertySet(prop_odm_fingerprint, fingerprint);
 }
 
-bool isProductNameArubaReteu(std::string carrier_ontim) {
-    if (carrier_ontim == "retgb_retgbds") return true;
+bool isProductNameHawaiiReteu(std::string carrier_ontim) {
     if (carrier_ontim == "reteu_reteu") return true;
-    if (carrier_ontim == "pluspl_pluspl") return true;
     return false;
 }
 
 
-bool isProductNameArubaRetru(std::string carrier_ontim) {
+bool isProductNameHawaiiRetru(std::string carrier_ontim) {
     if (carrier_ontim == "retru_ru") return true;
     return false;
 }
 
-bool changeSystemProperty(std::string key) {
-    if (key == prop_product || key == prop_product_device
-      || key == prop_fingerprint || key == prop_vendor_fingerprint
-      || key == prop_odm_fingerprint || key == prop_system_fingerprint
-      || key == prop_product_fingerprint || key == prop_system_ext_fingerprint
-      || key == prop_bootimage_fingerprint || key == prop_product_system_name
-      || key == prop_product_system_ext_name || key == prop_product_system_device
-      || key == prop_product_system_ext_device || key == prop_product_odm_name
-      || key == prop_product_odm_device || key == prop_product_product_name
-      || key == prop_product_product_device || key == prop_product_vendor_device
-      || key == prop_product_vendor_name || key == prop_carrier_brand
-      || key == prop_carrier || key == prop_build_product
-      || key == prop_product_board ||  key == prop_boot_bootloader
-      || key == prop_bootloader|| key == prop_build_description
-      || key == prop_build_flavor|| key == prop_carrier_ontim
-      || key == prop_adb_secure || key == prop_secure || key == prop_product_locale
-      || key == prop_skip_setup_wizard || key == prop_client
-      || key == prop_vendor_locale || key == prop_product_brand
-      || key == prop_amazon_partnerid || key == prop_product_vendor_model
-      || key == prop_product_system_model || key == prop_product_system_ext_model
-      || key == prop_product_product_model|| key == prop_product_odm_model
-      || key == prop_product_model) {
-        return true;
-    }
-    return false;
-}
 
-std::string get_fingerprint_property_aruba(std::string value) {
+std::string get_fingerprint_property_hawaii(std::string value) {
     std::string  buildFingerprint = android::base::GetProperty(prop_fingerprint, "");
     std::string  brandvalue = android::base::GetProperty("ro.product.brand", "");
     std::vector<std::string> fingerprint = android::base::Split(buildFingerprint, ":");
@@ -326,7 +300,7 @@ std::string get_fingerprint_property_aruba(std::string value) {
     std::vector<std::string> name = android::base::Split(fingerprint[0], "/");
     name[0] = brandvalue;
     name[1] = value;
-    name[2] = "aruba";
+    name[2] = "hawaii";
     fingerprint[0] = android::base::Join(name, "/");
     return android::base::Join(fingerprint, ":");
 }

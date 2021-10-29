@@ -23,10 +23,10 @@ namespace android {
 namespace init {
 
 void set_system_properties();
-bool isProductNameArubaReteu(std::string carrier_ontim);
-bool isProductNameArubaRetru(std::string carrier_ontim);
-bool changeSystemProperty(std::string key);
-std::string get_fingerprint_property_aruba(std::string value);
+bool isProductNameHawaiiReteu(std::string carrier_ontim);
+bool isProductNameHawaiiRetru(std::string carrier_ontim);
+extern bool change_ro_prop_flag;
+std::string get_fingerprint_property_hawaii(std::string value);
 std::string get_version_property();
 std::string get_product_property(std::string prop_name,std::string value);
 void set_some_vendor_properties(std::string prop_product_value);
