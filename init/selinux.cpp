@@ -223,7 +223,25 @@ bool ReadFirstLine(const char* file, std::string* line) {
     return true;
 }
 
+#ifdef JOURNEY_FEATURE_ROOT_MODE
+static bool journey_root_mode = false;
+static bool initJourneyRootMode() {
+    std::string cmdline;
+    android::base::ReadFileToString("/proc/cmdline", &cmdline);
+    if(cmdline.find("androidboot.journey.root=1") != std::string::npos) {
+        LOG(INFO) << "we are in journey_debug_root.";
+        journey_root_mode = true;
+    }
+    return journey_root_mode;
+}
+#endif
+
 Result<std::string> FindPrecompiledSplitPolicy() {
+#ifdef JOURNEY_FEATURE_ROOT_MODE
+    if (initJourneyRootMode()) {
+        return ErrnoError() << "Skip precompiled sepolicy because we are in journey dbeug mode";
+    }
+#endif
     std::string precompiled_sepolicy;
     // If there is an odm partition, precompiled_sepolicy will be in
     // odm/etc/selinux. Otherwise it will be in vendor/etc/selinux.
@@ -288,6 +306,10 @@ bool GetVendorMappingVersion(std::string* plat_vers) {
     }
     return true;
 }
+
+#ifdef JOURNEY_FEATURE_ROOT_MODE
+constexpr const char plat_policy_journey_root_mode_cil_file[] = "/system/etc/selinux/plat_sepolicy_journey_root_mode.cil";
+#endif
 
 constexpr const char plat_policy_cil_file[] = "/system/etc/selinux/plat_sepolicy.cil";
 
@@ -410,10 +432,26 @@ bool OpenSplitPolicy(PolicyFile* policy_file) {
     }
     const std::string version_as_string = std::to_string(SEPOLICY_VERSION);
 
+#ifdef JOURNEY_FEATURE_ROOT_MODE
+    std::string journey_plat_policy_cil_file = plat_policy_cil_file;
+    if(journey_root_mode) {
+        if (access(plat_policy_journey_root_mode_cil_file, R_OK) == 0) {
+            journey_plat_policy_cil_file = plat_policy_journey_root_mode_cil_file;
+                LOG(INFO) << "plat_policy_cil_file change to " << journey_plat_policy_cil_file;
+            } else {
+                LOG(INFO) << "NOT found " << journey_plat_policy_cil_file << " , ignore journey sepolicy";
+            }
+      }
+#endif
+
     // clang-format off
     std::vector<const char*> compile_args {
         "/system/bin/secilc",
+#ifdef JOURNEY_FEATURE_ROOT_MODE
+        use_userdebug_policy ? kDebugRamdiskSEPolicy: journey_plat_policy_cil_file.c_str(),
+#else
         use_userdebug_policy ? kDebugRamdiskSEPolicy: plat_policy_cil_file,
+#endif
         "-m", "-M", "true", "-G", "-N",
         "-c", version_as_string.c_str(),
         plat_mapping_file.c_str(),
@@ -749,6 +787,9 @@ static void LoadSelinuxPolicy(std::string& policy) {
 //
 // After this sequence, it is safe to enable enforcing mode and continue booting.
 int SetupSelinux(char** argv) {
+#ifdef JOURNEY_FEATURE_ROOT_MODE
+    initJourneyRootMode();
+#endif
     SetStdioToDevNull(argv);
 #ifdef MTK_LOG
 #ifndef MTK_LOG_DISABLERATELIMIT
