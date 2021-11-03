@@ -464,6 +464,7 @@ static void resend_signal(siginfo_t* info) {
 // Handler that does crash dumping by forking and doing the processing in the child.
 // Do this by ptracing the relevant thread, and then execing debuggerd to do the actual dump.
 static void debuggerd_signal_handler(int signal_number, siginfo_t* info, void* context) {
+  async_safe_format_log(ANDROID_LOG_FATAL, "debuggerd", "debuggerd_signal_handler  signal_number:%d", signal_number);
   // Make sure we don't change the value of errno, in case a signal comes in between the process
   // making a syscall and checking errno.
   ErrnoRestorer restorer;
