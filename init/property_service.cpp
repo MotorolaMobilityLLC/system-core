@@ -1538,7 +1538,7 @@ void PropertyLoadBootDefaults() {
 
 
 //#ifdef MOTO_LATAM_FEATURE_4176
-        std::string ro_svnkit_country = GetProperty("ro.boot.svnkit.country", "");
+        std::string ro_svnkit_country = GetProperty("ro.boot.SVNKit", "");
         std::string ro_software_sku = GetProperty("ro.boot.software.sku", "");
         std::string ro_compile_product = GetProperty("ro.compile.product", "");
         std::string moto_product_suffix = "";
