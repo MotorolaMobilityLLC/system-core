@@ -1540,30 +1540,42 @@ void PropertyLoadBootDefaults() {
 //#ifdef MOTO_LATAM_FEATURE_4176
         std::string ro_svnkit_country = GetProperty("ro.boot.svnkit.country", "");
         std::string ro_software_sku = GetProperty("ro.boot.software.sku", "");
+        std::string ro_compile_product = GetProperty("ro.compile.product", "");
         std::string moto_product_suffix = "";
-        LOG(INFO) << ro_svnkit_country << " ro_svnkit_country " << ro_software_sku << " ro_software_sku ";
+        LOG(INFO) << ro_svnkit_country << " ro_svnkit_country " << ro_software_sku << " ro_software_sku " << ro_compile_product << " ro_compile_product ";
         if (base::EqualsIgnoreCase(ro_software_sku,"XT2231-4")) {
-            moto_product_suffix = "_apac_l";
+            if(base::EqualsIgnoreCase(ro_carrier,"retru")){
+                moto_product_suffix = "_apac_lr";
+            }else{
+                moto_product_suffix = "_apac_l";
+            }
             properties["ro.pt.lenovo_version"] = "true";
-        } else if (base::EqualsIgnoreCase(ro_carrier,"retapac") || base::EqualsIgnoreCase(ro_carrier,"teleu") ) {
+        } else if ((base::EqualsIgnoreCase(ro_carrier,"retapac") || base::EqualsIgnoreCase(ro_carrier,"teleu") || base::EqualsIgnoreCase(ro_carrier,"telstra"))
+                      && base::EqualsIgnoreCase(ro_compile_product,"hawaiip") ) {
             moto_product_suffix = "_apac_m";
-        } else if(base::EqualsIgnoreCase(ro_carrier,"reteu")) {
+        } else if(base::EqualsIgnoreCase(ro_carrier,"teleu") && base::EqualsIgnoreCase(ro_compile_product,"hawaiipl")) {
+            moto_product_suffix = "_apac_m_e";
+        } else if(base::EqualsIgnoreCase(ro_carrier,"retgb") || base::EqualsIgnoreCase(ro_carrier,"tescogb") || base::EqualsIgnoreCase(ro_carrier,"playpl")
+                    || base::EqualsIgnoreCase(ro_carrier,"oraeu") || base::EqualsIgnoreCase(ro_carrier,"windit") || base::EqualsIgnoreCase(ro_carrier,"timit")
+                    || base::EqualsIgnoreCase(ro_carrier,"bouyfr") || (base::EqualsIgnoreCase(ro_carrier,"reteu") && base::EqualsIgnoreCase(ro_compile_product,"hawaiip"))) {
+            moto_product_suffix = "_emea_n";
+        } else if(base::EqualsIgnoreCase(ro_carrier,"reteu") && base::EqualsIgnoreCase(ro_compile_product,"hawaiipl")) {
             moto_product_suffix = "_emea";
         } else if(base::EqualsIgnoreCase(ro_carrier,"retru")) {
             moto_product_suffix = "_ru";
-        } /*else if(base::EqualsIgnoreCase(ro_carrier,"amxmx")) {
-            moto_product_suffix = "_operator";
-        } */
+        }
+
+        LOG(INFO) << moto_product_suffix << " product_suffix ";
 
         if(!moto_product_suffix.empty()) {
     	    const char* MOTO_OVERLAY_PROPS[] = {
                 "brand","name","model",
             };
             const char* RO_PROPS_TARGETS[] = {
-                "odm", "product", "system_ext", "system", "vendor",
+                "odm", "product", "system_ext", "system", "vendor", "vendor_dlkm", "bootimage",
             };
             const char* RO_PROPS_FINGERPRINT_TARGETS[] = {
-                "odm", "product", "system_ext", "system", "vendor", "bootimage",
+                "odm", "product", "system_ext", "system", "vendor", "vendor_dlkm", "bootimage",
             };
 
 
