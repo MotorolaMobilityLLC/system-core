@@ -2332,13 +2332,13 @@ static std::string getProductName() {
 }
 
 static SplloaderStorage getSplloaderStorage() {
-    std::string var = "storage_type";
+    std::string var = "storage-type";
     std::string val;
     if (fb->GetVar(var, &val) != fastboot::SUCCESS) {
         fprintf(stderr, "\nFailed! getvar for '%s' (%s)\n", var.c_str(), fb->Error().c_str());
-        die("Failed to get the storage_type!");
+        die("Failed to get the storage-type!");
     }
-    fprintf(stderr, "\nstorage_type: %s\n", val.c_str());
+    fprintf(stderr, "\nstorage-type: %s\n", val.c_str());
     return (strcmp(val.c_str(), "UFS") == 0) ? UFS : EMMC;
 }
 
