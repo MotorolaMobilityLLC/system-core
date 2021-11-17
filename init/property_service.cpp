@@ -1739,6 +1739,9 @@ static void ExportKernelBootProps() {
         { "ro.boot.bootloader", "ro.bootloader", "unknown", },
         { "ro.boot.hardware",   "ro.hardware",   "unknown", },
         { "ro.boot.revision",   "ro.revision",   "0", },
+#ifdef MOTO_GENERAL_FEATURE_OTA
+        { "ro.boot.serialno",   "ro.serial",   "", },
+#endif
 #ifdef JOURNEY_FEATURE_VARIANT_BUILD		
         { "ro.boot.carrier",    "ro.carrier",    "unknown", },
 		{ "ro.boot.carrier",    "ro.oem.key1",   "unknown", },	

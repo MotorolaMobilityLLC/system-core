@@ -173,6 +173,9 @@ cc_defaults {
         journey_feature_variant_build: {
             cflags: ["-DJOURNEY_FEATURE_VARIANT_BUILD"],
         },
+        moto_general_feature_ota: {
+            cflags: ["-DMOTO_GENERAL_FEATURE_OTA"],
+        },
     },
     static_libs: [
         "libavb",
