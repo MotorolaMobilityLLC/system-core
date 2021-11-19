@@ -282,6 +282,7 @@ void set_fingerprint(std::string fingerprint) {
 
 bool isProductNameHawaiiReteu(std::string carrier_ontim) {
     if (carrier_ontim == "reteu_reteu") return true;
+    if (carrier_ontim == "retgb_retgbds") return true;
     return false;
 }
 
