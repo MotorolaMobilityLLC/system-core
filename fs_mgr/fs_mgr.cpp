@@ -72,7 +72,6 @@
 
 #include "cryptfs.h"
 #include "fs_mgr_priv.h"
-#include "fs_mgr_dm_linear.h"
 
 #define KEY_LOC_PROP   "ro.crypto.keyfile.userdata"
 #define KEY_IN_FOOTER  "footer"
@@ -1477,25 +1476,6 @@ out:
     return identified;
 }
 
-bool CreateLogicalPartition(const std::string& partition_name) {
-    std::string slot_suffix = fs_mgr_get_slot_suffix();
-    uint32_t slot_number = SlotNumberForSlotSuffix(slot_suffix);
-    auto path = "/dev/block/by-name/" + fs_mgr_get_super_partition_name(slot_number);
-
-    CreateLogicalPartitionParams params = {
-            .block_device = path,
-            .metadata_slot = slot_number,
-            .partition_name = partition_name,
-            .timeout_ms = 5s,
-    };
-    std::string dm_path;
-    if (!CreateLogicalPartition(params, &dm_path)) {
-        LOG(ERROR) << "Could not map partition: " << partition_name;
-        return false;
-    }
-
-    return true;
-}
 
 /* When multiple fstab records share the same mount_point, it will
  * try to mount each one in turn, and ignore any duplicates after a
@@ -1565,10 +1545,6 @@ int fs_mgr_mount_all(Fstab* fstab, int mount_mode)
         }
 
         if (current_entry.fs_mgr_flags.logical) {
-            if (!CreateLogicalPartition(current_entry.blk_device)) {
-                LERROR << "Failed to create logical partition for " << current_entry.blk_device;
-                continue;
-            }
             if (!fs_mgr_update_logical_partition(&current_entry)) {
                 LERROR << "Could not set up logical partition, skipping!";
                 continue;
