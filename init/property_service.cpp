@@ -1540,7 +1540,7 @@ void PropertyLoadBootDefaults() {
 //#ifdef MOTO_LATAM_FEATURE_4176
         std::string ro_svnkit_country = GetProperty("ro.boot.SVNKit", "");
         std::string ro_software_sku = GetProperty("ro.boot.software.sku", "");
-        std::string ro_compile_product = GetProperty("ro.build.product", "");
+        std::string ro_compile_product = properties["ro.build.product"];
         std::string moto_product_suffix = "";
         LOG(INFO) << ro_svnkit_country << " ro_svnkit_country " << ro_software_sku << " ro_software_sku " << ro_compile_product << " ro_compile_product ";
         if (base::EqualsIgnoreCase(ro_software_sku,"XT2231-4")) {
