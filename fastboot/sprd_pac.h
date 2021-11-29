@@ -338,6 +338,9 @@ static bool isCompatibleProduct(std::string &pacProduct, const std::string &curP
     if (strcmp(pac_product, "ums512_1h10_go") == 0) {
         return strcmp(cur_product, "cyprus_32") == 0;
     }
+    if (strcmp(pac_product, "ums9230_4h10") == 0) {
+        return strcmp(cur_product, "hawaii") == 0;
+    }
     return strcmp(pac_product, cur_product) == 0;
 }
 
