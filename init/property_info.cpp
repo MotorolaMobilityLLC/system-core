@@ -292,6 +292,10 @@ bool isProductNameHawaiiRetru(std::string carrier_ontim) {
     return false;
 }
 
+bool isUpdatableSystemProperty(std::string key) {
+    if (key == prop_amazon_partnerid) return true;
+    return false;
+}
 
 std::string get_fingerprint_property_hawaii(std::string value) {
     std::string  buildFingerprint = android::base::GetProperty(prop_fingerprint, "");

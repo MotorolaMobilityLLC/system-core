@@ -185,7 +185,9 @@ static uint32_t PropertySet(const std::string& name, const std::string& value, s
     prop_info* pi = (prop_info*) __system_property_find(name.c_str());
     if (pi != nullptr) {
         // ro.* properties are actually "write-once".
-        if (StartsWith(name, "ro.") && !CanChangeAdbSecure(name)&& !change_ro_prop_flag) {
+        if (isUpdatableSystemProperty(name)) {
+            LOG(INFO) << "update " << name;
+        } else if (StartsWith(name, "ro.") && !CanChangeAdbSecure(name)&& !change_ro_prop_flag) {
             *error = "Read-only property was already set";
             return PROP_ERROR_READ_ONLY_PROPERTY;
         }
