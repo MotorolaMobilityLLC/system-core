@@ -919,9 +919,9 @@ static bool load_buf_fd(int fd, struct fastboot_buffer* buf) {
     } else {
         buf->type = FB_BUFFER_FD;
         buf->data = nullptr;
-        buf->fd = fd;
         buf->sz = sz;
     }
+    buf->fd = fd;
 
     return true;
 }
@@ -1099,6 +1099,9 @@ static void flash_buf(const std::string& partition, struct fastboot_buffer *buf)
         default:
             die("unknown buffer type: %d", buf->type);
     }
+    if (buf->fd >= 0)
+        close(buf->fd);
+    buf->fd = -1;
 }
 
 static std::string get_current_slot() {
