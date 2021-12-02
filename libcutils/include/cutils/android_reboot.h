@@ -33,6 +33,13 @@ __BEGIN_DECLS
 #define LAST_REBOOT_REASON_PROPERTY "persist.sys.boot.reason"
 #define LAST_REBOOT_REASON_FILE "/metadata/bootstat/" LAST_REBOOT_REASON_PROPERTY
 
+/* Android shutdown flag stored in this file */
+#define MISCDATA_PATH "/dev/block/by-name/miscdata"
+#define MISCDATA_BASE_ADDR (10 * 1024 + 256)
+#define MISCDATA_SHUTDOWN_CHARGE_FLAG_OFFSET 28
+#define MISCDATA_SHUTDOWN_CHARGE_FLAG_SIZE 4
+
+
 /* Reboot or shutdown the system.
  * This call uses ANDROID_RB_PROPERTY to request reboot to init process.
  * Due to that, process calling this should have proper selinux permission
