@@ -220,6 +220,7 @@ static const struct fs_path_config android_files[] = {
     { 00755, AID_ROOT,      AID_SHELL,     0, "system_ext/apex/*/bin/*" },
     { 00755, AID_ROOT,      AID_SHELL,     0, "vendor/bin/*" },
     { 00755, AID_ROOT,      AID_SHELL,     0, "vendor/xbin/*" },
+    { 00444, AID_ROOT,      AID_ROOT,      0, "product/etc/felica/*" },
     { 00644, AID_ROOT,      AID_ROOT,      0, 0 },
         // clang-format on
 };
