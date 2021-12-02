@@ -34,6 +34,8 @@ using android::hardware::Return;
 int main(int /*argc*/, char** /*argv*/) {
     if (GetProperty("ro.bootmode", "") == "charger") exit(0);
 
+    if (GetProperty("ro.bootmode", "") == "mot-factory") exit(0);
+
     configureRpcThreadpool(1, true /*callerWillJoin*/);
     android::sp<IUsbGadget> gadget = IUsbGadget::getService();
     Return<void> ret;
