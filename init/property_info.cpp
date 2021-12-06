@@ -181,11 +181,12 @@ void set_system_properties(){
         } else {
             prop_product_value = "cyprus64";
             if (carrier_ontim == "amxpe_claro" || carrier_ontim == "amxco_claro"
-             || carrier_ontim == "amxbr_clarobr" || carrier_ontim == "amxla_amxlag" ) {
+             || carrier_ontim == "amxbr_clarobr" || carrier_ontim == "amxla_amxlag"
+             || carrier_ontim == "amxbr_brmanaus") {
                 InitPropertySet(prop_amclient, prop_clientcountry_value);
                 InitPropertySet(prop_msclient, prop_clientrevc_value);
                 InitPropertySet(prop_vsclient, prop_clientrevc_value);
-            } else if (carrier_ontim == "timbr_timbr") {
+            } else if (carrier_ontim == "timbr_timbr" || carrier_ontim == "timbr_brmanaus") {
                 InitPropertySet(prop_msclient, prop_clientbr_value);
                 InitPropertySet(prop_vsclient, prop_clientbr_value);
             } else {
