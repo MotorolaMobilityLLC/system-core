@@ -168,7 +168,6 @@ void set_system_properties(){
         if (isProductNameCyprus64Reteu(carrier_ontim)) {
             prop_product_value = "cyprus64_reteu";
             if (carrier_ontim == "timit_timit") {
-                InitPropertySet(prop_amclient, prop_client_value);
                 InitPropertySet(prop_msclient, prop_clientit_value);
                 InitPropertySet(prop_vsclient, prop_clientit_value);
             } else if (carrier_ontim == "reteu_dtag") {
