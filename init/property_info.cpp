@@ -105,6 +105,7 @@ std::string prop_product_system_model = "ro.product.system.model";
 std::string prop_product_system_ext_model = "ro.product.system_ext.model";
 std::string prop_product_odm_model = "ro.product.odm.model";
 std::string prop_product_product_model = "ro.product.product.model";
+std::string prop_build_base_os = "ro.build.version.base_os";
 
 void set_system_properties(){
     std::ifstream stream_product(product_version_file);
@@ -162,10 +163,12 @@ void set_system_properties(){
         if(carrier_brand == "lnv") {
             if (isProductNameCyprus64Retru(carrier_ontim)) {
                 prop_product_value = "cyprus64_retru_lnv";
+                InitPropertySet(prop_build_base_os, get_base_os_property(prop_product_value));
                 InitPropertySet(prop_msclient, prop_clientrvo3_value);
                 InitPropertySet(prop_vsclient, prop_clientrvo3_value);
-            } else { 
+            } else {
             prop_product_value = "cyprus64_lnv";
+            InitPropertySet(prop_build_base_os, get_base_os_property(prop_product_value));
             InitPropertySet(prop_msclient, prop_clientrvo3_value);
             InitPropertySet(prop_vsclient, prop_clientrvo3_value);
             }
@@ -211,6 +214,7 @@ void set_system_properties(){
         }
         if (isProductNameCyprus64Reteu(carrier_ontim)) {
             prop_product_value = "cyprus64_reteu";
+            InitPropertySet(prop_build_base_os, get_base_os_property(prop_product_value));
             if (carrier_ontim == "timit_timit") {
                 InitPropertySet(prop_msclient, prop_clientit_value);
                 InitPropertySet(prop_vsclient, prop_clientit_value);
@@ -246,6 +250,7 @@ void set_system_properties(){
         set_some_vendor_properties("cyprus");
         if (isProductNameCyprusReteu(carrier_ontim)) {
             prop_product_value = "cyprus_reteu";
+            InitPropertySet(prop_build_base_os, get_base_os_property(prop_product_value));
             if (carrier_ontim == "o2gb_teluk") {
                 InitPropertySet(prop_amclient, prop_cliento2am_value);
                 InitPropertySet(prop_msclient, prop_cliento2_value);
@@ -381,7 +386,8 @@ bool changeSystemProperty(std::string key) {
       || key == prop_product_model || key == prop_product_vendor_model
       || key == prop_product_system_model || key == prop_product_system_ext_model
       || key == prop_product_product_model || key == prop_product_odm_model
-      || key == prop_product_display || key == prop_carrier_ontim) {
+      || key == prop_product_display || key == prop_carrier_ontim
+      || key == prop_build_base_os) {
         return true;
     }
     return false;
@@ -404,6 +410,15 @@ std::string get_product_property(std::string prop_name, std::string value) {
     std::vector<std::string> product = android::base::Split(product_name, "-");
     product[0] = value;
     return android::base::Join(product, "-");
+}
+
+std::string get_base_os_property(std::string value) {
+    std::string  build_base_os = android::base::GetProperty(prop_build_base_os, "");
+    std::string  brandvalue = android::base::GetProperty("ro.product.brand", "");
+    std::vector<std::string> base_os = android::base::Split(build_base_os, "/");
+    base_os[0] = brandvalue;
+    base_os[1] = value;
+    return android::base::Join(base_os, "/");
 }
 
 std::string get_version_property() {
