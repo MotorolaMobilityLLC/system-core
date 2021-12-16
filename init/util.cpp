@@ -509,7 +509,7 @@ static FscryptAction FscryptInferAction(const std::string& dir) {
     std::vector<std::string> wipe_on_failure = {
             "rollback", "rollback-observer",  // b/139193659
             "connsyslog", "debuglogger", "ramdump",
-            "mdlog", "log_temp", "aee_exp", "mdl",
+            "mdlog", "log_temp", "aee_exp", "mdl", "vendor",
     };
     for (const auto& d : wipe_on_failure) {
         if ((prefix + d) == dir) {
