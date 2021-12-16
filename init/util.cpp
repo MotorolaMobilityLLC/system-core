@@ -508,6 +508,7 @@ static FscryptAction FscryptInferAction(const std::string& dir) {
     // Empty these directories if policy setting fails.
     std::vector<std::string> wipe_on_failure = {
             "rollback", "rollback-observer",  // b/139193659
+            "vendor",
     };
     for (const auto& d : wipe_on_failure) {
         if ((prefix + d) == dir) {
