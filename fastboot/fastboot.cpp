@@ -1587,6 +1587,22 @@ static void ontim_do_signature_command(std::vector<std::string>* args) {
     fb->RawCommand("signature" + subcmd, subcmd);
 }
 
+static void ontim_do_sign_carrier_command(std::vector<std::string>* args) {
+    if (args->empty()) syntax_error("missing ontim signature request");
+
+    std::string subcmd = next_arg(args);
+    std::string filename = next_arg(args);
+
+    std::vector<char> data;
+    if (!ReadFileToVector(filename, &data)) {
+        die("could not load '%s': %s", filename.c_str(), strerror(errno));
+    }
+    if (data.size() != 256) die("signature must be 256 bytes (got %zu)", data.size());
+
+    fb->Download("sign-carrier", data);
+    fb->RawCommand("sign-carrier" + subcmd, subcmd);
+}
+
 static void do_oem_command(const std::string& cmd, std::vector<std::string>* args) {
     if (args->empty()) syntax_error("empty oem command");
 
@@ -2055,6 +2071,15 @@ int FastBootTool::Main(int argc, char* argv[]) {
                 if (data.size() != 256) die("signature must be 256 bytes (got %zu)", data.size());
                 fb->Download("signature", data);
                 fb->RawCommand("signature", "installing signature");
+            }
+        } else if (command == "sign-carrier") {
+            //ontim add password for carrier
+            if (args.empty()) {
+                syntax_error("missing sign-carrier command");
+            } else if (args.size() == 2) {
+                ontim_do_sign_carrier_command(&args);
+            } else {
+                syntax_error("Improper file name or args size error");
             }
         } else if (command == FB_CMD_REBOOT) {
             wants_reboot = true;
