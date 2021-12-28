@@ -60,7 +60,8 @@ std::string prop_clientmx_value = "android-attmexico-mx-rvc3";//
 std::string prop_clientuk_value = "android-ee-uk-revc";
 std::string prop_clientbr_value = "android-tim-br-revc";
 std::string prop_clientit_value = "android-tim-it-revc";
-std::string prop_clientau_value = "android-optus-au-revc";
+std::string prop_clientau_value = "android-optus-au-rvc3";
+std::string prop_clientauam_value = "android-optus-au";
 std::string prop_clientvfam_value = "android-vf-au";
 std::string prop_clientvf_value = "android-vf-au-rvc3";
 std::string prop_clientcht_value = "android-cht-{country}-rvo3";
@@ -200,10 +201,10 @@ void set_system_properties(){
             } else if (carrier_ontim == "timbr_timbr") {
                 InitPropertySet(prop_msclient, prop_clientbr_value);
                 InitPropertySet(prop_vsclient, prop_clientbr_value);
-            } else if (carrier_ontim == "vfau_vfau") {
-                InitPropertySet(prop_amclient, prop_clientvfam_value);
-                InitPropertySet(prop_msclient, prop_clientvf_value);
-                InitPropertySet(prop_vsclient, prop_clientvf_value);
+            } else if (carrier_ontim == "optus_optus") {
+                InitPropertySet(prop_amclient, prop_clientauam_value);
+                InitPropertySet(prop_msclient, prop_clientau_value);
+                InitPropertySet(prop_vsclient, prop_clientau_value);
             } else {
                 InitPropertySet(prop_msclient, prop_clientrvo3_value);
                 InitPropertySet(prop_vsclient, prop_clientrvo3_value);
