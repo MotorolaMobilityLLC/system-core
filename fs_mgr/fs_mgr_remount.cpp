@@ -339,9 +339,13 @@ static int do_remount(int argc, char* argv[]) {
     }
 
     if (partitions.empty() || just_disabled_verity) {
+        LOG(INFO) << "Real retval: " << retval;
         if (reboot_later) reboot(setup_overlayfs);
         if (user_please_reboot_later) {
-            LOG(INFO) << "Now reboot your device for settings to take effect";
+            if (partitions.empty())
+                LOG(INFO) << "Patition is empty, please reboot your device for settings to take effect";
+            if (just_disabled_verity)
+                LOG(INFO) << "Verity has been disabled, please reboot your device for settings to take effect";
             return 0;
         }
         LOG(WARNING) << "No partitions to remount";
@@ -419,9 +423,12 @@ static int do_remount(int argc, char* argv[]) {
         retval = REMOUNT_FAILED;
     }
 
+    LOG(INFO) << "Real retval: " << retval;
+    if (retval == VERITY_PARTITION)
+        LOG(INFO) << "Please run 'fastboot flashing unlock' to unlock your device first";
     if (reboot_later) reboot(setup_overlayfs);
     if (user_please_reboot_later) {
-        LOG(INFO) << "Now reboot your device for settings to take effect";
+        LOG(INFO) << "Then reboot your device for settings to take effect";
         return 0;
     }
 
