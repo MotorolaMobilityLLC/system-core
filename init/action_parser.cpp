@@ -151,6 +151,12 @@ Result<void> ActionParser::ParseSection(std::vector<std::string>&& args,
         return Error() << "ParseTriggers() failed: " << result.error();
     }
 
+#ifdef G1122717
+    for (const auto& [property, _] : property_triggers) {
+        action_manager_->StartWatchingProperty(property);
+    }
+#endif
+
     auto action = std::make_unique<Action>(false, action_subcontext, filename, line, event_trigger,
                                            property_triggers);
 
@@ -159,6 +165,11 @@ Result<void> ActionParser::ParseSection(std::vector<std::string>&& args,
 }
 
 Result<void> ActionParser::ParseLineSection(std::vector<std::string>&& args, int line) {
+#ifdef G1122717
+    if (args.size() >= 2 && args[0] == "wait_for_prop") {
+        action_manager_->StartWatchingProperty(args[1]);
+    }
+#endif
     return action_ ? action_->AddCommand(std::move(args), line) : Result<void>{};
 }
 

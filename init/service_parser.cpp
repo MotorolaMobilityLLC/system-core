@@ -669,6 +669,12 @@ Result<void> ServiceParser::EndSection() {
         old_service = nullptr;
     }
 
+#ifdef MTK_BORDER_CTL
+    for (const auto& interface : service_->interfaces()) {
+        service_list_->StartWatchingInterface(interface);
+    }
+#endif
+
     service_list_->AddService(std::move(service_));
 
     return {};

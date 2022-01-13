@@ -14,6 +14,22 @@
  * limitations under the License.
  */
 
+#ifdef G1122717
+#include <set>
+#endif
+
+#if defined(MTK_LOG) && defined(MTK_COMMAND_WDOG)
+#include <sys/eventfd.h>
+#include <thread>
+#include <android-base/chrono_utils.h>
+#include <android-base/stringprintf.h>
+
+#include "epoll.h"
+
+using android::base::boot_clock;
+using android::base::StringPrintf;
+#endif
+
 #include "action_manager.h"
 
 #include <android-base/logging.h>
@@ -22,6 +38,165 @@ namespace android {
 namespace init {
 
 ActionManager::ActionManager() : current_command_(0) {}
+
+#if defined(MTK_LOG) && defined(MTK_COMMAND_WDOG)
+struct CommSetLogInfo {
+    bool isStart;
+    std::string log;
+};
+
+static std::mutex pending_wd_messages_lock;
+static std::queue<struct CommSetLogInfo> pending_wd_messages;
+static std::string wd_comm;
+static boot_clock::time_point starttime_wd_comm;
+
+static std::thread comm_wd_thread;
+
+static int wake_wd_thread_fd = -1;
+static uint64_t wd_wait_time = 0;
+
+enum class WDThreadState {
+    kNotStarted,  // Initial state when starting the program or when restarting with no items to
+                  // process.
+    kWaiting_1,   // The thread is running and is in a state that it will process new items if
+                  // are run.
+};
+
+static WDThreadState wd_thread_state_ = WDThreadState::kNotStarted;
+
+static void DropWDSocket() {
+    uint64_t counter;
+    TEMP_FAILURE_RETRY(read(wake_wd_thread_fd, &counter, sizeof(counter)));
+}
+
+static void HandleWDSocket() {
+    auto lock = std::unique_lock{pending_wd_messages_lock};
+
+    uint64_t nowms = std::chrono::duration_cast<std::chrono::milliseconds>(boot_clock::now().time_since_epoch()).count();
+
+    while (!pending_wd_messages.empty()) {
+        auto wd_message = pending_wd_messages.front();
+        pending_wd_messages.pop();
+
+        switch (wd_thread_state_) {
+            case WDThreadState::kNotStarted:
+                if (wd_message.isStart) {
+                    wd_thread_state_ = WDThreadState::kWaiting_1;
+                    wd_wait_time = nowms + 3000;
+                    wd_comm = wd_message.log;
+                    starttime_wd_comm = boot_clock::now();
+                }
+                break;
+            case WDThreadState::kWaiting_1:
+                if (!wd_message.isStart) {
+                    wd_thread_state_ = WDThreadState::kNotStarted;
+                    wd_wait_time = 0;
+                }
+                break;
+            default:
+                break;
+        }
+    }
+}
+
+static void HandleWDSocket_wrap() {
+    DropWDSocket();
+    HandleWDSocket();
+}
+
+static void CheckWDTimeout(uint64_t nowms) {
+    auto lock = std::unique_lock{pending_wd_messages_lock};
+    bool dump_stack = false;
+    std::string dumpstr;
+    std::string waitstr;
+
+    switch (wd_thread_state_) {
+        case WDThreadState::kWaiting_1:
+            if (nowms >= wd_wait_time) {
+                dump_stack = true;
+                wd_wait_time = nowms + 1000;
+                dumpstr = wd_comm;
+
+                auto duration = boot_clock::now() - starttime_wd_comm;
+                auto duration_ms =
+                    std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
+                waitstr.append("Have been waiting ");
+                waitstr.append(StringPrintf("%llu", duration_ms));
+                waitstr.append("ms for ");
+            }
+            break;
+        default:
+            break;
+    }
+
+    if (dump_stack) {
+        lock.unlock();
+        LOG(INFO) << waitstr << dumpstr;
+        lock.lock();
+    }
+}
+
+static void InstallWDNotifier(Epoll* epoll) {
+    wake_wd_thread_fd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
+    if (wake_wd_thread_fd == -1) {
+        PLOG(FATAL) << "Failed to create eventfd for waking property watchdog.";
+    }
+
+    if (auto result = epoll->RegisterHandler(wake_wd_thread_fd, HandleWDSocket_wrap); !result.ok()) {
+        LOG(FATAL) << result.error();
+    }
+}
+
+static void WakePROPWDThread() {
+    uint64_t counter = 1;
+    TEMP_FAILURE_RETRY(write(wake_wd_thread_fd, &counter, sizeof(counter)));
+}
+
+void ActionManager::QueueCommWDMessage(const std::string& msg, bool isStart) {
+    auto lock = std::lock_guard{pending_wd_messages_lock};
+
+    struct CommSetLogInfo comminfo;
+    comminfo.isStart = isStart;
+    comminfo.log = msg;
+
+    pending_wd_messages.push(comminfo);
+    WakePROPWDThread();
+}
+
+static void CommWDThread() {
+    Epoll epoll;
+    if (auto result = epoll.Open(); !result.ok()) {
+        LOG(FATAL) << result.error();
+    }
+
+    InstallWDNotifier(&epoll);
+
+    while (true) {
+        auto epoll_timeout = std::optional<std::chrono::milliseconds>{};
+
+        uint64_t nowms = std::chrono::duration_cast<std::chrono::milliseconds>(boot_clock::now().time_since_epoch()).count();
+
+        CheckWDTimeout(nowms);
+
+        if (wd_wait_time) {
+            epoll_timeout = 0ms;
+
+            if (nowms < wd_wait_time)
+                epoll_timeout = std::chrono::milliseconds(wd_wait_time - nowms);
+        }
+
+        auto pending_functions = epoll.Wait(epoll_timeout);
+
+        if (!pending_functions.ok()) {
+            LOG(ERROR) << pending_functions.error();
+        } else {
+            for (const auto& function : *pending_functions) {
+                (*function)();
+            }
+        }
+    }
+}
+#endif
 
 size_t ActionManager::CheckAllCommands() {
     size_t failures = 0;
@@ -126,6 +301,28 @@ void ActionManager::ClearQueue() {
     event_queue_ = {};
     current_command_ = 0;
 }
+
+#ifdef G1122717
+void ActionManager::StartWatchingProperty(const std::string& property) {
+    auto lock = std::lock_guard{event_queue_lock_};
+    init_watched_properties.emplace(property);
+}
+
+bool ActionManager::WatchingPropertyCount(const std::string& property) {
+    auto lock = std::lock_guard{event_queue_lock_};
+    if (init_watched_properties.count(property))
+        return true;
+
+    return false;
+}
+#endif
+
+#if defined(MTK_LOG) && defined(MTK_COMMAND_WDOG)
+void ActionManager::StartCommandWDOG(void) {
+    auto new_wd_thread = std::thread{CommWDThread};
+    comm_wd_thread.swap(new_wd_thread);
+}
+#endif
 
 }  // namespace init
 }  // namespace android

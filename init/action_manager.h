@@ -46,6 +46,16 @@ class ActionManager {
     void DumpState() const;
     void ClearQueue();
 
+#ifdef G1122717
+    void StartWatchingProperty(const std::string& property);
+    bool WatchingPropertyCount(const std::string& property);
+#endif
+
+#if defined(MTK_LOG) && defined(MTK_COMMAND_WDOG)
+    void StartCommandWDOG(void);
+    void QueueCommWDMessage(const std::string& msg, bool isStart);
+#endif
+
   private:
     ActionManager(ActionManager const&) = delete;
     void operator=(ActionManager const&) = delete;
@@ -56,6 +66,10 @@ class ActionManager {
     mutable std::mutex event_queue_lock_;
     std::queue<const Action*> current_executing_actions_;
     std::size_t current_command_;
+
+#ifdef G1122717
+    std::set<std::string> init_watched_properties GUARDED_BY(event_queue_lock_);
+#endif
 };
 
 }  // namespace init

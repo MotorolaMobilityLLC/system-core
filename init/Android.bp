@@ -122,6 +122,14 @@ libinit_cc_defaults {
         "-DSHUTDOWN_ZERO_TIMEOUT=0",
         "-DINIT_FULL_SOURCES",
         "-DINSTALL_DEBUG_POLICY_TO_SYSTEM_EXT=0",
+        "-DMTK_RSC=1",
+        "-DMTK_LOG=1",
+        "-DMTK_TRACE=1",
+        "-DMTK_UMOUNT_RETRY=1",
+        "-DG1122717=1",
+        "-DMTK_PPS_CUT=1",
+        "-DMTK_BORDER_CTL=1",
+        "-DMTK_COMMAND_WDOG=1",
     ],
     product_variables: {
         debuggable: {
@@ -138,6 +146,8 @@ libinit_cc_defaults {
                 "-DWORLD_WRITABLE_KMSG=1",
                 "-UDUMP_ON_UMOUNT_FAILURE",
                 "-DDUMP_ON_UMOUNT_FAILURE=1",
+                "-DMTK_PROP_WDOG=1",
+                "-DMTK_LOG_DISABLERATELIMIT=1"
             ],
         },
         eng: {
@@ -374,6 +384,7 @@ cc_binary {
         "-DSHUTDOWN_ZERO_TIMEOUT=0",
         "-DLOG_UEVENTS=0",
         "-DSEPOLICY_VERSION=30", // TODO(jiyong): externalize the version number
+        "-DMTK_LOG=1",
     ],
 
     product_variables: {
@@ -396,6 +407,8 @@ cc_binary {
 
                 "-UDUMP_ON_UMOUNT_FAILURE",
                 "-DDUMP_ON_UMOUNT_FAILURE=1",
+
+                "-DMTK_LOG_DISABLERATELIMIT=1"
             ],
         },
 
