@@ -1278,10 +1278,8 @@ void CreateSerializedPropertyInfo() {
             LoadPropertyInfoFromFile("/system_ext/etc/selinux/system_ext_property_contexts",
                                      &property_infos);
         }
-        if (!LoadPropertyInfoFromFile("/vendor/etc/selinux/vendor_property_contexts",
-                                      &property_infos)) {
-            // Fallback to nonplat_* if vendor_* doesn't exist.
-            LoadPropertyInfoFromFile("/vendor/etc/selinux/nonplat_property_contexts",
+        if (access("/vendor/etc/selinux/vendor_property_contexts", R_OK) != -1) {
+            LoadPropertyInfoFromFile("/vendor/etc/selinux/vendor_property_contexts",
                                      &property_infos);
         }
         if (access("/product/etc/selinux/product_property_contexts", R_OK) != -1) {
@@ -1296,10 +1294,7 @@ void CreateSerializedPropertyInfo() {
             return;
         }
         LoadPropertyInfoFromFile("/system_ext_property_contexts", &property_infos);
-        if (!LoadPropertyInfoFromFile("/vendor_property_contexts", &property_infos)) {
-            // Fallback to nonplat_* if vendor_* doesn't exist.
-            LoadPropertyInfoFromFile("/nonplat_property_contexts", &property_infos);
-        }
+        LoadPropertyInfoFromFile("/vendor_property_contexts", &property_infos);
         LoadPropertyInfoFromFile("/product_property_contexts", &property_infos);
         LoadPropertyInfoFromFile("/odm_property_contexts", &property_infos);
     }
