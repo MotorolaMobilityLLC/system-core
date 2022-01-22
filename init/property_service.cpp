@@ -1112,7 +1112,7 @@ void PropertyLoadBootDefaults() {
        std::string prop_product_name = properties["ro.product.name"];
 
        std::string base_os_str = "";
-       std::string baseOS_user = "motorola/java_retail/java:11/RTA31.68-25/25:user/release-keys";
+       std::string baseOS_user = "motorola/java_retail/java:11/RTA31.68-29/29:user/release-keys";
        //std::string baseOS_userdebug = "motorola/java_retail/java:11/RTA31.68-25/25:userdebug/release-keys";
 
        std::vector<std::string> base_os = android::base::Split(baseOS_user, "/");
