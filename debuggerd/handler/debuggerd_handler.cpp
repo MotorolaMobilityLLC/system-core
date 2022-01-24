@@ -41,6 +41,7 @@
 #include <android-base/unique_fd.h>
 #include <async_safe/log.h>
 #include <bionic/reserved_signals.h>
+#include <cutils/properties.h>
 
 #include <libdebuggerd/utility.h>
 
@@ -577,6 +578,22 @@ static void debuggerd_signal_handler(int signal_number, siginfo_t* info, void* c
 
   // and then wait for it to terminate.
   futex_wait(&thread_info.pseudothread_tid, child_pid);
+
+  // UNISOC: disable_app_coredump feature start >>
+  async_safe_format_log(ANDROID_LOG_INFO, "debuggerd", "uid: %d, dumpable: %d", getuid(), orig_dumpable);
+
+  // set PR_SET_DUMPABLE to 0 when the property "persist.debug.disable_app_coredump" is set.
+  // FIRST_APPLICATION_UID is 10000, defined in Process.java.
+  // So uid > 10000 represents application.
+  if (getuid() > 10000) {
+      char disable_app_coredump[PROPERTY_VALUE_MAX];
+      property_get("persist.debug.disable_app_coredump", disable_app_coredump, "0");
+      if (strcmp(disable_app_coredump, "1") == 0) {
+          async_safe_format_log(ANDROID_LOG_INFO, "debuggerd", "Crash thread undumpable");
+          orig_dumpable = 0;
+      }
+  }
+  // << end
 
   // Restore PR_SET_DUMPABLE to its original value.
   if (prctl(PR_SET_DUMPABLE, orig_dumpable) != 0) {
