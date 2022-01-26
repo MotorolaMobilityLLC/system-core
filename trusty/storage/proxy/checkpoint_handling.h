@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020 The Android Open Source Project
+ * Copyright (C) 2021 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,9 +14,24 @@
  * limitations under the License.
  */
 
-#include <fs_mgr_overlayfs.h>
+#pragma once
 
-int main() {
-    android::fs_mgr::CleanupOldScratchFiles();
-    return 0;
+#include <stdbool.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/**
+ * is_data_checkpoint_active() - Check for an active, uncommitted checkpoint of
+ * /data. If a checkpoint is active, storage should not commit any
+ * rollback-protected writes to /data.
+ * @active: Out parameter that will be set to the result of the check.
+ *
+ * Return: 0 if active was set and is valid, non-zero otherwise.
+ */
+int is_data_checkpoint_active(bool* active);
+
+#ifdef __cplusplus
 }
+#endif

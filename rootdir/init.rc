@@ -163,6 +163,7 @@ on init
     mkdir /dev/cpuctl/rt
     mkdir /dev/cpuctl/system
     mkdir /dev/cpuctl/system-background
+    mkdir /dev/cpuctl/dex2oat
     chown system system /dev/cpuctl
     chown system system /dev/cpuctl/foreground
     chown system system /dev/cpuctl/background
@@ -170,6 +171,7 @@ on init
     chown system system /dev/cpuctl/rt
     chown system system /dev/cpuctl/system
     chown system system /dev/cpuctl/system-background
+    chown system system /dev/cpuctl/dex2oat
     chown system system /dev/cpuctl/tasks
     chown system system /dev/cpuctl/foreground/tasks
     chown system system /dev/cpuctl/background/tasks
@@ -177,6 +179,7 @@ on init
     chown system system /dev/cpuctl/rt/tasks
     chown system system /dev/cpuctl/system/tasks
     chown system system /dev/cpuctl/system-background/tasks
+    chown system system /dev/cpuctl/dex2oat/tasks
     chmod 0664 /dev/cpuctl/tasks
     chmod 0664 /dev/cpuctl/foreground/tasks
     chmod 0664 /dev/cpuctl/background/tasks
@@ -184,6 +187,7 @@ on init
     chmod 0664 /dev/cpuctl/rt/tasks
     chmod 0664 /dev/cpuctl/system/tasks
     chmod 0664 /dev/cpuctl/system-background/tasks
+    chmod 0664 /dev/cpuctl/dex2oat/tasks
 
     # Create a cpu group for NNAPI HAL processes
     mkdir /dev/cpuctl/nnapi-hal
@@ -1114,6 +1118,9 @@ on boot
     # Define default initial receive window size in segments.
     setprop net.tcp_def_init_rwnd 60
 
+    # Update dm-verity state and set partition.*.verified properties.
+    verity_update_state
+
     # Start standard binderized HAL daemons
     class_start hal
 
@@ -1128,42 +1135,6 @@ on property:sys.init_log_level=*
 
 on charger
     class_start charger
-
-on property:vold.decrypt=trigger_load_persist_props
-    load_persist_props
-    start logd
-    start logd-reinit
-
-# corefile limit
-on property:persist.debug.trace=1
-   mkdir /data/core 0777 root root
-   write /proc/sys/kernel/core_pattern "/data/core/%E.%p.%e"
-
-on property:vold.decrypt=trigger_post_fs_data
-    trigger post-fs-data
-    trigger zygote-start
-
-on property:vold.decrypt=trigger_restart_min_framework
-    # A/B update verifier that marks a successful boot.
-    exec_start update_verifier
-    class_start main
-
-on property:vold.decrypt=trigger_restart_framework
-    # A/B update verifier that marks a successful boot.
-    exec_start update_verifier
-    class_start_post_data hal
-    class_start_post_data core
-    class_start main
-    class_start late_start
-    setprop service.bootanim.exit 0
-    setprop service.bootanim.progress 0
-    start bootanim
-
-on property:vold.decrypt=trigger_shutdown_framework
-    class_reset late_start
-    class_reset main
-    class_reset_post_data core
-    class_reset_post_data hal
 
 on property:sys.boot_completed=1
     bootchart stop

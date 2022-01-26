@@ -28,6 +28,7 @@
 #include <net/if.h>
 #include <sched.h>
 #include <signal.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -42,9 +43,9 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <map>
 #include <memory>
 
-#include <ApexProperties.sysprop.h>
 #include <InitProperties.sysprop.h>
 #include <android-base/chrono_utils.h>
 #include <android-base/file.h>
@@ -175,28 +176,6 @@ static Result<void> do_class_start(const BuiltinArguments& args) {
     return {};
 }
 
-static Result<void> do_class_start_post_data(const BuiltinArguments& args) {
-    if (args.context != kInitContext) {
-        return Error() << "command 'class_start_post_data' only available in init context";
-    }
-    static bool is_apex_updatable = android::sysprop::ApexProperties::updatable().value_or(false);
-
-    if (!is_apex_updatable) {
-        // No need to start these on devices that don't support APEX, since they're not
-        // stopped either.
-        return {};
-    }
-    for (const auto& service : ServiceList::GetInstance()) {
-        if (service->classnames().count(args[1])) {
-            if (auto result = service->StartIfPostData(); !result.ok()) {
-                LOG(ERROR) << "Could not start service '" << service->name()
-                           << "' as part of class '" << args[1] << "': " << result.error();
-            }
-        }
-    }
-    return {};
-}
-
 static Result<void> do_class_stop(const BuiltinArguments& args) {
     ForEachServiceInClass(args[1], &Service::Stop);
     return {};
@@ -204,19 +183,6 @@ static Result<void> do_class_stop(const BuiltinArguments& args) {
 
 static Result<void> do_class_reset(const BuiltinArguments& args) {
     ForEachServiceInClass(args[1], &Service::Reset);
-    return {};
-}
-
-static Result<void> do_class_reset_post_data(const BuiltinArguments& args) {
-    if (args.context != kInitContext) {
-        return Error() << "command 'class_reset_post_data' only available in init context";
-    }
-    static bool is_apex_updatable = android::sysprop::ApexProperties::updatable().value_or(false);
-    if (!is_apex_updatable) {
-        // No need to stop these on devices that don't support APEX.
-        return {};
-    }
-    ForEachServiceInClass(args[1], &Service::ResetIfPostData);
     return {};
 }
 
@@ -584,32 +550,7 @@ static void import_late(const std::vector<std::string>& rc_paths) {
  * return code is processed based on input code
  */
 static Result<void> queue_fs_event(int code, bool userdata_remount) {
-    if (code == FS_MGR_MNTALL_DEV_NEEDS_ENCRYPTION) {
-        if (userdata_remount) {
-            // FS_MGR_MNTALL_DEV_NEEDS_ENCRYPTION should only happen on FDE devices. Since we don't
-            // support userdata remount on FDE devices, this should never been triggered. Time to
-            // panic!
-            LOG(ERROR) << "Userdata remount is not supported on FDE devices. How did you get here?";
-            trigger_shutdown("reboot,requested-userdata-remount-on-fde-device");
-        }
-        ActionManager::GetInstance().QueueEventTrigger("encrypt");
-        return {};
-    } else if (code == FS_MGR_MNTALL_DEV_MIGHT_BE_ENCRYPTED) {
-        if (userdata_remount) {
-            // FS_MGR_MNTALL_DEV_MIGHT_BE_ENCRYPTED should only happen on FDE devices. Since we
-            // don't support userdata remount on FDE devices, this should never been triggered.
-            // Time to panic!
-            LOG(ERROR) << "Userdata remount is not supported on FDE devices. How did you get here?";
-            trigger_shutdown("reboot,requested-userdata-remount-on-fde-device");
-        }
-        SetProperty("ro.crypto.state", "encrypted");
-        ActionManager::GetInstance().QueueEventTrigger("defaultcrypto");
-        return {};
-    } else if (code == FS_MGR_MNTALL_DEV_NOT_ENCRYPTED) {
-        SetProperty("ro.crypto.state", "unencrypted");
-        ActionManager::GetInstance().QueueEventTrigger("nonencrypted");
-        return {};
-    } else if (code == FS_MGR_MNTALL_DEV_NOT_ENCRYPTABLE) {
+    if (code == FS_MGR_MNTALL_DEV_NOT_ENCRYPTABLE) {
         SetProperty("ro.crypto.state", "unsupported");
         ActionManager::GetInstance().QueueEventTrigger("nonencrypted");
         return {};
@@ -1137,17 +1078,6 @@ static int check_rlim_action() {
 }
 
 static Result<void> do_load_persist_props(const BuiltinArguments& args) {
-    // Devices with FDE have load_persist_props called twice; the first time when the temporary
-    // /data partition is mounted and then again once /data is truly mounted.  We do not want to
-    // read persistent properties from the temporary /data partition or mark persistent properties
-    // as having been loaded during the first call, so we return in that case.
-    std::string crypto_state = android::base::GetProperty("ro.crypto.state", "");
-    std::string crypto_type = android::base::GetProperty("ro.crypto.type", "");
-    if (crypto_state == "encrypted" && crypto_type == "block") {
-        static size_t num_calls = 0;
-        if (++num_calls == 1) return {};
-    }
-
     SendLoadPersistentPropertiesMessage();
 
     start_waiting_for_property("ro.persistent_properties.ready", "true");
@@ -1335,7 +1265,7 @@ static Result<void> do_update_linker_config(const BuiltinArguments&) {
 
 static Result<void> parse_apex_configs() {
     glob_t glob_result;
-    static constexpr char glob_pattern[] = "/apex/*/etc/*.rc";
+    static constexpr char glob_pattern[] = "/apex/*/etc/*rc";
     const int ret = glob(glob_pattern, GLOB_MARK, nullptr, &glob_result);
     if (ret != 0 && ret != GLOB_NOMATCH) {
         globfree(&glob_result);
@@ -1352,17 +1282,66 @@ static Result<void> parse_apex_configs() {
         if (paths.size() >= 3 && paths[2].find('@') != std::string::npos) {
             continue;
         }
+        // Filter directories
+        if (path.back() == '/') {
+            continue;
+        }
         configs.push_back(path);
     }
     globfree(&glob_result);
 
-    bool success = true;
+    // Compare all files /apex/path.#rc and /apex/path.rc with the same "/apex/path" prefix,
+    // choosing the one with the highest # that doesn't exceed the system's SDK.
+    // (.rc == .0rc for ranking purposes)
+    //
+    int active_sdk = android::base::GetIntProperty("ro.build.version.sdk", INT_MAX);
+
+    std::map<std::string, std::pair<std::string, int>> script_map;
+
     for (const auto& c : configs) {
-        if (c.back() == '/') {
-            // skip if directory
+        int sdk = 0;
+        const std::vector<std::string> parts = android::base::Split(c, ".");
+        std::string base;
+        if (parts.size() < 2) {
             continue;
         }
-        success &= parser.ParseConfigFile(c);
+
+        // parts[size()-1], aka the suffix, should be "rc" or "#rc"
+        // any other pattern gets discarded
+
+        const auto& suffix = parts[parts.size() - 1];
+        if (suffix == "rc") {
+            sdk = 0;
+        } else {
+            char trailer[9] = {0};
+            int r = sscanf(suffix.c_str(), "%d%8s", &sdk, trailer);
+            if (r != 2) {
+                continue;
+            }
+            if (strlen(trailer) > 2 || strcmp(trailer, "rc") != 0) {
+                continue;
+            }
+        }
+
+        if (sdk < 0 || sdk > active_sdk) {
+            continue;
+        }
+
+        base = parts[0];
+        for (unsigned int i = 1; i < parts.size() - 1; i++) {
+            base = base + "." + parts[i];
+        }
+
+        // is this preferred over what we already have
+        auto it = script_map.find(base);
+        if (it == script_map.end() || it->second.second < sdk) {
+            script_map[base] = std::make_pair(c, sdk);
+        }
+    }
+
+    bool success = true;
+    for (const auto& m : script_map) {
+        success &= parser.ParseConfigFile(m.second.first);
     }
     ServiceList::GetInstance().MarkServicesUpdate();
     if (success) {
@@ -1435,10 +1414,8 @@ const BuiltinFunctionMap& GetBuiltinFunctionMap() {
         {"chmod",                   {2,     2,    {true,   do_chmod}}},
         {"chown",                   {2,     3,    {true,   do_chown}}},
         {"class_reset",             {1,     1,    {false,  do_class_reset}}},
-        {"class_reset_post_data",   {1,     1,    {false,  do_class_reset_post_data}}},
         {"class_restart",           {1,     1,    {false,  do_class_restart}}},
         {"class_start",             {1,     1,    {false,  do_class_start}}},
-        {"class_start_post_data",   {1,     1,    {false,  do_class_start_post_data}}},
         {"class_stop",              {1,     1,    {false,  do_class_stop}}},
         {"copy",                    {2,     2,    {true,   do_copy}}},
         {"copy_per_line",           {2,     2,    {true,   do_copy_per_line}}},
