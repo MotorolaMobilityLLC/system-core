@@ -1557,7 +1557,8 @@ void PropertyLoadBootDefaults() {
             moto_product_suffix = "_apac_m_e";
         } else if(base::EqualsIgnoreCase(ro_carrier,"retgb") || base::EqualsIgnoreCase(ro_carrier,"tescogb") || base::EqualsIgnoreCase(ro_carrier,"playpl")
                     || base::EqualsIgnoreCase(ro_carrier,"oraeu") || base::EqualsIgnoreCase(ro_carrier,"windit") || base::EqualsIgnoreCase(ro_carrier,"timit")
-                    || base::EqualsIgnoreCase(ro_carrier,"bouyfr") || (base::EqualsIgnoreCase(ro_carrier,"reteu") && base::EqualsIgnoreCase(ro_compile_product,"hawaiip"))) {
+                    || base::EqualsIgnoreCase(ro_carrier,"bouyfr") || base::EqualsIgnoreCase(ro_carrier,"pluspl")
+                    || (base::EqualsIgnoreCase(ro_carrier,"reteu") && base::EqualsIgnoreCase(ro_compile_product,"hawaiip"))) {
             moto_product_suffix = "_emea_n";
         } else if(base::EqualsIgnoreCase(ro_carrier,"reteu") && base::EqualsIgnoreCase(ro_compile_product,"hawaiipl")) {
             moto_product_suffix = "_emea";
