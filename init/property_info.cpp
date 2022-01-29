@@ -55,15 +55,18 @@ std::string prop_clientrev_value = "android-motorola-rev2";
 std::string prop_clientrvo3_value = "android-motorola-rvo3";
 std::string prop_clientcountry_value = "android-americamovil-{country}";
 std::string prop_clientrevc_value = "android-americamovil-{country}-revc";
-std::string prop_clientwindit_value = "android-h3g-{country}-revc";
+std::string prop_clientwindit_value = "android-h3g-it-rvc3";
 std::string prop_clientmx_value = "android-attmexico-mx-rvc3";//
 std::string prop_clientuk_value = "android-ee-uk-revc";
 std::string prop_clientbr_value = "android-tim-br-revc";
 std::string prop_clientit_value = "android-tim-it-revc";
 std::string prop_clientau_value = "android-optus-au-rvc3";
 std::string prop_clientauam_value = "android-optus-au";
+std::string prop_clienttimit_value = "android-tim-it-rvc3";
 std::string prop_clientvfam_value = "android-vf-au";
 std::string prop_clientvf_value = "android-vf-au-rvc3";
+std::string prop_clientvfitam_value = "android-vf-it";
+std::string prop_clientvfit_value = "android-vf-it-rvc3";
 std::string prop_clientcht_value = "android-cht-{country}-rvo3";
 std::string prop_clientor_value = "android-orange-{country}-revc";
 std::string prop_clienttmobile_value = "android-tmobile-{country}";
@@ -180,8 +183,20 @@ void set_system_properties(){
 
         if (isProductNameHawaiiReteu(carrier_ontim)) {
             prop_product_value = "hawaii_reteu";
-            InitPropertySet(prop_vsclient, prop_clientrvo3_value);
-            InitPropertySet(prop_msclient, prop_clientrvo3_value);
+            if (carrier_ontim == "vfeu_vfeu") {
+                InitPropertySet(prop_amclient, prop_clientvfitam_value);
+                InitPropertySet(prop_msclient, prop_clientvfit_value);
+                InitPropertySet(prop_vsclient, prop_clientvfit_value);
+            } else if (carrier_ontim == "windit_windit") {
+                InitPropertySet(prop_msclient, prop_clientwindit_value);
+                InitPropertySet(prop_vsclient, prop_clientwindit_value);
+            } else if (carrier_ontim == "timit_timit") {
+                InitPropertySet(prop_msclient, prop_clienttimit_value);
+                InitPropertySet(prop_vsclient, prop_clienttimit_value);
+            } else {
+                InitPropertySet(prop_vsclient, prop_clientrvo3_value);
+                InitPropertySet(prop_msclient, prop_clientrvo3_value);
+            }
         } else if (isProductNameHawaiiRetru(carrier_ontim)) {
             prop_product_value = "hawaii_retru";
             InitPropertySet(prop_vsclient, prop_clientrvo3_value);
@@ -284,6 +299,9 @@ void set_fingerprint(std::string fingerprint) {
 bool isProductNameHawaiiReteu(std::string carrier_ontim) {
     if (carrier_ontim == "reteu_reteu") return true;
     if (carrier_ontim == "retgb_retgbds") return true;
+    if (carrier_ontim == "vfeu_vfeu") return true;
+    if (carrier_ontim == "windit_windit") return true;
+    if (carrier_ontim == "timit_timit") return true;
     return false;
 }
 
