@@ -168,12 +168,14 @@ void set_system_properties(){
             InitPropertySet(prop_msclient, prop_clientrvo3_value);
             InitPropertySet(prop_vsclient, prop_clientrvo3_value);
             set_product_name(prop_product_value);
+            set_product_model("Lenovo K15");
 
             std::string fingerprint = get_fingerprint_property_hawaii(prop_product_value);
             set_fingerprint(fingerprint);
             if (carrier_value == "retru") {
                InitPropertySet(prop_product_locale,"ru-RU");
               }
+            InitPropertySet(prop_product_display,"Lenovo K15");
             InitPropertySet("persist.vendor.normal", "1");//表示正常版本，非 VTS 版本，prop 正常设置.
             InitPropertySet(prop_build_fullversion, get_version_property());
             InitPropertySet(prop_build_customerid, prop_carrier_value);
@@ -226,6 +228,7 @@ void set_system_properties(){
             }
         }
 
+        InitPropertySet(prop_product_display,"moto e32");
         set_product_name(prop_product_value);
         std::string fingerprint = get_fingerprint_property_hawaii(prop_product_value);
         set_fingerprint(fingerprint);
