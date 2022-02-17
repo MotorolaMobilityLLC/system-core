@@ -88,6 +88,7 @@
 using namespace std::literals::string_literals;
 
 using android::base::Basename;
+using android::base::ResultError;
 using android::base::SetProperty;
 using android::base::Split;
 using android::base::StartsWith;
@@ -116,7 +117,7 @@ class ErrorIgnoreEnoent {
                         android::base::GetMinimumLogSeverity() > android::base::DEBUG) {}
 
     template <typename T>
-    operator android::base::expected<T, ResultError>() {
+    operator android::base::expected<T, ResultError<android::base::Errno>>() {
         if (ignore_error_) {
             return {};
         }
@@ -130,7 +131,7 @@ class ErrorIgnoreEnoent {
     }
 
   private:
-    Error error_;
+    Error<> error_;
     bool ignore_error_;
 };
 
@@ -190,7 +191,31 @@ static Result<void> do_class_restart(const BuiltinArguments& args) {
     // Do not restart a class if it has a property persist.dont_start_class.CLASS set to 1.
     if (android::base::GetBoolProperty("persist.init.dont_start_class." + args[1], false))
         return {};
-    ForEachServiceInClass(args[1], &Service::Restart);
+
+    std::string classname;
+
+    CHECK(args.size() == 2 || args.size() == 3);
+
+    bool only_enabled = false;
+    if (args.size() == 3) {
+        if (args[1] != "--only-enabled") {
+            return Error() << "Unexpected argument: " << args[1];
+        }
+        only_enabled = true;
+        classname = args[2];
+    } else if (args.size() == 2) {
+        classname = args[1];
+    }
+
+    for (const auto& service : ServiceList::GetInstance()) {
+        if (!service->classnames().count(classname)) {
+            continue;
+        }
+        if (only_enabled && !service->IsEnabled()) {
+            continue;
+        }
+        service->Restart();
+    }
     return {};
 }
 
@@ -757,8 +782,21 @@ static Result<void> do_stop(const BuiltinArguments& args) {
 }
 
 static Result<void> do_restart(const BuiltinArguments& args) {
-    Service* svc = ServiceList::GetInstance().FindService(args[1]);
-    if (!svc) return Error() << "service " << args[1] << " not found";
+    bool only_if_running = false;
+    if (args.size() == 3) {
+        if (args[1] == "--only-if-running") {
+            only_if_running = true;
+        } else {
+            return Error() << "Unknown argument to restart: " << args[1];
+        }
+    }
+
+    const auto& classname = args[args.size() - 1];
+    Service* svc = ServiceList::GetInstance().FindService(classname);
+    if (!svc) return Error() << "service " << classname << " not found";
+    if (only_if_running && !svc->IsRunning()) {
+        return {};
+    }
     svc->Restart();
     return {};
 }
@@ -1414,7 +1452,7 @@ const BuiltinFunctionMap& GetBuiltinFunctionMap() {
         {"chmod",                   {2,     2,    {true,   do_chmod}}},
         {"chown",                   {2,     3,    {true,   do_chown}}},
         {"class_reset",             {1,     1,    {false,  do_class_reset}}},
-        {"class_restart",           {1,     1,    {false,  do_class_restart}}},
+        {"class_restart",           {1,     2,    {false,  do_class_restart}}},
         {"class_start",             {1,     1,    {false,  do_class_start}}},
         {"class_stop",              {1,     1,    {false,  do_class_stop}}},
         {"copy",                    {2,     2,    {true,   do_copy}}},
@@ -1451,7 +1489,7 @@ const BuiltinFunctionMap& GetBuiltinFunctionMap() {
         {"update_linker_config",    {0,     0,    {false,  do_update_linker_config}}},
         {"readahead",               {1,     2,    {true,   do_readahead}}},
         {"remount_userdata",        {0,     0,    {false,  do_remount_userdata}}},
-        {"restart",                 {1,     1,    {false,  do_restart}}},
+        {"restart",                 {1,     2,    {false,  do_restart}}},
         {"restorecon",              {1,     kMax, {true,   do_restorecon}}},
         {"restorecon_recursive",    {1,     kMax, {true,   do_restorecon_recursive}}},
         {"rm",                      {1,     1,    {true,   do_rm}}},

@@ -236,6 +236,7 @@ cc_defaults {
         "libbrotli",
         "libc++fs",
         "libfs_mgr_binder",
+        "libgflags",
         "libgsi",
         "libgmock",
         "liblp",
@@ -261,6 +262,17 @@ cc_defaults {
 cc_test {
     name: "vts_libsnapshot_test",
     defaults: ["libsnapshot_test_defaults"],
+}
+
+sh_test {
+    name: "run_snapshot_tests",
+    src: "run_snapshot_tests.sh",
+    test_suites: [
+        "device-tests",
+    ],
+    required: [
+        "vts_libsnapshot_test",
+    ],
 }
 
 cc_binary {

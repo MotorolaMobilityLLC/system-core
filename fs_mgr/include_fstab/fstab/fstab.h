@@ -63,7 +63,6 @@ struct FstabEntry {
         bool nonremovable : 1;
         bool vold_managed : 1;
         bool recovery_only : 1;
-        bool verify : 1;
         bool no_emulated_sd : 1;  // No emulated sdcard daemon; sd card is the only external
                                   // storage.
         bool no_trim : 1;
@@ -72,7 +71,6 @@ struct FstabEntry {
         bool slot_select : 1;
         bool late_mount : 1;
         bool no_fail : 1;
-        bool verify_at_boot : 1;
         bool quota : 1;
         bool avb : 1;
         bool logical : 1;
@@ -95,8 +93,8 @@ struct FstabEntry {
 // Unless explicitly requested, a lookup on mount point should always return the 1st one.
 using Fstab = std::vector<FstabEntry>;
 
-// Exported for testability. Regular users should use ReadFstabFromfile().
-bool ReadFstabFromFp(FILE* fstab_file, bool proc_mounts, Fstab* fstab_out);
+// Exported for testability. Regular users should use ReadFstabFromFile().
+bool ParseFstabFromString(const std::string& fstab_str, bool proc_mounts, Fstab* fstab_out);
 
 bool ReadFstabFromFile(const std::string& path, Fstab* fstab);
 bool ReadFstabFromDt(Fstab* fstab, bool verbose = true);

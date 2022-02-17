@@ -496,8 +496,9 @@ Commands
   currently running, without disabling them. They can be restarted
   later using `class_start`.
 
-`class_restart <serviceclass>`
-> Restarts all services of the specified class.
+`class_restart [--only-enabled] <serviceclass>`
+> Restarts all services of the specified class. If `--only-enabled` is
+  specified, then disabled services are skipped.
 
 `copy <src> <dst>`
 > Copies a file. Similar to write, but useful for binary/large
@@ -640,9 +641,10 @@ provides the `aidl_lazy_test_1` interface.
   configurations. Intended to be used only once when apexd notifies the mount
   event by setting `apexd.status` to ready.
 
-`restart <service>`
+`restart [--only-if-running] <service>`
 > Stops and restarts a running service, does nothing if the service is currently
-  restarting, otherwise, it just starts the service.
+  restarting, otherwise, it just starts the service. If "--only-if-running" is
+  specified, the service is only restarted if it is already running.
 
 `restorecon <path> [ <path>\* ]`
 > Restore the file named by _path_ to the security context specified
