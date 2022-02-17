@@ -582,6 +582,7 @@ on post-fs
     # Create /cache/recovery in case it's not there. It'll also fix the odd
     # permissions if created by the recovery system.
     mkdir /cache/recovery 0770 system cache
+    mkdir /cache/update_engine_log 0770 system cache
 
     # Backup/restore mechanism uses the cache partition
     mkdir /cache/backup_stage 0700 system system
