@@ -1672,9 +1672,9 @@ std::string fs_mgr_get_context(const std::string& mount_point) {
 
 OverlayfsValidResult fs_mgr_overlayfs_valid() {
     // Overlayfs available in the kernel, and patched for override_creds?
-    if (fs_mgr_access("/sys/module/overlay/parameters/override_creds")) {
+//    if (!fs_mgr_access("/sys/module/overlay/parameters/override_creds")) {
         return OverlayfsValidResult::kOverrideCredsRequired;
-    }
+//    }
     if (!fs_mgr_overlayfs_filesystem_available("overlay")) {
         return OverlayfsValidResult::kNotSupported;
     }
