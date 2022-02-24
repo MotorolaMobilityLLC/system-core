@@ -66,12 +66,14 @@ using android::fiemap::IImageManager;
 
 namespace {
 
+/*
 bool fs_mgr_access(const std::string& path) {
     auto save_errno = errno;
     auto ret = access(path.c_str(), F_OK) == 0;
     errno = save_errno;
     return ret;
 }
+*/
 
 // determine if a filesystem is available
 bool fs_mgr_overlayfs_filesystem_available(const std::string& filesystem) {
@@ -120,6 +122,13 @@ void TeardownAllOverlayForMountPoint(const std::string&) {}
 }  // namespace android
 
 #else  // ALLOW_ADBD_DISABLE_VERITY == 0
+
+bool fs_mgr_access(const std::string& path) {
+    auto save_errno = errno;
+    auto ret = access(path.c_str(), F_OK) == 0;
+    errno = save_errno;
+    return ret;
+}
 
 namespace {
 
