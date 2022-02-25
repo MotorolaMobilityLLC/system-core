@@ -65,6 +65,8 @@ std::string prop_clientauam_value = "android-optus-au";
 std::string prop_clienttimit_value = "android-tim-it-rvc3";
 std::string prop_clientvfam_value = "android-vf-au";
 std::string prop_clientvf_value = "android-vf-au-rvc3";
+std::string prop_clientvfeuam_value = "android-vf-{country}";
+std::string prop_clientvfeu_value = "android-vf-{country}-rvc3";
 std::string prop_clientvfitam_value = "android-vf-it";
 std::string prop_clientvfit_value = "android-vf-it-rvc3";
 std::string prop_clientcht_value = "android-cht-{country}-rvo3";
@@ -186,9 +188,9 @@ void set_system_properties(){
         if (isProductNameHawaiiReteu(carrier_ontim)) {
             prop_product_value = "hawaii_reteu";
             if (carrier_ontim == "vfeu_vfeu") {
-                InitPropertySet(prop_amclient, prop_clientvfitam_value);
-                InitPropertySet(prop_msclient, prop_clientvfit_value);
-                InitPropertySet(prop_vsclient, prop_clientvfit_value);
+                InitPropertySet(prop_amclient, prop_clientvfeuam_value);
+                InitPropertySet(prop_msclient, prop_clientvfeu_value);
+                InitPropertySet(prop_vsclient, prop_clientvfeu_value);
             } else if (carrier_ontim == "windit_windit") {
                 InitPropertySet(prop_msclient, prop_clientwindit_value);
                 InitPropertySet(prop_vsclient, prop_clientwindit_value);
