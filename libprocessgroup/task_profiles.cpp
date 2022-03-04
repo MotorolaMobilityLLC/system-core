@@ -112,6 +112,8 @@ bool FdCacheHelper::IsAppDependentPath(const std::string& path) {
     return path.find("<uid>", 0) != std::string::npos || path.find("<pid>", 0) != std::string::npos;
 }
 
+IProfileAttribute::~IProfileAttribute() = default;
+
 void ProfileAttribute::Reset(const CgroupController& controller, const std::string& file_name) {
     controller_ = controller;
     file_name_ = file_name;
@@ -182,6 +184,12 @@ bool SetTimerSlackAction::ExecuteForTask(int tid) const {
 
     return true;
 }
+
+#else
+
+bool SetTimerSlackAction::ExecuteForTask(int) const {
+    return true;
+};
 
 #endif
 
@@ -469,6 +477,7 @@ void TaskProfile::MoveTo(TaskProfile* profile) {
 bool TaskProfile::ExecuteForProcess(uid_t uid, pid_t pid) const {
     for (const auto& element : elements_) {
         if (!element->ExecuteForProcess(uid, pid)) {
+            LOG(VERBOSE) << "Applying profile action " << element->Name() << " failed";
             return false;
         }
     }
@@ -481,6 +490,7 @@ bool TaskProfile::ExecuteForTask(int tid) const {
     }
     for (const auto& element : elements_) {
         if (!element->ExecuteForTask(tid)) {
+            LOG(VERBOSE) << "Applying profile action " << element->Name() << " failed";
             return false;
         }
     }
@@ -592,7 +602,7 @@ bool TaskProfiles::Load(const CgroupMap& cg_map, const std::string& file_name) {
 
         std::string profile_name = profile_val["Name"].asString();
         const Json::Value& actions = profile_val["Actions"];
-        auto profile = std::make_shared<TaskProfile>();
+        auto profile = std::make_shared<TaskProfile>(profile_name);
 
         for (Json::Value::ArrayIndex act_idx = 0; act_idx < actions.size(); ++act_idx) {
             const Json::Value& action_val = actions[act_idx];
@@ -702,7 +712,7 @@ bool TaskProfiles::Load(const CgroupMap& cg_map, const std::string& file_name) {
             }
         }
         if (ret) {
-            auto profile = std::make_shared<TaskProfile>();
+            auto profile = std::make_shared<TaskProfile>(aggregateprofile_name);
             profile->Add(std::make_unique<ApplyProfileAction>(profiles));
             profiles_[aggregateprofile_name] = profile;
         }
@@ -720,7 +730,7 @@ TaskProfile* TaskProfiles::GetProfile(const std::string& name) const {
     return nullptr;
 }
 
-const ProfileAttribute* TaskProfiles::GetAttribute(const std::string& name) const {
+const IProfileAttribute* TaskProfiles::GetAttribute(const std::string& name) const {
     auto iter = attributes_.find(name);
 
     if (iter != attributes_.end()) {
