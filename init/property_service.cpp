@@ -1111,6 +1111,28 @@ static void LoadRscRwProps() {
 }
 #endif
 
+// Motorola: Overrided the system SPL with the vendor SPL
+static void mmi_property_override_spl(std::map<std::string, std::string>* properties) {
+    const std::string EMPTY = "";
+    auto vendor_spl = properties->find("ro.vendor.build.security_patch");
+    if (vendor_spl != properties->end()) {
+        auto vendor_spl_val = vendor_spl->second;
+        if (vendor_spl_val != EMPTY) {
+            // vendor SPL is set, so check it vs. the system spl
+            LOG(INFO) << "vendor_spl: " << vendor_spl_val;
+            auto system_spl = properties->find("ro.build.version.security_patch");
+            if (system_spl != properties->end()) {
+                auto system_spl_val = system_spl->second;
+                LOG(INFO) << "system_spl: " << system_spl_val;
+                if (system_spl_val > vendor_spl_val) {
+                    LOG(INFO) << "overriding system SPL to: " << vendor_spl_val;
+                    system_spl->second = vendor_spl_val;
+                }
+            }
+        }
+    }
+}
+
 /* Motorola:
  * Generate the named property's suffix property, and
  * append it to the property's value.
@@ -1489,6 +1511,8 @@ void PropertyLoadBootDefaults() {
 
     // Motorola: Append the incremental suffix, if it's set
     mmi_modify_incremental(&properties);
+    // Motorola: Override the system SPL with the vendor SPL, if vendor SPL is lower.
+    mmi_property_override_spl(&properties);
 
     for (const auto& [name, value] : properties) {
         std::string error;
