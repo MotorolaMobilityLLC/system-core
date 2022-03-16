@@ -668,6 +668,12 @@ static Result<void> do_mount_all(const BuiltinArguments& args) {
         import_late(mount_all->rc_paths);
     }
 
+    /*bug1086339, in unisoc cali mode, no need to trigger queue_fs_event */
+    std::string bootmode = base::GetProperty("ro.bootmode", "");
+    if (bootmode == "cali" || bootmode == "factorytest"){
+        queue_event = false;
+    }
+
     if (mount_fstab_result.userdata_mounted) {
         // This call to fs_mgr_mount_all mounted userdata. Keep the result in
         // order for userspace reboot to correctly remount userdata.
