@@ -316,7 +316,7 @@ static void check_fs(const std::string& blk_device, const std::string& fs_type,
                       << " (executable not in system image)";
             }else{
                 LINFO << "Running " << f2fs_resize2fs_argv[0] << " "
-                      << f2fs_resize2fs_argv[1] << " " << f2fs_resize2fs_argv[2];
+                      << f2fs_resize2fs_argv[1];
 
                 ret = logwrap_fork_execvp(ARRAY_SIZE(f2fs_resize2fs_argv),
                                           f2fs_resize2fs_argv,
