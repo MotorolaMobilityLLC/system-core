@@ -245,6 +245,7 @@ bool ReadAheadThread::ReconstructDataFromCow() {
     loff_t start_data_offset = snapuserd_->GetBufferDataOffset();
     int num_ops = 0;
     int total_blocks_merged = 0;
+    uint64_t new_block_index_value;
 
     // This memcpy is important as metadata_buffer_ will be an unaligned address and will fault
     // on 32-bit systems
@@ -263,7 +264,8 @@ bool ReadAheadThread::ReconstructDataFromCow() {
 
         loff_t buffer_offset = bm->file_offset - start_data_offset;
         void* bufptr = static_cast<void*>((char*)read_ahead_buffer_ + buffer_offset);
-        read_ahead_buffer_map[bm->new_block] = bufptr;
+        new_block_index_value = bm->new_block;
+        read_ahead_buffer_map[new_block_index_value] = bufptr;
         num_ops += 1;
         total_blocks_merged += 1;
 
