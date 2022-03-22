@@ -43,6 +43,7 @@ std::string prop_client = "ro.com.google.clientidbase";
 std::string prop_amclient = "ro.com.google.clientidbase.am";
 std::string prop_msclient = "ro.com.google.clientidbase.ms";
 std::string prop_vsclient = "ro.com.google.clientidbase.vs";
+std::string prop_crclient = "ro.com.google.clientidbase.cr";
 std::string prop_fingerprint = "ro.build.fingerprint";
 std::string prop_bootimage_fingerprint = "ro.bootimage.build.fingerprint";
 std::string prop_system_fingerprint = "ro.system.build.fingerprint";
@@ -191,12 +192,15 @@ void set_system_properties(){
                 InitPropertySet(prop_amclient, prop_clientvfeuam_value);
                 InitPropertySet(prop_msclient, prop_clientvfeu_value);
                 InitPropertySet(prop_vsclient, prop_clientvfeu_value);
+                InitPropertySet(prop_crclient, prop_client_value);
             } else if (carrier_ontim == "windit_windit") {
                 InitPropertySet(prop_msclient, prop_clientwindit_value);
                 InitPropertySet(prop_vsclient, prop_clientwindit_value);
+                InitPropertySet(prop_crclient, prop_client_value);
             } else if (carrier_ontim == "timit_timit") {
                 InitPropertySet(prop_msclient, prop_clienttimit_value);
                 InitPropertySet(prop_vsclient, prop_clienttimit_value);
+                InitPropertySet(prop_crclient, prop_client_value);
             } else {
                 InitPropertySet(prop_vsclient, prop_clientrvo3_value);
                 InitPropertySet(prop_msclient, prop_clientrvo3_value);
