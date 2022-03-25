@@ -105,6 +105,8 @@ class FastBootDriver {
                       std::vector<std::string>* info = nullptr);
     RetCode Upload(const std::string& outfile, std::string* response = nullptr,
                    std::vector<std::string>* info = nullptr);
+    RetCode Pull(const std::string& outfile, const std::string& cmd,
+                   std::vector<std::string>* info = nullptr);
     RetCode SnapshotUpdateCommand(const std::string& command, std::string* response = nullptr,
                                   std::vector<std::string>* info = nullptr);
     RetCode FetchToFd(const std::string& partition, android::base::borrowed_fd fd,
@@ -158,6 +160,8 @@ class FastBootDriver {
 
     RetCode UploadInner(const std::string& outfile, std::string* response = nullptr,
                         std::vector<std::string>* info = nullptr);
+    RetCode PullInner(const std::string& outfile, const std::string& cmd,
+                                    std::vector<std::string>* info = nullptr);
     RetCode RunAndReadBuffer(const std::string& cmd, std::string* response,
                              std::vector<std::string>* info,
                              const std::function<RetCode(const char*, uint64_t)>& write_fn);

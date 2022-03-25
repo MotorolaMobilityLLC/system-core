@@ -484,7 +484,7 @@ static int show_help() {
             " --verbose, -v              Verbose output.\n"
             " --version                  Display version.\n"
             " --help, -h                 Show this message.\n"
-	    "\n"
+            "\n"
             "\n"
             "Unisoc Sysdump Command:\n"
             " setdump full-enable        Enable fulldump function .\n"
@@ -493,8 +493,12 @@ static int show_help() {
             " setdump mini-disable       Disable minidump function .\n"
             " getdump status             Show Enable status of fulldump & minidump function .\n"
             " setdump autoreboot-enable  Enable autoreboot after dump .\n"
-	    " setdump autoreboot-disable Disable autoreboot after dump .\n"
-	    "\n"
+            " setdump autoreboot-disable Disable autoreboot after dump .\n"
+            "\n"
+            "Unisoc Pull Command:\n"
+            " pull <partition> <filename> Pull partition data to local\n"
+            " pull <ranges> <filename>   Pull ddr ranges data to local\n"
+            "\n"
         );
     // clang-format on
     return 0;
@@ -2218,7 +2222,22 @@ int FastBootTool::Main(int argc, char* argv[]) {
             std::string filename = next_arg(&args);
             fb->Upload(filename);
         } else if (command == FB_CMD_OEM) {
-            do_oem_command(FB_CMD_OEM, &args);
+			if (args.size() >= 1 && "pull" == args[0]) {
+				if (args.size() != 3)
+					die("usage:\n"
+						"  pull partition gpt.sav //pull gpt header\n"
+						"  pull boot boot.sav //pull partition boot\n"
+						"  pull boot,0x200++0x20 boot.sav //pull partition boot of offset=0x200, size=0x20\n"
+						"  pull 0x92500000++0x1fffff ddr.sav //pull 2MB size of DDR ranges\n");
+				else {
+					std::string pull = next_arg(&args);
+					std::string cmd("oem pull " + next_arg(&args));
+					std::string filename = next_arg(&args);
+					//syntax_error("command %s filename %s", cmd.c_str(), filename.c_str());
+					fb->Pull(filename, cmd.c_str());
+				}
+			} else
+				do_oem_command(FB_CMD_OEM, &args);
         } else if (command == "flashing") {
             if (args.empty()) {
                 syntax_error("missing 'flashing' command");
