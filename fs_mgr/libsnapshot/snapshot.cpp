@@ -20,6 +20,7 @@
 #include <sys/file.h>
 #include <sys/types.h>
 #include <sys/unistd.h>
+#include <linux/fs.h>
 
 #include <filesystem>
 #include <optional>
@@ -3875,6 +3876,55 @@ bool SnapshotManager::FinishMergeInRecovery() {
     return true;
 }
 
+#define MAIN_SPL_PATH_EMMC "dev/block/mmcblk0boot0"
+#define MAIN_SPL_PATH_UFS "dev/block/sdb"
+static bool RestoreMainSplForRollBack(void){
+    bool result;
+    //confirm emmc or ufs spl dev path
+    std::string spl_device_path;
+    if(access(MAIN_SPL_PATH_UFS , 0) == 0)
+        spl_device_path = MAIN_SPL_PATH_UFS;
+    else
+        spl_device_path = MAIN_SPL_PATH_EMMC;
+
+    char magicdata[4];
+    unique_fd fd(open(spl_device_path.c_str(), O_RDWR | O_DSYNC));
+    if (fd < 0) {
+        PLOG(ERROR) << "Faile to open spl path: " << spl_device_path.c_str();
+        return false;
+    }
+
+    if (TEMP_FAILURE_RETRY(pread(fd, magicdata, sizeof(magicdata), 0)) != sizeof(magicdata)) {
+        PLOG(ERROR) << "Read spl magicdata failed!";
+        return false;
+    }
+    if (magicdata[0] == 0xBB && magicdata[1] == 0xB7
+        && magicdata[2] == 0xAB && magicdata[3] == 0xBD) {
+        for (size_t i = 0; i < sizeof(magicdata); i++) {
+            magicdata[i] ^=  0xFF;
+        }
+    } else {
+        LOG(INFO) << "Do not need restore, Main spl magicdata is: "
+                  << magicdata[0] << magicdata[1] << magicdata[2] << magicdata[3];
+        return true;
+    }
+    LOG(INFO) << "Main spl magicdata after restore is: "
+              << magicdata[0] << magicdata[1] << magicdata[2] << magicdata[3];
+
+    int read_only_flag = 0;
+    ioctl(fd, BLKROSET, &read_only_flag);
+    if(TEMP_FAILURE_RETRY(pwrite(fd, magicdata, sizeof(magicdata), 0)) != sizeof(magicdata)){
+        PLOG(ERROR) << "Write spl magicdata failed!";
+        result = false;
+    }else{
+        LOG(INFO) << "Main spl partition is restored successfully!";
+        result = true;
+    }
+    read_only_flag = 1;
+    ioctl(fd, BLKROSET, &read_only_flag);
+    return result;
+}
+
 UpdateState SnapshotManager::ProcessUpdateStateOnDataWipe(bool allow_forward_merge,
                                                           const std::function<bool()>& callback) {
     auto slot_number = SlotNumberForSlotSuffix(device_->GetSlotSuffix());
@@ -3912,6 +3962,7 @@ UpdateState SnapshotManager::ProcessUpdateStateOnDataWipe(bool allow_forward_mer
                 }
 
                 LOG(ERROR) << "Reverting to old slot since update will be deleted.";
+                RestoreMainSplForRollBack();
                 device_->SetSlotAsUnbootable(slot_number);
             } else {
                 LOG(INFO) << "Booting from " << slot << " slot, no action is taken.";
