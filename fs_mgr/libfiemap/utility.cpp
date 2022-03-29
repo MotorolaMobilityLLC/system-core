@@ -150,6 +150,7 @@ bool BlockDeviceToName(uint32_t major, uint32_t minor, std::string* bdev_name) {
 
 bool FilesystemHasReliablePinning(const std::string& file, bool* supported) {
     struct statfs64 sfs;
+
     if (statfs64(file.c_str(), &sfs)) {
         PLOG(ERROR) << "statfs failed: " << file;
         return false;
@@ -164,7 +165,10 @@ bool FilesystemHasReliablePinning(const std::string& file, bool* supported) {
         PLOG(ERROR) << "open failed: " << file;
         return false;
     }
-    return F2fsPinBeforeAllocate(fd, supported);
+
+    // Use super as scratch before encrypt ready.
+    // return F2fsPinBeforeAllocate(fd, supported);
+    return false;
 }
 
 bool IsSubdir(const std::string& child, const std::string& parent) {
