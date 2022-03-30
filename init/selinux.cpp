@@ -88,7 +88,9 @@ using android::snapshot::SnapshotManager;
 
 namespace android {
 namespace init {
-
+//BEGIN,2019/07/03,ontim,shabei,0342947,add root package function
+extern bool checkRootPackageFromCmdline();
+//END
 namespace {
 
 enum EnforcingStatus { SELINUX_PERMISSIVE, SELINUX_ENFORCING };
@@ -114,7 +116,9 @@ EnforcingStatus StatusFromProperty() {
 }
 
 bool IsEnforcing() {
-    if (ALLOW_PERMISSIVE_SELINUX) {
+//BEGIN,2019/07/03,ontim,shabei,0342947,add root package function
+    if (ALLOW_PERMISSIVE_SELINUX  || checkRootPackageFromCmdline()) {
+//END
         return StatusFromProperty() == SELINUX_ENFORCING;
     }
     return true;

@@ -401,6 +401,20 @@ static void PropSetLog(const std::string& name, const std::string& value, std::s
 }
 #endif
 
+//BEGIN,2019/07/03,ontim,shabei,0342947,add root package function
+bool checkRootPackageFromCmdline() {
+    bool state = false;
+
+    ImportKernelCmdline([&](const std::string& key, const std::string& value) {
+            if (key == "androidboot.debug" && value == "true") {
+                state = true;
+            }
+        }
+    );
+    return state;
+}
+//END
+
 static uint32_t PropertySet(const std::string& name, const std::string& value, std::string* error) {
     size_t valuelen = value.size();
 
@@ -416,6 +430,18 @@ static uint32_t PropertySet(const std::string& name, const std::string& value, s
 #ifdef MTK_LOG
     SnapshotPropertyFlowTraceLog("_spf");
 #endif
+    //BEGIN,2019/07/03,ontim,shabei,0342947,add root package function
+    std::string overridedValue;
+    if (StartsWith(name, "ro.") && (name == "ro.debuggable") && checkRootPackageFromCmdline()) {
+        overridedValue = "1";
+        LOG(ERROR) << "reset ro.deuggable to 1...";
+    }
+    else if (StartsWith(name, "ro.") && (name == "ro.adb.secure") && checkRootPackageFromCmdline()) {
+        overridedValue = "0";
+        LOG(ERROR) << "reset ro.adb.secure to 0...";
+    }
+    //END
+
     prop_info* pi = (prop_info*) __system_property_find(name.c_str());
     if (pi != nullptr) {
         // ro.* properties are actually "write-once".
@@ -427,12 +453,14 @@ static uint32_t PropertySet(const std::string& name, const std::string& value, s
 #ifdef MTK_LOG
         SnapshotPropertyFlowTraceLog("_spu");
 #endif
-        __system_property_update(pi, value.c_str(), valuelen);
+        //BEGIN,2019/07/03,ontim,shabei,0342947,add root package function
+        __system_property_update(pi,(overridedValue.empty() ? value.c_str() : overridedValue.c_str()), (overridedValue.empty() ? valuelen : overridedValue.size()));
     } else {
 #ifdef MTK_LOG
         SnapshotPropertyFlowTraceLog("_spa");
 #endif
-        int rc = __system_property_add(name.c_str(), name.size(), value.c_str(), valuelen);
+	int rc = __system_property_add(name.c_str(), name.size(), (overridedValue.empty() ? value.c_str() : overridedValue.c_str()), (overridedValue.empty() ? valuelen : overridedValue.size()));
+	//END
         if (rc < 0) {
             *error = "__system_property_add failed";
             return PROP_ERROR_SET_FAILED;
