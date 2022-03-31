@@ -129,6 +129,8 @@ unsigned long Service::next_start_order_ = 1;
 bool Service::is_exec_service_running_ = false;
 #ifdef MTK_LOG
 Service* Service::pexec_service_ = NULL;
+#else
+std::chrono::time_point<std::chrono::steady_clock> Service::exec_service_started_;
 #endif
 
 Service::Service(const std::string& name, Subcontext* subcontext_for_restart_commands,
@@ -367,7 +369,7 @@ int Service::DumpExecState() const {
 
         wait_s = exec_duration_ms / 1000;
 
-        if (wait_s >= 60)
+        if (wait_s >= 10)
             LOG(INFO) << "Have been waiting SVC_EXEC service '" << name_ << "' for "
                       << exec_duration_ms << "ms."
                       << " pid " << pid_ << " (uid " << uid() << " gid "
@@ -416,6 +418,8 @@ Result<void> Service::ExecStart() {
     is_exec_service_running_ = true;
 #ifdef MTK_LOG
     pexec_service_ = this;
+#else
+    exec_service_started_ = std::chrono::steady_clock::now();
 #endif
 
     LOG(INFO) << "SVC_EXEC service '" << name_ << "' pid " << pid_ << " (uid " << proc_attr_.uid
