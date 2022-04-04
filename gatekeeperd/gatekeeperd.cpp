@@ -72,6 +72,7 @@ class GateKeeperProxy : public BnGateKeeperService {
         if (!hw_device) {
             LOG(ERROR) << "Could not find Gatekeeper device, which makes me very sad.";
         }
+        ALOGD("init hw device ");
     }
 
     virtual ~GateKeeperProxy() {}
@@ -138,6 +139,7 @@ class GateKeeperProxy : public BnGateKeeperService {
 
     void clear_sid(uint32_t userId) {
         char filename[21];
+        ALOGD("gatekeeperd clear_sid");
         snprintf(filename, sizeof(filename), "%u", userId);
         if (remove(filename) < 0) {
             ALOGE("%s: could not remove file [%s], attempting 0 write", __func__, strerror(errno));
@@ -165,6 +167,7 @@ class GateKeeperProxy : public BnGateKeeperService {
         IPCThreadState* ipc = IPCThreadState::self();
         const int calling_pid = ipc->getCallingPid();
         const int calling_uid = ipc->getCallingUid();
+        ALOGD("gatekeeperd enroll ");
         if (!PermissionCache::checkPermission(KEYGUARD_PERMISSION, calling_pid, calling_uid)) {
             return GK_ERROR;
         }
@@ -236,6 +239,7 @@ class GateKeeperProxy : public BnGateKeeperService {
                 LOG(ERROR) << "Failed to verify password after enrolling";
             }
         }
+        ALOGD("gatekeeperd enroll ret");
 
         return Status::ok();
     }
@@ -253,6 +257,7 @@ class GateKeeperProxy : public BnGateKeeperService {
         IPCThreadState* ipc = IPCThreadState::self();
         const int calling_pid = ipc->getCallingPid();
         const int calling_uid = ipc->getCallingUid();
+        ALOGD("gatekeeperd verify ");
         if (!PermissionCache::checkPermission(KEYGUARD_PERMISSION, calling_pid, calling_uid)) {
             return GK_ERROR;
         }
@@ -266,6 +271,7 @@ class GateKeeperProxy : public BnGateKeeperService {
             LOG(INFO) << "Password handle has wrong length";
             return GK_ERROR;
         }
+
         const gatekeeper::password_handle_t* handle =
                 reinterpret_cast<const gatekeeper::password_handle_t*>(
                         enrolledPasswordHandle.data());
@@ -282,12 +288,15 @@ class GateKeeperProxy : public BnGateKeeperService {
                 hw_userId, challenge, curPwdHandle, enteredPwd,
                 [&gkResponse](const GatekeeperResponse& rsp) {
                     if (rsp.code >= GatekeeperStatusCode::STATUS_OK) {
+                        ALOGD("gatekeeperd verify process ok");
                         *gkResponse = GKResponse::ok(
                                 {rsp.data.begin(), rsp.data.end()},
                                 rsp.code == GatekeeperStatusCode::STATUS_REENROLL /* reenroll */);
                     } else if (rsp.code == GatekeeperStatusCode::ERROR_RETRY_TIMEOUT) {
+                        ALOGD("gatekeeperd verify process retry timeout");
                         *gkResponse = GKResponse::retry(rsp.timeout);
                     } else {
+                        ALOGD("gatekeeperd verify fail,maybe not match");
                         *gkResponse = GKResponse::error();
                     }
                 });
@@ -335,7 +344,7 @@ class GateKeeperProxy : public BnGateKeeperService {
 
             maybe_store_sid(userId, handle->user_id);
         }
-
+        ALOGD("gatekeeperd verify ret");
         return Status::ok();
     }
 
