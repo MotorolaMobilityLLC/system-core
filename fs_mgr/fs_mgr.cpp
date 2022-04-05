@@ -1372,9 +1372,7 @@ static void WrapUserdataIfNeeded(FstabEntry* entry, const std::string& actual_bl
         }
     }
 
-    if (has_holders) {
-        WrapUserdata(entry, st.st_rdev, block_device);
-    }
+    WrapUserdata(entry, st.st_rdev, block_device);
 }
 
 static bool IsMountPointMounted(const std::string& mount_point) {
