@@ -101,7 +101,6 @@ cc_defaults {
             cflags: ["-fvisibility=protected"],
 
             shared_libs: [
-                "libprocessgroup",
                 "libvndksupport",
             ],
 
@@ -131,6 +130,9 @@ cc_defaults {
 
             enabled: true,
         },
+    },
+    fuzz_config: {
+       cc: ["smoreland@google.com"],
     },
 }
 
