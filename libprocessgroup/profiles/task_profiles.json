@@ -394,6 +394,19 @@
         }
       ]
     },
+    {
+      "Name": "ProcessCapacityBigCore",
+      "Actions": [
+        {
+          "Name": "JoinCgroup",
+          "Params":
+          {
+            "Controller": "cpuset",
+            "Path": "top-app-high-perf"
+          }
+        }
+      ]
+    },
 
     {
       "Name": "ServiceCapacityLow",
@@ -685,6 +698,10 @@
     {
       "Name": "OtaProfiles",
       "Profiles": [ "ServiceCapacityLow", "LowIoPriority", "HighEnergySaving" ]
+    },
+    {
+      "Name": "CPUSET_SP_TOP_APP_HIGH_PERF",
+      "Profiles": ["MaxPerformance", "ProcessCapacityBigCore", "MaxIoPriority", "TimerSlackNormal" ]
     }
   ]
 }
