@@ -108,11 +108,11 @@ class Service {
 #ifdef MTK_LOG
     static Service* get_pexec_service_() { return pexec_service_; };
     int DumpExecState() const;
-#else
+#endif
+    static pid_t exec_service_pid() { return exec_service_pid_; }
     static std::chrono::time_point<std::chrono::steady_clock> exec_service_started() {
         return exec_service_started_;
     }
-#endif
 
     const std::string& name() const { return name_; }
     const std::set<std::string>& classnames() const { return classnames_; }
@@ -167,10 +167,9 @@ class Service {
     static bool is_exec_service_running_;
 #ifdef MTK_LOG
     static Service* pexec_service_;
-#else
+#endif
     static std::chrono::time_point<std::chrono::steady_clock> exec_service_started_;
     static pid_t exec_service_pid_;
-#endif
 
     std::string name_;
     std::set<std::string> classnames_;
