@@ -299,6 +299,8 @@ static bool isScopedPowerSupply(const char* name) {
 }
 
 void BatteryMonitor::updateValues(void) {
+    if (!mBatteryDevicePresent)
+        init(mHealthdConfig);
     initHealthInfo(mHealthInfo.get());
 
     if (!mHealthdConfig->batteryPresentPath.isEmpty())
