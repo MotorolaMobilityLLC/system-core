@@ -107,9 +107,6 @@ ifdef BOARD_USES_SYSTEM_EXTIMAGE
 else
   LOCAL_POST_INSTALL_CMD += ; ln -sf /system/system_ext $(TARGET_ROOT_OUT)/system_ext
 endif
-ifdef ONTIM_CUSTOM_PARTITION
-  LOCAL_POST_INSTALL_CMD += ; mkdir -p $(TARGET_ROOT_OUT)/elabel
-endif
 ifdef BOARD_USES_METADATA_PARTITION
   LOCAL_POST_INSTALL_CMD += ; mkdir -p $(TARGET_ROOT_OUT)/metadata
 endif
