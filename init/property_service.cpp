@@ -1108,11 +1108,10 @@ void PropertyLoadBootDefaults() {
 
        //start
        //daming.cao,SMR need config ro.build.version.base_os ,is pre MR fingerprint
-       /*
        std::string prop_product_name = properties["ro.product.name"];
 
        std::string base_os_str = "";
-       std::string baseOS_user = "motorola/aaa/aaa:11/RTA31.68-29/29:user/release-keys";
+       std::string baseOS_user = "motorola/aaa/aaa:11/RTA31.68-34/34:user/release-keys";
        //std::string baseOS_userdebug = "motorola/aaa/aaa:11/RTA31.68-25/25:userdebug/release-keys";
 
        std::vector<std::string> base_os = android::base::Split(baseOS_user, "/");
@@ -1136,7 +1135,6 @@ void PropertyLoadBootDefaults() {
        properties["ro.build.version.base_os"] = base_os_str;
 
        LOG(INFO) << "moto base_os:PropSet to [" << base_os_str << "]";
-       */
        //end
 
     } else {
