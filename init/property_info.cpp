@@ -26,7 +26,7 @@
 #include <sstream>
 #include <iostream>
 
-
+using android::base::ReadFileToString;
 
 namespace android {
 namespace init {
@@ -133,6 +133,25 @@ void set_system_properties(){
     InitPropertySet("ro.product.ontim.version", fileContent_product);
     InitPropertySet("ro.vendor.product.version", fileContent_product);
 
+    bool isCyprus64Lite = false;
+
+    if (prop_product_value == "cyprus64") {
+        std::string band_id_path = "/sys/hwinfo/band_id";
+        int len = strlen("band_id=");
+        std::string hw_sku;
+        if (ReadFileToString(band_id_path, &hw_sku)){
+            int totallen = android::base::Trim(hw_sku).length();
+            if(totallen == 17){
+                hw_sku = hw_sku.substr(len,9);
+            } else {
+                hw_sku = hw_sku.substr(len,8);
+            }
+        }
+        if (hw_sku == "XT2159-9"||hw_sku == "XT2159-10") {
+            isCyprus64Lite = true;
+        }
+    }
+
     //initialize at fist time to persist.sys.vendor.carrier
     if (vendor_carrier_value.empty()) {
         InitPropertySet(prop_vendor_carrier, carrier_value);
@@ -163,6 +182,31 @@ void set_system_properties(){
             InitPropertySet(prop_build_customerid, prop_carrier_value);
             InitPropertySet(prop_vendor_locale, android::base::GetProperty(prop_product_locale, "en-US"));
             InitPropertySet(prop_product_display, "Lenovo K14 Plus");
+            return;
+        }
+        if(isCyprus64Lite == true) {
+            if (isProductNameCyprus64Reteu(carrier_ontim)) {
+                prop_product_value = "cyprus64_lite_reteu";
+                InitPropertySet(prop_msclient, prop_clientrvo3_value);
+                InitPropertySet(prop_vsclient, prop_clientrvo3_value);
+            } else {
+            prop_product_value = "cyprus64_lite";
+            InitPropertySet(prop_msclient, prop_clientrvo3_value);
+            InitPropertySet(prop_vsclient, prop_clientrvo3_value);
+            }
+
+            set_product_name(prop_product_value);
+            set_product_model("moto e40");
+            std::string fingerprint = get_fingerprint_property_cyprus(prop_product_value);
+            set_fingerprint(fingerprint);
+            if (carrier_value == "retru") {
+               InitPropertySet(prop_product_locale,"ru-RU");
+              }
+            InitPropertySet("persist.vendor.normal", "1");//表示正常版本，非 VTS 版本，prop 正常设置.
+            InitPropertySet(prop_build_fullversion, get_version_property());
+            InitPropertySet(prop_build_customerid, prop_carrier_value);
+            InitPropertySet(prop_vendor_locale, android::base::GetProperty(prop_product_locale, "en-US"));
+            InitPropertySet(prop_product_display, "moto e40");
             return;
         }
         if (isProductNameCyprus64Reteu(carrier_ontim)) {
