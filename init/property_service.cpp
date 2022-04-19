@@ -950,9 +950,13 @@ void set_hwsku_from_hwinfo() {
     std::string file_content;
     std::string file_band;
     int len = strlen("band_id=");
-
     if (ReadFileToString(cmdline_path, &file_content)) {
-        file_band = file_content.substr(len,8);
+        int totallen = android::base::Trim(file_content).length();
+        if(totallen == 17){
+            file_band = file_content.substr(len,9);
+        } else {
+            file_band = file_content.substr(len,8);
+        }
         InitPropertySet("ro.boot.hardware.sku",file_band);
         InitPropertySet("ro.vendor.hardware.sku",file_band);
     } else {
