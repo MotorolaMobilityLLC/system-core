@@ -1128,7 +1128,7 @@ void PropertyLoadBootDefaults() {
            base_os[1] = prop_product_name;
 
        if (base::EqualsIgnoreCase(version_type,"userdebug")){
-           base_os[4] = "25:userdebug";
+           base_os[4] = "34:userdebug";
        }
 
        base_os_str = android::base::Join(base_os,"/");
