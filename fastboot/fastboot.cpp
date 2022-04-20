@@ -2118,6 +2118,10 @@ int FastBootTool::Main(int argc, char* argv[]) {
             };
             do_for_partitions(partition, slot_override, format, true);
         } else if (command == "signature") {
+            std::string subcmd;
+            if (args.size() == 2) {
+                subcmd = next_arg(&args);
+            }
             std::string filename = next_arg(&args);
             std::vector<char> data;
             if (!ReadFileToVector(filename, &data)) {
@@ -2125,7 +2129,7 @@ int FastBootTool::Main(int argc, char* argv[]) {
             }
             if (data.size() != 256) die("signature must be 256 bytes (got %zu)", data.size());
             fb->Download("signature", data);
-            fb->RawCommand("signature", "installing signature");
+            fb->RawCommand("signature" + subcmd, "installing signature");
         } else if (command == FB_CMD_REBOOT) {
             wants_reboot = true;
 
