@@ -578,6 +578,11 @@ on post-fs
     restorecon_recursive /metadata/apex
 
     mkdir /metadata/staged-install 0770 root system
+
+    mkdir /elabel 775 system system
+    mount ext4 /dev/block/bootdevice/by-name/elabel noatime nosuid nodev barrier=1
+    restorecon_recursive /elabel
+
 on late-fs
     # Ensure that tracefs has the correct permissions.
     # This does not work correctly if it is called in post-fs.
