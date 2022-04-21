@@ -40,6 +40,7 @@ init_common_sources = [
     "import_parser.cpp",
     "interface_utils.cpp",
     "keychords.cpp",
+    "mboot.cpp",
     "parser.cpp",
     "property_type.cpp",
     "rlimit_parser.cpp",
@@ -331,6 +332,7 @@ cc_binary {
         "switch_root.cpp",
         "uevent_listener.cpp",
         "util.cpp",
+        "mboot.cpp",
     ],
 
     static_libs: [

@@ -21,7 +21,7 @@
 #include <sys/mount.h>
 #include <sys/stat.h>
 #include <unistd.h>
-
+#include "mboot.h"
 #include <android-base/logging.h>
 #include <android-base/strings.h>
 
@@ -62,6 +62,13 @@ std::vector<std::string> GetMounts(const std::string& new_root) {
         }
 
         result.emplace_back(mentry->mnt_dir);
+    }
+
+    if (android::mboot::IsMboot()) {
+        if (new_root == "/system") {
+            result.emplace_back("/system_ext");
+            result.emplace_back("/vendor_dlkm");
+        }
     }
 
     return result;

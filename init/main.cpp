@@ -20,7 +20,7 @@
 #include "selinux.h"
 #include "subcontext.h"
 #include "ueventd.h"
-
+#include "mboot.h"
 #include <android-base/logging.h>
 
 #if __has_feature(address_sanitizer)
@@ -71,6 +71,7 @@ int main(int argc, char** argv) {
         }
 
         if (!strcmp(argv[1], "selinux_setup")) {
+            android::mboot::mdb("SELinux Setup ...");
             return SetupSelinux(argv);
         }
 
