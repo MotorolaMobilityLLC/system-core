@@ -29,7 +29,10 @@ static constexpr const char kRestoreconProperty[] = "selinux.restorecon_recursiv
 
 bool CanReadProperty(const std::string& source_context, const std::string& name);
 
+void set_properties_from_hwinfo();
+
 void PropertyInit();
+extern uint32_t InitPropertySet(const std::string& name, const std::string& value);
 void StartPropertyService(int* epoll_socket);
 
 void StartSendingMessages();

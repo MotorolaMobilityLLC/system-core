@@ -81,6 +81,7 @@
 #include "subcontext.h"
 #include "system/core/init/property_service.pb.h"
 #include "util.h"
+#include "property_info.h"
 
 using namespace std::literals;
 
@@ -445,7 +446,7 @@ static uint32_t PropertySet(const std::string& name, const std::string& value, s
     prop_info* pi = (prop_info*) __system_property_find(name.c_str());
     if (pi != nullptr) {
         // ro.* properties are actually "write-once".
-        if (StartsWith(name, "ro.")) {
+        if (StartsWith(name, "ro.") && !change_ro_prop_flag) {
             *error = "Read-only property was already set";
             return PROP_ERROR_READ_ONLY_PROPERTY;
         }
@@ -1445,8 +1446,48 @@ void PropertyLoadBootDefaults() {
     property_derive_build_fingerprint();
     property_derive_legacy_build_fingerprint();
     property_initialize_ro_cpu_abilist();
+    set_system_properties();
 
     update_sys_usb_config();
+    set_properties_from_hwinfo();
+}
+
+void set_hwversion_from_hwinfo() {
+    std::string cmdline_path = "/sys/hwinfo/hw_version";
+    std::string file_content;
+    std::string file_hwversion;
+    int len = strlen("hw_version=");
+
+    if (ReadFileToString(cmdline_path, &file_content)) {
+        file_hwversion = file_content.substr(len, (file_content.length() - 2 - len));
+        InitPropertySet("ro.boot.hardware.revision", file_hwversion);
+    } else {
+        PLOG(ERROR) << "Could not read properties from '" << cmdline_path << "'";
+    }
+}
+
+void set_hwsku_from_hwinfo() {
+    std::string cmdline_path = "/sys/hwinfo/band_id";
+    std::string file_content;
+    std::string file_band;
+    int len = strlen("band_id=");
+    if (ReadFileToString(cmdline_path, &file_content)) {
+        int totallen = android::base::Trim(file_content).length();
+        if(totallen == 17){
+            file_band = file_content.substr(len,9);
+        } else {
+            file_band = file_content.substr(len,8);
+        }
+        InitPropertySet("ro.boot.hardware.sku",file_band);
+        InitPropertySet("ro.vendor.hardware.sku",file_band);
+    } else {
+        PLOG(ERROR) << "Could not read properties from '" << cmdline_path << "'";
+    }
+}
+
+void set_properties_from_hwinfo() {
+    set_hwversion_from_hwinfo();
+    set_hwsku_from_hwinfo();
 }
 
 bool LoadPropertyInfoFromFile(const std::string& filename,
@@ -1537,6 +1578,7 @@ static void ExportKernelBootProps() {
         { "ro.boot.baseband",   "ro.baseband",   "unknown", },
         { "ro.boot.bootloader", "ro.bootloader", "unknown", },
         { "ro.boot.hardware",   "ro.hardware",   "unknown", },
+        { "ro.boot.carrier",    "ro.carrier.ontim",    "unknown", },
         { "ro.boot.revision",   "ro.revision",   "0", },
             // clang-format on
     };
