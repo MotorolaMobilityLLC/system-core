@@ -1141,7 +1141,10 @@ static Result<void> do_load_persist_props(const BuiltinArguments& args) {
     }
 
     SendLoadPersistentPropertiesMessage();
-
+    //APP_SMT
+    set_properties_from_proinfo();
+    update_usb_config_factory();
+    //APP_SMT_END
     start_waiting_for_property("ro.persistent_properties.ready", "true");
     return {};
 }

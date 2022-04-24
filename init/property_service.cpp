@@ -1490,6 +1490,74 @@ void set_properties_from_hwinfo() {
     set_hwsku_from_hwinfo();
 }
 
+//APP_SMT
+void set_properties_from_proinfo() {
+    uint8_t ontim_factory_buffer = 0;
+
+    ontim_factory_buffer = read_data_of_factory(3022);
+    if (ontim_factory_buffer == 1) {
+        InitPropertySet("ro.vendor.ontim_factory", "1");
+    }
+
+    ontim_factory_buffer = read_data_of_factory(210);
+    if (ontim_factory_buffer == 1) {
+        InitPropertySet("ro.setupwizard.skip", "1");
+    } else {
+        InitPropertySet("ro.setupwizard.skip", "0");
+    }
+}
+
+uint8_t read_data_of_factory(int position){
+    uint8_t ontim_factory_buffer = 0;
+
+    int fd = open("/dev/block/platform/bootdevice/by-name/proinfo", O_RDONLY | O_CLOEXEC);
+    if (fd == -1) {
+        LOG(ERROR) << "proinfo fd open fail!";
+        return 2;
+    } else {
+        lseek(fd, position, SEEK_SET);
+        read(fd, &ontim_factory_buffer, 1);
+    }
+    close(fd);
+    return ontim_factory_buffer;
+}
+
+bool isSmtVersion() {
+    std::string smt = android::base::GetProperty("ro.odm.build.smt.ver", "");
+    return smt == "1"? true:false;
+}
+
+
+static bool is_cache_file_exists() {
+    int fd = open("/data/adb_enable", O_RDONLY);
+    if (fd < 0) {
+        return false;
+    } else {
+        close(fd);
+        return true;
+    }
+}
+
+void update_usb_config_factory() {
+    std::string buildtype = android::base::GetProperty("ro.build.type", "");
+
+    if (buildtype == "user"){
+        bool exist = is_cache_file_exists();
+        if(exist){
+            InitPropertySet("persist.sys.usb.fc.reseted", "1");
+            InitPropertySet("persist.sys.usb.config", "adb");
+        } else {
+            std::string reseted = android::base::GetProperty("persist.sys.usb.fc.reseted", "");
+            if (reseted != "2") {
+                InitPropertySet("persist.sys.usb.fc.reseted", "2");
+                InitPropertySet("persist.sys.usb.config", "none");
+            }
+        }
+    }
+}
+
+//APP_SMT_END
+
 bool LoadPropertyInfoFromFile(const std::string& filename,
                               std::vector<PropertyInfoEntry>* property_infos) {
     auto file_contents = std::string();

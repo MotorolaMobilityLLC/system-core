@@ -34,7 +34,11 @@ void set_properties_from_hwinfo();
 void PropertyInit();
 extern uint32_t InitPropertySet(const std::string& name, const std::string& value);
 void StartPropertyService(int* epoll_socket);
-
+//APP_SMT
+void set_properties_from_proinfo();
+void update_usb_config_factory();
+uint8_t read_data_of_factory(int position);
+//APP_SMT_END
 void StartSendingMessages();
 void StopSendingMessages();
 
