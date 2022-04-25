@@ -687,7 +687,8 @@ static void DoReboot(unsigned int cmd, const std::string& reason, const std::str
     // alias reported in bootloader or system boot reason.
     size_t skip = 0;
     std::vector<std::string> reasons = Split(reason, ",");
-    if (reasons.size() >= 2 && reasons[0] == "shutdown" && reason.find("charging") != std::string::npos) {
+    if (reasons.size() > 2 && reasons[0] == "shutdown" && (reasons[1] == "userrequested" ||
+        reasons[1] == "timer") &&  reason.find("charging") != std::string::npos) {
         LOG(INFO) << "Shutdown reasons : " << reason.c_str();
         PersistShutdownCharging(true);
     }
