@@ -169,6 +169,35 @@ static void get_borag_product_value() {
     return;
 }
 
+static void get_bora2g_product_value() {
+    std::string  carrier_brand = android::base::GetProperty(prop_carrier_brand, "");
+    std::string  carrier_ontim = android::base::GetProperty(prop_carrier_ontim, "");
+    if (prop_product_value == "borago_retail") {
+        std::string band_id_path = "/sys/hwinfo/band_id";
+        int len = strlen("band_id=");
+        std::string hw_sku;
+        if (ReadFileToString(band_id_path, &hw_sku)){
+            int totallen = android::base::Trim(hw_sku).length();
+            if(totallen == 17){
+                hw_sku = hw_sku.substr(len,9);
+            } else {
+                hw_sku = hw_sku.substr(len,8);
+            }
+        }
+        if (hw_sku == "XT2239-18"){
+            if (carrier_ontim == "teleu_eu"){
+                prop_product_value = "borago_retail";
+            } else {
+                prop_product_value = "borago_retaile";
+            }
+        } else {
+            prop_product_value = "borago_retail";
+        }
+    }
+
+    return;
+}
+
 void set_product_properties() {
     prop_product_value = android::base::GetProperty(prop_product, "");
     // Set other property for borag
@@ -178,7 +207,14 @@ void set_product_properties() {
         set_some_vendor_properties(prop_product_value);
         get_borag_product_value();
         set_product_name(prop_product_value);
+    } else if (prop_product_value == "borago_retail")
+    {
+        set_product_device("borago");
+        set_some_vendor_properties(prop_product_value);
+        get_bora2g_product_value();
+        set_product_name(prop_product_value);
     }
+
 }
 
 void set_properties_by_carrier() {
