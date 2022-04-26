@@ -566,7 +566,7 @@ static void import_late(const std::vector<std::string>& rc_paths) {
     if (false) DumpState();
 }
 
-constexpr static const char* LAST_KMSG_DIR = "/cache/fslog";
+constexpr static const char* LAST_KMSG_DIR = "/blackbox/fslog";
 
 static void rotate_logs(const char* last_kmsg_file) {
     // Logs should only be rotated once.
