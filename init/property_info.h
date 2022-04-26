@@ -30,7 +30,7 @@ void set_other_properties();
 void set_properties_by_carrier();
 
 extern bool change_ro_prop_flag;
-
+bool isUpdatableSystemProperty(std::string key);
 std::string get_version_property();
 std::string get_product_property(std::string prop_name,std::string value);
 void set_some_vendor_properties(std::string prop_product_value);

@@ -292,6 +292,11 @@ void setElabelProperty() {
     InitPropertySet("ro.vendor.elabel.version", fileContent_elabel);
 }
 
+bool isUpdatableSystemProperty(std::string key) {
+    if (key == prop_amazon_partnerid) return true;
+    return false;
+}
+
 }  // namespace init
 } // namespace android
 
