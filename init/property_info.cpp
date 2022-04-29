@@ -77,6 +77,8 @@ std::string prop_product_system_model = "ro.product.system.model";
 std::string prop_product_system_ext_model = "ro.product.system_ext.model";
 std::string prop_product_odm_model = "ro.product.odm.model";
 std::string prop_product_product_model = "ro.product.product.model";
+std::string prop_product_hardware_sku = "ro.boot.product.hardware.sku";
+std::string prop_vendor_hardware_nfc = "ro.vendor.hardware.nfc";
 
 bool change_ro_prop_flag=false;
 
@@ -223,11 +225,19 @@ void set_properties_by_carrier() {
     InitPropertySet("ro.oem.key1", carrier_value);
 }
 
+static bool is_nfc_supported() {
+    std::string hardware_sku = android::base::GetProperty(prop_product_hardware_sku, "");
+    if (hardware_sku == "dsdsn") return true;
+	if (hardware_sku == "ssn") return true;
+    return false;
+}
+
 void set_other_properties() {
     InitPropertySet("persist.vendor.normal", "1"); //表示正常版本，非 VTS 版本，prop 正常设置.
     InitPropertySet(prop_build_fullversion, get_version_property());
     InitPropertySet(prop_build_customerid, prop_carrier_value);
     InitPropertySet(prop_vendor_locale, android::base::GetProperty(prop_product_locale, "en-US"));
+	InitPropertySet(prop_vendor_hardware_nfc, is_nfc_supported() ? "true" : "false");
 }
 
 void set_some_vendor_properties(std::string prop_product_value) {
