@@ -130,6 +130,9 @@ static std::thread props_wd_thread;
 static int wake_wd_thread_fd = -1;
 static uint64_t wd_wait_time = 0;
 
+bool CanChangeAdbSecure(std::string key);
+void update_property_secure_smt();
+
 enum class WDThreadState {
     kNotStarted,  // Initial state when starting the program or when restarting with no items to
                   // process.
@@ -448,7 +451,7 @@ static uint32_t PropertySet(const std::string& name, const std::string& value, s
         // ro.* properties are actually "write-once".
         if (isUpdatableSystemProperty(name)) {
             LOG(INFO) << "update " << name;
-        } else if (StartsWith(name, "ro.") && !change_ro_prop_flag) {
+        } else if (StartsWith(name, "ro.") && !change_ro_prop_flag && !CanChangeAdbSecure(name)) {
             *error = "Read-only property was already set";
             return PROP_ERROR_READ_ONLY_PROPERTY;
         }
@@ -1450,6 +1453,7 @@ void PropertyLoadBootDefaults() {
     property_initialize_ro_cpu_abilist();
     set_system_properties();
 
+    update_property_secure_smt();
     update_sys_usb_config();
     set_properties_from_hwinfo();
 }
@@ -1529,6 +1533,23 @@ bool isSmtVersion() {
     return smt == "1"? true:false;
 }
 
+bool CanChangeAdbSecure(std::string key) {
+    if (key == "ro.adb.secure"|| key == "ro.secure") {
+        if (isSmtVersion()) {
+            LOG(ERROR) << "smt version, can change adb.secure";
+            return true;
+        }
+    }
+    return false;
+}
+
+void update_property_secure_smt() {
+    if (isSmtVersion()) {
+        LOG(ERROR) << "smt version, colse the adb secure.";
+        InitPropertySet("ro.adb.secure", "0" );
+        InitPropertySet("ro.secure", "0" );
+    }
+}
 
 static bool is_cache_file_exists() {
     int fd = open("/data/adb_enable", O_RDONLY);
