@@ -121,6 +121,10 @@ static std::thread property_service_thread;
 
 static PropertyInfoAreaFile property_info_area;
 
+//APP_SMT
+static bool smt_change_ro = false;
+//APP_SMT_END
+
 #if defined(MTK_LOG) && defined(MTK_PROP_WDOG)
 static std::mutex pending_wd_messages_lock;
 static std::queue<std::string> pending_wd_messages;
@@ -416,6 +420,31 @@ bool checkRootPackageFromCmdline() {
 }
 //END
 
+static bool isSmtVersion() {
+    std::string smt = android::base::GetProperty("ro.odm.build.smt.ver", "");
+    return smt == "1"? true:false;
+}
+
+static bool CanChangeAdbSecure(std::string key) {
+    if (smt_change_ro == false) {
+        return false;
+    }
+    if (key == "ro.adb.secure"|| key == "ro.secure") {
+        return true;
+    }
+    return false;
+}
+
+static void update_property_secure_smt() {
+    if (isSmtVersion()) {
+        LOG(ERROR) << "smt version, colse the adb secure.";
+        smt_change_ro = true;
+        InitPropertySet("ro.adb.secure", "0" );
+        InitPropertySet("ro.secure", "0" );
+        smt_change_ro = false;
+    }
+}
+
 static uint32_t PropertySet(const std::string& name, const std::string& value, std::string* error) {
     size_t valuelen = value.size();
 
@@ -448,7 +477,7 @@ static uint32_t PropertySet(const std::string& name, const std::string& value, s
         // ro.* properties are actually "write-once".
         if (isUpdatableSystemProperty(name)) {
             LOG(INFO) << "update " << name;
-        } else if (StartsWith(name, "ro.") && !change_ro_prop_flag) {
+        } else if (StartsWith(name, "ro.") && !change_ro_prop_flag && !CanChangeAdbSecure(name)) {
             *error = "Read-only property was already set";
             return PROP_ERROR_READ_ONLY_PROPERTY;
         }
@@ -1450,6 +1479,7 @@ void PropertyLoadBootDefaults() {
     property_initialize_ro_cpu_abilist();
     set_system_properties();
 
+    update_property_secure_smt();
     update_sys_usb_config();
     set_properties_from_hwinfo();
 }
@@ -1523,12 +1553,6 @@ uint8_t read_data_of_factory(int position){
     close(fd);
     return ontim_factory_buffer;
 }
-
-bool isSmtVersion() {
-    std::string smt = android::base::GetProperty("ro.odm.build.smt.ver", "");
-    return smt == "1"? true:false;
-}
-
 
 static bool is_cache_file_exists() {
     int fd = open("/data/adb_enable", O_RDONLY);
