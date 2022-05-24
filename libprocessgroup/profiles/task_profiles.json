@@ -242,19 +242,6 @@
       ]
     },
     {
-      "Name": "VMCompilationPerformance",
-      "Actions": [
-        {
-          "Name": "JoinCgroup",
-          "Params":
-          {
-            "Controller": "cpu",
-            "Path": "system"
-          }
-        }
-      ]
-    },
-    {
       "Name": "CpuPolicySpread",
       "Actions": [
         {
@@ -716,6 +703,10 @@
     {
       "Name": "SCHED_SP_SYSTEM",
       "Profiles": [ "ServicePerformance", "LowIoPriority", "TimerSlackNormal" ]
+    },
+    {
+      "Name": "VMCompilationPerformance",
+      "Profiles": [ "HighPerformance", "ProcessCapacityHigh", "LowIoPriority", "TimerSlackNormal" ]
     },
     {
       "Name": "SCHED_SP_RT_APP",
