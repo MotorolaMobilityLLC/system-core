@@ -92,6 +92,8 @@ void set_system_properties(){
     set_fingerprint_property();
     set_clientid_property();
     set_other_properties();
+    set_amazon_partnerid();
+    set_product_locale();
 
     change_ro_prop_flag=false;
 }
@@ -238,6 +240,27 @@ void set_other_properties() {
     InitPropertySet(prop_build_customerid, prop_carrier_value);
     InitPropertySet(prop_vendor_locale, android::base::GetProperty(prop_product_locale, "en-US"));
 	InitPropertySet(prop_vendor_hardware_nfc, is_nfc_supported() ? "true" : "false");
+}
+
+void set_amazon_partnerid(){
+    std::string  carrier_ontim = android::base::GetProperty(prop_carrier_ontim, "");
+    std::string  carrier_value = carrier_ontim.substr(0, carrier_ontim.find("_"));
+    if (carrier_ontim == "timit_timit") {
+        InitPropertySet(prop_amazon_partnerid, carrier_value);
+    } else if (carrier_ontim == "windit_windds") {
+        InitPropertySet(prop_amazon_partnerid, "3it");
+    } else if (carrier_ontim == "attmx_attmx") {
+        InitPropertySet(prop_amazon_partnerid,carrier_value);
+    } else if (carrier_ontim == "vfau_vfau") {
+        InitPropertySet(prop_amazon_partnerid,"vfau");
+    }
+}
+
+void set_product_locale(){
+    std::string  carrier_ontim = android::base::GetProperty(prop_carrier_ontim, "");
+    if (carrier_ontim == "retru_retru") {
+        InitPropertySet(prop_product_locale,"ru-RU");
+    }
 }
 
 void set_some_vendor_properties(std::string prop_product_value) {

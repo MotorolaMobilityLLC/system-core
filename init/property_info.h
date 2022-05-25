@@ -28,6 +28,8 @@ void set_carrier_brand_property();
 void set_product_properties();
 void set_other_properties();
 void set_properties_by_carrier();
+void set_amazon_partnerid();
+void set_product_locale();
 
 extern bool change_ro_prop_flag;
 bool isUpdatableSystemProperty(std::string key);
