@@ -134,6 +134,16 @@ void set_carrier_brand_property() {
     {
         InitPropertySet(prop_vendor_carrier, carrier_value);
     }
+
+    //Fully disable DuraSpeed service for all carriers in LATAM/Europe/Brazil, and only enable it for APEM.
+    if(carrier_value == "retapac" || carrier_value == "vfau" || carrier_value == "optus")
+    {
+        InitPropertySet("persist.vendor.duraspeed.app.on","1");
+        InitPropertySet("persist.vendor.duraspeed.support","1");
+    } else {
+        InitPropertySet("persist.vendor.duraspeed.app.on","0");
+        InitPropertySet("persist.vendor.duraspeed.support","0");
+    }
 }
 
 static void get_borag_product_value() {
