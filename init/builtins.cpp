@@ -388,6 +388,43 @@ static Result<void> do_interface_stop(const BuiltinArguments& args) {
     return {};
 }
 
+static Result<void> is_dir_empty(const std::string& dirname, bool *is_empty)
+{
+    auto dirp = std::unique_ptr<DIR, int (*)(DIR*)>(opendir(dirname.c_str()), closedir);
+    if (!dirp) {
+        return Error() << "Unable to read directory: " << dirname;
+    }
+    struct stat st;
+    for (;;) {
+        errno = 0;
+        auto entry = readdir(dirp.get());
+        if (!entry) {
+            if (errno) {
+                return Error() << "Unable to read directory: " << dirname;
+            }
+            break;
+        }
+        if ((strcmp(entry->d_name, "lost+found") != 0)
+            && (strcmp(entry->d_name, ".") != 0)
+            && (strcmp(entry->d_name, "..") != 0)){
+            LOG(ERROR) << dirname << " contains the file " << entry->d_name;
+            *is_empty = false;
+            std::ostringstream absoluteName;
+            absoluteName << dirname << "/" << entry->d_name;
+            int ret = stat(absoluteName.str().c_str(),&st);
+            if (ret ==-1) {
+                LOG(ERROR) << "get file: "  << absoluteName.str() << " properties failed";
+            } else {
+                struct tm* lastModifyTime = localtime(&(st.st_atime));
+                char timeBuffer[64] = {0};
+                strftime(timeBuffer,64,"%Y-%m-%d %H:%M:%S \n",lastModifyTime);
+                LOG(ERROR) << "file "  << absoluteName.str() << ",last modification time: " <<timeBuffer;
+            }
+        }
+    }
+    return {};
+}
+
 static Result<void> make_dir_with_options(const MkdirOptions& options) {
     std::string ref_basename;
     if (options.ref_option == "ref") {
@@ -429,8 +466,17 @@ static Result<void> make_dir_with_options(const MkdirOptions& options) {
     }
     if (fscrypt_is_native()) {
         if (!FscryptSetDirectoryPolicy(ref_basename, options.fscrypt_action, options.target)) {
-            return reboot_into_recovery(
-                    {"--prompt_and_wipe_data", "--reason=set_policy_failed:"s + options.target});
+            bool is_empty = true;
+            is_dir_empty(options.target, &is_empty);
+            if(is_empty) {
+                return reboot_into_recovery(
+                    {"--prompt_and_wipe_data", "--reason=set_policy_failed:"s
+                    + options.target + " empty. " + GetFscryptErrorLog()});
+            } else {
+                return reboot_into_recovery(
+                    {"--prompt_and_wipe_data", "--reason=set_policy_failed:"s
+                    + options.target + " not empty. " + GetFscryptErrorLog()});
+            }
         }
     }
     return {};

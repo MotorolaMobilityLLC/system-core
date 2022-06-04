@@ -41,6 +41,11 @@
 
 using namespace android::fscrypt;
 
+std::string fscrypt_error_log;
+
+std::string GetFscryptErrorLog(){
+    return fscrypt_error_log;
+}
 bool FscryptInstallKeyring() {
     if (keyctl_search(KEY_SPEC_SESSION_KEYRING, "keyring", "fscrypt", 0) != -1) {
         LOG(INFO) << "Keyring is already created";
@@ -102,6 +107,7 @@ static void delete_dir_contents(const std::string& dir) {
 static bool LookupPolicy(const std::string& ref_basename, EncryptionPolicy* policy) {
     std::string ref_filename = std::string("/data") + ref_basename;
     if (!android::base::ReadFileToString(ref_filename, &policy->key_raw_ref)) {
+        fscrypt_error_log = "Unable to read system policy with name " + ref_filename;
         LOG(ERROR) << "Unable to read system policy with name " << ref_filename;
         return false;
     }
@@ -109,10 +115,12 @@ static bool LookupPolicy(const std::string& ref_basename, EncryptionPolicy* poli
     auto options_filename = std::string("/data") + fscrypt_key_mode;
     std::string options_string;
     if (!android::base::ReadFileToString(options_filename, &options_string)) {
+        fscrypt_error_log = "Cannot read encryption options string";
         LOG(ERROR) << "Cannot read encryption options string";
         return false;
     }
     if (!ParseOptions(options_string, &policy->options)) {
+        fscrypt_error_log = "Invalid encryption options string: " + options_string;
         LOG(ERROR) << "Invalid encryption options string: " << options_string;
         return false;
     }
@@ -123,6 +131,7 @@ static bool EnsurePolicyOrLog(const EncryptionPolicy& policy, const std::string&
     if (!EnsurePolicy(policy, dir)) {
         std::string ref_hex;
         BytesToHex(policy.key_raw_ref, &ref_hex);
+        fscrypt_error_log = "Setting " + ref_hex + " policy on " + dir + " failed!";
         LOG(ERROR) << "Setting " << ref_hex << " policy on " << dir << " failed!";
         return false;
     }

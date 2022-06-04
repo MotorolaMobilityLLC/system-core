@@ -25,6 +25,8 @@ enum class FscryptAction {
     kDeleteIfNecessary,
 };
 
+std::string GetFscryptErrorLog();
+
 bool FscryptInstallKeyring();
 bool FscryptSetDirectoryPolicy(const std::string& ref_basename, FscryptAction action,
                                const std::string& dir);
