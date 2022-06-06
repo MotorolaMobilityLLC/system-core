@@ -172,6 +172,7 @@ static bool IsRecovery() {
 
 bool DeviceMapper::CreateEmptyDevice(const std::string& name) {
     std::string uuid = GenerateUuid();
+    LOG(DEBUG) << "CreateEmptyDevice:" << name << " ,the uuid:" << uuid;
     return CreateDevice(name, uuid);
 }
 
@@ -219,6 +220,8 @@ bool DeviceMapper::CreateDevice(const std::string& name, const DmTable& table, s
     }
 
     if (!WaitForDevice(name, timeout_ms, path)) {
+        LOG(ERROR) << "failed to wait  device :" << name
+                   << " , path:" << *path << " (timeout:" << timeout_ms.count() << " ms)";
         DeleteDevice(name);
         return false;
     }

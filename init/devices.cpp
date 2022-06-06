@@ -511,6 +511,8 @@ void DeviceHandler::HandleDevice(const std::string& action, const std::string& d
                     PLOG(ERROR) << "Failed to symlink " << devpath << " to " << link
                                 << ", which already links to: " << link_path;
                 }
+            } else {
+                LOG(DEBUG) << "Created symlink " << devpath << " to " << link;
             }
         }
     }
