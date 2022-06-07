@@ -251,6 +251,7 @@ static BatteryMonitor::PowerSupplyType readPowerSupplyType(const String8& path) 
             {"USB_PD_DRP", BatteryMonitor::ANDROID_POWER_SUPPLY_TYPE_USB},
             {"Wireless", BatteryMonitor::ANDROID_POWER_SUPPLY_TYPE_WIRELESS},
             {"Dock", BatteryMonitor::ANDROID_POWER_SUPPLY_TYPE_DOCK},
+            { "BMS", BatteryMonitor::ANDROID_POWER_SUPPLY_TYPE_BMS }, //Motorola, drmn68, 05/16/2017, IKSWN-51081
             {NULL, 0},
     };
     std::string buf;
@@ -441,7 +442,7 @@ static void doLogValues(const HealthInfo& props, const struct healthd_config& he
     } else {
         len = snprintf(dmesgline, sizeof(dmesgline), "battery none");
     }
-
+    len = strlen(dmesgline);
     snprintf(dmesgline + len, sizeof(dmesgline) - len, " chg=%s%s%s%s",
              props.chargerAcOnline ? "a" : "", props.chargerUsbOnline ? "u" : "",
              props.chargerWirelessOnline ? "w" : "", props.chargerDockOnline ? "d" : "");
@@ -759,6 +760,34 @@ void BatteryMonitor::init(struct healthd_config *hc) {
                 }
 
                 break;
+
+            // Begin Motorola, drmn68, 05/16/2017, IKSWN-51081
+            case ANDROID_POWER_SUPPLY_TYPE_BMS:
+                if (mHealthdConfig->batteryFullChargePath.isEmpty()) {
+                    path.clear();
+                    path.appendFormat("%s/%s/charge_full",
+                                      POWER_SUPPLY_SYSFS_PATH, name);
+                    if (access(path, R_OK) == 0) {
+                        mHealthdConfig->batteryFullChargePath = path;
+                    }
+                }
+                // Begin Motorola, kalathik, 29/09/2020, IKSWR-5849
+                if (mHealthdConfig->batteryChargeTimeToFullNowPath.isEmpty()) {
+                    path.clear();
+                    path.appendFormat("%s/%s/time_to_full_now", POWER_SUPPLY_SYSFS_PATH, name);
+                    if (access(path, R_OK) == 0)
+                        mHealthdConfig->batteryChargeTimeToFullNowPath = path;
+                }
+
+                if (mHealthdConfig->batteryFullChargeDesignCapacityUahPath.isEmpty()) {
+                    path.clear();
+                    path.appendFormat("%s/%s/charge_full_design", POWER_SUPPLY_SYSFS_PATH, name);
+                    if (access(path, R_OK) == 0)
+                        mHealthdConfig->batteryFullChargeDesignCapacityUahPath = path;
+                }
+                // End IKSWR-5849
+                break;
+            // End IKSWN-51081
 
             case ANDROID_POWER_SUPPLY_TYPE_UNKNOWN:
                 break;
