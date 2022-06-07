@@ -30,6 +30,7 @@
 #include <android-base/unique_fd.h>
 #include <async_safe/log.h>
 #include <bionic/macros.h>
+#include <sys/system_properties.h>
 
 #include "tombstone.pb.h"
 
@@ -78,6 +79,17 @@ static void print_thread_header(CallbackType callback, const Tombstone& tombston
     process_name = tombstone.command_line()[0].c_str();
     CB(should_log, "Cmdline: %s", android::base::Join(tombstone.command_line(), " ").c_str());
   }
+  // BEGIN Motorola, guowq2, 2022-06-07, IKSWS-119190
+  char dumpstate_info[PROP_VALUE_MAX];
+  if (__system_property_get("dumpstate.ongoing", dumpstate_info) > 0
+      && strcmp(dumpstate_info, "0")) {
+    if (strcmp(dumpstate_info, "1")) {
+      CB(should_log, "Device is dumpstate-ing: %s", dumpstate_info);
+    } else {
+      CB(should_log, "Device is dumpstate-ing.");
+    }
+  }
+  // END IKSWS-119190
   CB(should_log, "pid: %d, tid: %d, name: %s  >>> %s <<<", tombstone.pid(), thread.id(),
      thread.name().c_str(), process_name);
   CB(should_log, "uid: %d", tombstone.uid());
