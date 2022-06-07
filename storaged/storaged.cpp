@@ -129,9 +129,16 @@ void storaged_t::init() {
 }
 
 static void onHealthBinderDied(void*) {
-    LOG(ERROR) << "health service died, exiting";
-    android::hardware::IPCThreadState::self()->stopProcess();
-    exit(1);
+    char property[256] = {0};
+    property_get("sys.powerctl", property,"");
+
+    if (strlen(property) != 0 ) {
+        LOG(ERROR) << "sys.powerctl = "<<property;
+    } else {
+        LOG(ERROR) << "health service died, exiting";
+        android::hardware::IPCThreadState::self()->stopProcess();
+        exit(1);
+    }
 }
 
 void storaged_t::init_health_service() {
