@@ -204,6 +204,8 @@ static void get_bora2g_product_value() {
             } else {
                 prop_product_value = "borago_retaile";
             }
+        } else if (hw_sku == "XT2239-16"){
+            prop_product_value = "borago_retailbr";
         } else {
             prop_product_value = "borago_retail";
         }
