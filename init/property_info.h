@@ -27,6 +27,7 @@ bool isProductNameCyprus64Retru(std::string carrier_ontim);
 std::string get_fingerprint_property_cyprus(std::string value);
 std::string get_product_property(std::string prop_name,std::string value);
 std::string get_version_property();
+std::string get_base_os_property(std::string value);
 void set_system_properties();
 bool changeSystemProperty(std::string key);
 void set_product_name(std::string product_name);
