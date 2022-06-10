@@ -506,7 +506,7 @@ on early-fs
     # Once metadata has been mounted, we'll need vold to deal with userdata checkpointing
     start vold
 
-on early-init
+on post-fs && property:ro.vendor.build.motfactory=1
     exec_start ufs_ffu
 
 on post-fs
