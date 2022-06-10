@@ -14,3 +14,5 @@ on early-init && property:ro.product.debugfs_restrictions.enabled=true
 on property:sys.boot_completed=1 && property:ro.product.debugfs_restrictions.enabled=true && \
    property:persist.dbg.keep_debugfs_mounted=""
    umount /sys/kernel/debug
+   chmod 0755 /sys/kernel/tracing/trace_marker
+   chmod 0755 /sys/kernel/debug/tracing/trace_marker
