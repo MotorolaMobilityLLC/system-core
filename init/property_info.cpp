@@ -333,8 +333,8 @@ void setElabelProperty() {
     std::stringstream fileStream_elabel;
     fileStream_elabel << stream_elabel.rdbuf();
     std::string fileContent_elabel = fileStream_elabel.str().substr(0,3);
-    InitPropertySet("ro.elabel.ontim.version", fileContent_elabel);
-    InitPropertySet("ro.vendor.elabel.version", fileContent_elabel);
+    android::base::SetProperty("ro.elabel.ontim.version", fileContent_elabel);
+    android::base::SetProperty("ro.vendor.elabel.version", fileContent_elabel);
 }
 
 bool isUpdatableSystemProperty(std::string key) {
