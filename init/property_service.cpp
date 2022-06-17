@@ -1528,14 +1528,14 @@ void set_properties_from_proinfo() {
 
     ontim_factory_buffer = read_data_of_factory(3022);
     if (ontim_factory_buffer == 1) {
-        InitPropertySet("ro.vendor.ontim_factory", "1");
+        android::base::SetProperty("ro.vendor.ontim_factory", "1");
     }
 
     ontim_factory_buffer = read_data_of_factory(210);
     if (ontim_factory_buffer == 1) {
-        InitPropertySet("ro.setupwizard.skip", "1");
+        android::base::SetProperty("ro.setupwizard.skip", "1");
     } else {
-        InitPropertySet("ro.setupwizard.skip", "0");
+        android::base::SetProperty("ro.setupwizard.skip", "0");
     }
 }
 
@@ -1570,13 +1570,13 @@ void update_usb_config_factory() {
     if (buildtype == "user"){
         bool exist = is_cache_file_exists();
         if(exist){
-            InitPropertySet("persist.sys.usb.fc.reseted", "1");
-            InitPropertySet("persist.sys.usb.config", "adb");
+            android::base::SetProperty("persist.sys.usb.fc.reseted", "1");
+            android::base::SetProperty("persist.sys.usb.config", "adb");
         } else {
             std::string reseted = android::base::GetProperty("persist.sys.usb.fc.reseted", "");
             if (reseted != "2") {
-                InitPropertySet("persist.sys.usb.fc.reseted", "2");
-                InitPropertySet("persist.sys.usb.config", "none");
+                android::base::SetProperty("persist.sys.usb.fc.reseted", "2");
+                android::base::SetProperty("persist.sys.usb.config", "none");
             }
         }
     }
