@@ -697,6 +697,8 @@ bool SnapshotManager::UnmapCowImage(const std::string& name) {
 bool SnapshotManager::DeleteSnapshot(LockedFile* lock, const std::string& name) {
     CHECK(lock);
     CHECK(lock->lock_mode() == LOCK_EX);
+    is_snapshot_userspace_.reset();
+
     if (!EnsureImageManager()) return false;
 
     if (!UnmapCowDevices(lock, name)) {
@@ -3013,6 +3015,7 @@ bool SnapshotManager::WriteSnapshotStatus(LockedFile* lock, const SnapshotStatus
     CHECK(!status.name().empty());
 
     auto path = GetSnapshotStatusFilePath(status.name());
+    is_snapshot_userspace_.reset();
 
     std::string content;
     if (!status.SerializeToString(&content)) {
