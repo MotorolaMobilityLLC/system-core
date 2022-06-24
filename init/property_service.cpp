@@ -1525,7 +1525,7 @@ void set_properties_from_hwinfo() {
 //APP_SMT
 void set_properties_from_proinfo() {
     uint8_t ontim_factory_buffer = 0;
-
+    android::base::SetProperty("persist.fingerprint.location", "RIGHT");
     ontim_factory_buffer = read_data_of_factory(3022);
     if (ontim_factory_buffer == 1) {
         android::base::SetProperty("ro.vendor.ontim_factory", "1");
