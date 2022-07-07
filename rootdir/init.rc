@@ -91,9 +91,9 @@ on early-init
     mkdir /dev/sys/block 0755 system system
 
 # Run boringssl self test for each ABI so that later processes can skip it. http://b/139348610
-on early-init && property:ro.product.cpu.abilist32=*
+on init && property:ro.product.cpu.abilist32=*
     exec_start boringssl_self_test32
-on early-init && property:ro.product.cpu.abilist64=*
+on init && property:ro.product.cpu.abilist64=*
     exec_start boringssl_self_test64
 on property:apexd.status=ready && property:ro.product.cpu.abilist32=*
     exec_start boringssl_self_test_apex32
