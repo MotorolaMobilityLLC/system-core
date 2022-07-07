@@ -314,8 +314,11 @@ static bool FindPartitionsToUmount(std::vector<MountEntry>* block_dev_partitions
             std::string mount_dir(mentry->mnt_dir);
             // These are R/O partitions changed to R/W after adb remount.
             // Do not umount them as shutdown critical services may rely on them.
+            // WORKROUND: "data/user/0" will be umounted twice during shutdown, which
+            // will cause stability problems, so we skip it here until google releases
+            // the official patch.
             if (mount_dir != "/" && mount_dir != "/system" && mount_dir != "/vendor" &&
-                mount_dir != "/oem") {
+                mount_dir != "/oem" && mount_dir != "/data/user/0") {
                 block_dev_partitions->emplace(block_dev_partitions->begin(), *mentry);
             }
         } else if (MountEntry::IsEmulatedDevice(*mentry)) {
