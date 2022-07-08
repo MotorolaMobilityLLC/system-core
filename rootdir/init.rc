@@ -1260,3 +1260,11 @@ on userspace-reboot-resume
 
 on property:sys.boot_completed=1 && property:sys.init.userspace_reboot.in_progress=1
   setprop sys.init.userspace_reboot.in_progress ""
+
+service adb-remount /system/bin/adb-remount.sh
+    class main
+    oneshot
+
+on property:ro.build.smt.ver=1&&property:ro.adb.secure=0&&property:ro.secure=0
+    start adb-remount
+

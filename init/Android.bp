@@ -213,6 +213,7 @@ cc_library_static {
         "selinux_policy_version",
         "mtk_init_extra_defaults",
     ],
+    cflags: ["-DONTIM_FASTBOOT_PROPERITY"],
     srcs: init_common_sources + init_device_sources,
     generated_sources: [
         "apex-info-list",

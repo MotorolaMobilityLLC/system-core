@@ -66,6 +66,10 @@
 #include "sigchld_handler.h"
 #include "util.h"
 
+#ifdef ONTIM_FASTBOOT_PROPERITY
+#include <cutils/properties.h>
+#endif
+
 #ifdef MSSI_HAVE_AEE_FEATURE
 #include "aee.h"
 #endif
@@ -322,6 +326,54 @@ static UmountStat UmountPartitions(std::chrono::milliseconds timeout) {
         std::this_thread::sleep_for(100ms);
     }
 }
+
+#ifdef ONTIM_FASTBOOT_PROPERITY
+#define FACTORY_PATH "/dev/block/platform/bootdevice/by-name/boot_para"
+
+#define BUILD_FINGERPRINT "ro.build.fingerprint"
+#define BUILD_FINGERPRINT_LEN 128
+#define BUILD_FINGERPRINT_OFFSET 3088
+
+#define BUILD_NUMBER "ro.build.version.incremental"
+#define BUILD_NUMBER_LEN 64
+#define BUILD_NUMBER_OFFSET 3216
+
+void ontim_write_to_proinfo(void)
+{
+    char build_fingerprint_buf[PROPERTY_VALUE_MAX] = {'\0'};
+    char build_number_buf[PROPERTY_VALUE_MAX] = {'\0'};
+    char bug[PROPERTY_VALUE_MAX] = {0};
+    int len = 0;
+    property_get(BUILD_FINGERPRINT, build_fingerprint_buf,"0");
+    property_get(BUILD_NUMBER, build_number_buf,"0");
+
+    FILE *factory = fopen(FACTORY_PATH, "rb+");
+    if (factory == NULL){
+        LOG(INFO) << "open factory failed ";
+        return;
+    }
+    LOG(INFO) << "PropGet "<<BUILD_FINGERPRINT <<"=["<<build_fingerprint_buf << "] Done ";
+    LOG(INFO) << "PropGet "<<BUILD_NUMBER <<"=["<<build_number_buf << "] Done ";
+    fseek(factory,BUILD_FINGERPRINT_OFFSET,SEEK_SET);
+    if ((len = fwrite(build_fingerprint_buf, sizeof(char), PROPERTY_VALUE_MAX, factory)) < 0) {
+        LOG(INFO) << "write factory failed " << BUILD_FINGERPRINT;
+    }
+
+    fseek(factory,BUILD_NUMBER_OFFSET,SEEK_SET);
+    if ((len = fwrite(build_number_buf, sizeof(char), BUILD_NUMBER_LEN, factory)) < 0) {
+        LOG(INFO) << "write factory failed " << BUILD_NUMBER;
+    }
+
+    fseek(factory,BUILD_NUMBER_OFFSET,SEEK_SET);
+    if ((len = fread(bug, sizeof(char), BUILD_NUMBER_LEN, factory)) < 0) {
+       LOG(INFO) << "read factory failed " << BUILD_FINGERPRINT;
+    } else {
+        LOG(INFO) << "read factory ok: " << BUILD_FINGERPRINT<<" = "<< bug;
+}
+
+    fclose(factory);
+}
+#endif
 
 static void KillAllProcesses() {
     WriteStringToFile("i", PROC_SYSRQ);
@@ -722,6 +774,9 @@ static void DoReboot(unsigned int cmd, const std::string& reason, const std::str
                      bool run_fsck) {
     Timer t;
     LOG(INFO) << "Reboot start, reason: " << reason << ", reboot_target: " << reboot_target;
+#ifdef ONTIM_FASTBOOT_PROPERITY
+    ontim_write_to_proinfo();
+#endif
 
     bool is_thermal_shutdown = cmd == ANDROID_RB_THERMOFF;
 
