@@ -27,6 +27,7 @@ bool isProductNameHawaiiReteu(std::string carrier_ontim);
 bool isProductNameHawaiiRetru(std::string carrier_ontim);
 extern bool change_ro_prop_flag;
 bool isUpdatableSystemProperty(std::string key);
+std::string get_base_os_property(std::string value);
 std::string get_fingerprint_property_hawaii(std::string value);
 std::string get_version_property();
 std::string get_product_property(std::string prop_name,std::string value);

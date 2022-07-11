@@ -111,6 +111,7 @@ std::string prop_product_system_model = "ro.product.system.model";
 std::string prop_product_system_ext_model = "ro.product.system_ext.model";
 std::string prop_product_odm_model = "ro.product.odm.model";
 std::string prop_product_product_model = "ro.product.product.model";
+std::string prop_build_base_os = "ro.build.version.base_os";
 
 bool change_ro_prop_flag=false;
 
@@ -165,8 +166,10 @@ void set_system_properties(){
         if(carrier_brand == "lnv") {
             if (isProductNameHawaiiRetru(carrier_ontim)) {
                 prop_product_value = "hawaii_retru_lnv";
+                InitPropertySet(prop_build_base_os, get_base_os_property(prop_product_value));
             } else {
                 prop_product_value = "hawaii_lnv";
+                InitPropertySet(prop_build_base_os, get_base_os_property(prop_product_value));
             }
             InitPropertySet(prop_msclient, prop_clientrvo3_value);
             InitPropertySet(prop_vsclient, prop_clientrvo3_value);
@@ -188,6 +191,7 @@ void set_system_properties(){
 
         if (isProductNameHawaiiReteu(carrier_ontim)) {
             prop_product_value = "hawaii_reteu";
+            InitPropertySet(prop_build_base_os, get_base_os_property(prop_product_value));
             if (carrier_ontim == "vfeu_vfeu") {
                 InitPropertySet(prop_amclient, prop_clientvfeuam_value);
                 InitPropertySet(prop_msclient, prop_clientvfeu_value);
@@ -207,6 +211,7 @@ void set_system_properties(){
             }
         } else if (isProductNameHawaiiRetru(carrier_ontim)) {
             prop_product_value = "hawaii_retru";
+            InitPropertySet(prop_build_base_os, get_base_os_property(prop_product_value));
             InitPropertySet(prop_vsclient, prop_clientrvo3_value);
             InitPropertySet(prop_msclient, prop_clientrvo3_value);
         } else {
@@ -353,6 +358,13 @@ std::string get_version_property() {
     std::string  product_value = prop_product_value.append(1,'.');
     value = product_value + prop_carrier_value + "." + locale_value;
     return value;
+}
+
+std::string get_base_os_property(std::string value) {
+    std::string  build_base_os = android::base::GetProperty(prop_build_base_os, "");
+    std::vector<std::string> base_os = android::base::Split(build_base_os, "/");
+    base_os[1] = value;
+    return android::base::Join(base_os, "/");
 }
 
 void setElabelProperty() {
