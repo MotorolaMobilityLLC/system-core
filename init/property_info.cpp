@@ -178,6 +178,9 @@ static void get_borag_product_value() {
         } else {
             prop_product_value = "borag_retail";
         }
+
+        InitPropertySet(prop_product_display, "moto e22");
+
     }
 
     return;
@@ -208,6 +211,13 @@ static void get_bora2g_product_value() {
             prop_product_value = "borago_retailbr";
         } else {
             prop_product_value = "borago_retail";
+        }
+
+        if (hw_sku == "XT2239-16"){
+            InitPropertySet(prop_product_display, "moto e22");
+            set_product_model("moto e22");
+        } else {
+            InitPropertySet(prop_product_display, "moto e22i");
         }
     }
 
