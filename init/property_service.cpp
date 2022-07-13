@@ -1525,6 +1525,10 @@ void set_properties_from_hwinfo() {
 //APP_SMT
 void set_properties_from_proinfo() {
     uint8_t ontim_factory_buffer = 0;
+    std::string bottom_choose = android::base::GetProperty("persist.sys.usb.bottom_choose", "");
+    if (bottom_choose == ""){
+        android::base::SetProperty("persist.sys.usb.bottom_choose", "true");
+    }
     android::base::SetProperty("persist.fingerprint.location", "RIGHT");
     ontim_factory_buffer = read_data_of_factory(3022);
     if (ontim_factory_buffer == 1) {
