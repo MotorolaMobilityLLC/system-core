@@ -182,6 +182,9 @@ void Service::NotifyStateChange(const std::string& new_state) const {
     std::string pid_property = "init.svc_debug_pid." + name_;
     if (new_state == "running") {
         SetProperty(pid_property, std::to_string(pid_));
+        if(name_ == "OntimCameraHalService") {
+            SetProperty("sys.OntimCameraHalService", std::to_string(pid_));
+        }
     } else if (new_state == "stopped") {
         SetProperty(pid_property, "");
     }
