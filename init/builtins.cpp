@@ -467,16 +467,12 @@ static Result<void> make_dir_with_options(const MkdirOptions& options) {
     if (fscrypt_is_native()) {
         if (!FscryptSetDirectoryPolicy(ref_basename, options.fscrypt_action, options.target)) {
             bool is_empty = true;
+            std::ostringstream is_empty_str;
             is_dir_empty(options.target, &is_empty);
-            if(is_empty) {
-                return reboot_into_recovery(
-                    {"--prompt_and_wipe_data", "--reason=set_policy_failed:"s
-                    + options.target + " empty. " + GetFscryptErrorLog()});
-            } else {
-                return reboot_into_recovery(
-                    {"--prompt_and_wipe_data", "--reason=set_policy_failed:"s
-                    + options.target + " not empty. " + GetFscryptErrorLog()});
-            }
+            is_empty_str << is_empty;
+            return reboot_into_recovery(
+                {"--prompt_and_wipe_data", "--reason=set_policy_failed:"s
+                + options.target + " is_empty:" + is_empty_str.str() + ". errlog:" + GetFscryptErrorLog()});
         }
     }
     return {};
