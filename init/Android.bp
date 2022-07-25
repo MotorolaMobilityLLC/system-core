@@ -130,6 +130,7 @@ libinit_cc_defaults {
         "-DMTK_PPS_CUT=1",
         "-DMTK_BORDER_CTL=1",
         "-DMTK_COMMAND_WDOG=1",
+        "-DMTK_SKIP_ZRAM_CLRFD_ERROR=1",
     ],
     product_variables: {
         debuggable: {

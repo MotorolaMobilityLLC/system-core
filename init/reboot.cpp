@@ -651,8 +651,13 @@ static Result<void> KillZramBackingDevice() {
     }
 
     if (ioctl(loop.get(), LOOP_CLR_FD, 0) < 0) {
+#ifdef MTK_SKIP_ZRAM_CLRFD_ERROR
+        LOG(INFO) << "skip " << "zram_backing_dev: loop_clear (" << backing_dev << ")" << " failed";
+        return {};
+#else
         return ErrnoError() << "zram_backing_dev: loop_clear (" << backing_dev << ")"
                             << " failed";
+#endif
     }
     LOG(INFO) << "zram_backing_dev: `" << backing_dev << "` is cleared successfully.";
     return {};
