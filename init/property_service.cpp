@@ -1108,6 +1108,7 @@ void PropertyLoadBootDefaults() {
 
        //start
        //daming.cao,SMR need config ro.build.version.base_os ,is pre MR fingerprint
+       /*
        std::string prop_product_name = properties["ro.product.name"];
 
        std::string base_os_str = "";
@@ -1135,6 +1136,7 @@ void PropertyLoadBootDefaults() {
        properties["ro.build.version.base_os"] = base_os_str;
 
        LOG(INFO) << "moto base_os:PropSet to [" << base_os_str << "]";
+       */
        //end
 
     } else {
