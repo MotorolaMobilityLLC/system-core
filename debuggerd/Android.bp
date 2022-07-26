@@ -86,7 +86,10 @@ cc_library_static {
     defaults: ["debuggerd_defaults"],
     recovery_available: true,
     vendor_ramdisk_available: true,
-    srcs: ["handler/debuggerd_handler.cpp"],
+    srcs: [
+        "handler/debuggerd_handler.cpp",
+        "handler/utils.cpp"
+    ],
 
     header_libs: [
         "libbase_headers",

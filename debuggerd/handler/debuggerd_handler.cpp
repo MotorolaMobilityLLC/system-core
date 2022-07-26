@@ -15,6 +15,7 @@
  */
 
 #include "debuggerd/handler.h"
+#include "debuggerd/utils.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -594,6 +595,13 @@ static void debuggerd_signal_handler(int signal_number, siginfo_t* info, void* c
       }
   }
   // << end
+
+  // UNISOC: bug 1927212
+  int limited = check_corefile_limit();
+  if (limited != 0) {
+      async_safe_format_log(ANDROID_LOG_INFO, "debuggerd", "Storage space is insufficient!!");
+      orig_dumpable = 0;
+  }
 
   // Restore PR_SET_DUMPABLE to its original value.
   if (prctl(PR_SET_DUMPABLE, orig_dumpable) != 0) {
