@@ -35,9 +35,8 @@
 #include "sparse_crc32.h"
 #include "sparse_format.h"
 
-#include <android-base/mapped_file.h>
-
 #ifndef _WIN32
+#include <sys/mman.h>
 #define O_BINARY 0
 #else
 #define ftruncate64 ftruncate
@@ -46,6 +45,7 @@
 #if defined(__APPLE__) && defined(__MACH__)
 #define lseek64 lseek
 #define ftruncate64 ftruncate
+#define mmap64 mmap
 #define off64_t off_t
 #endif
 
@@ -650,10 +650,52 @@ int write_fill_chunk(struct output_file* out, uint64_t len, uint32_t fill_val) {
 }
 
 int write_fd_chunk(struct output_file* out, uint64_t len, int fd, int64_t offset) {
-  auto m = android::base::MappedFile::FromFd(fd, offset, len, PROT_READ);
-  if (!m) return -errno;
+  int ret;
+  int64_t aligned_offset;
+  int aligned_diff;
+  uint64_t buffer_size;
+  char* ptr;
 
-  return out->sparse_ops->write_data_chunk(out, m->size(), m->data());
+  aligned_offset = offset & ~(4096 - 1);
+  aligned_diff = offset - aligned_offset;
+  buffer_size = (uint64_t)len + (uint64_t)aligned_diff;
+
+#ifndef _WIN32
+  if (buffer_size > SIZE_MAX) return -E2BIG;
+  char* data =
+      reinterpret_cast<char*>(mmap64(nullptr, buffer_size, PROT_READ, MAP_SHARED, fd, aligned_offset));
+  if (data == MAP_FAILED) {
+    return -errno;
+  }
+  ptr = data + aligned_diff;
+#else
+  off64_t pos;
+  char* data = reinterpret_cast<char*>(malloc(len));
+  if (!data) {
+    return -errno;
+  }
+  pos = lseek64(fd, offset, SEEK_SET);
+  if (pos < 0) {
+    free(data);
+    return -errno;
+  }
+  ret = read_all(fd, data, len);
+  if (ret < 0) {
+    free(data);
+    return ret;
+  }
+  ptr = data;
+#endif
+
+  ret = out->sparse_ops->write_data_chunk(out, len, ptr);
+
+#ifndef _WIN32
+  munmap(data, buffer_size);
+#else
+  free(data);
+#endif
+
+  return ret;
 }
 
 /* Write a contiguous region of data blocks from a file */
