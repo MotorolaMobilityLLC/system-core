@@ -39,6 +39,10 @@
       {
         "Controller": "freezer",
         "Path": "."
+      },
+      {
+        "Controller": "memory",
+        "Path": "."
       }
     ]
   }
