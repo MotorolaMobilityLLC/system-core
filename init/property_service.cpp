@@ -1202,8 +1202,10 @@ static void property_derive_build_display_id() {
 static void property_derive_build_props() {
     property_derive_build_fingerprint();
     property_derive_build_product();
-    property_derive_build_description();
-    property_derive_build_display_id();
+    //IKSWT-5621 - We already set the build description & the display id upon init
+    //using our own custom rules so disable it here
+    //property_derive_build_description();
+    //property_derive_build_display_id();
 }
 
 // If the ro.product.cpu.abilist* properties have not been explicitly
