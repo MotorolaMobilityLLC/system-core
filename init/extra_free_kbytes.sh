@@ -77,7 +77,20 @@ then
     exit
 fi
 
-watermark_scale=`cat /proc/sys/vm/watermark_scale_factor`
+#MMI_STOPSHIP <memory>: need wait for google fix
+# moto add, yangbq2, need save the initial watermark_scale_factor
+# otherwise, it will increase the watermark to a higher value
+#watermark_scale=`cat /proc/sys/vm/watermark_scale_factor`
+watermark_scale_prop=`getprop ro.config.wsf 0`
+if [ $watermark_scale_prop -eq 0 ]
+then
+    init_watermark_scale=`cat /proc/sys/vm/watermark_scale_factor`
+    setprop ro.config.wsf $init_watermark_scale
+    watermark_scale_prop=$init_watermark_scale
+fi
+
+watermark_scale=$watermark_scale_prop
+# moto end, yangbq2
 
 # convert extra_free_kbytes to pages
 page_size=$(getconf PAGESIZE)
@@ -101,9 +114,6 @@ do
     vm_total_pages=$((vm_total_pages + managed[i]))
     i=$((i+1))
 done
-
-#MMI_STOPSHIP <memory>: need wait for google fix
-exit
 
 # calculate watermark_scale_new for each zone and choose the max
 max_watermark_scale=0
