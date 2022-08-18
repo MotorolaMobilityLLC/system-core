@@ -102,6 +102,9 @@ do
     i=$((i+1))
 done
 
+#MMI_STOPSHIP <memory>: need wait for google fix
+exit
+
 # calculate watermark_scale_new for each zone and choose the max
 max_watermark_scale=0
 i=0
