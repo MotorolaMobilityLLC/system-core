@@ -1526,11 +1526,15 @@ static void ProcessKernelDt() {
 }
 
 constexpr auto ANDROIDBOOT_PREFIX = "androidboot."sv;
+constexpr auto ANDROIDPROP_PREFIX = "androidprop."sv;
 
 static void ProcessKernelCmdline() {
     ImportKernelCmdline([&](const std::string& key, const std::string& value) {
         if (StartsWith(key, ANDROIDBOOT_PREFIX)) {
             InitPropertySet("ro.boot." + key.substr(ANDROIDBOOT_PREFIX.size()), value);
+        }
+        if (StartsWith(key, ANDROIDPROP_PREFIX)) {
+            InitPropertySet(key.substr(ANDROIDPROP_PREFIX.size()), value);
         }
     });
 }
