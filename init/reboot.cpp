@@ -1264,6 +1264,7 @@ void HandlePowerctlMessage(const std::string& command) {
     }
 
     LOG(INFO) << "Clear action queue and start shutdown trigger";
+    SetProperty("log.powerctrl.reboot.command", command);
     ActionManager::GetInstance().ClearQueue();
     // Queue shutdown trigger first
     ActionManager::GetInstance().QueueEventTrigger("shutdown");
