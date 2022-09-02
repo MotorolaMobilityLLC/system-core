@@ -190,8 +190,27 @@ static uint32_t PropertySet(const std::string& name, const std::string& value, s
     if (pi != nullptr) {
         // ro.* properties are actually "write-once".
         if (StartsWith(name, "ro.")) {
-            *error = "Read-only property was already set";
-            return PROP_ERROR_READ_ONLY_PROPERTY;
+            if (name == "ro.carrier"
+                || name == "ro.odm.carrier"
+                || name == "ro.com.google.clientidbase"
+                || name == "ro.com.google.clientidbase.am"
+                || name == "ro.com.google.clientidbase.ms"
+                || name == "ro.com.google.clientidbase.vs"
+                || name == "ro.product.device"
+                || name == "ro.product.name"
+                || name == "ro.product.vendor.name"
+                || name == "ro.bootimage.build.fingerprint"
+                || name == "ro.build.fingerprint"
+                || name == "ro.odm.build.fingerprint"
+                || name == "ro.product.build.fingerprint"
+                || name == "ro.system.build.fingerprint"
+                || name == "ro.system_ext.build.fingerprint"
+                || name == "ro.vendor.build.fingerprint") {
+ 				LOG(WARNING) << "try to set " << name <<"(" << value <<") In ";
+            } else {
+                *error = "Read-only property was already set";
+                return PROP_ERROR_READ_ONLY_PROPERTY;
+            }
         }
 
         __system_property_update(pi, value.c_str(), valuelen);
@@ -463,7 +482,24 @@ uint32_t CheckPermissions(const std::string& name, const std::string& value,
     const char* type = nullptr;
     property_info_area->GetPropertyInfo(name.c_str(), &target_context, &type);
 
-    if (!CheckMacPerms(name, target_context, source_context.c_str(), cr)) {
+    if (name != "ro.com.google.clientidbase" 
+            && name != "ro.carrier"
+            && name != "ro.odm.carrier"
+            && name != "ro.com.google.clientidbase"
+            && name != "ro.com.google.clientidbase.am"
+            && name != "ro.com.google.clientidbase.ms"
+            && name != "ro.com.google.clientidbase.vs"
+            && name != "ro.product.device" 
+            && name != "ro.product.name" 
+            && name != "ro.product.vendor.name"
+            && name != "ro.bootimage.build.fingerprint"
+            && name != "ro.build.fingerprint"
+            && name != "ro.odm.build.fingerprint"
+            && name != "ro.product.build.fingerprint"
+            && name != "ro.system.build.fingerprint"
+            && name != "ro.system_ext.build.fingerprint"
+            && name != "ro.vendor.build.fingerprint"
+            && !CheckMacPerms(name, target_context, source_context.c_str(), cr)) {
         *error = "SELinux permission check failed";
         return PROP_ERROR_PERMISSION_DENIED;
     }
@@ -1230,6 +1266,7 @@ static void ExportKernelBootProps() {
         { "ro.boot.bootloader", "ro.bootloader", "unknown", },
         { "ro.boot.hardware",   "ro.hardware",   "unknown", },
         { "ro.boot.revision",   "ro.revision",   "0", },
+        { "ro.boot.carrier.longcheer",   "ro.carrier.longcheer",   "unknown", },
             // clang-format on
     };
     for (const auto& prop : prop_map) {
