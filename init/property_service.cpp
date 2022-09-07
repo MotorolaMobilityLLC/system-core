@@ -1270,10 +1270,14 @@ static void ExportKernelBootProps() {
         { "ro.boot.hardware",   "ro.hardware",   "unknown", },
         { "ro.boot.revision",   "ro.revision",   "0", },
         { "ro.boot.carrier.longcheer",   "ro.carrier.longcheer",   "unknown", },
+        { "ro.boot.zero_flag", "ro.adb.secure", "1"},
+        { "ro.boot.debug_flag", "ro.debuggable", "0"},
+        { "ro.boot.root_flag", "ro.secure", "1"},
             // clang-format on
     };
     for (const auto& prop : prop_map) {
         std::string value = GetProperty(prop.src_prop, prop.default_value);
+        LOG(ERROR) << "sysprop: "<<"prop.dst_prop: " << prop.dst_prop << " value: " << value;
         if (value != UNSET) InitPropertySet(prop.dst_prop, value);
     }
 }
