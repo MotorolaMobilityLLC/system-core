@@ -1233,6 +1233,7 @@ on userspace-reboot-requested
   setprop sys.shutdown.requested ""
   setprop service.bootanim.exit ""
   setprop service.bootanim.progress ""
+  setprop debug.sf.latch_unsignaled 0
 
 on userspace-reboot-fs-remount
   # Make sure that vold is running.
