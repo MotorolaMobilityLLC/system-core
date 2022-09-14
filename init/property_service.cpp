@@ -1272,7 +1272,6 @@ static void ExportKernelBootProps() {
         { "ro.boot.carrier.longcheer",   "ro.carrier.longcheer",   "unknown", },
         { "ro.boot.zero_flag",   "ro.adb.secure",   UNSET, },
         { "ro.boot.debug_flag",   "ro.debuggable",   UNSET, },
-        { "ro.boot.root_flag",   "ro.secure",  UNSET, },
             // clang-format on
     };
     for (const auto& prop : prop_map) {
