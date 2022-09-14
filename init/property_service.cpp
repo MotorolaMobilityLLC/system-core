@@ -191,8 +191,8 @@ static uint32_t PropertySet(const std::string& name, const std::string& value, s
         // ro.* properties are actually "write-once".
         if (StartsWith(name, "ro.")) {
             //modify by lihaogui 20220907 for EKSABAHL-333 start
-            //if (name == "ro.carrier"
-            if (name == "ro.com.google.clientidbase"
+            if (name == "ro.carrier"
+                || name == "ro.com.google.clientidbase"
                 || name == "ro.com.google.clientidbase.am"
                 || name == "ro.com.google.clientidbase.ms"
                 || name == "ro.com.google.clientidbase.vs"
@@ -1273,7 +1273,6 @@ static void ExportKernelBootProps() {
         { "ro.boot.zero_flag",   "ro.adb.secure",   UNSET, },
         { "ro.boot.debug_flag",   "ro.debuggable",   UNSET, },
         { "ro.boot.root_flag",   "ro.secure",  UNSET, },
-        { "ro.boot.carrier", "ro.carrier", "unknown"},
             // clang-format on
     };
     for (const auto& prop : prop_map) {
