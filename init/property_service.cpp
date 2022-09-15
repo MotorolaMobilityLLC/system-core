@@ -484,8 +484,7 @@ uint32_t CheckPermissions(const std::string& name, const std::string& value,
     const char* type = nullptr;
     property_info_area->GetPropertyInfo(name.c_str(), &target_context, &type);
     //modify by lihaogui 20220907 for EKSABAHL-333 start
-    if (name != "ro.com.google.clientidbase" 
-            && name != "ro.carrier"
+    if (name != "ro.carrier"
             && name != "ro.com.google.clientidbase"
             && name != "ro.com.google.clientidbase.am"
             && name != "ro.com.google.clientidbase.ms"
