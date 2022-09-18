@@ -131,6 +131,7 @@ libinit_cc_defaults {
         "-DMTK_BORDER_CTL=1",
         "-DMTK_COMMAND_WDOG=1",
         "-DMTK_SKIP_ZRAM_CLRFD_ERROR=1",
+        "-DMTK_BYPASS_FSYNC=1",
     ],
     product_variables: {
         debuggable: {
