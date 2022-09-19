@@ -1033,6 +1033,10 @@ on post-fs-data
 
     # Enable FUSE by default
     setprop persist.sys.fuse true
+    mkdir /data/misc/elabel 0744 system system
+    chmod 0644 /mnt/vendor/elabel/regulatory_info.png
+    copy /mnt/vendor/elabel/regulatory_info.png /data/misc/elabel/regulatory_info.png
+    chmod 0444 /data/misc/elabel/regulatory_info.png
 
 # It is recommended to put unnecessary data/ initialization from post-fs-data
 # to start-zygote in device's init.rc to unblock zygote start.
