@@ -173,6 +173,30 @@ static bool CheckMacPerms(const std::string& name, const char* target_context,
     return has_access;
 }
 
+const char* perms_skip_prop[] = {
+    "ro.carrier",
+    "ro.com.google.clientidbase", "ro.com.google.clientidbase.am", "ro.com.google.clientidbase.ms", "ro.com.google.clientidbase.vs",
+
+    "ro.product.device", "ro.product.odm.device", "ro.product.product.device", "ro.product.system_ext.device",
+    "ro.product.system.device", "ro.product.vendor.device", "ro.product.vendor_dlkm.device", "ro.product.bootimage.device",
+
+    "ro.product.name", "ro.product.odm.name", "ro.product.product.name", "ro.product.system_ext.name",
+    "ro.product.system.name", "ro.product.vendor.name", "ro.product.vendor_dlkm.name", "ro.product.bootimage.name",
+
+    "ro.build.fingerprint", "ro.odm.build.fingerprint", "ro.product.build.fingerprint", "ro.system_ext.build.fingerprint",
+    "ro.system.build.fingerprint", "ro.vendor.build.fingerprint", "ro.vendor_dlkm.build.fingerprint", "ro.bootimage.build.fingerprint"
+};
+
+bool skipPerms(const std::string& name)
+{
+    for (const auto& prop : perms_skip_prop) {
+        if (name == prop) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static uint32_t PropertySet(const std::string& name, const std::string& value, std::string* error) {
     size_t valuelen = value.size();
 
@@ -191,22 +215,7 @@ static uint32_t PropertySet(const std::string& name, const std::string& value, s
         // ro.* properties are actually "write-once".
         if (StartsWith(name, "ro.")) {
             //modify by lihaogui 20220907 for EKSABAHL-333 start
-            if (name == "ro.carrier"
-                || name == "ro.com.google.clientidbase"
-                || name == "ro.com.google.clientidbase.am"
-                || name == "ro.com.google.clientidbase.ms"
-                || name == "ro.com.google.clientidbase.vs"
-                || name == "ro.product.device"
-                || name == "ro.product.name"
-                || name == "ro.product.vendor.name"
-                || name == "ro.bootimage.build.fingerprint"
-                || name == "ro.build.fingerprint"
-                || name == "ro.odm.build.fingerprint"
-                || name == "ro.product.build.fingerprint"
-                || name == "ro.system.build.fingerprint"
-                || name == "ro.system_ext.build.fingerprint"
-                || name == "ro.vendor.build.fingerprint"
-                || name == "ro.vendor_dlkm.build.fingerprint") {
+            if (skipPerms(name)) {
                 LOG(WARNING) << "try to set " << name <<"(" << value <<") In ";
             } else {
             //modify by lihaogui 20220907 for EKSABAHL-333 end
@@ -484,23 +493,7 @@ uint32_t CheckPermissions(const std::string& name, const std::string& value,
     const char* type = nullptr;
     property_info_area->GetPropertyInfo(name.c_str(), &target_context, &type);
     //modify by lihaogui 20220907 for EKSABAHL-333 start
-    if (name != "ro.carrier"
-            && name != "ro.com.google.clientidbase"
-            && name != "ro.com.google.clientidbase.am"
-            && name != "ro.com.google.clientidbase.ms"
-            && name != "ro.com.google.clientidbase.vs"
-            && name != "ro.product.device" 
-            && name != "ro.product.name" 
-            && name != "ro.product.vendor.name"
-            && name != "ro.bootimage.build.fingerprint"
-            && name != "ro.build.fingerprint"
-            && name != "ro.odm.build.fingerprint"
-            && name != "ro.product.build.fingerprint"
-            && name != "ro.system.build.fingerprint"
-            && name != "ro.system_ext.build.fingerprint"
-            && name != "ro.vendor.build.fingerprint"
-            && name != "ro.vendor_dlkm.build.fingerprint"
-            && !CheckMacPerms(name, target_context, source_context.c_str(), cr)) {
+    if (!skipPerms(name) && !CheckMacPerms(name, target_context, source_context.c_str(), cr)) {
     //modify by lihaogui 20220907 for EKSABAHL-333 end
         *error = "SELinux permission check failed";
         return PROP_ERROR_PERMISSION_DENIED;
