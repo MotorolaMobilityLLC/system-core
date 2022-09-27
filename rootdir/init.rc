@@ -373,6 +373,11 @@ on init
     copy /dev/cpuset/cpus /dev/cpuset/audio-app/cpus
     copy /dev/cpuset/mems /dev/cpuset/audio-app/mems
 
+    # Moto huangzq2, cpuset boost
+    mkdir /dev/cpuset/boost-app
+    copy /dev/cpuset/cpus /dev/cpuset/boost-app/cpus
+    copy /dev/cpuset/mems /dev/cpuset/boost-app/mems
+
     # change permissions for all cpusets we'll touch at runtime
     chown system system /dev/cpuset
     chown system system /dev/cpuset/foreground
@@ -397,6 +402,10 @@ on init
     chown system system /dev/cpuset/top-app/cgroup.procs
     chown system system /dev/cpuset/restricted/cgroup.procs
     chown system system /dev/cpuset/camera-daemon/cgroup.procs
+    # Moto huangzq2, cpuset boost
+    chown system system /dev/cpuset/boost-app
+    chown system system /dev/cpuset/boost-app/tasks
+    chown system system /dev/cpuset/boost-app/cgroup.procs
 
     # set system-background to 0775 so SurfaceFlinger can touch it
     chmod 0775 /dev/cpuset/system-background
@@ -416,6 +425,10 @@ on init
     chmod 0664 /dev/cpuset/restricted/cgroup.procs
     chmod 0664 /dev/cpuset/cgroup.procs
     chmod 0664 /dev/cpuset/camera-daemon/cgroup.procs
+    # Moto huangzq2, cpuset boost
+    chmod 0775 /dev/cpuset/boost-app
+    chmod 0644 /dev/cpuset/boost-app/tasks
+    chmod 0644 /dev/cpuset/boost-app/cgroup.procs
 
     # make the PSI monitor accessible to others
     chown system system /proc/pressure/memory
