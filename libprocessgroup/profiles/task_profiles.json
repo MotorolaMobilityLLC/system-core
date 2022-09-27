@@ -541,6 +541,33 @@
     },
 
     {
+      "Name": "SFMainBoostPolicy",
+      "Actions": [
+        {
+          "Name": "JoinCgroup",
+          "Params":
+          {
+            "Controller": "cpuset",
+            "Path": "boost-app"
+          }
+        }
+      ]
+    },
+    {
+      "Name": "SFRenderEngineBoostPolicy",
+      "Actions": [
+        {
+          "Name": "JoinCgroup",
+          "Params":
+          {
+            "Controller": "cpuset",
+            "Path": "boost-app"
+          }
+        }
+      ]
+    },
+
+    {
       "Name": "PerfBoost",
       "Actions": [
         {
