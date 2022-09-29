@@ -99,9 +99,10 @@ using android::base::SetProperty;
 using android::base::StringPrintf;
 using android::base::Timer;
 using android::base::Trim;
+using android::base::WriteStringToFile;
 using android::fs_mgr::AvbHandle;
 using android::snapshot::SnapshotManager;
-
+#define WCNBT_DEV     "/sys/class/misc/wcn/devices/shutting_down"
 namespace android {
 namespace init {
 
@@ -997,6 +998,7 @@ int SecondStageMain(int argc, char** argv) {
 
         auto shutdown_command = shutdown_state.CheckShutdown();
         if (shutdown_command) {
+			WriteStringToFile("shutting", WCNBT_DEV);
             LOG(INFO) << "Got shutdown_command '" << *shutdown_command
                       << "' Calling HandlePowerctlMessage()";
             HandlePowerctlMessage(*shutdown_command);
