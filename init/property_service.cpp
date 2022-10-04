@@ -1769,9 +1769,6 @@ void StartPropertyService(int* epoll_socket) {
 
     listen(property_set_fd, 8);
 
-#ifdef MTK_BYPASS_FSYNC
-    LOG(INFO) << "bypass fsync in WritePersistPropertyFile";
-#endif
 #ifdef MTK_LOG
     SetPropServThrStart(1);
 

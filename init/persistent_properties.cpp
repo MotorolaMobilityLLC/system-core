@@ -223,9 +223,7 @@ Result<void> WritePersistentPropertyFile(const PersistentProperties& persistent_
 #ifdef MTK_LOG
     SnapshotPropertyFlowTraceLog("WPPFfd");
 #endif
-#ifndef MTK_BYPASS_FSYNC
     fsync(dir_fd);
-#endif
 
     return {};
 }
