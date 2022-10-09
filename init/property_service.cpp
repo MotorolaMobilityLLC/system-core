@@ -180,6 +180,9 @@ const char* perms_skip_prop[] = {
     "ro.product.device", "ro.product.odm.device", "ro.product.product.device", "ro.product.system_ext.device",
     "ro.product.system.device", "ro.product.vendor.device", "ro.product.vendor_dlkm.device", "ro.product.bootimage.device",
 
+    "ro.product.model", "ro.product.odm.model", "ro.product.product.model", "ro.product.system.model", "ro.product.system_ext.model",
+    "ro.product.vendor.model", "ro.product.vendor_dlkm.model", "ro.product.bootimage.model",
+
     "ro.product.name", "ro.product.odm.name", "ro.product.product.name", "ro.product.system_ext.name",
     "ro.product.system.name", "ro.product.vendor.name", "ro.product.vendor_dlkm.name", "ro.product.bootimage.name",
 
@@ -925,7 +928,7 @@ static std::string ConstructBuildFingerprint(bool legacy) {
     build_fingerprint += '/';
     build_fingerprint += GetProperty("ro.product.name", UNKNOWN);
     build_fingerprint += '/';
-    build_fingerprint += GetProperty("ro.product.device", UNKNOWN);
+    build_fingerprint += "sabahl";
     build_fingerprint += ':';
     build_fingerprint += GetProperty("ro.build.version.release_or_codename", UNKNOWN);
     build_fingerprint += '/';
