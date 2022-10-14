@@ -76,6 +76,11 @@
       "Name": "FreezerState",
       "Controller": "freezer",
       "File": "cgroup.freeze"
+    },
+    {
+      "Name": "MemcgV2TimeDecayFactor",
+      "Controller": "memory",
+      "File": "memory.time_decay_factor"
     }
   ],
 
@@ -632,6 +637,19 @@
           {
             "Controller": "memory",
             "Path": "system"
+          }
+        }
+      ]
+    },
+    {
+      "Name": "SystemMemoryProcessV2",
+      "Actions": [
+        {
+          "Name": "JoinCgroup",
+          "Params":
+          {
+            "Controller": "memory",
+            "Path": "system_memcg"
           }
         }
       ]
