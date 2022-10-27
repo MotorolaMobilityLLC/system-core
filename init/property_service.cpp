@@ -1286,6 +1286,18 @@ static void ProcessBootconfig() {
     });
 }
 
+static void SetpropSocModel() {
+    std::string manufacturer_name = "UNISOC ";
+    std::string auto_efuse_value = GetProperty("ro.boot.auto.efuse", "");
+    std::string board_platform = GetProperty("ro.boot.hardware", "");
+    std::string soc_model_name = manufacturer_name + auto_efuse_value;
+    if (board_platform.find("9863a") == std::string::npos) {
+        if ((auto_efuse_value != "-1") && (auto_efuse_value != "")) {
+            InitPropertySet("ro.soc.model",soc_model_name);
+        }
+    }
+}
+
 void PropertyInit() {
     selinux_callback cb;
     cb.func_audit = PropertyAuditCallback;
@@ -1305,6 +1317,7 @@ void PropertyInit() {
     ProcessKernelDt();
     ProcessKernelCmdline();
     ProcessBootconfig();
+    SetpropSocModel();
 
     // Propagate the kernel variables to internal variables
     // used by init as well as the current required properties.
