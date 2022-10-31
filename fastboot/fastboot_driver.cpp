@@ -372,6 +372,7 @@ RetCode FastBootDriver::Pull(const std::string& outfile, const std::string& cmd,
 
 RetCode FastBootDriver::PullInner(const std::string& outfile, const std::string& cmd,
                                std::vector<std::string>* info) {
+    error_ = "";  // Clear any pending error
     RetCode ret;
     int dsize = 0, remain, recv;
     std::string* response = nullptr;
