@@ -1396,7 +1396,6 @@ MountAllResult fs_mgr_mount_all(Fstab* fstab, int mount_mode) {
     AvbUniquePtr avb_handle(nullptr);
     bool wiped = false;
     std::string bootmode = android::base::GetProperty("ro.bootmode", "");
-    std::string product_name = android::base::GetProperty("ro.product.name", "");
 
     bool userdata_mounted = false;
     if (fstab->empty()) {
@@ -1408,8 +1407,7 @@ MountAllResult fs_mgr_mount_all(Fstab* fstab, int mount_mode) {
     for (int i = 0; i < static_cast<int>(fstab->size()); i++) {
         auto& current_entry = (*fstab)[i];
 
-        if (current_entry.mount_point == "/data" && mount_mode == MOUNT_MODE_LATE && bootmode == "autotest"
-            && product_name.find("7731") == std::string::npos ) {
+        if (current_entry.mount_point == "/data" && mount_mode == MOUNT_MODE_LATE && bootmode == "autotest") {
             LINFO << "mount userdata as tmpfs in autotest mode!";
             mount("tmpfs", "/data", "tmpfs", 0, "mode=0777");
             continue;
