@@ -557,6 +557,19 @@
         }
       ]
     },
+    {
+      "Name": "SFBoostPolicy",
+      "Actions": [
+        {
+          "Name": "JoinCgroup",
+          "Params":
+          {
+            "Controller": "cpuset",
+            "Path": "top-app-high-perf"
+          }
+        }
+      ]
+    },
 
     {
       "Name": "PerfBoost",
