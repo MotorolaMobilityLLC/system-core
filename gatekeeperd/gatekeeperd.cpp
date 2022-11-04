@@ -64,9 +64,41 @@ static const String16 DUMP_PERMISSION("android.permission.DUMP");
 
 class GateKeeperProxy : public BnGateKeeperService {
   public:
+    //BEGIN, moto.sw zengzm 2022.11.04 monitor the hal instance state.
+    class GateKeeperHalDeathRecipient : virtual public android::hardware::hidl_death_recipient {
+        GateKeeperProxy* mGateKeeperProxy;
+        public:
+        GateKeeperHalDeathRecipient(GateKeeperProxy* proxy){
+            mGateKeeperProxy = proxy;
+        }
+        virtual void serviceDied(uint64_t, const android::wp<android::hidl::base::V1_0::IBase>& ) override {
+            mGateKeeperProxy->hw_device = nullptr;
+            LOG(ERROR) << "gatekeeper hal serviceDied.";
+        }
+    };
+    sp<GateKeeperHalDeathRecipient> gGateKeeperHalDeathRecipient = nullptr;
+
+    void ensureGateKeeperHalIntance(){
+        if(!hw_device){
+            hw_device = IGatekeeper::getService();
+            if(hw_device){
+                gGateKeeperHalDeathRecipient = new GateKeeperHalDeathRecipient(this);
+                android::hardware::Return<bool> linked = hw_device->linkToDeath(gGateKeeperHalDeathRecipient, 0);
+                if (!linked.isOk()) {
+                    LOG(ERROR) << "Transaction error in linking to gatekeeper hal death";
+                } else if (!linked) {
+                    LOG(ERROR) << "Unable to link to gatekeeper hal death notifications";
+                }
+            }
+        }
+    }
+    //END zengzm
+
     GateKeeperProxy() {
         clear_state_if_needed_done = false;
-        hw_device = IGatekeeper::getService();
+        //moto.sw zengzm 2022.11.04 monitor the hal instance state.
+        //hw_device = IGatekeeper::getService();
+        ensureGateKeeperHalIntance();
         is_running_gsi = android::base::GetBoolProperty(android::gsi::kGsiBootedProp, false);
 
         if (!hw_device) {
@@ -95,6 +127,8 @@ class GateKeeperProxy : public BnGateKeeperService {
 
         if (mark_cold_boot() && !is_running_gsi) {
             ALOGI("cold boot: clearing state");
+            //moto.sw zengzm 2022.11.04 monitor the hal instance state.
+            ensureGateKeeperHalIntance();
             if (hw_device) {
                 hw_device->deleteAllUsers([](const GatekeeperResponse&) {});
             }
@@ -149,6 +183,10 @@ class GateKeeperProxy : public BnGateKeeperService {
     // secure storage shared across a GSI image and a host image will not overlap.
     uint32_t adjust_userId(uint32_t userId) {
         static constexpr uint32_t kGsiOffset = 1000000;
+
+        //moto.sw zengzm 2022.11.04 monitor the hal instance state.
+        ensureGateKeeperHalIntance();
+
         CHECK(userId < kGsiOffset);
         CHECK(hw_device != nullptr);
         if (is_running_gsi) {
@@ -175,6 +213,9 @@ class GateKeeperProxy : public BnGateKeeperService {
 
         // need a desired password to enroll
         if (desiredPassword.size() == 0) return GK_ERROR;
+
+        //moto.sw zengzm 2022.11.04 monitor the hal instance state.
+        ensureGateKeeperHalIntance();
 
         if (!hw_device) {
             LOG(ERROR) << "has no HAL to talk to";
@@ -259,6 +300,9 @@ class GateKeeperProxy : public BnGateKeeperService {
 
         // can't verify if we're missing either param
         if (enrolledPasswordHandle.size() == 0 || providedPassword.size() == 0) return GK_ERROR;
+
+        //moto.sw zengzm 2022.11.04 monitor the hal instance state.
+        ensureGateKeeperHalIntance();
 
         if (!hw_device) return GK_ERROR;
 
@@ -352,6 +396,10 @@ class GateKeeperProxy : public BnGateKeeperService {
             ALOGE("%s: permission denied for [%d:%d]", __func__, calling_pid, calling_uid);
             return Status::ok();
         }
+
+        //moto.sw zengzm 2022.11.04 monitor the hal instance state.
+        ensureGateKeeperHalIntance();
+
         clear_sid(userId);
 
         if (hw_device) {
@@ -381,6 +429,9 @@ class GateKeeperProxy : public BnGateKeeperService {
         if (!PermissionCache::checkPermission(DUMP_PERMISSION, pid, uid)) {
             return PERMISSION_DENIED;
         }
+
+        //moto.sw zengzm 2022.11.04 monitor the hal instance state.
+        ensureGateKeeperHalIntance();
 
         if (hw_device == NULL) {
             const char* result = "Device not available";
