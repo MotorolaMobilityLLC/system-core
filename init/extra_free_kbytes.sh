@@ -77,7 +77,6 @@ then
     exit
 fi
 
-#MMI_STOPSHIP <memory>: need wait for google fix
 # moto add, yangbq2, need save the initial watermark_scale_factor
 # otherwise, it will increase the watermark to a higher value
 #watermark_scale=`cat /proc/sys/vm/watermark_scale_factor`
