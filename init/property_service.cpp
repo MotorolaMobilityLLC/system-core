@@ -1510,6 +1510,20 @@ static void property_initialize_ro_vendor_api_level() {
     }
 }
 
+static void mmi_property_initialize_logd_kernel() {
+    // allow logd to collect kernel log in debug states
+    if ((android::base::GetIntProperty("ro.boot.secure_hardware", 1) == 0)
+        || (android::base::GetIntProperty("ro.boot.device_apdp_state", 0) == 1)
+        || (android::base::GetIntProperty("ro.boot.force_aplogd_enable", 0) == 1)) {
+       std::string error;
+       uint32_t res = PropertySet("ro.logd.kernel", "true", &error);
+       if (res != PROP_SUCCESS) {
+            LOG(ERROR) << "Failed to set ro.logd.kernel with true" << error << "(" << res << ")";
+       } else
+            LOG(ERROR) << "set ro.logd.kernel true when the phone is in debug state";
+    }
+}
+
 void PropertyLoadBootDefaults() {
     // We read the properties and their values into a map, in order to always allow properties
     // loaded in the later property files to override the properties in loaded in the earlier
@@ -1607,6 +1621,7 @@ void PropertyLoadBootDefaults() {
     property_initialize_ro_vendor_api_level();
 
     update_sys_usb_config();
+    mmi_property_initialize_logd_kernel();
 }
 
 bool LoadPropertyInfoFromFile(const std::string& filename,
