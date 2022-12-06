@@ -836,6 +836,19 @@ static void DumpFile(const std::string& prefix, const std::string& file) {
     }
 }
 
+//Support the earlier Moto actions
+static void MotoEarlierBuiltinActions() {
+    constexpr auto enable_mglru = "mem.enable_mglru";
+
+    ImportKernelCmdline([&](const std::string& key, const std::string& value) {
+        //Enable MGLRU if mem.enable_mglru is set in kernel cmdline.
+        if (key == enable_mglru && value == "1") {
+            if (auto result = WriteFile("/sys/kernel/mm/lru_gen/enabled", "Y"); !result.ok())
+                LOG(INFO) << "Failed to enable MGLRU" << result.error();
+        }
+    });
+}
+
 int SecondStageMain(int argc, char** argv) {
     if (REBOOT_BOOTLOADER_ON_PANIC) {
         InstallRebootSignalHandlers();
@@ -868,6 +881,9 @@ int SecondStageMain(int argc, char** argv) {
         action.sa_handler = [](int) {};
         sigaction(SIGPIPE, &action, nullptr);
     }
+
+    //Enable the earlier Moto builtin actions
+    MotoEarlierBuiltinActions();
 
     if (DeferOverlayfsMount()) {
         Fstab fstab;
