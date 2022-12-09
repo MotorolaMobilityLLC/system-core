@@ -7,14 +7,14 @@
 #include <sys/statvfs.h>
 #include <log/log.h>
 
-int check_corefile_limit()
+int check_avail_space(int percent)
 {
   struct statvfs stat;
   if(statvfs("/data", &stat) == 0){
-      //free blocks < 10% Total Blocks
-      if (stat.f_bavail < (stat.f_blocks*10/100)) {
-          ALOGE("No more space left  %ld, available blocks %ld , total is %ld \n",
-            stat.f_bsize*stat.f_bavail, stat.f_bavail, stat.f_blocks);
+      //free blocks < percent * Total Blocks
+      if (stat.f_bavail < (stat.f_blocks*percent/100)) {
+          ALOGE("available space is less than: %d, free_size: %ld, f_bavail: %ld , f_blocks: %ld \n",
+            percent, stat.f_bsize*stat.f_bavail, stat.f_bavail, stat.f_blocks);
           return -1;
       }
   }
