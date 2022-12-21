@@ -180,7 +180,7 @@ const char* perms_skip_prop[] = {
     "ro.product.device", "ro.product.odm.device", "ro.product.product.device", "ro.product.system_ext.device",
     "ro.product.system.device", "ro.product.vendor.device", "ro.product.vendor_dlkm.device", "ro.product.bootimage.device",
 
-    "ro.product.model", "ro.product.odm.model", "ro.product.product.model", "ro.product.system.model", "ro.product.system_ext.model",
+    "ro.product.model", "ro.product.odm.model", "ro.product.product.model", "ro.product.system.model", "ro.product.system_ext.model", "ro.csc.amazon.partnerid",
     "ro.product.vendor.model", "ro.product.vendor_dlkm.model", "ro.product.bootimage.model",
 
     "ro.product.name", "ro.product.odm.name", "ro.product.product.name", "ro.product.system_ext.name",
