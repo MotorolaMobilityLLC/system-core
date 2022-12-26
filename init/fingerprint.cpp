@@ -25,6 +25,8 @@
 #include <sstream>
 #include <iostream>
 
+std::string prop_build_base_os = "ro.build.version.base_os";
+
 std::string get_fingerprint_property_string() {
     std::string build_fingerprint = android::base::GetProperty("ro.build.fingerprint", "");
     std::string brand_name = android::base::GetProperty("ro.product.brand", "");
@@ -47,8 +49,24 @@ std::string get_fingerprint_property_string() {
     return android::base::Join(fingerprint, ":");
 }
 
+std::string get_base_os_property() {
+    std::string  build_base_os = android::base::GetProperty(prop_build_base_os, "");
+    if (build_base_os.empty()) return "";
+    std::string  brand_value = android::base::GetProperty("ro.product.brand", "");
+    std::string  product_value = android::base::GetProperty("ro.product.name", "");
+
+    std::vector<std::string> base_os = android::base::Split(build_base_os, "/");
+    base_os[0] = brand_value;
+    base_os[1] = product_value;
+    return android::base::Join(base_os, "/");
+}
+
 void set_fingerprint_property() {
     std::string fingerprint = get_fingerprint_property_string();
+
+    //set_base_os_fingerprint
+    std::string base_os = get_base_os_property();
+    android::init::InitPropertySet(prop_build_base_os, base_os);
 
     std::string properties[] =
     {
