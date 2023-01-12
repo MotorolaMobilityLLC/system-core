@@ -51,6 +51,7 @@
 
 #include "constants.h"
 #include "transport.h"
+#include "util.h"
 
 using android::base::StringPrintf;
 using namespace android::storage_literals;
@@ -361,6 +362,71 @@ RetCode FastBootDriver::UploadInner(const std::string& outfile, std::string* res
     return ret;
 }
 
+RetCode FastBootDriver::Pull(const std::string& outfile, const std::string& cmd,
+                               std::vector<std::string>* info) {
+    prolog_("Pulling '" + outfile + "'");
+    auto result = PullInner(outfile, cmd, info);
+    epilog_(result);
+    return result;
+}
+
+RetCode FastBootDriver::PullInner(const std::string& outfile, const std::string& cmd,
+                               std::vector<std::string>* info) {
+    error_ = "";  // Clear any pending error
+    RetCode ret;
+    int dsize = 0, remain, recv;
+    std::string* response = nullptr;
+
+    std::ofstream ofs;
+    ofs.open(outfile, std::ofstream::out | std::ofstream::binary);
+    if (ofs.fail()) {
+        printf("failed to open file\n");
+        error_ = android::base::StringPrintf("Failed to open '%s'", outfile.c_str());
+        return IO_ERROR;
+    }
+
+    if ((ret = RawCommand(cmd, response, info, &dsize))) {
+        printf("failed to exec RawCommand\n");
+        error_ = "Upload request failed: " + error_;
+        return ret;
+    }
+    if (!dsize) {
+        error_ = "Upload request failed, device reports 0 bytes available";
+        return BAD_DEV_RESP;
+    }
+
+    std::vector<char> data;
+
+    remain = dsize;
+    while (remain > 0) {
+        recv = remain > 512 ? 512 : remain;
+        data.resize(recv);
+        void* buf = data.data();
+        size_t size = data.size();
+        ssize_t tmp = transport_->Read(buf, size);
+        if (tmp < 0) {
+            error_ = ErrnoStr("Read from device failed in ReadBuffer()");
+            return IO_ERROR;
+        } else if (static_cast<size_t>(tmp) != size) {
+            size = static_cast<size_t>(tmp);
+            if (0 == size)
+                continue;
+            //error_ = android::base::StringPrintf("Failed to read all %zu bytes, %zu", data.size(), size);
+        }
+
+        ofs.write(data.data(), size);
+        if (ofs.fail() || ofs.bad()) {
+            error_ = android::base::StringPrintf("Writing to '%s' failed", outfile.c_str());
+            return IO_ERROR;
+        }
+        remain -= size;
+    }
+
+    ofs.close();
+
+    return HandleResponse(response, info);
+}
+
 RetCode FastBootDriver::FetchToFd(const std::string& partition, android::base::borrowed_fd fd,
                                   int64_t offset, int64_t size, std::string* response,
                                   std::vector<std::string>* info) {
@@ -441,7 +507,8 @@ RetCode FastBootDriver::RawCommand(const std::string& cmd, std::string* response
     }
 
     if (transport_->Write(cmd.c_str(), cmd.size()) != static_cast<int>(cmd.size())) {
-        error_ = ErrnoStr("Write to device failed");
+        error_ = android::base::StringPrintf("Failed to write %s ,size: %zu bytes", cmd.c_str(), cmd.size());
+        error_ += ErrnoStr("Write to device failed");
         return IO_ERROR;
     }
 

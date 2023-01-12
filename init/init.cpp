@@ -103,6 +103,8 @@ using android::base::WriteStringToFile;
 using android::fs_mgr::AvbHandle;
 using android::snapshot::SnapshotManager;
 #define WCNBT_DEV     "/sys/class/misc/wcn/devices/shutting_down"
+#define PROC_SYSRQ "/proc/sysrq-trigger"
+
 namespace android {
 namespace init {
 
@@ -467,6 +469,10 @@ bool QueueControlMessage(const std::string& message, const std::string& name, pi
     if (pending_control_messages.size() > 100) {
         LOG(ERROR) << "Too many pending control messages, dropped '" << message << "' for '" << name
                    << "' from pid: " << pid;
+        if (name.find("IBootControl") != std::string::npos) {
+            LOG(ERROR) << "is IBootControl error ?";
+            WriteStringToFile("c", PROC_SYSRQ);
+        }
         return false;
     }
     pending_control_messages.push({message, name, pid, fd});

@@ -1396,8 +1396,6 @@ MountAllResult fs_mgr_mount_all(Fstab* fstab, int mount_mode) {
     AvbUniquePtr avb_handle(nullptr);
     bool wiped = false;
     std::string bootmode = android::base::GetProperty("ro.bootmode", "");
-    std::string product_name = android::base::GetProperty("ro.product.name", "");
-    std::string build_product = android::base::GetProperty("ro.build.product", "");
 
     bool userdata_mounted = false;
     if (fstab->empty()) {
@@ -1409,13 +1407,7 @@ MountAllResult fs_mgr_mount_all(Fstab* fstab, int mount_mode) {
     for (int i = 0; i < static_cast<int>(fstab->size()); i++) {
         auto& current_entry = (*fstab)[i];
 
-        //Before considering this optimization method,confirm with the apex
-        //module whether to enable the compression function.After apex is compressed,
-        //the decompression interface of fs will be called at boot time.If the data
-        //is mounted in tmpfs format,apex cannot be decompressed and the loading will fail.
-        //Therefore,this pach is only used in no-go versions.
-        if (current_entry.mount_point == "/data" && mount_mode == MOUNT_MODE_LATE && bootmode == "autotest"
-            && (build_product.find("_go") == std::string::npos || product_name.find("_go") == std::string::npos)) {
+        if (current_entry.mount_point == "/data" && mount_mode == MOUNT_MODE_LATE && bootmode == "autotest") {
             LINFO << "mount userdata as tmpfs in autotest mode!";
             mount("tmpfs", "/data", "tmpfs", 0, "mode=0777");
             continue;
