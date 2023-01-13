@@ -37,7 +37,7 @@ namespace android {
 namespace snapshot {
 
 static constexpr uint32_t kMaxPacketSize = 512;
-static constexpr uint8_t kMaxMergeThreads = 2;
+static constexpr uint8_t kMaxMergeThreads = 1;
 
 enum class DaemonOps {
     INIT,
@@ -50,6 +50,7 @@ enum class DaemonOps {
     INITIATE,
     PERCENTAGE,
     GETSTATUS,
+    UPDATE_VERIFY,
     INVALID,
 };
 
@@ -129,6 +130,8 @@ class UserSnapshotServer {
 
     double GetMergePercentage(std::lock_guard<std::mutex>* proof_of_lock);
     void TerminateMergeThreads(std::lock_guard<std::mutex>* proof_of_lock);
+    
+    bool UpdateVerification(std::lock_guard<std::mutex>* proof_of_lock);
 
   public:
     UserSnapshotServer();
