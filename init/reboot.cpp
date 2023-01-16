@@ -379,6 +379,7 @@ static UmountStat UmountPartitions(std::chrono::milliseconds timeout) {
 
 static void KillAllProcesses() {
     WriteStringToFile("i", PROC_SYSRQ);
+    WriteStringToFile("1", PROC_SYSRQ);
 }
 
 // Create reboot/shutdwon monitor thread
