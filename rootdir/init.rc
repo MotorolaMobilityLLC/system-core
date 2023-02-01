@@ -833,7 +833,7 @@ on post-fs-data
     mkdir /data/misc/vold 0700 root root
     mkdir /data/misc/boottrace 0771 system shell
     mkdir /data/misc/update_engine 0700 root root
-    mkdir /data/misc/update_engine_log 02750 root log
+    mkdir /data/misc/update_engine_log 02755 root log
     mkdir /data/misc/trace 0700 root root
     # create location to store surface and window trace files
     mkdir /data/misc/wmtrace 0700 system system
