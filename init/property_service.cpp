@@ -189,7 +189,7 @@ const char* perms_skip_prop[] = {
     "ro.build.fingerprint", "ro.odm.build.fingerprint", "ro.product.build.fingerprint", "ro.system_ext.build.fingerprint",
     "ro.system.build.fingerprint", "ro.vendor.build.fingerprint", "ro.vendor_dlkm.build.fingerprint", "ro.bootimage.build.fingerprint",
 
-    "ro.facebook.partnerid.source"
+    "ro.facebook.partnerid.source", "ro.build.version.base_os"
 };
 
 bool skipPerms(const std::string& name)
