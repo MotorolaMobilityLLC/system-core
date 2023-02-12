@@ -45,23 +45,19 @@
 #include <liburing.h>
 #include <snapuserd/snapuserd_buffer.h>
 #include <snapuserd/snapuserd_kernel.h>
-#include <storage_literals/storage_literals.h>
 
 namespace android {
 namespace snapshot {
 
 using android::base::unique_fd;
 using namespace std::chrono_literals;
-using namespace android::storage_literals;
 
 static constexpr size_t PAYLOAD_BUFFER_SZ = (1UL << 20);
 static_assert(PAYLOAD_BUFFER_SZ >= BLOCK_SZ);
 
-static constexpr int kNumWorkerThreads = 3;
+static constexpr int kNumWorkerThreads = 4;
 
-static constexpr int kNiceValueForMergeThreads = 10;
-static constexpr int kNiceValueForWorkerThreads = -2;
-static constexpr int kNumBlocksToMerge = 16;
+static constexpr int kNiceValueForMergeThreads = -5;
 
 #define SNAP_LOG(level) LOG(level) << misc_name_ << ": "
 #define SNAP_PLOG(level) PLOG(level) << misc_name_ << ": "
@@ -172,36 +168,6 @@ class ReadAhead {
     // don't want huge queue depth
     int queue_depth_ = 8;
     std::unique_ptr<struct io_uring> ring_;
-};
-
-class UpdateVerify {
-  public:
-    UpdateVerify(const std::string& misc_name);
-    void VerifyUpdatePartition();
-    bool CheckPartitionVerification();
-
-  private:
-    enum class UpdateVerifyState {
-        VERIFY_UNKNOWN,
-        VERIFY_FAILED,
-        VERIFY_SUCCESS,
-    };
-
-    std::string misc_name_;
-    UpdateVerifyState state_;
-    std::mutex m_lock_;
-    std::condition_variable m_cv_;
-
-    int kMinThreadsToVerify = 1;
-    int kMaxThreadsToVerify = 4;
-    uint64_t kThresholdSize = 512_MiB;
-    uint64_t kBlockSizeVerify = 1_MiB;
-
-    bool IsBlockAligned(uint64_t read_size) { return ((read_size & (BLOCK_SZ - 1)) == 0); }
-    void UpdatePartitionVerificationState(UpdateVerifyState state);
-    bool VerifyPartition(const std::string& partition_name, const std::string& dm_block_device);
-    bool VerifyBlocks(const std::string& partition_name, const std::string& dm_block_device,
-                      off_t offset, int skip_blocks, uint64_t dev_sz);
 };
 
 class Worker {
@@ -386,13 +352,12 @@ class SnapshotHandler : public std::enable_shared_from_this<SnapshotHandler> {
     MERGE_GROUP_STATE ProcessMergingBlock(uint64_t new_block, void* buffer);
 
     bool IsIouringSupported();
-    bool CheckPartitionVerification() { return update_verify_->CheckPartitionVerification(); }
 
   private:
     bool ReadMetadata();
     sector_t ChunkToSector(chunk_t chunk) { return chunk << CHUNK_SHIFT; }
     chunk_t SectorToChunk(sector_t sector) { return sector >> CHUNK_SHIFT; }
-    bool IsBlockAligned(uint64_t read_size) { return ((read_size & (BLOCK_SZ - 1)) == 0); }
+    bool IsBlockAligned(int read_size) { return ((read_size & (BLOCK_SZ - 1)) == 0); }
     struct BufferState* GetBufferState();
     void UpdateMergeCompletionPercentage();
 
@@ -457,7 +422,6 @@ class SnapshotHandler : public std::enable_shared_from_this<SnapshotHandler> {
     bool scratch_space_ = false;
 
     std::unique_ptr<struct io_uring> ring_;
-    std::unique_ptr<UpdateVerify> update_verify_;
 };
 
 }  // namespace snapshot

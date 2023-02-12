@@ -25,7 +25,7 @@ using android::base::unique_fd;
 
 int Worker::PrepareMerge(uint64_t* source_offset, int* pending_ops,
                          std::vector<const CowOperation*>* replace_zero_vec) {
-    int num_ops = std::min(kNumBlocksToMerge, *pending_ops);
+    int num_ops = *pending_ops;
     int nr_consecutive = 0;
     bool checkOrderedOp = (replace_zero_vec == nullptr);
 
@@ -80,7 +80,7 @@ bool Worker::MergeReplaceZeroOps() {
     // Although increasing this greater than 2MB may help in improving merge
     // times; however, on devices with low memory, this can be problematic
     // when there are multiple merge threads in parallel.
-    int total_ops_merged_per_commit = kNumBlocksToMerge;
+    int total_ops_merged_per_commit = (PAYLOAD_BUFFER_SZ / BLOCK_SZ) * 2;
     int num_ops_merged = 0;
 
     SNAP_LOG(INFO) << "MergeReplaceZeroOps started....";
@@ -404,12 +404,6 @@ bool Worker::MergeOrderedOps() {
 
             offset += io_size;
             num_ops -= linear_blocks;
-	    // Flush the data
-            if (fsync(base_path_merge_fd_.get()) < 0) {
-                SNAP_LOG(ERROR) << " Failed to fsync merged data";
-                snapuserd_->SetMergeFailed(ra_block_index_);
-                return false;
-            }
         }
 
         // Verify all ops are merged
@@ -551,8 +545,6 @@ bool Worker::RunMergeThread() {
 
     if (setpriority(PRIO_PROCESS, gettid(), kNiceValueForMergeThreads)) {
         SNAP_PLOG(ERROR) << "Failed to set priority for TID: " << gettid();
-    } else {
-        SNAP_LOG(INFO) << "setpriority success for merge-thread";
     }
 
     SNAP_LOG(INFO) << "Merge starting..";

@@ -47,7 +47,6 @@ cc_library_static {
         "libbase",
         "liblog",
     ],
-    export_include_dirs: ["include"],
     ramdisk_available: true,
 }
 
@@ -69,7 +68,6 @@ cc_defaults {
         "user-space-merge/snapuserd_readahead.cpp",
         "user-space-merge/snapuserd_transitions.cpp",
         "user-space-merge/snapuserd_server.cpp",
-        "user-space-merge/snapuserd_verify.cpp",
     ],
 
     cflags: [
@@ -90,11 +88,6 @@ cc_defaults {
         "libext4_utils",
         "liburing",
     ],
-
-    header_libs: [
-        "libstorage_literals_headers",
-    ],
-
     include_dirs: ["bionic/libc/kernel"],
 }
 
