@@ -174,7 +174,6 @@ static bool CheckMacPerms(const std::string& name, const char* target_context,
 }
 
 const char* perms_skip_prop[] = {
-    "ro.carrier",
     "ro.com.google.clientidbase", "ro.com.google.clientidbase.am", "ro.com.google.clientidbase.ms", "ro.com.google.clientidbase.vs", "ro.com.google.clientidbase.wal","ro.com.google.clientidbase.cr",
 
     "ro.product.device", "ro.product.odm.device", "ro.product.product.device", "ro.product.system_ext.device",
@@ -1266,7 +1265,7 @@ static void ExportKernelBootProps() {
         { "ro.boot.bootloader", "ro.bootloader", "unknown", },
         { "ro.boot.hardware",   "ro.hardware",   "unknown", },
         { "ro.boot.revision",   "ro.revision",   "0", },
-        { "ro.boot.carrier.longcheer",   "ro.carrier.longcheer",   "unknown", },
+        { "ro.boot.carrier",   "ro.carrier",   "unknown", },
         { "ro.boot.zero_flag",   "ro.adb.secure",   UNSET, },
         { "ro.boot.debug_flag",   "ro.debuggable",   UNSET, },
         { "ro.boot.manufacturedate", "ro.vendor.manufacturedate", "unknown", },
