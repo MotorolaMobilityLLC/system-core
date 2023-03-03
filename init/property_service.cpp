@@ -175,19 +175,9 @@ static bool CheckMacPerms(const std::string& name, const char* target_context,
 
 const char* perms_skip_prop[] = {
     "ro.com.google.clientidbase", "ro.com.google.clientidbase.am", "ro.com.google.clientidbase.ms", "ro.com.google.clientidbase.vs", "ro.com.google.clientidbase.wal","ro.com.google.clientidbase.cr",
-
-    "ro.product.device", "ro.product.odm.device", "ro.product.product.device", "ro.product.system_ext.device",
-    "ro.product.system.device", "ro.product.vendor.device", "ro.product.vendor_dlkm.device", "ro.product.bootimage.device",
-
-    "ro.product.model", "ro.product.odm.model", "ro.product.product.model", "ro.product.system.model", "ro.product.system_ext.model", "ro.csc.amazon.partnerid",
-    "ro.product.vendor.model", "ro.product.vendor_dlkm.model", "ro.product.bootimage.model",
-
-    "ro.product.name", "ro.product.odm.name", "ro.product.product.name", "ro.product.system_ext.name",
-    "ro.product.system.name", "ro.product.vendor.name", "ro.product.vendor_dlkm.name", "ro.product.bootimage.name",
-
-    "ro.build.fingerprint", "ro.odm.build.fingerprint", "ro.product.build.fingerprint", "ro.system_ext.build.fingerprint",
-    "ro.system.build.fingerprint", "ro.vendor.build.fingerprint", "ro.vendor_dlkm.build.fingerprint", "ro.bootimage.build.fingerprint",
-
+    "ro.product.model",
+    "ro.product.name",
+    "ro.build.fingerprint",
     "ro.facebook.partnerid.source"
 };
 
