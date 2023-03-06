@@ -8,6 +8,6 @@
 #include <sys/stat.h>
 #include <sys/un.h>
 
-int check_corefile_limit();
+int check_avail_space(int percent);
 
 #endif

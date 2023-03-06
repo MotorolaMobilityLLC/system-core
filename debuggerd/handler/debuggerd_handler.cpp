@@ -589,17 +589,16 @@ static void debuggerd_signal_handler(int signal_number, siginfo_t* info, void* c
   if (getuid() > 10000) {
       char disable_app_coredump[PROPERTY_VALUE_MAX];
       property_get("persist.debug.disable_app_coredump", disable_app_coredump, "0");
-      if (strcmp(disable_app_coredump, "1") == 0) {
-          async_safe_format_log(ANDROID_LOG_INFO, "debuggerd", "Crash thread undumpable");
+      if (strcmp(disable_app_coredump, "1") == 0 || check_avail_space(50) != 0) {
+          async_safe_format_log(ANDROID_LOG_INFO, "debuggerd", "disble app coredump");
           orig_dumpable = 0;
       }
   }
   // << end
 
-  // UNISOC: bug 1927212
-  int limited = check_corefile_limit();
-  if (limited != 0) {
-      async_safe_format_log(ANDROID_LOG_INFO, "debuggerd", "Storage space is insufficient!!");
+  // UNISOC: bug 1927212/1927216
+  if (check_avail_space(10) != 0) {
+      async_safe_format_log(ANDROID_LOG_INFO, "debuggerd", "disable coredump due to low space!!");
       orig_dumpable = 0;
   }
 
