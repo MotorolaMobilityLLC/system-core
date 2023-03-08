@@ -926,7 +926,42 @@ static void property_initialize_ro_product_props() {
     }
 }
 
+static void property_re_initialize_build_id() {
+    const char* RO_BUILD_PROPS_PREFIX = "ro.";
+    const char* RO_BUILD_PROPS[] = {
+        "build.display.id", "build.description",
+    };
+    const std::string EMPTY = "";
+
+    for (const auto& ro_build_prop : RO_BUILD_PROPS) {
+        std::string base_prop(RO_BUILD_PROPS_PREFIX);
+        base_prop += ro_build_prop;
+        std::string base_prop_val = GetProperty(base_prop, EMPTY);
+        if (!base_prop_val.empty()) {
+            continue;
+        }
+
+        std::string target_prop(RO_BUILD_PROPS_PREFIX);
+        target_prop += "odm.";
+        target_prop += ro_build_prop;
+
+        std::string target_prop_val = GetProperty(target_prop, EMPTY);
+        if (!target_prop_val.empty()) {
+            LOG(INFO) << "Setting product property " << base_prop << " to '" << target_prop_val
+                      << "' (from " << target_prop << ")";
+            std::string error;
+            uint32_t res = PropertySetNoSocket(base_prop, target_prop_val, &error);
+            if (res != PROP_SUCCESS) {
+                LOG(ERROR) << "Error setting product property " << base_prop << ": err=" << res
+                           << " (" << error << ")";
+            }
+            break;
+        }
+    }
+}
+
 static void property_initialize_build_id() {
+    property_re_initialize_build_id();
     std::string build_id = GetProperty(ID_PROP, "");
     if (!build_id.empty()) {
         return;
