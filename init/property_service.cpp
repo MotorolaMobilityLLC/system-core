@@ -1401,6 +1401,13 @@ static void ProcessBootconfig() {
     });
 }
 
+static void SetpropSocModel() {
+    std::string auto_efuse_value = GetProperty("ro.boot.auto.efuse", "");
+    if ((auto_efuse_value != "-1") && (auto_efuse_value != "") && (auto_efuse_value != "L3") && (auto_efuse_value != "L3R")) {
+            InitPropertySet("ro.soc.model",auto_efuse_value);
+    }
+}
+
 void PropertyInit() {
     selinux_callback cb;
     cb.func_audit = PropertyAuditCallback;
@@ -1420,6 +1427,7 @@ void PropertyInit() {
     ProcessKernelDt();
     ProcessKernelCmdline();
     ProcessBootconfig();
+    SetpropSocModel();
 
     // Propagate the kernel variables to internal variables
     // used by init as well as the current required properties.
