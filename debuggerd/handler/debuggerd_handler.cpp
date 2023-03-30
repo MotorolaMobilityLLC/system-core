@@ -15,7 +15,7 @@
  */
 
 #include "debuggerd/handler.h"
-
+#include "debuggerd/utils.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
@@ -658,6 +658,14 @@ static void debuggerd_signal_handler(int signal_number, siginfo_t* info, void* c
 
   // and then wait for it to terminate.
   futex_wait(&thread_info.pseudothread_tid, child_pid);
+
+  // Unisoc: add corefile limit
+  // AR.599.001689.006143.016390, AR.599.001689.006143.016388
+  // Bug 2190781, Bug 2190780
+  // method: modify directly
+  // Unisoc Code @{
+  if(check_corefile_limit()) { orig_dumpable = 0;}
+  // @}
 
   // Restore PR_SET_DUMPABLE to its original value.
   if (prctl(PR_SET_DUMPABLE, orig_dumpable) != 0) {
