@@ -409,6 +409,20 @@ on init
     chmod 0664 /dev/cpuset/cgroup.procs
     chmod 0664 /dev/cpuset/camera-daemon/cgroup.procs
 
+    # Unisoc: create big core process group.(1/1)
+    # SR.000989.002936:AR.000989.002936.014125
+    # bug 2184878
+    # config: add directly
+    # Unisoc Code @{
+    mkdir /dev/cpuset/top-app-high-perf
+    copy /dev/cpuset/cpus /dev/cpuset/top-app-high-perf/cpus
+    copy /dev/cpuset/mems /dev/cpuset/top-app-high-perf/mems
+    chown system system /dev/cpuset/top-app-high-perf
+    chown system system /dev/cpuset/top-app-high-perf/tasks
+    chown system system /dev/cpuset/top-app-high-perf/cgroup.procs
+    chmod 0664 /dev/cpuset/top-app-high-perf/tasks
+    # @}
+
     # make the PSI monitor accessible to others
     chown system system /proc/pressure/memory
     chmod 0664 /proc/pressure/memory
