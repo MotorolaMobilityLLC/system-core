@@ -115,8 +115,19 @@ bool TryPathMount(FstabEntry* rec, const std::string& mount_pt) {
         return true;
     }
 
-    static const std::vector<std::string> supported_fs{"ext4", "squashfs", "vfat", "f2fs", "erofs",
+    /**
+    * Unisoc: add for exfat fs
+    * Support extfat which surpport large file storage(>4GB)
+    * method:modify directly
+    * AOSP Code @{
+    * static const std::vector<std::string> supported_fs{"ext4", "squashfs", "vfat", "f2fs", "erofs","none"};
+    * @}
+    * Unisoc Code @{
+    */
+    static const std::vector<std::string> supported_fs{"ext4", "squashfs", "exfat", "vfat", "f2fs", "erofs",
                                                        "none"};
+    /* @}*/
+
     if (std::find(supported_fs.begin(), supported_fs.end(), rec->fs_type) == supported_fs.end()) {
         LERROR << "unknown fs_type \"" << rec->fs_type << "\" for " << mount_point;
         return false;
