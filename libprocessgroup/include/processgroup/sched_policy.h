@@ -48,6 +48,17 @@ typedef enum {
     SP_TOP_APP = 5,
     SP_RT_APP = 6,
     SP_RESTRICTED = 7,
+    /*
+     * Unisoc: create big core process group.(1/1)
+     * SR.000989.002936:AR.000989.002936.014125
+     * bug 2184878
+     * define: modify directly
+     * Unisoc Code @{
+     */
+#if !defined(__ANDROID_VNDK__)
+    SP_TOP_APP_HIGH_PERF = 8,
+#endif
+    /* @} */
     SP_CNT,
     SP_MAX = SP_CNT - 1,
     SP_SYSTEM_DEFAULT = SP_FOREGROUND,
