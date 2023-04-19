@@ -37,7 +37,13 @@ static inline SchedPolicy _policy(SchedPolicy p) {
 }
 
 #if defined(__ANDROID__)
-
+/*
+ * Unisoc: create big core process group.(1/8)
+ * SR.000989.002936:AR.000989.002936.014125
+ * bug 2184878
+ * method: modify directly
+ * Include all modification about SP_TOP_APP_HIGH_PERF
+ */
 int set_cpuset_policy(int tid, SchedPolicy policy) {
     if (tid == 0) {
         tid = GetThreadId();
@@ -53,6 +59,12 @@ int set_cpuset_policy(int tid, SchedPolicy policy) {
             return SetTaskProfiles(tid, {"CPUSET_SP_FOREGROUND"}, true) ? 0 : -1;
         case SP_TOP_APP:
             return SetTaskProfiles(tid, {"CPUSET_SP_TOP_APP"}, true) ? 0 : -1;
+        // Unisoc:AR.000989.002936.014125 (2/8) @{
+#if !defined(__ANDROID_VNDK__)
+        case SP_TOP_APP_HIGH_PERF:
+            return SetTaskProfiles(tid, {"CPUSET_SP_TOP_APP_HIGH_PERF"}, true) ? 0 : -1;
+        // @}
+#endif
         case SP_SYSTEM:
             return SetTaskProfiles(tid, {"CPUSET_SP_SYSTEM"}, true) ? 0 : -1;
         case SP_RESTRICTED:
@@ -101,6 +113,11 @@ int set_sched_policy(int tid, SchedPolicy policy) {
         case SP_AUDIO_APP:
         case SP_AUDIO_SYS:
         case SP_TOP_APP:
+        // Unisoc:AR.000989.002936.014125 (3/8) @{
+#if !defined(__ANDROID_VNDK__)
+        case SP_TOP_APP_HIGH_PERF:
+#endif
+        // @}
             SLOGD("^^^ tid %d (%s)", tid, thread_name);
             break;
         case SP_SYSTEM:
@@ -123,6 +140,11 @@ int set_sched_policy(int tid, SchedPolicy policy) {
         case SP_AUDIO_SYS:
             return SetTaskProfiles(tid, {"SCHED_SP_FOREGROUND"}, true) ? 0 : -1;
         case SP_TOP_APP:
+        // Unisoc:AR.000989.002936.014125 (4/8) @{
+#if !defined(__ANDROID_VNDK__)
+        case SP_TOP_APP_HIGH_PERF:
+#endif
+        // @}
             return SetTaskProfiles(tid, {"SCHED_SP_TOP_APP"}, true) ? 0 : -1;
         case SP_SYSTEM:
             return SetTaskProfiles(tid, {"SCHED_SP_SYSTEM"}, true) ? 0 : -1;
@@ -176,6 +198,12 @@ static int get_sched_policy_from_group(const std::string& group, SchedPolicy* po
         *policy = SP_BACKGROUND;
     } else if (group == "top-app") {
         *policy = SP_TOP_APP;
+    // Unisoc:AR.000989.002936.014125 (5/8) @{
+#if !defined(__ANDROID_VNDK__)
+    } else if (group == "top-app-high-perf") {
+        *policy = SP_TOP_APP_HIGH_PERF;
+#endif
+    // @}
     } else if (group == "restricted") {
         *policy = SP_RESTRICTED;
     } else {
@@ -231,11 +259,18 @@ int get_sched_policy(int, SchedPolicy* policy) {
 
 const char* get_sched_policy_name(SchedPolicy policy) {
     policy = _policy(policy);
+    // Unisoc:AR.000989.002936.014125 add SP_TOP_APP_HIGH_PERF (6/8)
+#if !defined(__ANDROID_VNDK__)
     static const char* const kSchedPolicyNames[] = {
             [SP_BACKGROUND] = "bg", [SP_FOREGROUND] = "fg", [SP_SYSTEM] = "  ",
             [SP_AUDIO_APP] = "aa",  [SP_AUDIO_SYS] = "as",  [SP_TOP_APP] = "ta",
-            [SP_RT_APP] = "rt",     [SP_RESTRICTED] = "rs",
-    };
+            [SP_RT_APP] = "rt",     [SP_RESTRICTED] = "rs", [SP_TOP_APP_HIGH_PERF] = "tahp",};
+#else
+    static const char* const kSchedPolicyNames[] = {
+            [SP_BACKGROUND] = "bg", [SP_FOREGROUND] = "fg", [SP_SYSTEM] = "  ",
+            [SP_AUDIO_APP] = "aa",  [SP_AUDIO_SYS] = "as",  [SP_TOP_APP] = "ta",
+            [SP_RT_APP] = "rt",     [SP_RESTRICTED] = "rs",};
+#endif
     static_assert(arraysize(kSchedPolicyNames) == SP_CNT, "missing name");
     if (policy < SP_BACKGROUND || policy >= SP_CNT) {
         return nullptr;
@@ -248,14 +283,23 @@ const char* get_cpuset_policy_profile_name(SchedPolicy policy) {
      *  cpuset profile array for:
      *  SP_DEFAULT(-1), SP_BACKGROUND(0), SP_FOREGROUND(1),
      *  SP_SYSTEM(2), SP_AUDIO_APP(3), SP_AUDIO_SYS(4),
-     *  SP_TOP_APP(5), SP_RT_APP(6), SP_RESTRICTED(7)
+     *  SP_TOP_APP(5), SP_RT_APP(6), SP_RESTRICTED(7),
+     *  Unisoc: AR.000989.002936.014125 add SP_TOP_APP_HIGH_PERF(8) (7/8)
      *  index is policy + 1
      *  this need keep in sync with SchedPolicy enum
      */
+#if !defined(__ANDROID_VNDK__)
     static constexpr const char* kCpusetProfiles[SP_CNT + 1] = {
             "CPUSET_SP_DEFAULT", "CPUSET_SP_BACKGROUND", "CPUSET_SP_FOREGROUND",
             "CPUSET_SP_SYSTEM",  "CPUSET_SP_FOREGROUND", "CPUSET_SP_FOREGROUND",
-            "CPUSET_SP_TOP_APP", "CPUSET_SP_DEFAULT",    "CPUSET_SP_RESTRICTED"};
+            "CPUSET_SP_TOP_APP", "CPUSET_SP_DEFAULT", "CPUSET_SP_RESTRICTED",
+            "CPUSET_SP_TOP_APP_HIGH_PERF"};
+#else
+    static constexpr const char* kCpusetProfiles[SP_CNT + 1] = {
+            "CPUSET_SP_DEFAULT", "CPUSET_SP_BACKGROUND", "CPUSET_SP_FOREGROUND",
+            "CPUSET_SP_SYSTEM",  "CPUSET_SP_FOREGROUND", "CPUSET_SP_FOREGROUND",
+            "CPUSET_SP_TOP_APP", "CPUSET_SP_DEFAULT", "CPUSET_SP_RESTRICTED",};
+#endif
     if (policy < SP_DEFAULT || policy >= SP_CNT) {
         return nullptr;
     }
@@ -267,14 +311,23 @@ const char* get_sched_policy_profile_name(SchedPolicy policy) {
      *  sched profile array for:
      *  SP_DEFAULT(-1), SP_BACKGROUND(0), SP_FOREGROUND(1),
      *  SP_SYSTEM(2), SP_AUDIO_APP(3), SP_AUDIO_SYS(4),
-     *  SP_TOP_APP(5), SP_RT_APP(6), SP_RESTRICTED(7)
+     *  SP_TOP_APP(5), SP_RT_APP(6), SP_RESTRICTED(7),
+     *  Unisoc: AR.000989.002936.014125 add SP_TOP_APP_HIGH_PERF(8) (8/8)
      *  index is policy + 1
      *  this need keep in sync with SchedPolicy enum
      */
+#if !defined(__ANDROID_VNDK__)
     static constexpr const char* kSchedProfiles[SP_CNT + 1] = {
             "SCHED_SP_DEFAULT", "SCHED_SP_BACKGROUND", "SCHED_SP_FOREGROUND",
             "SCHED_SP_SYSTEM",  "SCHED_SP_FOREGROUND", "SCHED_SP_FOREGROUND",
-            "SCHED_SP_TOP_APP", "SCHED_SP_RT_APP",     "SCHED_SP_DEFAULT"};
+            "SCHED_SP_TOP_APP", "SCHED_SP_RT_APP",     "SCHED_SP_DEFAULT",
+            "SP_TOP_APP_HIGH_PERF"};
+#else
+    static constexpr const char* kSchedProfiles[SP_CNT + 1] = {
+            "SCHED_SP_DEFAULT", "SCHED_SP_BACKGROUND", "SCHED_SP_FOREGROUND",
+            "SCHED_SP_SYSTEM",  "SCHED_SP_FOREGROUND", "SCHED_SP_FOREGROUND",
+            "SCHED_SP_TOP_APP", "SCHED_SP_RT_APP",     "SCHED_SP_DEFAULT",};
+#endif
     if (policy < SP_DEFAULT || policy >= SP_CNT) {
         return nullptr;
     }
