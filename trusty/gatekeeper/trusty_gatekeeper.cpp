@@ -82,6 +82,7 @@ void sizedBuffer2AidlHWToken(SizedBuffer& buffer,
     if (error_ != 0) {
         return ndk::ScopedAStatus(AStatus_fromServiceSpecificError(ERROR_GENERAL_FAILURE));
     }
+    LOG(INFO) << "TrustyGateKeeper  Enroll =========>>>>>>>>>";
 
     if (desiredPassword.size() == 0) {
         return ndk::ScopedAStatus(AStatus_fromServiceSpecificError(ERROR_GENERAL_FAILURE));
@@ -92,11 +93,14 @@ void sizedBuffer2AidlHWToken(SizedBuffer& buffer,
     EnrollResponse response;
     auto error = Send(request, &response);
     if (error != ERROR_NONE) {
+        LOG(INFO) << "TrustyGateKeeper  Enroll return fail:" << error <<" =========<<<<<<<<<<<<";
         return ndk::ScopedAStatus(AStatus_fromServiceSpecificError(ERROR_GENERAL_FAILURE));
     } else if (response.error == ERROR_RETRY) {
+        LOG(INFO) << "TrustyGateKeeper  Enroll timeout:" << response.retry_timeout <<" =========<<<<<<<<<<<<";
         *rsp = {ERROR_RETRY_TIMEOUT, static_cast<int32_t>(response.retry_timeout), 0, {}};
         return ndk::ScopedAStatus::ok();
     } else if (response.error != ERROR_NONE) {
+        LOG(INFO) << "TrustyGateKeeper  Enroll return fail:" << response.error <<" =========<<<<<<<<<<<<";
         return ndk::ScopedAStatus(AStatus_fromServiceSpecificError(ERROR_GENERAL_FAILURE));
     } else {
         const ::gatekeeper::password_handle_t* password_handle =
@@ -108,6 +112,7 @@ void sizedBuffer2AidlHWToken(SizedBuffer& buffer,
                  (response.enrolled_password_handle.Data<uint8_t>() +
                   response.enrolled_password_handle.size())}};
     }
+    LOG(INFO) << "TrustyGateKeeper  Enroll =========<<<<<<<<<<<<";
     return ndk::ScopedAStatus::ok();
 }
 
@@ -117,6 +122,7 @@ void sizedBuffer2AidlHWToken(SizedBuffer& buffer,
     if (error_ != 0) {
         return ndk::ScopedAStatus(AStatus_fromServiceSpecificError(ERROR_GENERAL_FAILURE));
     }
+    LOG(INFO) << "TrustyGateKeeper  Verify =========>>>>>>>>>";
 
     if (enrolledPasswordHandle.size() == 0) {
         return ndk::ScopedAStatus(AStatus_fromServiceSpecificError(ERROR_GENERAL_FAILURE));
@@ -128,11 +134,14 @@ void sizedBuffer2AidlHWToken(SizedBuffer& buffer,
 
     auto error = Send(request, &response);
     if (error != ERROR_NONE) {
+        LOG(INFO) << "TrustyGateKeeper  Verify return fail:" << error <<" =========<<<<<<<<<<<<";
         return ndk::ScopedAStatus(AStatus_fromServiceSpecificError(ERROR_GENERAL_FAILURE));
     } else if (response.error == ERROR_RETRY) {
+        LOG(INFO) << "TrustyGateKeeper  Verify timeout:" << response.retry_timeout <<"=========<<<<<<<<<<<<";
         *rsp = {ERROR_RETRY_TIMEOUT, static_cast<int32_t>(response.retry_timeout), {}};
         return ndk::ScopedAStatus::ok();
     } else if (response.error != ERROR_NONE) {
+        LOG(INFO) << "TrustyGateKeeper  Verify return fail:" << response.error <<" =========<<<<<<<<<<<<";
         return ndk::ScopedAStatus(AStatus_fromServiceSpecificError(ERROR_GENERAL_FAILURE));
     } else {
         // On Success, return GatekeeperVerifyResponse with Success Status, timeout{0} and
@@ -141,6 +150,7 @@ void sizedBuffer2AidlHWToken(SizedBuffer& buffer,
         // Convert the hw_auth_token_t to HardwareAuthToken in the response.
         sizedBuffer2AidlHWToken(response.auth_token, &rsp->hardwareAuthToken);
     }
+    LOG(INFO) << "TrustyGateKeeper  Verify =========<<<<<<<<<<<<";
     return ndk::ScopedAStatus::ok();
 }
 
@@ -148,18 +158,23 @@ void sizedBuffer2AidlHWToken(SizedBuffer& buffer,
     if (error_ != 0) {
         return ndk::ScopedAStatus(AStatus_fromServiceSpecificError(ERROR_GENERAL_FAILURE));
     }
+    LOG(INFO) << "TrustyGateKeeper  deleteUser =========>>>>>>>>>";
 
     DeleteUserRequest request(uid);
     DeleteUserResponse response;
     auto error = Send(request, &response);
 
     if (error != ERROR_NONE) {
+        LOG(INFO) << "TrustyGateKeeper  deleteUser return fail:" << error <<" =========<<<<<<<<<<<<";
         return ndk::ScopedAStatus(AStatus_fromServiceSpecificError(ERROR_GENERAL_FAILURE));
     } else if (response.error == ERROR_NOT_IMPLEMENTED) {
+        LOG(INFO) << "TrustyGateKeeper  deleteUser return fail:" << response.error <<" =========<<<<<<<<<<<<";
         return ndk::ScopedAStatus(AStatus_fromServiceSpecificError(ERROR_NOT_IMPLEMENTED));
     } else if (response.error != ERROR_NONE) {
+        LOG(INFO) << "TrustyGateKeeper  deleteUser return fail:" << response.error <<" =========<<<<<<<<<<<<";
         return ndk::ScopedAStatus(AStatus_fromServiceSpecificError(ERROR_GENERAL_FAILURE));
     } else {
+        LOG(INFO) << "TrustyGateKeeper  deleteUser timeout:" << response.retry_timeout <<"=========<<<<<<<<<<<<";
         return ndk::ScopedAStatus::ok();
     }
 }
@@ -168,18 +183,23 @@ void sizedBuffer2AidlHWToken(SizedBuffer& buffer,
     if (error_ != 0) {
         return ndk::ScopedAStatus(AStatus_fromServiceSpecificError(ERROR_GENERAL_FAILURE));
     }
+    LOG(INFO) << "TrustyGateKeeper  deleteAllUsers =========>>>>>>>>>";
 
     DeleteAllUsersRequest request;
     DeleteAllUsersResponse response;
     auto error = Send(request, &response);
 
     if (error != ERROR_NONE) {
+        LOG(INFO) << "TrustyGateKeeper  deleteAllUsers return fail:" << error <<" =========<<<<<<<<<<<<";
         return ndk::ScopedAStatus(AStatus_fromServiceSpecificError(ERROR_GENERAL_FAILURE));
     } else if (response.error == ERROR_NOT_IMPLEMENTED) {
+        LOG(INFO) << "TrustyGateKeeper  deleteAllUsers return fail:" << response.error <<" =========<<<<<<<<<<<<";
         return ndk::ScopedAStatus(AStatus_fromServiceSpecificError(ERROR_NOT_IMPLEMENTED));
     } else if (response.error != ERROR_NONE) {
+        LOG(INFO) << "TrustyGateKeeper  deleteAllUsers return fail:" << response.error <<" =========<<<<<<<<<<<<";
         return ndk::ScopedAStatus(AStatus_fromServiceSpecificError(ERROR_GENERAL_FAILURE));
     } else {
+        LOG(INFO) << "TrustyGateKeeper  deleteAllUsers timeout:" << response.retry_timeout <<"=========<<<<<<<<<<<<";
         return ndk::ScopedAStatus::ok();
     }
 }
