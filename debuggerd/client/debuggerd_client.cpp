@@ -125,6 +125,13 @@ bool debuggerd_trigger_dump(pid_t tid, DebuggerdDumpType dump_type, unsigned int
       log_error(output_fd, 0, "failed to get process info: %s", error.c_str());
       return false;
     }
+    if(procinfo.pid != procinfo.tid){
+      //for bug1938155 ,although zygote ppid =1,but it doesn't appear in "pid != tid"
+      if(procinfo.ppid == 1){
+        LOG(ERROR) << "libdebugged_client: native process not allow javabacktrace(ppid=1)";
+        return false;
+      }
+    }
     pid = procinfo.pid;
   }
 
