@@ -113,9 +113,12 @@ int set_sched_policy(int tid, SchedPolicy policy) {
         case SP_AUDIO_APP:
         case SP_AUDIO_SYS:
         case SP_TOP_APP:
-        // Unisoc:AR.000989.002936.014125 (3/8) @{
+        // Unisoc: process group add @{
 #if !defined(__ANDROID_VNDK__)
+        // AR.000989.002936.014125 (3/8)
         case SP_TOP_APP_HIGH_PERF:
+        // AR.000989.007435.024062 (1/5)
+        case SP_VIP_APP:
 #endif
         // @}
             SLOGD("^^^ tid %d (%s)", tid, thread_name);
@@ -150,6 +153,12 @@ int set_sched_policy(int tid, SchedPolicy policy) {
             return SetTaskProfiles(tid, {"SCHED_SP_SYSTEM"}, true) ? 0 : -1;
         case SP_RT_APP:
             return SetTaskProfiles(tid, {"SCHED_SP_RT_APP"}, true) ? 0 : -1;
+        // Unisoc:AR.000989.007435.024062 (2/5) @{
+#if !defined(__ANDROID_VNDK__)
+        case SP_VIP_APP:
+            return SetTaskProfiles(tid, {"SCHED_SP_VIP_APP"}, true) ? 0 :-1;
+#endif
+        // @}
         default:
             return SetTaskProfiles(tid, {"SCHED_SP_DEFAULT"}, true) ? 0 : -1;
     }
@@ -198,10 +207,14 @@ static int get_sched_policy_from_group(const std::string& group, SchedPolicy* po
         *policy = SP_BACKGROUND;
     } else if (group == "top-app") {
         *policy = SP_TOP_APP;
-    // Unisoc:AR.000989.002936.014125 (5/8) @{
+    // Unisoc:process group add @{
 #if !defined(__ANDROID_VNDK__)
+    // AR.000989.002936.014125 (5/8)
     } else if (group == "top-app-high-perf") {
         *policy = SP_TOP_APP_HIGH_PERF;
+    // AR.000989.007435.024062 (3/5)
+    } else if (group == "vip-sched") {
+        *policy = SP_VIP_APP;
 #endif
     // @}
     } else if (group == "restricted") {
@@ -260,11 +273,13 @@ int get_sched_policy(int, SchedPolicy* policy) {
 const char* get_sched_policy_name(SchedPolicy policy) {
     policy = _policy(policy);
     // Unisoc:AR.000989.002936.014125 add SP_TOP_APP_HIGH_PERF (6/8)
+    // AR.000989.007435.024062 (4/5)
 #if !defined(__ANDROID_VNDK__)
     static const char* const kSchedPolicyNames[] = {
             [SP_BACKGROUND] = "bg", [SP_FOREGROUND] = "fg", [SP_SYSTEM] = "  ",
             [SP_AUDIO_APP] = "aa",  [SP_AUDIO_SYS] = "as",  [SP_TOP_APP] = "ta",
-            [SP_RT_APP] = "rt",     [SP_RESTRICTED] = "rs", [SP_TOP_APP_HIGH_PERF] = "tahp",};
+            [SP_RT_APP] = "rt",     [SP_RESTRICTED] = "rs", [SP_TOP_APP_HIGH_PERF] = "tahp",
+            [SP_VIP_APP] = "va"};
 #else
     static const char* const kSchedPolicyNames[] = {
             [SP_BACKGROUND] = "bg", [SP_FOREGROUND] = "fg", [SP_SYSTEM] = "  ",
@@ -312,7 +327,7 @@ const char* get_sched_policy_profile_name(SchedPolicy policy) {
      *  SP_DEFAULT(-1), SP_BACKGROUND(0), SP_FOREGROUND(1),
      *  SP_SYSTEM(2), SP_AUDIO_APP(3), SP_AUDIO_SYS(4),
      *  SP_TOP_APP(5), SP_RT_APP(6), SP_RESTRICTED(7),
-     *  Unisoc: AR.000989.002936.014125 add SP_TOP_APP_HIGH_PERF(8) (8/8)
+     *  Unisoc: AR.000989.007435.024062 add SCHED_SP_VIP_APP(9) (5/5)
      *  index is policy + 1
      *  this need keep in sync with SchedPolicy enum
      */
@@ -321,7 +336,7 @@ const char* get_sched_policy_profile_name(SchedPolicy policy) {
             "SCHED_SP_DEFAULT", "SCHED_SP_BACKGROUND", "SCHED_SP_FOREGROUND",
             "SCHED_SP_SYSTEM",  "SCHED_SP_FOREGROUND", "SCHED_SP_FOREGROUND",
             "SCHED_SP_TOP_APP", "SCHED_SP_RT_APP",     "SCHED_SP_DEFAULT",
-            "SP_TOP_APP_HIGH_PERF"};
+            "SCHED_SP_DEFAULT", "SCHED_SP_VIP_APP"};
 #else
     static constexpr const char* kSchedProfiles[SP_CNT + 1] = {
             "SCHED_SP_DEFAULT", "SCHED_SP_BACKGROUND", "SCHED_SP_FOREGROUND",
