@@ -172,6 +172,19 @@
       ]
     },
     {
+      "Name": "VipSched",
+      "Actions": [
+        {
+          "Name": "JoinCgroup",
+          "Params":
+          {
+            "Controller": "cpu",
+            "Path": "vip-sched"
+          }
+        }
+      ]
+    },
+    {
       "Name": "RealtimePerformance",
       "Actions": [
         {
@@ -666,6 +679,10 @@
     {
       "Name": "SCHED_SP_RT_APP",
       "Profiles": [ "RealtimePerformance", "MaxIoPriority", "TimerSlackNormal" ]
+    },
+    {
+      "Name": "SCHED_SP_VIP_APP",
+      "Profiles": [ "VipSched", "MaxIoPriority", "TimerSlackNormal" ]
     },
     {
       "Name": "CPUSET_SP_DEFAULT",

@@ -423,6 +423,19 @@ on init
     chmod 0664 /dev/cpuset/top-app-high-perf/tasks
     # @}
 
+    # Unisoc: create vip sched process group.(1/1)
+    # SR.000989.007435:AR.000989.007435.024062
+    # bug 2232966
+    # config: add directly
+    # Unisoc Code @{
+    mkdir /dev/cpuctl/vip-sched
+    chown system system /dev/cpuctl/vip-sched
+    chown system system /dev/cpuctl/vip-sched/tasks
+    chown system system /dev/cpuctl/vip-sched/cgroup.procs
+    chmod 0664 /dev/cpuctl/vip-sched/tasks
+    chmod 0664 /dev/cpuctl/vip-sched/cgroup.procs
+    # @}
+
     # make the PSI monitor accessible to others
     chown system system /proc/pressure/memory
     chmod 0664 /proc/pressure/memory

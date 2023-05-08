@@ -50,13 +50,17 @@ typedef enum {
     SP_RESTRICTED = 7,
     /*
      * Unisoc: create big core process group.(1/1)
-     * SR.000989.002936:AR.000989.002936.014125
-     * bug 2184878
+     * create vip sched process group. (1/1)
      * define: modify directly
      * Unisoc Code @{
      */
 #if !defined(__ANDROID_VNDK__)
+    /* SR.000989.002936:AR.000989.002936.014125 */
+    /* bug 2184878 big core group */
     SP_TOP_APP_HIGH_PERF = 8,
+    /* SR.000989.007435:AR.000989.007435.024062 */
+    /* bug 2232966 vip sched group */
+    SP_VIP_APP = 9,
 #endif
     /* @} */
     SP_CNT,
