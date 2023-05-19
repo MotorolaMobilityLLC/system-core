@@ -227,6 +227,7 @@ static const struct fs_path_config android_files[] = {
     { 00755, AID_ROOT,      AID_SHELL,     0, "vendor/bin/*" },
     { 00755, AID_ROOT,      AID_SHELL,     0, "vendor/apex/*bin/*" },
     { 00755, AID_ROOT,      AID_SHELL,     0, "vendor/xbin/*" },
+    { 00640, AID_SYSTEM,    AID_SYSTEM,    0, "odm/firmware/fingerprint/*" },
     { 00644, AID_ROOT,      AID_ROOT,      0, 0 },
         // clang-format on
 };
