@@ -933,35 +933,44 @@ static void property_initialize_ro_product_props() {
 }
 
 static void property_re_initialize_build_id() {
-    const char* RO_BUILD_PROPS_PREFIX = "ro.";
     const char* RO_BUILD_PROPS[] = {
         "build.display.id", "build.description",
     };
     const std::string EMPTY = "";
 
     for (const auto& ro_build_prop : RO_BUILD_PROPS) {
-        std::string base_prop(RO_BUILD_PROPS_PREFIX);
+        std::string base_prop("ro.");
         base_prop += ro_build_prop;
         std::string base_prop_val = GetProperty(base_prop, EMPTY);
         if (!base_prop_val.empty()) {
             continue;
         }
 
-        std::string target_prop(RO_BUILD_PROPS_PREFIX);
-        target_prop += "odm.";
-        target_prop += ro_build_prop;
+        std::string odm_target_prop("ro.");
+        std::string system_target_prop("ro.");
+        odm_target_prop += "odm.";
+        odm_target_prop += ro_build_prop;
+        system_target_prop += "system_ext.";
+        system_target_prop += ro_build_prop;
 
-        std::string target_prop_val = GetProperty(target_prop, EMPTY);
+        std::string odm_target_prop_val = GetProperty(odm_target_prop, EMPTY);
+        std::string system_target_prop_val = GetProperty(system_target_prop, EMPTY);
+        std::string target_prop_val = odm_target_prop_val.substr(0,odm_target_prop_val.find_first_of(" "))
+            + system_target_prop_val.substr(system_target_prop_val.find_first_of(" "), system_target_prop_val.length());
+
+        if (GetProperty("ro.build.type", EMPTY) == "user" && base_prop == "ro.build.display.id") {
+            target_prop_val = system_target_prop_val;
+        }
+
         if (!target_prop_val.empty()) {
-            LOG(INFO) << "Setting product property " << base_prop << " to '" << target_prop_val
-                      << "' (from " << target_prop << ")";
+            LOG(INFO) << "Setting product property " << base_prop << " to '" << target_prop_val;
             std::string error;
             uint32_t res = PropertySetNoSocket(base_prop, target_prop_val, &error);
             if (res != PROP_SUCCESS) {
                 LOG(ERROR) << "Error setting product property " << base_prop << ": err=" << res
                            << " (" << error << ")";
             }
-            break;
+            continue;
         }
     }
 }
