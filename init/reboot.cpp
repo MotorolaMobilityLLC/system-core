@@ -79,6 +79,9 @@ using android::base::Timer;
 using android::base::unique_fd;
 using android::base::WaitForProperty;
 using android::base::WriteStringToFile;
+using android::base::ReadFileToString;
+
+#define SPRD_FEATURE_SHUTDOWN_DETECT
 
 namespace android {
 namespace init {
@@ -729,6 +732,14 @@ static void DoReboot(unsigned int cmd, const std::string& reason, const std::str
     }
     PersistRebootReason(reason.c_str() + skip, true);
 
+#ifdef SPRD_FEATURE_SHUTDOWN_DETECT
+    if((cmd == ANDROID_RB_RESTART) || (cmd == ANDROID_RB_RESTART2)) {
+        android::base::WriteStringToFile("30", "/proc/shutdown_detect");
+    }else {
+        android::base::WriteStringToFile("70", "/proc/shutdown_detect");
+    }
+#endif
+
     // If /data isn't mounted then we can skip the extra reboot steps below, since we don't need to
     // worry about unmounting it.
     if (!IsDataMounted("*")) {
@@ -811,6 +822,10 @@ static void DoReboot(unsigned int cmd, const std::string& reason, const std::str
     // Reap subcontext pids.
     ReapAnyOutstandingChildren();
 
+#ifdef SPRD_FEATURE_SHUTDOWN_DETECT
+    auto vold_start_time = t.duration();
+#endif
+
     // 3. send volume abort_fuse and volume shutdown to vold
     Service* vold_service = ServiceList::GetInstance().FindService("vold");
     if (vold_service != nullptr && vold_service->IsRunning()) {
@@ -822,6 +837,15 @@ static void DoReboot(unsigned int cmd, const std::string& reason, const std::str
     } else {
         LOG(INFO) << "vold not running, skipping vold shutdown";
     }
+
+#ifdef SPRD_FEATURE_SHUTDOWN_DETECT
+    auto vold_end_time = t.duration();
+    if((vold_end_time - vold_start_time) > 5000ms) {
+        LOG(ERROR) << "volume shutdown timeout  vold_end_time" << vold_end_time.count() << "vold_start_time" << vold_start_time.count();
+        android::base::WriteStringToFile("32", "/proc/shutdown_detect");
+    }
+#endif
+
     // logcat stopped here
     StopServices(kDebuggingServices, 0ms, false /* SIGKILL */);
     // 4. sync, try umount, and optionally run fsck for user shutdown
@@ -839,6 +863,11 @@ static void DoReboot(unsigned int cmd, const std::string& reason, const std::str
     if (auto ret = UnmountAllApexes(); !ret.ok()) {
         LOG(ERROR) << ret.error();
     }
+
+#ifdef SPRD_FEATURE_SHUTDOWN_DETECT
+    auto umount_start_time = t.duration();
+#endif
+
     UmountStat stat =
             TryUmountAndFsck(cmd, run_fsck, shutdown_timeout - t.duration(), &reboot_semaphore);
     // Follow what linux shutdown is doing: one more sync with little bit delay
@@ -848,6 +877,15 @@ static void DoReboot(unsigned int cmd, const std::string& reason, const std::str
         sync();
         LOG(INFO) << "sync() after umount took" << sync_timer;
     }
+
+#ifdef SPRD_FEATURE_SHUTDOWN_DETECT
+    auto umount_end_time = t.duration();
+    if((umount_end_time - umount_start_time) > 5000ms) {
+        LOG(ERROR) << "umount timeout  umount_end_time" << umount_end_time.count() << "umount_start_time" << umount_start_time.count();
+        android::base::WriteStringToFile("31", "/proc/shutdown_detect");
+    }
+#endif
+
     if (!is_thermal_shutdown) std::this_thread::sleep_for(100ms);
     LogShutdownTime(stat, &t);
 
@@ -866,6 +904,11 @@ static void DoReboot(unsigned int cmd, const std::string& reason, const std::str
             LOG(INFO) << "Shutdown /data";
         }
     }
+
+#ifdef SPRD_FEATURE_SHUTDOWN_DETECT
+    android::base::WriteStringToFile("20", "/proc/shutdown_detect");
+#endif
+
     RebootSystem(cmd, reboot_target, reason);
     abort();
 }
