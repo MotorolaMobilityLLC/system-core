@@ -955,8 +955,11 @@ static void property_re_initialize_build_id() {
 
         std::string odm_target_prop_val = GetProperty(odm_target_prop, EMPTY);
         std::string system_target_prop_val = GetProperty(system_target_prop, EMPTY);
-        std::string target_prop_val = odm_target_prop_val.substr(0,odm_target_prop_val.find_first_of(" "))
-            + system_target_prop_val.substr(system_target_prop_val.find_first_of(" "), system_target_prop_val.length());
+        std::string odm_target_name = Split(odm_target_prop_val, " ")[0];
+        std::string system_target_name = Split(system_target_prop_val, " ")[0];
+
+        std::string target_prop_val = odm_target_name
+            + system_target_prop_val.substr(system_target_name.size(), system_target_prop_val.length());
 
         if (GetProperty("ro.build.type", EMPTY) == "user" && base_prop == "ro.build.display.id") {
             target_prop_val = system_target_prop_val;
@@ -970,7 +973,6 @@ static void property_re_initialize_build_id() {
                 LOG(ERROR) << "Error setting product property " << base_prop << ": err=" << res
                            << " (" << error << ")";
             }
-            continue;
         }
     }
 }
