@@ -734,9 +734,13 @@ static void DoReboot(unsigned int cmd, const std::string& reason, const std::str
 
 #ifdef SPRD_FEATURE_SHUTDOWN_DETECT
     if((cmd == ANDROID_RB_RESTART) || (cmd == ANDROID_RB_RESTART2)) {
-        android::base::WriteStringToFile("30", "/proc/shutdown_detect");
+        if (!WriteStringToFile("30", "/proc/shutdown_detect")) {
+        LOG(ERROR) << "shutdown_detect start init stage check failed";
+        }
     }else {
-        android::base::WriteStringToFile("70", "/proc/shutdown_detect");
+        if (!WriteStringToFile("70", "/proc/shutdown_detect")) {
+        LOG(ERROR) << "shutdown_detect start init stage check failed";
+        }
     }
 #endif
 
@@ -842,7 +846,9 @@ static void DoReboot(unsigned int cmd, const std::string& reason, const std::str
     auto vold_end_time = t.duration();
     if((vold_end_time - vold_start_time) > 5000ms) {
         LOG(ERROR) << "volume shutdown timeout  vold_end_time" << vold_end_time.count() << "vold_start_time" << vold_start_time.count();
-        android::base::WriteStringToFile("32", "/proc/shutdown_detect");
+        if (!WriteStringToFile("32", "/proc/shutdown_detect")) {
+        LOG(ERROR) << "shutdown_detect init stage vold check failed";
+        }
     }
 #endif
 
@@ -882,7 +888,9 @@ static void DoReboot(unsigned int cmd, const std::string& reason, const std::str
     auto umount_end_time = t.duration();
     if((umount_end_time - umount_start_time) > 5000ms) {
         LOG(ERROR) << "umount timeout  umount_end_time" << umount_end_time.count() << "umount_start_time" << umount_start_time.count();
-        android::base::WriteStringToFile("31", "/proc/shutdown_detect");
+        if (!WriteStringToFile("31", "/proc/shutdown_detect")) {
+        LOG(ERROR) << "shutdown_detect umount init stage check failed";
+        }
     }
 #endif
 
@@ -906,7 +914,9 @@ static void DoReboot(unsigned int cmd, const std::string& reason, const std::str
     }
 
 #ifdef SPRD_FEATURE_SHUTDOWN_DETECT
-    android::base::WriteStringToFile("20", "/proc/shutdown_detect");
+    if (!WriteStringToFile("20", "/proc/shutdown_detect")) {
+    LOG(ERROR) << "shutdown_detect finish init stage check failed";
+    }
 #endif
 
     RebootSystem(cmd, reboot_target, reason);
