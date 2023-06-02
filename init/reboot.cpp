@@ -68,6 +68,8 @@
 #include "sigchld_handler.h"
 #include "util.h"
 
+#include "include/hook/libinit.h"
+
 using namespace std::literals;
 
 using android::base::boot_clock;
@@ -100,67 +102,8 @@ static std::set<std::string> GetPostDataDebuggingServices() {
     return ret;
 }
 
-static char getShutdownFlag() {
-    int ret;
-    char charging_flag = 0;
-
-    FILE * fp = fopen(MISCDATA_PATH, "r+");
-    if (fp == NULL) {
-        PLOG(ERROR) << "Could not open : " << MISCDATA_PATH;
-        return 0;
-    }
-
-    ret = fseek(fp, (MISCDATA_BASE_ADDR + MISCDATA_SHUTDOWN_CHARGE_FLAG_OFFSET), SEEK_SET);
-    if (ret) {
-        PLOG(ERROR) << "fseek MISCDATA_SHUTDOWN_CHARGE_FLAG_OFFSET : " << ret;
-        fclose(fp);
-        return 0;
-    }
-
-    ret = fread(&charging_flag, 1, 1, fp);
-    if (ret <= 0) {
-        PLOG(ERROR) << "fwrite MISCDATA_SHUTDOWN_CHARGE_FLAG_OFFSET : " << ret;
-    }
-    fclose(fp);
-    LOG(INFO) << "getShutdownFlag flag = " << charging_flag;
-    return charging_flag;
-}
 
 
-static void PersistShutdownCharging(bool charging) {
-    int ret;
-    char charging_flag = 1;
-
-    if (!charging) return;
-
-    if (getShutdownFlag() == 1) {
-        LOG(INFO) << "Warning MISCDATA_SHUTDOWN_CHARGE_FLAG is dirty already 1.";
-    }
-
-    LOG(INFO) << "PersistShutdownCharging write " << charging_flag << " to MISCDATA_PATH";
-
-    FILE * fp = fopen(MISCDATA_PATH, "r+");
-    if (fp == NULL) {
-        PLOG(ERROR) << "Could not open : " << MISCDATA_PATH;
-        return;
-    }
-
-    ret = fseek(fp, (MISCDATA_BASE_ADDR + MISCDATA_SHUTDOWN_CHARGE_FLAG_OFFSET), SEEK_SET);
-    if (ret) {
-        PLOG(ERROR) << "fseek MISCDATA_SHUTDOWN_CHARGE_FLAG_OFFSET error : " << ret;
-        fclose(fp);
-        return;
-    }
-
-    ret = fwrite(&charging_flag, 1, 1, fp);
-    if (ret <= 0) {
-        PLOG(ERROR) << "fwrite MISCDATA_SHUTDOWN_CHARGE_FLAG_OFFSET error : " << ret;
-    }
-    fflush(fp);
-    fclose(fp);
-    LOG(INFO) << "PersistShutdownCharging write done.";
-
-}
 
 static void PersistRebootReason(const char* reason, bool write_to_property) {
     if (write_to_property) {
