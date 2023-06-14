@@ -74,6 +74,7 @@
 #include "subcontext.h"
 #include "system/core/init/property_service.pb.h"
 #include "util.h"
+#include "include/hook/libinit.h"
 
 using namespace std::literals;
 
@@ -433,7 +434,7 @@ static std::optional<uint32_t> PropertySet(const std::string& name, const std::s
 
 // Helper for PropertySet, for the case where no socket is used, and therefore an asynchronous
 // return is not possible.
-static uint32_t PropertySetNoSocket(const std::string& name, const std::string& value,
+uint32_t PropertySetNoSocket(const std::string& name, const std::string& value,
                                     std::string* error) {
     auto ret = PropertySet(name, value, nullptr, error);
     CHECK(ret.has_value());
@@ -932,50 +933,6 @@ static void property_initialize_ro_product_props() {
     }
 }
 
-static void property_re_initialize_build_id() {
-    const char* RO_BUILD_PROPS[] = {
-        "build.display.id", "build.description",
-    };
-    const std::string EMPTY = "";
-
-    for (const auto& ro_build_prop : RO_BUILD_PROPS) {
-        std::string base_prop("ro.");
-        base_prop += ro_build_prop;
-        std::string base_prop_val = GetProperty(base_prop, EMPTY);
-        if (!base_prop_val.empty()) {
-            continue;
-        }
-
-        std::string odm_target_prop("ro.");
-        std::string system_target_prop("ro.");
-        odm_target_prop += "odm.";
-        odm_target_prop += ro_build_prop;
-        system_target_prop += "system_ext.";
-        system_target_prop += ro_build_prop;
-
-        std::string odm_target_prop_val = GetProperty(odm_target_prop, EMPTY);
-        std::string system_target_prop_val = GetProperty(system_target_prop, EMPTY);
-        std::string odm_target_name = Split(odm_target_prop_val, " ")[0];
-        std::string system_target_name = Split(system_target_prop_val, " ")[0];
-
-        std::string target_prop_val = odm_target_name
-            + system_target_prop_val.substr(system_target_name.size(), system_target_prop_val.length());
-
-        if (GetProperty("ro.build.type", EMPTY) == "user" && base_prop == "ro.build.display.id") {
-            target_prop_val = system_target_prop_val;
-        }
-
-        if (!target_prop_val.empty()) {
-            LOG(INFO) << "Setting product property " << base_prop << " to '" << target_prop_val;
-            std::string error;
-            uint32_t res = PropertySetNoSocket(base_prop, target_prop_val, &error);
-            if (res != PROP_SUCCESS) {
-                LOG(ERROR) << "Error setting product property " << base_prop << ": err=" << res
-                           << " (" << error << ")";
-            }
-        }
-    }
-}
 
 static void property_initialize_build_id() {
     property_re_initialize_build_id();
@@ -1412,12 +1369,6 @@ static void ProcessBootconfig() {
     });
 }
 
-static void SetpropSocModel() {
-    std::string auto_efuse_value = GetProperty("ro.boot.auto.efuse", "");
-    if ((auto_efuse_value != "-1") && (auto_efuse_value != "") && (auto_efuse_value != "L3") && (auto_efuse_value != "L3R")) {
-            InitPropertySet("ro.soc.model",auto_efuse_value);
-    }
-}
 
 void PropertyInit() {
     selinux_callback cb;
