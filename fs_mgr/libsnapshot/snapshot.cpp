@@ -3945,17 +3945,14 @@ bool SnapshotManager::FinishMergeInRecovery() {
     return true;
 }
 
-#define MAIN_SPL_PATH_EMMC "dev/block/mmcblk0boot0"
-#define MAIN_SPL_PATH_UFS "dev/block/sdb"
+#define MAIN_SPL_PATH "dev/block/by-name/spl_a"
+#define BACK_SPL_PATH "dev/block/by-name/spl_b"
+#define RENEW_SIZE 1024*1024
 static bool RestoreMainSplForRollBack(void){
     bool result;
     //confirm emmc or ufs spl dev path
     std::string spl_device_path;
-    if(access(MAIN_SPL_PATH_UFS , 0) == 0)
-        spl_device_path = MAIN_SPL_PATH_UFS;
-    else
-        spl_device_path = MAIN_SPL_PATH_EMMC;
-
+    spl_device_path = MAIN_SPL_PATH;
     char magicdata[4];
     unique_fd fd(open(spl_device_path.c_str(), O_RDWR | O_DSYNC));
     if (fd < 0) {
@@ -3983,7 +3980,7 @@ static bool RestoreMainSplForRollBack(void){
     int read_only_flag = 0;
     if(ioctl(fd, BLKROSET, &read_only_flag) != 0){
         LOG(ERROR) << "set" << spl_device_path << "writable failed";
-	return false;
+        return false;
     }
     if(TEMP_FAILURE_RETRY(pwrite(fd, magicdata, sizeof(magicdata), 0)) != sizeof(magicdata)){
         PLOG(ERROR) << "Write spl magicdata failed!";
@@ -3994,11 +3991,73 @@ static bool RestoreMainSplForRollBack(void){
     }
     read_only_flag = 1;
     if(ioctl(fd, BLKROSET, &read_only_flag) != 0){
-	LOG(ERROR) << "set" << spl_device_path << "readonly failed";
-	return false;
+        LOG(ERROR) << "set" << spl_device_path << "readonly failed";
+        return false;
     }
     return result;
 }
+
+
+bool UpdateMainSplFromBackSplAfterDowngradeUpdate(){
+    std::string main_spl_dev_path, back_spl_dev_path;
+    main_spl_dev_path = MAIN_SPL_PATH;
+    back_spl_dev_path = BACK_SPL_PATH;
+    int fd = open(back_spl_dev_path.c_str(), O_RDONLY);
+    if (fd < 0) {
+        PLOG(ERROR) << "Faile to open bak path for read: " << back_spl_dev_path.c_str();
+        return false;
+    }
+    char *spldata =new char[RENEW_SIZE];
+    if (TEMP_FAILURE_RETRY(pread(fd, spldata, RENEW_SIZE, 0)) != RENEW_SIZE) {
+        PLOG(ERROR) << "Read data from back bootarea failed!";
+        delete [] spldata;
+        close(fd);
+        return false;
+    }
+    int sd = open(main_spl_dev_path.c_str(), O_RDWR | O_DSYNC);
+    if (sd < 0) {
+        PLOG(ERROR) << "Faile to open main path for write: " << main_spl_dev_path.c_str();
+        delete [] spldata;
+        close(fd);
+        return false;
+    }
+    int read_only_flag = 0;
+    if(ioctl(sd, BLKROSET, &read_only_flag) != 0){
+        LOG(ERROR) << "set" << main_spl_dev_path << "writable failed";
+        delete [] spldata;
+        close(fd);
+        close(sd);
+        return false;
+    }
+    if(TEMP_FAILURE_RETRY(pwrite(sd, spldata, RENEW_SIZE, 0)) != RENEW_SIZE){
+        PLOG(ERROR) << "Write data to main bootarea failed!";
+        delete [] spldata;
+        read_only_flag = 1;
+        if(ioctl(sd, BLKROSET, &read_only_flag) != 0){
+            LOG(ERROR) << "set" << main_spl_dev_path << "readonly failed";
+            close(fd);
+            close(sd);
+            return false;
+        }
+        close(fd);
+        close(sd);
+        return false;
+    }else{
+        LOG(INFO) << "Main bootarea is updated From back boot partition successfully!";
+        delete [] spldata;
+        read_only_flag = 1;
+        if(ioctl(sd, BLKROSET, &read_only_flag) != 0){
+            LOG(ERROR) << "set" << main_spl_dev_path << "readonly failed";
+            close(fd);
+            close(sd);
+            return false;
+        }
+        close(fd);
+        close(sd);
+        return true;
+    }
+}
+
 
 UpdateState SnapshotManager::ProcessUpdateStateOnDataWipe(bool allow_forward_merge,
                                                           const std::function<bool()>& callback) {
@@ -4033,6 +4092,7 @@ UpdateState SnapshotManager::ProcessUpdateStateOnDataWipe(bool allow_forward_mer
                         LOG(ERROR) << "Failed to initiate merge on data wipe.";
                         return UpdateState::MergeFailed;
                     }
+                    UpdateMainSplFromBackSplAfterDowngradeUpdate();
                     return ProcessUpdateStateOnDataWipe(false /* allow_forward_merge */, callback);
                 }
 
