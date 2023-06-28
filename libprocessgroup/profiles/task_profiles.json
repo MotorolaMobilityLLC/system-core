@@ -565,7 +565,34 @@
         }
       ]
     },
-
+    {
+      "Name": "ResetUclampGrp",
+      "Actions": [
+        {
+          "Name": "WriteFile",
+          "Params":
+          {
+            "FilePath": "/proc/sys/unisched/sched_uclamp_fork_reset_set",
+            "Value": "<pid>",
+            "LogFailures": "false"
+          }
+        }
+      ]
+    },
+    {
+      "Name": "NoResetUclampGrp",
+      "Actions": [
+        {
+          "Name": "WriteFile",
+          "Params":
+          {
+            "FilePath": "/proc/sys/unisched/sched_uclamp_fork_reset_clear",
+            "Value": "<pid>",
+            "LogFailures": "false"
+          }
+        }
+      ]
+    },
     {
       "Name": "PerfBoost",
       "Actions": [
