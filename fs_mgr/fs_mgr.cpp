@@ -854,6 +854,7 @@ static int __mount(const std::string& source, const std::string& target, const F
     bool try_f2fs_fallback = false;
     Timer t;
 
+    LINFO << __FUNCTION__ << " (target=" << target << ") begin";
     do {
         if (save_errno == EINVAL && (try_f2fs_gc_allowance || try_f2fs_fallback)) {
             PINFO << "Kernel does not support " << checkpoint_opts << ", trying without.";
@@ -891,7 +892,7 @@ static int __mount(const std::string& source, const std::string& target, const F
         errno = save_errno;
     }
     PINFO << __FUNCTION__ << "(source=" << source << source_missing << ",target=" << target
-          << target_missing << ",type=" << entry.fs_type << ")=" << ret;
+          << target_missing << ",type=" << entry.fs_type << ")=" << ret << ",during time: " << t.duration().count() << " ms";
     if ((ret == 0) && (mountflags & MS_RDONLY) != 0) {
         fs_mgr_set_blk_ro(source);
     }
