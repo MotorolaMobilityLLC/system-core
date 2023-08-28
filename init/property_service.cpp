@@ -381,6 +381,24 @@ class PersistWriteThread {
     std::deque<std::tuple<std::string, std::string, SocketConnection>> work_;
 };
 
+const char* perms_skip_prop[] = {
+    "ro.com.google.clientidbase", "ro.com.google.clientidbase.am", "ro.com.google.clientidbase.ms", "ro.com.google.clientidbase.vs", "ro.com.google.clientidbase.wal","ro.com.google.clientidbase.cr",
+    "ro.product.model",
+    "ro.product.name",
+    "ro.build.fingerprint",
+    "ro.facebook.partnerid.source"
+};
+
+bool skipPerms(const std::string& name)
+{
+    for (const auto& prop : perms_skip_prop) {
+        if (name == prop) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static std::optional<uint32_t> PropertySet(const std::string& name, const std::string& value,
                                            SocketConnection* socket, std::string* error) {
     size_t valuelen = value.size();
@@ -404,8 +422,14 @@ static std::optional<uint32_t> PropertySet(const std::string& name, const std::s
         if (pi != nullptr) {
             // ro.* properties are actually "write-once".
             if (StartsWith(name, "ro.")) {
-                *error = "Read-only property was already set";
-                return {PROP_ERROR_READ_ONLY_PROPERTY};
+                //modify by lihaogui 20220907 for EKSABAHL-333 start
+                if (skipPerms(name)) {
+                    LOG(WARNING) << "try to set " << name <<"(" << value <<") In ";
+                } else {
+                //modify by lihaogui 20220907 for EKSABAHL-333 end
+                    *error = "Read-only property was already set";
+                    return PROP_ERROR_READ_ONLY_PROPERTY;
+                }
             }
 
             __system_property_update(pi, value.c_str(), valuelen);
@@ -516,8 +540,9 @@ uint32_t CheckPermissions(const std::string& name, const std::string& value,
     const char* target_context = nullptr;
     const char* type = nullptr;
     property_info_area->GetPropertyInfo(name.c_str(), &target_context, &type);
-
-    if (!CheckMacPerms(name, target_context, source_context.c_str(), cr)) {
+    //modify by lihaogui 20220907 for EKSABAHL-333 start
+    if (!skipPerms(name) && !CheckMacPerms(name, target_context, source_context.c_str(), cr)) {
+    //modify by lihaogui 20220907 for EKSABAHL-333 end
         *error = "SELinux permission check failed";
         return PROP_ERROR_PERMISSION_DENIED;
     }
