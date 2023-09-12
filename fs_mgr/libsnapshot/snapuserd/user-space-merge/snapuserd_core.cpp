@@ -174,7 +174,10 @@ bool SnapshotHandler::ReadMetadata() {
         return false;
     }
 
-    SNAP_LOG(INFO) << "Merge-ops: " << header.num_merge_ops;
+    if (header.num_merge_ops) {
+        resume_merge_ = true;
+        SNAP_LOG(INFO) << "Resume Snapshot-merge: Merge-ops: " << header.num_merge_ops;
+    }
 
     if (!MmapMetadata()) {
         SNAP_LOG(ERROR) << "mmap failed";
@@ -313,6 +316,10 @@ bool SnapshotHandler::Start() {
         ra_thread_status =
                 std::async(std::launch::async, &ReadAhead::RunThread, read_ahead_thread_.get());
 
+        if (resume_merge_ && ShouldReconstructDataFromCow()) {
+            WaitForRaThreadToStart();
+        }
+
         SNAP_LOG(INFO) << "Read-ahead thread started...";
     }
 
@@ -326,7 +333,7 @@ bool SnapshotHandler::Start() {
             std::async(std::launch::async, &Worker::RunMergeThread, merge_thread_.get());
 
     // Now that the worker threads are up, scan the partitions.
-    if (perform_verification_) {
+    if (perform_verification_ && !resume_merge_) {
         update_verify_->VerifyUpdatePartition();
     }
 

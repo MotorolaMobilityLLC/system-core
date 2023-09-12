@@ -347,6 +347,8 @@ class SnapshotHandler : public std::enable_shared_from_this<SnapshotHandler> {
     void WakeupMonitorMergeThread();
     void WaitForMergeComplete();
     bool WaitForMergeBegin();
+    void RaThreadStarted();
+    void WaitForRaThreadToStart();
     void NotifyRAForMergeReady();
     bool WaitForMergeReady();
     void MergeFailed();
@@ -423,6 +425,7 @@ class SnapshotHandler : public std::enable_shared_from_this<SnapshotHandler> {
     // Read-ahead related
     bool populate_data_from_cow_ = false;
     bool ra_thread_ = false;
+    bool ra_thread_started_ = false;
     int total_ra_blocks_merged_ = 0;
     MERGE_IO_TRANSITION io_state_;
     std::unique_ptr<ReadAhead> read_ahead_thread_;
@@ -442,6 +445,7 @@ class SnapshotHandler : public std::enable_shared_from_this<SnapshotHandler> {
     bool attached_ = false;
     bool is_io_uring_enabled_ = false;
     bool scratch_space_ = false;
+    bool resume_merge_ = false;
     int num_worker_threads_ = kNumWorkerThreads;
     bool perform_verification_ = true;
 
