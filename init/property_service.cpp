@@ -386,7 +386,9 @@ const char* perms_skip_prop[] = {
     "ro.product.model",
     "ro.product.name",
     "ro.build.fingerprint",
-    "ro.facebook.partnerid.source"
+    "ro.facebook.partnerid.source",
+	"debug.sf.no_factory_reset",
+	"debug.df.factory_reset_dection"
 };
 
 bool skipPerms(const std::string& name)
