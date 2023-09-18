@@ -1268,6 +1268,7 @@ bool MetadataBuilder::ValidatePartitionGroups() const {
                    << " bytes used, maximum " << group->maximum_size() << ")";
             return false;
         }
+        LINFO << "Partition group " << group->name() << " remaining size : " << group->maximum_size() - used;
     }
     return true;
 }
