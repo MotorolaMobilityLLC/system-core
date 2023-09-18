@@ -442,6 +442,7 @@ static std::optional<uint32_t> PropertySet(const std::string& name, const std::s
             return {PROP_ERROR_SET_FAILED};
         }
     }
+    }
 
     // Don't write properties to disk until after we have read all default
     // properties to prevent them from being overwritten by default values.
