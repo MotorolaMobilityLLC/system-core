@@ -933,6 +933,9 @@ on post-fs-data
     # group), update_engine and update_verifier.
     mkdir /data/ota_package 0770 system cache encryption=Require
 
+    # create the /data/misc_ne directory
+    mkdir /data/misc_ne 0770 system cache
+
     # create resource-cache and double-check the perms
     mkdir /data/resource-cache 0771 system system encryption=Require
     chown system system /data/resource-cache
