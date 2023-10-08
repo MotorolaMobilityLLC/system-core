@@ -37,7 +37,7 @@ namespace android {
 namespace snapshot {
 
 static constexpr uint32_t kMaxPacketSize = 512;
-static constexpr uint8_t kMaxMergeThreads = 2;
+static constexpr uint8_t kMaxMergeThreads = 1;
 
 enum class DaemonOps {
     INIT,
