@@ -179,6 +179,7 @@ bool ReadAhead::ReconstructDataFromCow() {
         return false;
     }
 
+    snapuserd_->RaThreadStarted();
     SNAP_LOG(INFO) << "ReconstructDataFromCow success";
     return true;
 }
@@ -676,7 +677,7 @@ bool ReadAhead::ReadAheadIOStart() {
 
     // Flush the data only if we have a overlapping blocks in the region
     // Notify the Merge thread to resume merging this window
-    if (!snapuserd_->ReadAheadIOCompleted(overlap_)) {
+    if (!snapuserd_->ReadAheadIOCompleted(true)) {
         SNAP_LOG(ERROR) << "ReadAheadIOCompleted failed...";
         snapuserd_->ReadAheadIOFailed();
         return false;
