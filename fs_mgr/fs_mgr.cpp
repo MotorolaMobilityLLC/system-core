@@ -2071,6 +2071,26 @@ static bool ConfigureIoScheduler(const std::string& device_path) {
     return false;
 }
 
+// BEGIN Moto huangzq2: Enable moto swap device for RAM Boost2.0
+#define MOTO_SWAP_DEV   "/sys/block/zram0/hybridswap_loop_device"
+static bool InstallMotoSwapDevice(const std::string& device) {
+    if (!android::base::WriteStringToFile(device, MOTO_SWAP_DEV)) {
+        PERROR << "Cannot write " << device << " in: " << MOTO_SWAP_DEV;
+        return false;
+    }
+
+    LINFO << "Success to set " << device << " to " << MOTO_SWAP_DEV;
+
+    if (!android::base::WriteStringToFile("1", "/sys/block/zram0/hybridswap_enable")) {
+        PERROR << "Cannot enable moto swap";
+        return false;
+    }
+
+    LINFO << "Success to enable moto swap";
+    return true;
+}
+// END Moto huangzq2
+
 static bool InstallZramDevice(const std::string& device) {
     if (!android::base::WriteStringToFile(device, ZRAM_BACK_DEV)) {
         PERROR << "Cannot write " << device << " in: " << ZRAM_BACK_DEV;
@@ -2080,10 +2100,16 @@ static bool InstallZramDevice(const std::string& device) {
     return true;
 }
 
-static bool PrepareZramBackingDevice(off64_t size) {
+static bool PrepareZramBackingDevice(off64_t size, bool moto_swap_supported) { // Moto huangzq2: Moto swap.
 
     constexpr const char* file_path = "/data/per_boot/zram_swap";
     if (size == 0) return true;
+
+    // Moto huangzq2: use 1/3 backing dev size as Moto swap supports writing compressed memory.
+    if (moto_swap_supported) {
+        size = size / 3;
+        size = size - (size % (32 * 1024)); // align with 32k.
+    }
 
     // Prepare target path
     unique_fd target_fd(TEMP_FAILURE_RETRY(open(file_path, O_RDWR | O_CREAT | O_CLOEXEC, 0600)));
@@ -2122,11 +2148,22 @@ static bool PrepareZramBackingDevice(off64_t size) {
         return false;
     }
 
-    return InstallZramDevice(loop_device);
+    // Moto huangzq2: Enable moto swap device for RAM Boost2.0
+    if (moto_swap_supported) {
+        return InstallMotoSwapDevice(loop_device);
+    } else {
+        return InstallZramDevice(loop_device);
+    }
 }
 
 bool fs_mgr_swapon_all(const Fstab& fstab) {
     bool ret = true;
+
+    // Moto huangzq2: Check moto swap support in kernel.
+    struct stat st;
+    bool moto_swap_supported = stat("/dev/memcg/memory.moto_swap_version", &st) == 0;
+    LINFO << "moto swap status:" << moto_swap_supported;
+
     for (const auto& entry : fstab) {
         // Skip non-swap entries.
         if (entry.fs_type != "swap") {
@@ -2134,9 +2171,12 @@ bool fs_mgr_swapon_all(const Fstab& fstab) {
         }
 
         if (entry.zram_size > 0) {
-            if (!PrepareZramBackingDevice(entry.zram_backingdev_size)) {
-                LERROR << "Failure of zram backing device file for '" << entry.blk_device << "'";
-            }
+            // Moto huangzq2: Defer Moto swap setup.
+           if (!moto_swap_supported) {
+               if (!PrepareZramBackingDevice(entry.zram_backingdev_size, moto_swap_supported)) {
+                   LERROR << "Failure of zram backing device file for '" << entry.blk_device << "'";
+               }
+           }
             // A zram_size was specified, so we need to configure the
             // device.  There is no point in having multiple zram devices
             // on a system (all the memory comes from the same pool) so
@@ -2166,6 +2206,13 @@ bool fs_mgr_swapon_all(const Fstab& fstab) {
             LERROR << "Skipping mkswap for '" << entry.blk_device << "'";
             ret = false;
             continue;
+        }
+
+        // Moto huangzq2: Defer Moto swap setup.
+        if (moto_swap_supported) {
+            if (!PrepareZramBackingDevice(entry.zram_backingdev_size, moto_swap_supported)) {
+                LERROR << "Failure of moto swap backing device file for '" << entry.blk_device << "'";
+            }
         }
 
         // Initialize the swap area.

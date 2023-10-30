@@ -138,7 +138,8 @@ bool CgroupGetAttributePathForTask(const std::string& attr_name, int tid, std::s
 
 bool UsePerAppMemcg() {
     bool low_ram_device = GetBoolProperty("ro.config.low_ram", false);
-    return GetBoolProperty("ro.config.per_app_memcg", low_ram_device);
+    return GetBoolProperty("ro.config.per_app_memcg", low_ram_device)
+            || GetBoolProperty("ro.config.per_uid_memcg", false); // Moto huangzq2: For Moto Swap.
 }
 
 static bool isMemoryCgroupSupported() {
@@ -551,6 +552,73 @@ int sendSignalToProcessGroup(uid_t uid, int initialPid, int signal) {
     return DoKillProcessGroupOnce(cgroup, uid, initialPid, signal);
 }
 
+// BEGIN Moto huangzq2: Create memcg for Moto Swap.
+static int createProcessGroupInternalForUidOnly(uid_t uid, int initialPid, std::string cgroup,
+                                      bool activate_controllers) {
+    auto uid_path = ConvertUidToPath(cgroup.c_str(), uid);
+
+    struct stat cgroup_stat;
+    mode_t cgroup_mode = 0750;
+    uid_t cgroup_uid = AID_SYSTEM;
+    gid_t cgroup_gid = AID_SYSTEM;
+    int ret = 0;
+    bool first_time_create_memcg = false;
+
+    if (uid < 10000 || uid > 20000) {
+        return ret;
+    }
+
+    if (stat(cgroup.c_str(), &cgroup_stat) < 0) {
+        PLOG(ERROR) << "Failed to get stats for " << cgroup;
+    } else {
+        cgroup_mode = cgroup_stat.st_mode;
+        cgroup_uid = cgroup_stat.st_uid;
+        cgroup_gid = cgroup_stat.st_gid;
+    }
+
+    if (access(uid_path.c_str(), F_OK) != 0) {
+        first_time_create_memcg = true;
+    }
+
+    if (!MkdirAndChown(uid_path, cgroup_mode, cgroup_uid, cgroup_gid)) {
+        PLOG(ERROR) << "Failed to make and chown " << uid_path;
+        return -errno;
+    }
+    if (activate_controllers) {
+        ret = CgroupMap::GetInstance().ActivateControllers(uid_path);
+        if (ret) {
+            LOG(ERROR) << "Failed to activate controllers in " << uid_path;
+            return ret;
+        }
+    }
+
+    if (first_time_create_memcg) {
+        auto app_score_file = uid_path + "/memory.app_score";
+        if (!WriteStringToFile("600", app_score_file)) {
+            PLOG(ERROR) << "Failed to write " << app_score_file;
+        }
+
+        auto app_uid_file = uid_path + "/memory.app_uid";
+        if (!WriteStringToFile(std::to_string(uid), app_uid_file)) {
+            PLOG(ERROR) << "Failed to write " << app_uid_file;
+        }
+
+        auto app_name_file = uid_path + "/memory.name";
+        if (!WriteStringToFile(std::to_string(uid), app_name_file)) {
+            PLOG(ERROR) << "Failed to write " << app_name_file;
+        }
+    }
+
+    auto uid_procs_file = uid_path + PROCESSGROUP_CGROUP_PROCS_FILE;
+    if (!WriteStringToFile(std::to_string(initialPid), uid_procs_file)) {
+        ret = -errno;
+        PLOG(ERROR) << "Failed to write '" << initialPid << "' to " << uid_procs_file;
+    }
+
+    return ret;
+}
+// END Moto huangzq2
+
 static int createProcessGroupInternal(uid_t uid, int initialPid, std::string cgroup,
                                       bool activate_controllers) {
     auto uid_path = ConvertUidToPath(cgroup.c_str(), uid);
@@ -612,7 +680,9 @@ int createProcessGroup(uid_t uid, int initialPid, bool memControl) {
         // Note by bvanassche: passing 'false' as fourth argument below implies that the v1
         // hierarchy is used. It is not clear to me whether the above conditions guarantee that the
         // v1 hierarchy is used.
-        int ret = createProcessGroupInternal(uid, initialPid, memcg_apps_path, false);
+        int ret = GetBoolProperty("ro.config.per_uid_memcg", false) ?
+            createProcessGroupInternalForUidOnly(uid, initialPid, memcg_apps_path, false) // Moto huangzq2: create UID only group for Moto swap.
+            : createProcessGroupInternal(uid, initialPid, memcg_apps_path, false);
         if (ret != 0) {
             return ret;
         }
