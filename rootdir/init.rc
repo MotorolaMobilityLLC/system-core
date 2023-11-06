@@ -1427,6 +1427,16 @@ on post-fs && property:ro.config.moto_swap_supported=true
     chmod 0664 /sys/block/zram0/hybridswap_swapd_pause
     chown root system /sys/block/zram0/hybridswap_quota_day
     chmod 0664 /sys/block/zram0/hybridswap_quota_day
+    chown root system /sys/block/zram0/hybridswap_stat_snap
+    chmod 0664 /sys/block/zram0/hybridswap_stat_snap
+    chown root system /dev/memcg/memory.empty_round_check_threshold
+    chmod 0664 /dev/memcg/memory.empty_round_check_threshold
+    chown root system /dev/memcg/memory.empty_round_skip_interval
+    chmod 0664 /dev/memcg/memory.empty_round_skip_interval
+    chown root system /dev/memcg/memory.max_skip_interval
+    chmod 0664 /dev/memcg/memory.max_skip_interval
+    chown root system /dev/memcg/memory.moto_swap_version
+	chmod 0664 /dev/memcg/memory.moto_swap_version
     write /dev/memcg/memory.empty_round_check_threshold 2560
     write /dev/memcg/memory.empty_round_skip_interval 1000
     write /dev/memcg/memory.max_skip_interval 5000
