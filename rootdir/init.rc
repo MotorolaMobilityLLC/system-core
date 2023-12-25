@@ -727,8 +727,12 @@ on property:ro.boot.ddrsize=8192M && property:persist.sys.zram_wb_size="" && pro
     setprop persist.sys.zram_wb_size 4096M
 on property:ro.boot.ddrsize=12288M && property:persist.sys.zram_wb_size="" && property:ro.config.moto_swap_supported=true
     setprop persist.sys.zram_wb_size 4096M
-on property:ro.boot.ddrsize=* && property:persist.sys.zram_wb_size="" && property:ro.config.moto_swap_supported=true && property:ro.boot.carrier=retbr
+on property:ro.boot.ddrsize=4096M && property:persist.sys.zram_wb_size="" && property:ro.config.moto_swap_supported=true && property:ro.boot.carrier=retbr
     setprop persist.sys.zram_wb_size 4096M
+on property:ro.boot.ddrsize=8192M && property:persist.sys.zram_wb_size="" && property:ro.config.moto_swap_supported=true && property:ro.boot.carrier=retbr
+    setprop persist.sys.zram_wb_size 8192M
+on property:ro.boot.ddrsize=12288M && property:persist.sys.zram_wb_size="" && property:ro.config.moto_swap_supported=true && property:ro.boot.carrier=retbr
+    setprop persist.sys.zram_wb_size 12288M
 
 #### Moto common perf tuning END ####
 
