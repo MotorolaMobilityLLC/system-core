@@ -2081,7 +2081,10 @@ static bool InstallMotoSwapDevice(const std::string& device) {
     }
 
     LINFO << "Success to set " << device << " to " << MOTO_SWAP_DEV;
+    return true;
+}
 
+static bool EnableMotoSwap(void) {
     if (!android::base::WriteStringToFile("1", "/sys/block/zram0/hybridswap_enable")) {
         PERROR << "Cannot enable moto swap";
         return false;
@@ -2105,6 +2108,10 @@ static bool PrepareZramBackingDevice(off64_t size, bool moto_swap_supported) { /
 
     constexpr const char* file_path = "/data/per_boot/zram_swap";
     if (size == 0) return true;
+
+    if (!android::base::GetBoolProperty("persist.sys.zram_wb_enabled", true)) {
+        return true;
+    }
 
     // Moto huangzq2: use 1/3 backing dev size as Moto swap supports writing compressed memory.
     if (moto_swap_supported) {
@@ -2242,6 +2249,9 @@ bool fs_mgr_swapon_all(const Fstab& fstab) {
         if (err) {
             LERROR << "swapon failed for " << entry.blk_device;
             ret = false;
+        }
+        if(moto_swap_supported) {
+            EnableMotoSwap();
         }
     }
 
