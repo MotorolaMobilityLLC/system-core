@@ -1430,9 +1430,10 @@ MountAllResult fs_mgr_mount_all(Fstab* fstab, int mount_mode) {
     for (int i = 0; i < static_cast<int>(fstab->size()); i++) {
         auto& current_entry = (*fstab)[i];
 
-        if (current_entry.mount_point == "/data" && mount_mode == MOUNT_MODE_LATE && bootmode == "autotest") {
-            LINFO << "mount userdata as tmpfs in autotest mode!";
-            mount("tmpfs", "/data", "tmpfs", 0, "mode=0777");
+        if (current_entry.mount_point == "/data" &&
+                mount_mode == MOUNT_MODE_LATE && bootmode == "autotest" &&
+                mount("tmpfs", "/data", "tmpfs", 0, "mode=0777") == 0) {
+            LINFO << "mount userdata as tmpfs in autotest mode success.";
             continue;
         }
 
