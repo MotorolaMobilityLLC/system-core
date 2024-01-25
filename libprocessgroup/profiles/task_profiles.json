@@ -675,6 +675,27 @@
           }
         }
       ]
+    },
+    {
+      "Name": "SwapMemOff",
+      "Actions": [
+        {
+          "Name": "JoinCgroup",
+          "Params":
+          {
+            "Controller": "memory",
+            "Path": "camera"
+          }
+        },
+        {
+          "Name": "SetAttribute",
+          "Params":
+          {
+            "Name": "MemSwappiness",
+            "Value": "0"
+          }
+        }
+      ]
     }
   ],
 
