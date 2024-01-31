@@ -487,6 +487,7 @@ static UmountStat TryUmountAndFsck(unsigned int cmd, bool run_fsck,
 #define ZRAM_DEVICE       "/dev/block/zram0"
 #define ZRAM_RESET        "/sys/block/zram0/reset"
 #define ZRAM_BACK_DEV     "/sys/block/zram0/backing_dev"
+#define MOTO_SWAP_BACK_DEV "/sys/block/zram0/hybridswap_loop_device"
 #define ZRAM_INITSTATE    "/sys/block/zram0/initstate"
 static Result<void> KillZramBackingDevice() {
     std::string zram_initstate;
@@ -500,13 +501,18 @@ static Result<void> KillZramBackingDevice() {
         return {};
     }
 
-    if (access(ZRAM_BACK_DEV, F_OK) != 0 && errno == ENOENT) {
+    std::string back_dev_path;
+    if (access(ZRAM_BACK_DEV, F_OK) == 0 || errno != ENOENT) {
+        back_dev_path = ZRAM_BACK_DEV;
+    } else if (access(MOTO_SWAP_BACK_DEV, F_OK) == 0 || errno != ENOENT) {
+        back_dev_path = MOTO_SWAP_BACK_DEV;
+    } else {
         LOG(INFO) << "No zram backing device configured";
         return {};
     }
     std::string backing_dev;
-    if (!android::base::ReadFileToString(ZRAM_BACK_DEV, &backing_dev)) {
-        return ErrnoError() << "Failed to read " << ZRAM_BACK_DEV;
+    if (!android::base::ReadFileToString(back_dev_path, &backing_dev)) {
+        return ErrnoError() << "Failed to read " << back_dev_path;
     }
 
     // cut the last "\n"
