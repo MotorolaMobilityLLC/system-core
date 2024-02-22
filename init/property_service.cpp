@@ -390,7 +390,8 @@ const char* perms_skip_prop[] = {
 	"debug.sf.no_factory_reset",
 	"debug.df.factory_reset_dection",
     "debug.sf.no_power_off",
-    "debug.sf.no_ota"
+    "debug.sf.no_ota",
+    "ro.vendor.product.display"
 };
 
 bool skipPerms(const std::string& name)
