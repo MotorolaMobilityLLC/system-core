@@ -721,6 +721,8 @@ on property:persist.sys.zram_wb_enabled=true && property:ro.config.moto_swap_sup
 # Set default Zram writeback size
 on property:ro.boot.ddrsize=2048M && property:persist.sys.zram_wb_size="" && property:ro.config.moto_swap_supported=true
     setprop persist.sys.zram_wb_size 2048M
+on property:ro.boot.ddrsize=8192M && property:persist.sys.zram_wb_size="" && property:ro.config.moto_swap_supported=true
+    setprop persist.sys.zram_wb_size 8192M
 
 #### Moto common perf tuning END ####
 
