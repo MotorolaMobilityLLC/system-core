@@ -718,6 +718,10 @@ on property:persist.sys.zram_wb_enabled="" && property:ro.config.moto_swap_suppo
 on property:persist.sys.zram_wb_enabled=true && property:ro.config.moto_swap_supported=true
     setprop ro.config.per_uid_memcg true
 
+# Set default Zram low memory enable state
+on property:persist.sys.zram_low_enabled="" && property:ro.config.moto_swap_supported=true && property:persist.sys.zram_wb_enabled=true
+    setprop persist.sys.zram_low_enabled false
+
 # Set default Zram writeback size
 on property:ro.boot.ddrsize=4096M && property:persist.sys.zram_wb_size="" && property:ro.config.moto_swap_supported=true
     setprop persist.sys.zram_wb_size 2048M
