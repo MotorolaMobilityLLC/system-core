@@ -720,19 +720,9 @@ on property:persist.sys.zram_wb_enabled=true && property:ro.config.moto_swap_sup
 
 # Set default Zram writeback size
 on property:ro.boot.ddrsize=4096M && property:persist.sys.zram_wb_size="" && property:ro.config.moto_swap_supported=true
-    setprop persist.sys.zram_wb_size 2048M
-on property:ro.boot.ddrsize=6144M && property:persist.sys.zram_wb_size="" && property:ro.config.moto_swap_supported=true
-    setprop persist.sys.zram_wb_size 2048M
+    setprop persist.sys.zram_wb_size 4096M
 on property:ro.boot.ddrsize=8192M && property:persist.sys.zram_wb_size="" && property:ro.config.moto_swap_supported=true
-    setprop persist.sys.zram_wb_size 4096M
-on property:ro.boot.ddrsize=12288M && property:persist.sys.zram_wb_size="" && property:ro.config.moto_swap_supported=true
-    setprop persist.sys.zram_wb_size 4096M
-on property:ro.boot.ddrsize=4096M && property:persist.sys.zram_wb_size="" && property:ro.config.moto_swap_supported=true && property:ro.boot.carrier=retbr
-    setprop persist.sys.zram_wb_size 4096M
-on property:ro.boot.ddrsize=8192M && property:persist.sys.zram_wb_size="" && property:ro.config.moto_swap_supported=true && property:ro.boot.carrier=retbr
     setprop persist.sys.zram_wb_size 8192M
-on property:ro.boot.ddrsize=12288M && property:persist.sys.zram_wb_size="" && property:ro.config.moto_swap_supported=true && property:ro.boot.carrier=retbr
-    setprop persist.sys.zram_wb_size 12288M
 
 #### Moto common perf tuning END ####
 
