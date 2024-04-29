@@ -2255,7 +2255,8 @@ bool fs_mgr_swapon_all(const Fstab& fstab) {
             LERROR << "swapon failed for " << entry.blk_device;
             ret = false;
         }
-        if(moto_swap_supported) {
+        // Moto lulei1: enableMotoSwap zram writeback when zram_wb_enabled was enable.
+        if (android::base::GetBoolProperty("persist.sys.zram_wb_enabled", true)) {
             EnableMotoSwap();
         }
     }
