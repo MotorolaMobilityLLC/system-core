@@ -86,7 +86,7 @@ static const struct fs_path_config android_dirs[] = {
     { 00750, AID_ROOT,         AID_SYSTEM,       0, "system/apex/com.android.tethering/bin/for-system" },
     { 00751, AID_ROOT,         AID_SHELL,        0, "system/bin" },
     { 00755, AID_ROOT,         AID_ROOT,         0, "system/etc/ppp" },
-    { 00051, AID_SHELL,        AID_SYSTEM,       0, "system/etc/tmp" },
+    
     { 00755, AID_ROOT,         AID_SHELL,        0, "system/vendor" },
     { 00750, AID_ROOT,         AID_SHELL,        0, "system/xbin" },
     { 00751, AID_ROOT,         AID_SHELL,        0, "system/apex/*/bin" },
