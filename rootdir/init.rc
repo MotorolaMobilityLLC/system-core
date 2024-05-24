@@ -749,17 +749,17 @@ on property:ro.boot.ddrsize=12288M && property:persist.sys.zram_wb_size="" && pr
 on property:ro.boot.ddrsize=4096M && property:ro.config.use_common_max_apps="" && property:persist.sys.zram_wb_enabled=false
     setprop ro.MAX_HIDDEN_APPS 24
 on property:ro.boot.ddrsize=6144M && property:ro.config.use_common_max_apps="" && property:persist.sys.zram_wb_enabled=false
-    setprop ro.MAX_HIDDEN_APPS 40
+    setprop ro.MAX_HIDDEN_APPS 28
 on property:ro.boot.ddrsize=8192M && property:ro.config.use_common_max_apps="" && property:persist.sys.zram_wb_enabled=false
-    setprop ro.MAX_HIDDEN_APPS 48
+    setprop ro.MAX_HIDDEN_APPS 32
 
 # Tune Max bg apps on zram wb enabled
 on property:ro.boot.ddrsize=4096M && property:ro.config.use_common_max_apps="" && property:persist.sys.zram_wb_enabled=true
-    setprop ro.MAX_HIDDEN_APPS 32
+    setprop ro.MAX_HIDDEN_APPS 24
 on property:ro.boot.ddrsize=6144M && property:ro.config.use_common_max_apps="" && property:persist.sys.zram_wb_enabled=true
-    setprop ro.MAX_HIDDEN_APPS 48
+    setprop ro.MAX_HIDDEN_APPS 28
 on property:ro.boot.ddrsize=8192M && property:ro.config.use_common_max_apps="" && property:persist.sys.zram_wb_enabled=true
-    setprop ro.MAX_HIDDEN_APPS 60
+    setprop ro.MAX_HIDDEN_APPS 32
 #### Moto common perf tuning END ####
 
 on late-fs
