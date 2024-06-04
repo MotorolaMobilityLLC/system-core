@@ -44,6 +44,7 @@
 #include "lmkd_service.h"
 #include "service_utils.h"
 #include "util.h"
+#include <linux/fs.h>
 
 namespace android {
 namespace init {
@@ -280,10 +281,10 @@ bool SnapuserdSelinuxHelper::TestSnapuserdIsReady() {
         LOG(ERROR) << "IsTransitionedDaemonReady failed";
     }
 
-    std::string dev = "/dev/block/mapper/system"s + fs_mgr_get_slot_suffix();
-    android::base::unique_fd fd(open(dev.c_str(), O_RDONLY | O_DIRECT));
-    if (fd < 0) {
-        PLOG(ERROR) << "open " << dev << " failed";
+    auto& dm = android::dm::DeviceMapper::Instance();
+    auto dm_block_devices = dm.FindDmPartitions();
+    if (dm_block_devices.empty()) {
+        LOG(ERROR) << "No dm-enabled block device is found.";
         return false;
     }
 
@@ -293,25 +294,60 @@ bool SnapuserdSelinuxHelper::TestSnapuserdIsReady() {
         PLOG(ERROR) << "posix_memalign with page size " << page_size;
         return false;
     }
-
     std::unique_ptr<void, decltype(&::free)> buffer(addr, ::free);
 
-    int iter = 0;
-    while (iter < 10) {
-        ssize_t n = TEMP_FAILURE_RETRY(pread(fd.get(), buffer.get(), page_size, 0));
-        if (n < 0) {
-            // Wait for sometime before retry
-            std::this_thread::sleep_for(100ms);
-        } else if (n == page_size) {
-            return true;
-        } else {
-            LOG(ERROR) << "pread returned: " << n << " from: " << dev << " expected: " << page_size;
+    for (auto& block_device : dm_block_devices) {
+        std::string dev = block_device.second;
+
+        std::vector<dm::DeviceMapper::TargetInfo> targets;
+        std::string partition_name = block_device.first + "-verity";
+        bool result = dm.GetTableStatus(partition_name, &targets);
+        if (!result) {
+            continue;
+        }
+        if (targets.size() != 1) {
+            LOG(ERROR) << "invalid target: " << dev;
+            continue;
         }
 
-        iter += 1;
+        auto type = dm::DeviceMapper::GetTargetType(targets[0].spec);
+        if (type != "verity") {
+            continue;
+        }
+
+        int fd = open(dev.c_str(), O_RDONLY | O_DIRECT);
+        if (fd < 0) {
+            PLOG(ERROR) << "open " << dev << " failed";
+            return false;
+        }
+
+        int iter = 0;
+        bool verified = false;
+        while (iter < 20) {
+            ssize_t n = TEMP_FAILURE_RETRY(pread(fd, buffer.get(), page_size, 0));
+            if (n < 0) {
+                // Wait for sometime before retry
+                std::this_thread::sleep_for(500ms);
+            } else if (n == page_size) {
+                LOG(INFO) << "Partition: " << dev
+                          << " is ready to serve I/O: " << block_device.first;
+                verified = true;
+                break;
+            } else {
+                LOG(ERROR) << "pread returned: " << n << " from: " << dev
+                           << " expected: " << page_size;
+            }
+
+            iter += 1;
+        }
+        close(fd);
+        if (!verified) {
+            LOG(ERROR) << "Failed to verify partition: " << block_device.first;
+            return false;
+        }
     }
 
-    return false;
+    return true;
 }
 
 void SnapuserdSelinuxHelper::RelaunchFirstStageSnapuserd() {
