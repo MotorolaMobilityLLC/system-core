@@ -2085,6 +2085,12 @@ static bool InstallMotoSwapDevice(const std::string& device) {
 }
 
 static bool EnableMotoSwap(void) {
+
+    if (android::base::GetBoolProperty("persist.sys.zram_low_enabled", false)) {
+        PERROR << "low memory, exit moto swap enable";
+        return false;
+    }
+
     if (!android::base::WriteStringToFile("1", "/sys/block/zram0/hybridswap_enable")) {
         PERROR << "Cannot enable moto swap";
         return false;
