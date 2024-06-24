@@ -729,6 +729,17 @@ on property:ro.boot.ddrsize=4096M && property:persist.sys.zram_wb_size="" && pro
 on property:ro.boot.ddrsize=8192M && property:persist.sys.zram_wb_size="" && property:ro.config.moto_swap_supported=true
     setprop persist.sys.zram_wb_size 8192M
 
+# Tune Max bg apps on zram wb disabled
+on property:ro.boot.ddrsize=4096M && property:ro.config.use_common_max_apps="" && property:persist.sys.zram_wb_enabled=false
+    setprop ro.MAX_HIDDEN_APPS 28
+on property:ro.boot.ddrsize=8192M && property:ro.config.use_common_max_apps="" && property:persist.sys.zram_wb_enabled=false
+    setprop ro.MAX_HIDDEN_APPS 32
+# Tune Max bg apps on zram wb enabled
+on property:ro.boot.ddrsize=4096M && property:ro.config.use_common_max_apps="" && property:persist.sys.zram_wb_enabled=true
+    setprop ro.MAX_HIDDEN_APPS 30
+on property:ro.boot.ddrsize=8192M && property:ro.config.use_common_max_apps="" && property:persist.sys.zram_wb_enabled=true
+    setprop ro.MAX_HIDDEN_APPS 36
+
 #### Moto common perf tuning END ####
 
 on late-fs
