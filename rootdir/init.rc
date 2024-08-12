@@ -759,7 +759,7 @@ on property:ro.boot.ddrsize=4096M && property:ro.config.use_common_max_apps="" &
 on property:ro.boot.ddrsize=6144M && property:ro.config.use_common_max_apps="" && property:persist.sys.zram_wb_enabled=true
     setprop ro.MAX_HIDDEN_APPS 28
 on property:ro.boot.ddrsize=8192M && property:ro.config.use_common_max_apps="" && property:persist.sys.zram_wb_enabled=true
-    setprop ro.MAX_HIDDEN_APPS 32
+    setprop ro.MAX_HIDDEN_APPS 36
 #### Moto common perf tuning END ####
 
 on late-fs
