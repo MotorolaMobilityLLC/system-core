@@ -1,0 +1,116 @@
+// Copyright (C) 2018 The Android Open Source Project
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package {
+    default_applicable_licenses: ["Android-Apache-2.0"],
+}
+
+cc_test {
+    name: "CtsFsMgrTestCases",
+    test_suites: [
+        "cts",
+        "device-tests",
+    ],
+    compile_multilib: "both",
+    multilib: {
+        lib32: {
+            suffix: "32",
+        },
+        lib64: {
+            suffix: "64",
+        },
+    },
+
+    shared_libs: [
+        "libbase",
+        "liblog",
+    ],
+    static_libs: [
+        "libfs_mgr",
+        "libfstab",
+    ],
+    srcs: [
+        "file_wait_test.cpp",
+        "fs_mgr_test.cpp",
+    ],
+
+    cflags: [
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+    ],
+}
+
+sh_binary_host {
+    name: "adb-remount-test",
+    src: "adb-remount-test.sh",
+    filename_from_src: true,
+    target: {
+        darwin: {
+            enabled: false,
+        },
+        windows: {
+            enabled: false,
+        },
+    },
+}
+
+sh_test {
+    name: "adb-remount-sh",
+    src: "adb-remount-test.sh",
+    filename_from_src: true,
+    test_suites: ["general-tests"],
+    test_config: "adb-remount-sh.xml",
+}
+
+java_test_host {
+    name: "fs_mgr_vendor_overlay_test",
+
+    srcs:  ["src/**/VendorOverlayHostTest.java"],
+
+    libs: ["tradefed"],
+
+    test_config: "vendor-overlay-test.xml",
+
+    test_suites: ["general-tests"],
+}
+
+cc_test {
+    name: "vts_fs_test",
+    test_suites: [
+        "vts",
+        "device-tests",
+    ],
+    test_options: {
+        min_shipping_api_level: 29,
+    },
+    require_root: true,
+    auto_gen_config: true,
+    cflags: [
+        "-Wall",
+        "-Werror",
+    ],
+    srcs: [
+        "vts_fs_test.cpp",
+    ],
+    shared_libs: [
+        "libbase",
+    ],
+    static_libs: [
+        "libfs_mgr",
+        "libfstab",
+        "libgmock",
+        "libgtest",
+    ],
+}
