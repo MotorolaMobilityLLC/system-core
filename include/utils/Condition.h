@@ -17,11 +17,12 @@
 #ifndef _LIBS_UTILS_CONDITION_H
 #define _LIBS_UTILS_CONDITION_H
 
+#include <limits.h>
 #include <stdint.h>
 #include <sys/types.h>
 #include <time.h>
 
-#if defined(HAVE_PTHREADS)
+#if !defined(_WIN32)
 # include <pthread.h>
 #endif
 
@@ -33,6 +34,8 @@
 namespace android {
 // ---------------------------------------------------------------------------
 
+// DO NOT USE: please use std::condition_variable instead.
+
 /*
  * Condition variable class.  The implementation is system-dependent.
  *
@@ -40,6 +43,11 @@ namespace android {
  * call wait(), then either re-wait() if things aren't quite what you want,
  * or unlock the mutex and continue.  All threads calling wait() must
  * use the same mutex for a given Condition.
+ *
+ * On Android and Apple platforms, these are implemented as a simple wrapper
+ * around pthread condition variables.  Care must be taken to abide by
+ * the pthreads semantics, in particular, a boolean predicate must
+ * be re-evaluated after a wake-up, as spurious wake-ups may happen.
  */
 class Condition {
 public:
@@ -54,9 +62,10 @@ public:
     };
 
     Condition();
-    Condition(int type);
+    explicit Condition(int type);
     ~Condition();
     // Wait on the condition variable.  Lock the mutex before calling.
+    // Note that spurious wake-ups may happen.
     status_t wait(Mutex& mutex);
     // same with relative timeout
     status_t waitRelative(Mutex& mutex, nsecs_t reltime);
@@ -74,7 +83,7 @@ public:
     void broadcast();
 
 private:
-#if defined(HAVE_PTHREADS)
+#if !defined(_WIN32)
     pthread_cond_t mCond;
 #else
     void*   mState;
@@ -83,21 +92,24 @@ private:
 
 // ---------------------------------------------------------------------------
 
-#if defined(HAVE_PTHREADS)
+#if !defined(_WIN32)
 
-inline Condition::Condition() {
-    pthread_cond_init(&mCond, NULL);
+inline Condition::Condition() : Condition(PRIVATE) {
 }
 inline Condition::Condition(int type) {
+    pthread_condattr_t attr;
+    pthread_condattr_init(&attr);
+#if defined(__linux__)
+    pthread_condattr_setclock(&attr, CLOCK_MONOTONIC);
+#endif
+
     if (type == SHARED) {
-        pthread_condattr_t attr;
-        pthread_condattr_init(&attr);
         pthread_condattr_setpshared(&attr, PTHREAD_PROCESS_SHARED);
-        pthread_cond_init(&mCond, &attr);
-        pthread_condattr_destroy(&attr);
-    } else {
-        pthread_cond_init(&mCond, NULL);
     }
+
+    pthread_cond_init(&mCond, &attr);
+    pthread_condattr_destroy(&attr);
+
 }
 inline Condition::~Condition() {
     pthread_cond_destroy(&mCond);
@@ -106,30 +118,36 @@ inline status_t Condition::wait(Mutex& mutex) {
     return -pthread_cond_wait(&mCond, &mutex.mMutex);
 }
 inline status_t Condition::waitRelative(Mutex& mutex, nsecs_t reltime) {
-#if defined(HAVE_PTHREAD_COND_TIMEDWAIT_RELATIVE)
     struct timespec ts;
-    ts.tv_sec  = reltime/1000000000;
-    ts.tv_nsec = reltime%1000000000;
-    return -pthread_cond_timedwait_relative_np(&mCond, &mutex.mMutex, &ts);
-#else // HAVE_PTHREAD_COND_TIMEDWAIT_RELATIVE
-    struct timespec ts;
-#if defined(HAVE_POSIX_CLOCKS)
-    clock_gettime(CLOCK_REALTIME, &ts);
-#else // HAVE_POSIX_CLOCKS
-    // we don't support the clocks here.
+#if defined(__linux__)
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+#else // __APPLE__
+    // Apple doesn't support POSIX clocks.
     struct timeval t;
-    gettimeofday(&t, NULL);
+    gettimeofday(&t, nullptr);
     ts.tv_sec = t.tv_sec;
-    ts.tv_nsec= t.tv_usec*1000;
-#endif // HAVE_POSIX_CLOCKS
-    ts.tv_sec += reltime/1000000000;
-    ts.tv_nsec+= reltime%1000000000;
-    if (ts.tv_nsec >= 1000000000) {
+    ts.tv_nsec = t.tv_usec*1000;
+#endif
+
+    // On 32-bit devices, tv_sec is 32-bit, but `reltime` is 64-bit.
+    int64_t reltime_sec = reltime/1000000000;
+
+    ts.tv_nsec += static_cast<long>(reltime%1000000000);
+    if (reltime_sec < INT64_MAX && ts.tv_nsec >= 1000000000) {
         ts.tv_nsec -= 1000000000;
-        ts.tv_sec  += 1;
+        ++reltime_sec;
     }
+
+    int64_t time_sec = ts.tv_sec;
+    if (time_sec > INT64_MAX - reltime_sec) {
+        time_sec = INT64_MAX;
+    } else {
+        time_sec += reltime_sec;
+    }
+
+    ts.tv_sec = (time_sec > LONG_MAX) ? LONG_MAX : static_cast<long>(time_sec);
+
     return -pthread_cond_timedwait(&mCond, &mutex.mMutex, &ts);
-#endif // HAVE_PTHREAD_COND_TIMEDWAIT_RELATIVE
 }
 inline void Condition::signal() {
     pthread_cond_signal(&mCond);
@@ -138,10 +156,10 @@ inline void Condition::broadcast() {
     pthread_cond_broadcast(&mCond);
 }
 
-#endif // HAVE_PTHREADS
+#endif // !defined(_WIN32)
 
 // ---------------------------------------------------------------------------
-}; // namespace android
+}  // namespace android
 // ---------------------------------------------------------------------------
 
 #endif // _LIBS_UTILS_CONDITON_H

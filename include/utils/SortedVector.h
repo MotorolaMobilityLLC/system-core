@@ -21,15 +21,16 @@
 #include <stdint.h>
 #include <sys/types.h>
 
-#include <cutils/log.h>
-
+#include <log/log.h>
+#include <utils/TypeHelpers.h>
 #include <utils/Vector.h>
 #include <utils/VectorImpl.h>
-#include <utils/TypeHelpers.h>
 
 // ---------------------------------------------------------------------------
 
 namespace android {
+
+// DO NOT USE: please use std::set
 
 template <class TYPE>
 class SortedVector : private SortedVectorImpl
@@ -38,18 +39,18 @@ class SortedVector : private SortedVectorImpl
 
 public:
             typedef TYPE    value_type;
-    
-    /*! 
+
+    /*!
      * Constructors and destructors
      */
-    
+
                             SortedVector();
                             SortedVector(const SortedVector<TYPE>& rhs);
     virtual                 ~SortedVector();
 
     /*! copy operator */
-    const SortedVector<TYPE>&   operator = (const SortedVector<TYPE>& rhs) const;    
-    SortedVector<TYPE>&         operator = (const SortedVector<TYPE>& rhs);    
+    const SortedVector<TYPE>&   operator = (const SortedVector<TYPE>& rhs) const;
+    SortedVector<TYPE>&         operator = (const SortedVector<TYPE>& rhs);
 
     /*
      * empty the vector
@@ -57,7 +58,7 @@ public:
 
     inline  void            clear()             { VectorImpl::clear(); }
 
-    /*! 
+    /*!
      * vector stats
      */
 
@@ -70,11 +71,11 @@ public:
     //! sets the capacity. capacity can never be reduced less than size()
     inline  ssize_t         setCapacity(size_t size)    { return VectorImpl::setCapacity(size); }
 
-    /*! 
+    /*!
      * C-style array access
      */
-     
-    //! read-only C-style access 
+
+    //! read-only C-style access
     inline  const TYPE*     array() const;
 
     //! read-write C-style access. BE VERY CAREFUL when modifying the array
@@ -83,12 +84,12 @@ public:
 
             //! finds the index of an item
             ssize_t         indexOf(const TYPE& item) const;
-            
+
             //! finds where this item should be inserted
             size_t          orderOf(const TYPE& item) const;
-            
-    
-    /*! 
+
+
+    /*!
      * accessors
      */
 
@@ -105,7 +106,7 @@ public:
 
             //! add an item in the right place (and replace the one that is there)
             ssize_t         add(const TYPE& item);
-            
+
             //! editItemAt() MUST NOT change the order of this item
             TYPE&           editItemAt(size_t index) {
                 return *( static_cast<TYPE *>(VectorImpl::editItemLocation(index)) );
@@ -114,7 +115,7 @@ public:
             //! merges a vector into this one
             ssize_t         merge(const Vector<TYPE>& vector);
             ssize_t         merge(const SortedVector<TYPE>& vector);
-            
+
             //! removes an item
             ssize_t         remove(const TYPE&);
 
@@ -122,7 +123,24 @@ public:
     inline  ssize_t         removeItemsAt(size_t index, size_t count = 1);
     //! remove one item
     inline  ssize_t         removeAt(size_t index)  { return removeItemsAt(index); }
-            
+
+    /*
+     * these inlines add some level of compatibility with STL.
+     */
+    typedef TYPE* iterator;
+    typedef TYPE const* const_iterator;
+
+    inline iterator begin() { return editArray(); }
+    inline iterator end()   { return editArray() + size(); }
+    inline const_iterator begin() const { return array(); }
+    inline const_iterator end() const   { return array() + size(); }
+    inline void reserve(size_t n) { setCapacity(n); }
+    inline bool empty() const{ return isEmpty(); }
+    inline iterator erase(iterator pos) {
+        ssize_t index = removeItemsAt(pos-array());
+        return begin() + index;
+    }
+
 protected:
     virtual void    do_construct(void* storage, size_t num) const;
     virtual void    do_destroy(void* storage, size_t num) const;
@@ -132,10 +150,6 @@ protected:
     virtual void    do_move_backward(void* dest, const void* from, size_t num) const;
     virtual int     do_compare(const void* lhs, const void* rhs) const;
 };
-
-// SortedVector<T> can be trivially moved using memcpy() because moving does not
-// require any change to the underlying SharedBuffer contents or reference count.
-template<typename T> struct trait_trivial_move<SortedVector<T> > { enum { value = true }; };
 
 // ---------------------------------------------------------------------------
 // No user serviceable parts from here...
@@ -164,13 +178,13 @@ SortedVector<TYPE>::~SortedVector() {
 template<class TYPE> inline
 SortedVector<TYPE>& SortedVector<TYPE>::operator = (const SortedVector<TYPE>& rhs) {
     SortedVectorImpl::operator = (rhs);
-    return *this; 
+    return *this;
 }
 
 template<class TYPE> inline
 const SortedVector<TYPE>& SortedVector<TYPE>::operator = (const SortedVector<TYPE>& rhs) const {
     SortedVectorImpl::operator = (rhs);
-    return *this; 
+    return *this;
 }
 
 template<class TYPE> inline
@@ -240,7 +254,7 @@ ssize_t SortedVector<TYPE>::removeItemsAt(size_t index, size_t count) {
 // ---------------------------------------------------------------------------
 
 template<class TYPE>
-void SortedVector<TYPE>::do_construct(void* storage, size_t num) const {
+UTILS_VECTOR_NO_CFI void SortedVector<TYPE>::do_construct(void* storage, size_t num) const {
     construct_type( reinterpret_cast<TYPE*>(storage), num );
 }
 
@@ -250,22 +264,22 @@ void SortedVector<TYPE>::do_destroy(void* storage, size_t num) const {
 }
 
 template<class TYPE>
-void SortedVector<TYPE>::do_copy(void* dest, const void* from, size_t num) const {
+UTILS_VECTOR_NO_CFI void SortedVector<TYPE>::do_copy(void* dest, const void* from, size_t num) const {
     copy_type( reinterpret_cast<TYPE*>(dest), reinterpret_cast<const TYPE*>(from), num );
 }
 
 template<class TYPE>
-void SortedVector<TYPE>::do_splat(void* dest, const void* item, size_t num) const {
+UTILS_VECTOR_NO_CFI void SortedVector<TYPE>::do_splat(void* dest, const void* item, size_t num) const {
     splat_type( reinterpret_cast<TYPE*>(dest), reinterpret_cast<const TYPE*>(item), num );
 }
 
 template<class TYPE>
-void SortedVector<TYPE>::do_move_forward(void* dest, const void* from, size_t num) const {
+UTILS_VECTOR_NO_CFI void SortedVector<TYPE>::do_move_forward(void* dest, const void* from, size_t num) const {
     move_forward_type( reinterpret_cast<TYPE*>(dest), reinterpret_cast<const TYPE*>(from), num );
 }
 
 template<class TYPE>
-void SortedVector<TYPE>::do_move_backward(void* dest, const void* from, size_t num) const {
+UTILS_VECTOR_NO_CFI void SortedVector<TYPE>::do_move_backward(void* dest, const void* from, size_t num) const {
     move_backward_type( reinterpret_cast<TYPE*>(dest), reinterpret_cast<const TYPE*>(from), num );
 }
 
@@ -274,8 +288,7 @@ int SortedVector<TYPE>::do_compare(const void* lhs, const void* rhs) const {
     return compare_type( *reinterpret_cast<const TYPE*>(lhs), *reinterpret_cast<const TYPE*>(rhs) );
 }
 
-}; // namespace android
-
+}  // namespace android
 
 // ---------------------------------------------------------------------------
 

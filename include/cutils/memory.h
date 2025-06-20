@@ -14,8 +14,7 @@
  * limitations under the License.
  */
 
-#ifndef ANDROID_CUTILS_MEMORY_H
-#define ANDROID_CUTILS_MEMORY_H
+#pragma once
 
 #include <stdint.h>
 #include <sys/types.h>
@@ -24,13 +23,7 @@
 extern "C" {
 #endif
 
-/* size is given in bytes and must be multiple of 2 */
-void android_memset16(uint16_t* dst, uint16_t value, size_t size);
-
-/* size is given in bytes and must be multiple of 4 */
-void android_memset32(uint32_t* dst, uint32_t value, size_t size);
-
-#if !HAVE_STRLCPY
+#if defined(__GLIBC__) || defined(_WIN32)
 /* Declaration of strlcpy() for platforms that don't already have it. */
 size_t strlcpy(char *dst, const char *src, size_t size);
 #endif
@@ -38,5 +31,3 @@ size_t strlcpy(char *dst, const char *src, size_t size);
 #ifdef __cplusplus
 } // extern "C"
 #endif
-
-#endif // ANDROID_CUTILS_MEMORY_H

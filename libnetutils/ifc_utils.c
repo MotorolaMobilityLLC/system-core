@@ -1,33 +1,21 @@
 /*
  * Copyright 2008, The Android Open Source Project
  *
- * Licensed under the Apache License, Version 2.0 (the "License"); 
- * you may not use this file except in compliance with the License. 
- * You may obtain a copy of the License at 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0 
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
- * Unless required by applicable law or agreed to in writing, software 
- * distributed under the License is distributed on an "AS IS" BASIS, 
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. 
- * See the License for the specific language governing permissions and 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
  * limitations under the License.
  */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <string.h>
-#include <errno.h>
-
-#include <sys/socket.h>
-#include <sys/select.h>
-#include <sys/types.h>
-#include <netinet/in.h>
 #include <arpa/inet.h>
-#include <net/if.h>
-#include <netdb.h>
-
+#include <errno.h>
 #include <linux/if.h>
 #include <linux/if_ether.h>
 #include <linux/if_arp.h>
@@ -36,22 +24,38 @@
 #include <linux/ipv6_route.h>
 #include <linux/rtnetlink.h>
 #include <linux/sockios.h>
-
-#include "netutils/ifc.h"
+#include <net/if.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <pthread.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 #ifdef ANDROID
 #define LOG_TAG "NetUtils"
-#include <cutils/log.h>
 #include <cutils/properties.h>
+#include <log/log.h>
 #else
-#include <stdio.h>
-#include <string.h>
 #define ALOGD printf
 #define ALOGW printf
 #endif
 
+#include "netutils/ifc.h"
+
+#if defined(__ANDROID__)
+/* SIOCKILLADDR is an Android extension. */
+#define SIOCKILLADDR 0x8939
+#endif
+
 static int ifc_ctl_sock = -1;
 static int ifc_ctl_sock6 = -1;
+static pthread_mutex_t ifc_sock_mutex = PTHREAD_RECURSIVE_MUTEX_INITIALIZER_NP;
+static pthread_mutex_t ifc_sock6_mutex = PTHREAD_RECURSIVE_MUTEX_INITIALIZER_NP;
 void printerr(char *fmt, ...);
 
 #define DBG 0
@@ -109,6 +113,10 @@ int string_to_ip(const char *string, struct sockaddr_storage *ss) {
     if (ret == 0) {
         memcpy(ss, ai->ai_addr, ai->ai_addrlen);
         freeaddrinfo(ai);
+    } else {
+        // Getaddrinfo has its own error codes. Convert to negative errno.
+        // There, the only thing that can reasonably happen is that the passed-in string is invalid.
+        ret = (ret == EAI_SYSTEM) ? -errno : -EINVAL;
     }
 
     return ret;
@@ -117,8 +125,10 @@ int string_to_ip(const char *string, struct sockaddr_storage *ss) {
 int ifc_init(void)
 {
     int ret;
+
+    pthread_mutex_lock(&ifc_sock_mutex);
     if (ifc_ctl_sock == -1) {
-        ifc_ctl_sock = socket(AF_INET, SOCK_DGRAM, 0);
+        ifc_ctl_sock = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
         if (ifc_ctl_sock < 0) {
             printerr("socket() failed: %s\n", strerror(errno));
         }
@@ -131,8 +141,9 @@ int ifc_init(void)
 
 int ifc_init6(void)
 {
+    pthread_mutex_lock(&ifc_sock6_mutex);
     if (ifc_ctl_sock6 == -1) {
-        ifc_ctl_sock6 = socket(AF_INET6, SOCK_DGRAM, 0);
+        ifc_ctl_sock6 = socket(AF_INET6, SOCK_DGRAM | SOCK_CLOEXEC, 0);
         if (ifc_ctl_sock6 < 0) {
             printerr("socket() failed: %s\n", strerror(errno));
         }
@@ -147,6 +158,7 @@ void ifc_close(void)
         (void)close(ifc_ctl_sock);
         ifc_ctl_sock = -1;
     }
+    pthread_mutex_unlock(&ifc_sock_mutex);
 }
 
 void ifc_close6(void)
@@ -155,6 +167,7 @@ void ifc_close6(void)
         (void)close(ifc_ctl_sock6);
         ifc_ctl_sock6 = -1;
     }
+    pthread_mutex_unlock(&ifc_sock6_mutex);
 }
 
 static void ifc_init_ifr(const char *name, struct ifreq *ifr)
@@ -244,26 +257,23 @@ int ifc_set_addr(const char *name, in_addr_t addr)
  *
  * Returns zero on success and negative errno on failure.
  */
-int ifc_act_on_address(int action, const char *name, const char *address,
-                       int prefixlen) {
+int ifc_act_on_address(int action, const char* name, const char* address, int prefixlen,
+                       bool nodad) {
     int ifindex, s, len, ret;
     struct sockaddr_storage ss;
+    int saved_errno;
     void *addr;
     size_t addrlen;
     struct {
         struct nlmsghdr n;
         struct ifaddrmsg r;
-        // Allow for IPv6 address, headers, and padding.
-        char attrbuf[NLMSG_ALIGN(sizeof(struct nlmsghdr)) +
-                     NLMSG_ALIGN(sizeof(struct rtattr)) +
-                     NLMSG_ALIGN(INET6_ADDRLEN)];
+        // Allow for IPv4 or IPv6 address, headers, IPv4 broadcast address and padding.
+        char attrbuf[NLMSG_ALIGN(sizeof(struct rtattr)) + NLMSG_ALIGN(INET6_ADDRLEN) +
+                     NLMSG_ALIGN(sizeof(struct rtattr)) + NLMSG_ALIGN(INET_ADDRLEN)];
     } req;
     struct rtattr *rta;
     struct nlmsghdr *nh;
     struct nlmsgerr *err;
-    char buf[NLMSG_ALIGN(sizeof(struct nlmsghdr)) +
-             NLMSG_ALIGN(sizeof(struct nlmsgerr)) +
-             NLMSG_ALIGN(sizeof(struct nlmsghdr))];
 
     // Get interface ID.
     ifindex = if_nametoindex(name);
@@ -301,6 +311,7 @@ int ifc_act_on_address(int action, const char *name, const char *address,
 
     // Interface address message header.
     req.r.ifa_family = ss.ss_family;
+    req.r.ifa_flags = nodad ? IFA_F_NODAD : 0;
     req.r.ifa_prefixlen = prefixlen;
     req.r.ifa_index = ifindex;
 
@@ -311,16 +322,33 @@ int ifc_act_on_address(int action, const char *name, const char *address,
     req.n.nlmsg_len = NLMSG_ALIGN(req.n.nlmsg_len) + RTA_LENGTH(addrlen);
     memcpy(RTA_DATA(rta), addr, addrlen);
 
-    s = socket(PF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
-    if (send(s, &req, req.n.nlmsg_len, 0) < 0) {
-        close(s);
+    // Add an explicit IFA_BROADCAST for IPv4 RTM_NEWADDRs.
+    if (ss.ss_family == AF_INET && action == RTM_NEWADDR) {
+        rta = (struct rtattr *) (((char *) &req) + NLMSG_ALIGN(req.n.nlmsg_len));
+        rta->rta_type = IFA_BROADCAST;
+        rta->rta_len = RTA_LENGTH(addrlen);
+        req.n.nlmsg_len = NLMSG_ALIGN(req.n.nlmsg_len) + RTA_LENGTH(addrlen);
+        ((struct in_addr *)addr)->s_addr |= htonl((1<<(32-prefixlen))-1);
+        memcpy(RTA_DATA(rta), addr, addrlen);
+    }
+
+    s = socket(PF_NETLINK, SOCK_RAW | SOCK_CLOEXEC, NETLINK_ROUTE);
+    if (s < 0) {
         return -errno;
     }
 
+    if (send(s, &req, req.n.nlmsg_len, 0) < 0) {
+        saved_errno = errno;
+        close(s);
+        return -saved_errno;
+    }
+
+    char buf[NLMSG_ALIGN(sizeof(struct nlmsgerr)) + sizeof(req)];
     len = recv(s, buf, sizeof(buf), 0);
+    saved_errno = errno;
     close(s);
     if (len < 0) {
-        return -errno;
+        return -saved_errno;
     }
 
     // Parse the acknowledgement to find the return code.
@@ -334,12 +362,14 @@ int ifc_act_on_address(int action, const char *name, const char *address,
     return err->error;
 }
 
+// Returns zero on success and negative errno on failure.
 int ifc_add_address(const char *name, const char *address, int prefixlen) {
-    return ifc_act_on_address(RTM_NEWADDR, name, address, prefixlen);
+    return ifc_act_on_address(RTM_NEWADDR, name, address, prefixlen, /*nodad*/ false);
 }
 
+// Returns zero on success and negative errno on failure.
 int ifc_del_address(const char *name, const char * address, int prefixlen) {
-    return ifc_act_on_address(RTM_DELADDR, name, address, prefixlen);
+    return ifc_act_on_address(RTM_DELADDR, name, address, prefixlen, /*nodad*/ false);
 }
 
 /*
@@ -416,7 +446,6 @@ int ifc_clear_addresses(const char *name) {
 
 int ifc_set_hwaddr(const char *name, const void *ptr)
 {
-    int r;
     struct ifreq ifr;
     ifc_init_ifr(name, &ifr);
 
@@ -530,6 +559,7 @@ int ifc_act_on_ipv4_route(int action, const char *ifname, struct in_addr dst, in
     ifc_init();
 
     if (ifc_ctl_sock < 0) {
+        ifc_close();
         return -errno;
     }
 
@@ -558,17 +588,7 @@ int ifc_create_default_route(const char *name, in_addr_t gw)
     return ret;
 }
 
-/* deprecated v4-only */
-int ifc_add_host_route(const char *name, in_addr_t dst)
-{
-    struct in_addr in_dst, in_gw;
-
-    in_dst.s_addr = dst;
-    in_gw.s_addr = 0;
-
-    return ifc_act_on_ipv4_route(SIOCADDRT, name, in_dst, 32, in_gw);
-}
-
+// Needed by code in hidden partner repositories / branches, so don't delete.
 int ifc_enable(const char *ifname)
 {
     int result;
@@ -579,6 +599,7 @@ int ifc_enable(const char *ifname)
     return result;
 }
 
+// Needed by code in hidden partner repositories / branches, so don't delete.
 int ifc_disable(const char *ifname)
 {
     unsigned addr, count;
@@ -601,16 +622,18 @@ int ifc_disable(const char *ifname)
 
 int ifc_reset_connections(const char *ifname, const int reset_mask)
 {
-#ifdef HAVE_ANDROID_OS
+#if defined(__ANDROID__)
     int result, success;
-    in_addr_t myaddr;
+    in_addr_t myaddr = 0;
     struct ifreq ifr;
     struct in6_ifreq ifr6;
 
     if (reset_mask & RESET_IPV4_ADDRESSES) {
         /* IPv4. Clear connections on the IP address. */
         ifc_init();
-        ifc_get_info(ifname, &myaddr, NULL, NULL);
+        if (!(reset_mask & RESET_IGNORE_INTERFACE_ADDRESS)) {
+            ifc_get_info(ifname, &myaddr, NULL, NULL);
+        }
         ifc_init_ifr(ifname, &ifr);
         init_sockaddr_in(&ifr.ifr_addr, myaddr);
         result = ioctl(ifc_ctl_sock, SIOCKILLADDR,  &ifr);
@@ -640,118 +663,6 @@ int ifc_reset_connections(const char *ifname, const int reset_mask)
 #else
     return 0;
 #endif
-}
-
-/*
- * Remove the routes associated with the named interface.
- */
-int ifc_remove_host_routes(const char *name)
-{
-    char ifname[64];
-    in_addr_t dest, gway, mask;
-    int flags, refcnt, use, metric, mtu, win, irtt;
-    struct rtentry rt;
-    FILE *fp;
-    struct in_addr addr;
-
-    fp = fopen("/proc/net/route", "r");
-    if (fp == NULL)
-        return -1;
-    /* Skip the header line */
-    if (fscanf(fp, "%*[^\n]\n") < 0) {
-        fclose(fp);
-        return -1;
-    }
-    ifc_init();
-    for (;;) {
-        int nread = fscanf(fp, "%63s%X%X%X%d%d%d%X%d%d%d\n",
-                           ifname, &dest, &gway, &flags, &refcnt, &use, &metric, &mask,
-                           &mtu, &win, &irtt);
-        if (nread != 11) {
-            break;
-        }
-        if ((flags & (RTF_UP|RTF_HOST)) != (RTF_UP|RTF_HOST)
-                || strcmp(ifname, name) != 0) {
-            continue;
-        }
-        memset(&rt, 0, sizeof(rt));
-        rt.rt_dev = (void *)name;
-        init_sockaddr_in(&rt.rt_dst, dest);
-        init_sockaddr_in(&rt.rt_gateway, gway);
-        init_sockaddr_in(&rt.rt_genmask, mask);
-        addr.s_addr = dest;
-        if (ioctl(ifc_ctl_sock, SIOCDELRT, &rt) < 0) {
-            ALOGD("failed to remove route for %s to %s: %s",
-                 ifname, inet_ntoa(addr), strerror(errno));
-        }
-    }
-    fclose(fp);
-    ifc_close();
-    return 0;
-}
-
-/*
- * Return the address of the default gateway
- *
- * TODO: factor out common code from this and remove_host_routes()
- * so that we only scan /proc/net/route in one place.
- *
- * DEPRECATED
- */
-int ifc_get_default_route(const char *ifname)
-{
-    char name[64];
-    in_addr_t dest, gway, mask;
-    int flags, refcnt, use, metric, mtu, win, irtt;
-    int result;
-    FILE *fp;
-
-    fp = fopen("/proc/net/route", "r");
-    if (fp == NULL)
-        return 0;
-    /* Skip the header line */
-    if (fscanf(fp, "%*[^\n]\n") < 0) {
-        fclose(fp);
-        return 0;
-    }
-    ifc_init();
-    result = 0;
-    for (;;) {
-        int nread = fscanf(fp, "%63s%X%X%X%d%d%d%X%d%d%d\n",
-                           name, &dest, &gway, &flags, &refcnt, &use, &metric, &mask,
-                           &mtu, &win, &irtt);
-        if (nread != 11) {
-            break;
-        }
-        if ((flags & (RTF_UP|RTF_GATEWAY)) == (RTF_UP|RTF_GATEWAY)
-                && dest == 0
-                && strcmp(ifname, name) == 0) {
-            result = gway;
-            break;
-        }
-    }
-    fclose(fp);
-    ifc_close();
-    return result;
-}
-
-/*
- * Sets the specified gateway as the default route for the named interface.
- * DEPRECATED
- */
-int ifc_set_default_route(const char *ifname, in_addr_t gateway)
-{
-    struct in_addr addr;
-    int result;
-
-    ifc_init();
-    addr.s_addr = gateway;
-    if ((result = ifc_create_default_route(ifname, gateway)) < 0) {
-        ALOGD("failed to add %s as default route for %s: %s",
-             inet_ntoa(addr), ifname, strerror(errno));
-    }
-    ifc_close();
-    return result;
 }
 
 /*
@@ -815,152 +726,4 @@ ifc_configure(const char *ifname,
     property_set(dns_prop_name, dns2 ? ipaddr_to_string(dns2) : "");
 
     return 0;
-}
-
-int ifc_act_on_ipv6_route(int action, const char *ifname, struct in6_addr dst, int prefix_length,
-      struct in6_addr gw)
-{
-    struct in6_rtmsg rtmsg;
-    int result;
-    int ifindex;
-
-    memset(&rtmsg, 0, sizeof(rtmsg));
-
-    ifindex = if_nametoindex(ifname);
-    if (ifindex == 0) {
-        printerr("if_nametoindex() failed: interface %s\n", ifname);
-        return -ENXIO;
-    }
-
-    rtmsg.rtmsg_ifindex = ifindex;
-    rtmsg.rtmsg_dst = dst;
-    rtmsg.rtmsg_dst_len = prefix_length;
-    rtmsg.rtmsg_flags = RTF_UP;
-
-    if (prefix_length == 128) {
-        rtmsg.rtmsg_flags |= RTF_HOST;
-    }
-
-    if (memcmp(&gw, &in6addr_any, sizeof(in6addr_any))) {
-        rtmsg.rtmsg_flags |= RTF_GATEWAY;
-        rtmsg.rtmsg_gateway = gw;
-    }
-
-    ifc_init6();
-
-    if (ifc_ctl_sock6 < 0) {
-        return -errno;
-    }
-
-    result = ioctl(ifc_ctl_sock6, action, &rtmsg);
-    if (result < 0) {
-        if (errno == EEXIST) {
-            result = 0;
-        } else {
-            result = -errno;
-        }
-    }
-    ifc_close6();
-    return result;
-}
-
-int ifc_act_on_route(int action, const char *ifname, const char *dst, int prefix_length,
-        const char *gw)
-{
-    int ret = 0;
-    struct sockaddr_in ipv4_dst, ipv4_gw;
-    struct sockaddr_in6 ipv6_dst, ipv6_gw;
-    struct addrinfo hints, *addr_ai, *gw_ai;
-
-    memset(&hints, 0, sizeof(hints));
-    hints.ai_family = AF_UNSPEC;  /* Allow IPv4 or IPv6 */
-    hints.ai_flags = AI_NUMERICHOST;
-
-    ret = getaddrinfo(dst, NULL, &hints, &addr_ai);
-
-    if (ret != 0) {
-        printerr("getaddrinfo failed: invalid address %s\n", dst);
-        return -EINVAL;
-    }
-
-    if (gw == NULL || (strlen(gw) == 0)) {
-        if (addr_ai->ai_family == AF_INET6) {
-            gw = "::";
-        } else if (addr_ai->ai_family == AF_INET) {
-            gw = "0.0.0.0";
-        }
-    }
-
-    if (((addr_ai->ai_family == AF_INET6) && (prefix_length < 0 || prefix_length > 128)) ||
-            ((addr_ai->ai_family == AF_INET) && (prefix_length < 0 || prefix_length > 32))) {
-        printerr("ifc_add_route: invalid prefix length");
-        freeaddrinfo(addr_ai);
-        return -EINVAL;
-    }
-
-    ret = getaddrinfo(gw, NULL, &hints, &gw_ai);
-    if (ret != 0) {
-        printerr("getaddrinfo failed: invalid gateway %s\n", gw);
-        freeaddrinfo(addr_ai);
-        return -EINVAL;
-    }
-
-    if (addr_ai->ai_family != gw_ai->ai_family) {
-        printerr("ifc_add_route: different address families: %s and %s\n", dst, gw);
-        freeaddrinfo(addr_ai);
-        freeaddrinfo(gw_ai);
-        return -EINVAL;
-    }
-
-    if (addr_ai->ai_family == AF_INET6) {
-        memcpy(&ipv6_dst, addr_ai->ai_addr, sizeof(struct sockaddr_in6));
-        memcpy(&ipv6_gw, gw_ai->ai_addr, sizeof(struct sockaddr_in6));
-        ret = ifc_act_on_ipv6_route(action, ifname, ipv6_dst.sin6_addr,
-                prefix_length, ipv6_gw.sin6_addr);
-    } else if (addr_ai->ai_family == AF_INET) {
-        memcpy(&ipv4_dst, addr_ai->ai_addr, sizeof(struct sockaddr_in));
-        memcpy(&ipv4_gw, gw_ai->ai_addr, sizeof(struct sockaddr_in));
-        ret = ifc_act_on_ipv4_route(action, ifname, ipv4_dst.sin_addr,
-                prefix_length, ipv4_gw.sin_addr);
-    } else {
-        printerr("ifc_add_route: getaddrinfo returned un supported address family %d\n",
-                  addr_ai->ai_family);
-        ret = -EAFNOSUPPORT;
-    }
-
-    freeaddrinfo(addr_ai);
-    freeaddrinfo(gw_ai);
-    return ret;
-}
-
-/*
- * DEPRECATED
- */
-int ifc_add_ipv4_route(const char *ifname, struct in_addr dst, int prefix_length,
-      struct in_addr gw)
-{
-    int i =ifc_act_on_ipv4_route(SIOCADDRT, ifname, dst, prefix_length, gw);
-    if (DBG) printerr("ifc_add_ipv4_route(%s, xx, %d, xx) = %d", ifname, prefix_length, i);
-    return i;
-}
-
-/*
- * DEPRECATED
- */
-int ifc_add_ipv6_route(const char *ifname, struct in6_addr dst, int prefix_length,
-      struct in6_addr gw)
-{
-    return ifc_act_on_ipv6_route(SIOCADDRT, ifname, dst, prefix_length, gw);
-}
-
-int ifc_add_route(const char *ifname, const char *dst, int prefix_length, const char *gw)
-{
-    int i = ifc_act_on_route(SIOCADDRT, ifname, dst, prefix_length, gw);
-    if (DBG) printerr("ifc_add_route(%s, %s, %d, %s) = %d", ifname, dst, prefix_length, gw, i);
-    return i;
-}
-
-int ifc_remove_route(const char *ifname, const char*dst, int prefix_length, const char *gw)
-{
-    return ifc_act_on_route(SIOCDELRT, ifname, dst, prefix_length, gw);
 }

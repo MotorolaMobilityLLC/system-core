@@ -13,19 +13,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-#include <errno.h>
-#include <string.h>
-#include <stdlib.h>
 
 #define LOG_TAG "FrameworkListener"
 
-#include <cutils/log.h>
+#include <errno.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
 
-#include <sysutils/FrameworkListener.h>
+#include <log/log.h>
 #include <sysutils/FrameworkCommand.h>
+#include <sysutils/FrameworkListener.h>
 #include <sysutils/SocketClient.h>
 
-static const int CMD_BUF_SIZE = 1024;
+static const int CMD_BUF_SIZE = 4096;
 
 FrameworkListener::FrameworkListener(const char *socketName, bool withSeq) :
                             SocketListener(socketName, true, withSeq) {
@@ -37,11 +38,16 @@ FrameworkListener::FrameworkListener(const char *socketName) :
     init(socketName, false);
 }
 
-void FrameworkListener::init(const char *socketName, bool withSeq) {
-    mCommands = new FrameworkCommandCollection();
+FrameworkListener::FrameworkListener(int sock) :
+                            SocketListener(sock, true) {
+    init(nullptr, false);
+}
+
+void FrameworkListener::init(const char* /*socketName*/, bool withSeq) {
     errorRate = 0;
     mCommandCount = 0;
     mWithSeq = withSeq;
+    mSkipToNextNullByte = false;
 }
 
 bool FrameworkListener::onDataAvailable(SocketClient *c) {
@@ -52,10 +58,15 @@ bool FrameworkListener::onDataAvailable(SocketClient *c) {
     if (len < 0) {
         SLOGE("read() failed (%s)", strerror(errno));
         return false;
-    } else if (!len)
+    } else if (!len) {
         return false;
-   if(buffer[len-1] != '\0')
+    } else if (buffer[len-1] != '\0') {
         SLOGW("String is not zero-terminated");
+        android_errorWriteLog(0x534e4554, "29831647");
+        c->sendMsg(500, "Command too large for buffer", false);
+        mSkipToNextNullByte = true;
+        return true;
+    }
 
     int offset = 0;
     int i;
@@ -63,20 +74,24 @@ bool FrameworkListener::onDataAvailable(SocketClient *c) {
     for (i = 0; i < len; i++) {
         if (buffer[i] == '\0') {
             /* IMPORTANT: dispatchCommand() expects a zero-terminated string */
-            dispatchCommand(c, buffer + offset);
+            if (mSkipToNextNullByte) {
+                mSkipToNextNullByte = false;
+            } else {
+                dispatchCommand(c, buffer + offset);
+            }
             offset = i + 1;
         }
     }
 
+    mSkipToNextNullByte = false;
     return true;
 }
 
 void FrameworkListener::registerCmd(FrameworkCommand *cmd) {
-    mCommands->push_back(cmd);
+    mCommands.push_back(cmd);
 }
 
 void FrameworkListener::dispatchCommand(SocketClient *cli, char *data) {
-    FrameworkCommandCollection::iterator i;
     int argc = 0;
     char *argv[FrameworkListener::CMD_ARGS_MAX];
     char tmp[CMD_BUF_SIZE];
@@ -85,7 +100,6 @@ void FrameworkListener::dispatchCommand(SocketClient *cli, char *data) {
     char *qlimit = tmp + sizeof(tmp) - 1;
     bool esc = false;
     bool quote = false;
-    int k;
     bool haveCmdNum = !mWithSeq;
 
     memset(argv, 0, sizeof(argv));
@@ -136,7 +150,7 @@ void FrameworkListener::dispatchCommand(SocketClient *cli, char *data) {
             if (!haveCmdNum) {
                 char *endptr;
                 int cmdNum = (int)strtol(tmp, &endptr, 0);
-                if (endptr == NULL || *endptr != '\0') {
+                if (endptr == nullptr || *endptr != '\0') {
                     cli->sendMsg(500, "Invalid sequence number", false);
                     goto out;
                 }
@@ -159,7 +173,7 @@ void FrameworkListener::dispatchCommand(SocketClient *cli, char *data) {
         goto overflow;
     argv[argc++] = strdup(tmp);
 #if 0
-    for (k = 0; k < argc; k++) {
+    for (int k = 0; k < argc; k++) {
         SLOGD("arg[%d] = '%s'", k, argv[k]);
     }
 #endif
@@ -175,9 +189,7 @@ void FrameworkListener::dispatchCommand(SocketClient *cli, char *data) {
         goto out;
     }
 
-    for (i = mCommands->begin(); i != mCommands->end(); ++i) {
-        FrameworkCommand *c = *i;
-
+    for (auto* c : mCommands) {
         if (!strcmp(argv[0], c->getCommand())) {
             if (c->runCommand(cli, argc, argv)) {
                 SLOGW("Handler '%s' error (%s)", c->getCommand(), strerror(errno));
@@ -193,7 +205,6 @@ out:
     return;
 
 overflow:
-    LOG_EVENT_INT(78001, cli->getUid());
     cli->sendMsg(500, "Command too long", false);
     goto out;
 }

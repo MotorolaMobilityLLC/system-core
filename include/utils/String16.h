@@ -17,16 +17,12 @@
 #ifndef ANDROID_STRING16_H
 #define ANDROID_STRING16_H
 
+#include <iostream>
+#include <string>
+
 #include <utils/Errors.h>
-#include <utils/SharedBuffer.h>
-#include <utils/Unicode.h>
+#include <utils/String8.h>
 #include <utils/TypeHelpers.h>
-
-// ---------------------------------------------------------------------------
-
-extern "C" {
-
-}
 
 // ---------------------------------------------------------------------------
 
@@ -34,24 +30,18 @@ namespace android {
 
 // ---------------------------------------------------------------------------
 
-class String8;
-class TextOutput;
+template <size_t N>
+class StaticString16;
+
+// DO NOT USE: please use std::u16string
 
 //! This is a string holding UTF-16 characters.
 class String16
 {
 public:
-    /* use String16(StaticLinkage) if you're statically linking against
-     * libutils and declaring an empty static String16, e.g.:
-     *
-     *   static String16 sAStaticEmptyString(String16::kEmptyString);
-     *   static String16 sAnotherStaticEmptyString(sAStaticEmptyString);
-     */
-    enum StaticLinkage { kEmptyString };
-
                                 String16();
-    explicit                    String16(StaticLinkage);
                                 String16(const String16& o);
+                                String16(String16&& o) noexcept;
                                 String16(const String16& o,
                                          size_t len,
                                          size_t begin=0);
@@ -62,24 +52,30 @@ public:
     explicit                    String16(const char* o, size_t len);
 
                                 ~String16();
-    
+
     inline  const char16_t*     string() const;
-    inline  size_t              size() const;
-    
-    inline  const SharedBuffer* sharedBuffer() const;
-    
+
+private:
+    static inline std::string   std_string(const String16& str);
+public:
+            size_t              size() const;
+    inline  bool                empty() const;
+
+    inline  size_t              length() const;
+
             void                setTo(const String16& other);
             status_t            setTo(const char16_t* other);
             status_t            setTo(const char16_t* other, size_t len);
             status_t            setTo(const String16& other,
                                       size_t len,
                                       size_t begin=0);
-    
+
             status_t            append(const String16& other);
             status_t            append(const char16_t* other, size_t len);
-            
+
     inline  String16&           operator=(const String16& other);
-    
+            String16&           operator=(String16&& other) noexcept;
+
     inline  String16&           operator+=(const String16& other);
     inline  String16            operator+(const String16& other) const;
 
@@ -92,13 +88,11 @@ public:
 
             bool                startsWith(const String16& prefix) const;
             bool                startsWith(const char16_t* prefix) const;
-            
-            status_t            makeLower();
+
+            bool                contains(const char16_t* chrs) const;
 
             status_t            replaceAll(char16_t replaceThis,
                                            char16_t withThis);
-
-            status_t            remove(size_t len, size_t begin=0);
 
     inline  int                 compare(const String16& other) const;
 
@@ -108,23 +102,128 @@ public:
     inline  bool                operator!=(const String16& other) const;
     inline  bool                operator>=(const String16& other) const;
     inline  bool                operator>(const String16& other) const;
-    
+
     inline  bool                operator<(const char16_t* other) const;
     inline  bool                operator<=(const char16_t* other) const;
     inline  bool                operator==(const char16_t* other) const;
     inline  bool                operator!=(const char16_t* other) const;
     inline  bool                operator>=(const char16_t* other) const;
     inline  bool                operator>(const char16_t* other) const;
-    
+
     inline                      operator const char16_t*() const;
-    
-private:
-            const char16_t*     mString;
+
+    // Static and non-static String16 behave the same for the users, so
+    // this method isn't of much use for the users. It is public for testing.
+            bool                isStaticString() const;
+
+  private:
+    /*
+     * A flag indicating the type of underlying buffer.
+     */
+    static constexpr uint32_t kIsSharedBufferAllocated = 0x80000000;
+
+    /*
+     * alloc() returns void* so that SharedBuffer class is not exposed.
+     */
+    static void* alloc(size_t size);
+    static char16_t* allocFromUTF8(const char* u8str, size_t u8len);
+    static char16_t* allocFromUTF16(const char16_t* u16str, size_t u16len);
+
+    /*
+     * edit() and editResize() return void* so that SharedBuffer class
+     * is not exposed.
+     */
+    void* edit();
+    void* editResize(size_t new_size);
+
+    void acquire();
+    void release();
+
+    size_t staticStringSize() const;
+
+    const char16_t* mString;
+
+protected:
+    /*
+     * Data structure used to allocate static storage for static String16.
+     *
+     * Note that this data structure and SharedBuffer are used interchangably
+     * as the underlying data structure for a String16.  Therefore, the layout
+     * of this data structure must match the part in SharedBuffer that is
+     * visible to String16.
+     */
+    template <size_t N>
+    struct StaticData {
+        // The high bit of 'size' is used as a flag.
+        static_assert(N - 1 < kIsSharedBufferAllocated, "StaticString16 too long!");
+        constexpr StaticData() : size(N - 1), data{0} {}
+        const uint32_t size;
+        char16_t data[N];
+
+        constexpr StaticData(const StaticData<N>&) = default;
+    };
+
+    /*
+     * Helper function for constructing a StaticData object.
+     */
+    template <size_t N>
+    static constexpr const StaticData<N> makeStaticData(const char16_t (&s)[N]) {
+        StaticData<N> r;
+        // The 'size' field is at the same location where mClientMetadata would
+        // be for a SharedBuffer.  We do NOT set kIsSharedBufferAllocated flag
+        // here.
+        for (size_t i = 0; i < N - 1; ++i) r.data[i] = s[i];
+        return r;
+    }
+
+    template <size_t N>
+    explicit constexpr String16(const StaticData<N>& s) : mString(s.data) {}
 };
 
 // String16 can be trivially moved using memcpy() because moving does not
 // require any change to the underlying SharedBuffer contents or reference count.
 ANDROID_TRIVIAL_MOVE_TRAIT(String16)
+
+static inline std::ostream& operator<<(std::ostream& os, const String16& str) {
+    os << String8(str);
+    return os;
+}
+
+// ---------------------------------------------------------------------------
+
+/*
+ * A StaticString16 object is a specialized String16 object.  Instead of holding
+ * the string data in a ref counted SharedBuffer object, it holds data in a
+ * buffer within StaticString16 itself.  Note that this buffer is NOT ref
+ * counted and is assumed to be available for as long as there is at least a
+ * String16 object using it.  Therefore, one must be extra careful to NEVER
+ * assign a StaticString16 to a String16 that outlives the StaticString16
+ * object.
+ *
+ * THE SAFEST APPROACH IS TO USE StaticString16 ONLY AS GLOBAL VARIABLES.
+ *
+ * A StaticString16 SHOULD NEVER APPEAR IN APIs.  USE String16 INSTEAD.
+ */
+template <size_t N>
+class StaticString16 : public String16 {
+public:
+    constexpr StaticString16(const char16_t (&s)[N]) : String16(mData), mData(makeStaticData(s)) {}
+
+    constexpr StaticString16(const StaticString16<N>& other)
+        : String16(mData), mData(other.mData) {}
+
+    constexpr StaticString16(const StaticString16<N>&&) = delete;
+
+    // There is no reason why one would want to 'new' a StaticString16.  Delete
+    // it to discourage misuse.
+    static void* operator new(std::size_t) = delete;
+
+private:
+    const StaticData<N> mData;
+};
+
+template <typename F>
+StaticString16(const F&)->StaticString16<sizeof(F) / sizeof(char16_t)>;
 
 // ---------------------------------------------------------------------------
 // No user servicable parts below.
@@ -144,14 +243,19 @@ inline const char16_t* String16::string() const
     return mString;
 }
 
-inline size_t String16::size() const
+inline std::string String16::std_string(const String16& str)
 {
-    return SharedBuffer::sizeFromData(mString)/sizeof(char16_t)-1;
+    return std::string(String8(str).string());
 }
 
-inline const SharedBuffer* String16::sharedBuffer() const
+inline bool String16::empty() const
 {
-    return SharedBuffer::bufferFromData(mString);
+    return length() == 0;
+}
+
+inline size_t String16::length() const
+{
+    return size();
 }
 
 inline String16& String16::operator=(const String16& other)
@@ -243,7 +347,7 @@ inline String16::operator const char16_t*() const
     return mString;
 }
 
-}; // namespace android
+}  // namespace android
 
 // ---------------------------------------------------------------------------
 

@@ -14,32 +14,154 @@
  * limitations under the License.
  */
 
-#ifndef _INIT_UTIL_H_
-#define _INIT_UTIL_H_
+#pragma once
 
 #include <sys/stat.h>
 #include <sys/types.h>
 
-#define ARRAY_SIZE(x) (sizeof(x)/sizeof(x[0]))
+#include <chrono>
+#include <functional>
+#include <string>
+#include <vector>
 
-static const char *coldboot_done = "/dev/.coldboot_done";
+#include <android-base/chrono_utils.h>
 
-int mtd_name_to_number(const char *name);
-int create_socket(const char *name, int type, mode_t perm,
-                  uid_t uid, gid_t gid);
-void *read_file(const char *fn, unsigned *_sz);
-time_t gettime(void);
-unsigned int decode_uid(const char *s);
-
-int mkdir_recursive(const char *pathname, mode_t mode);
-void sanitize(char *p);
-void make_link_init(const char *oldpath, const char *newpath);
-void remove_link(const char *oldpath, const char *newpath);
-int wait_for_file(const char *filename, int timeout);
-void open_devnull_stdio(void);
-void get_hardware_name(char *hardware, unsigned int *revision);
-void import_kernel_cmdline(int in_qemu, void (*import_kernel_nv)(char *name, int in_qemu));
-int make_dir(const char *path, mode_t mode);
-int restorecon(const char *pathname);
-int restorecon_recursive(const char *pathname);
+#ifdef MTK_LOG
+#include <android-base/logging.h>
 #endif
+
+#include "fscrypt_init_extensions.h"
+#include "result.h"
+
+using android::base::boot_clock;
+
+namespace android {
+namespace init {
+
+enum mount_mode {
+    MOUNT_MODE_DEFAULT = 0,
+    MOUNT_MODE_EARLY = 1,
+    MOUNT_MODE_LATE = 2,
+};
+
+static const char kColdBootDoneProp[] = "ro.cold_boot_done";
+
+extern void (*trigger_shutdown)(const std::string& command);
+
+Result<int> CreateSocket(const std::string& name, int type, bool passcred, bool should_listen,
+                         mode_t perm, uid_t uid, gid_t gid, const std::string& socketcon);
+
+Result<std::string> ReadFile(const std::string& path);
+Result<void> WriteFile(const std::string& path, const std::string& content);
+
+Result<uid_t> DecodeUid(const std::string& name);
+
+bool mkdir_recursive(const std::string& pathname, mode_t mode);
+int wait_for_file(const char *filename, std::chrono::nanoseconds timeout);
+void ImportKernelCmdline(const std::function<void(const std::string&, const std::string&)>&);
+void ImportBootconfig(const std::function<void(const std::string&, const std::string&)>&);
+bool make_dir(const std::string& path, mode_t mode);
+bool is_dir(const char* pathname);
+Result<std::string> ExpandProps(const std::string& src);
+
+// Returns the platform's Android DT directory as specified in the kernel cmdline.
+// If the platform does not configure a custom DT path, returns the standard one (based in procfs).
+const std::string& get_android_dt_dir();
+// Reads or compares the content of device tree file under the platform's Android DT directory.
+bool read_android_dt_file(const std::string& sub_path, std::string* dt_content);
+bool is_android_dt_value_expected(const std::string& sub_path, const std::string& expected_content);
+
+bool IsLegalPropertyName(const std::string& name);
+Result<void> IsLegalPropertyValue(const std::string& name, const std::string& value);
+std::string CleanDirPath(const std::string& path);
+
+struct MkdirOptions {
+    std::string target;
+    mode_t mode;
+    uid_t uid;
+    gid_t gid;
+    FscryptAction fscrypt_action;
+    std::string ref_option;
+};
+
+Result<MkdirOptions> ParseMkdir(const std::vector<std::string>& args);
+
+struct MountAllOptions {
+    std::vector<std::string> rc_paths;
+    std::string fstab_path;
+    mount_mode mode;
+    bool import_rc;
+};
+
+Result<MountAllOptions> ParseMountAll(const std::vector<std::string>& args);
+
+Result<std::pair<int, std::vector<std::string>>> ParseRestorecon(
+        const std::vector<std::string>& args);
+
+Result<std::string> ParseSwaponAll(const std::vector<std::string>& args);
+
+Result<std::string> ParseUmountAll(const std::vector<std::string>& args);
+
+void SetStdioToDevNull(char** argv);
+void InitKernelLogging(char** argv);
+bool IsRecoveryMode();
+
+bool IsDefaultMountNamespaceReady();
+#ifdef G2675397
+void SetDefaultMountNamespaceReady(bool ready = true);
+#else
+void SetDefaultMountNamespaceReady();
+#endif
+
+bool IsMicrodroid();
+bool Has32BitAbi();
+
+std::string GetApexNameFromFileName(const std::string& path);
+
+// Compare all files */path.#rc and */path.rc with the same path prefix.
+// Keep the one with the highest # that doesn't exceed the system's SDK.
+// (.rc == .0rc for ranking purposes)
+std::vector<std::string> FilterVersionedConfigs(const std::vector<std::string>& configs,
+                                                  int active_sdk);
+
+#ifdef MTK_LOG
+int PropSetLogReap(int);
+void PropSetLogReset();
+
+void InitKernelLogging_split(char** argv);
+void KernelLogger_split(android::base::LogId, android::base::LogSeverity severity,
+                  const char* tag, const char*, unsigned int, const char* msg);
+int SelinuxSetupKernelLogging_split_check();
+
+void SetPropServThrStart(int);
+int isPropServThrStart(void);
+void SetPersistPropServThrStart(int);
+int isPersistPropServThrStart(void);
+
+void PropServThrSetTid(pid_t);
+pid_t PropServThrGetTid(void);
+void PersistPropServThrSetTid(pid_t);
+pid_t PersistPropServThrGetTid(void);
+
+void Setwhiletime(int target, uint64_t duration, uint64_t nowms);
+bool Getwhilepiggybacketed(int target);
+uint64_t Getwhileepduration(int target);
+
+void StartPropertyFlowTraceLog(void);
+void SnapshotPropertyFlowTraceLog(const std::string&);
+void EndPropertyFlowTraceLog(void);
+
+void StartPersistPropertyFlowTraceLog(void);
+void SnapshotPersistPropertyFlowTraceLog(const std::string&);
+void EndPersistPropertyFlowTraceLog(void);
+
+void SetMTKLOGDISABLERATELIMIT(void);
+int GetMTKLOGDISABLERATELIMIT(void);
+#endif
+
+#ifdef MTK_TRACE
+void StartWriteTrace(const char* tracemsg, int pid);
+void EndWriteTrace(int pid);
+#endif
+}  // namespace init
+}  // namespace android

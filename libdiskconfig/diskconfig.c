@@ -19,20 +19,19 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <inttypes.h>
+#include <linux/fs.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
-
-#include <linux/fs.h>
+#include <unistd.h>
 
 #include <cutils/config_utils.h>
-#include <cutils/log.h>
+#include <log/log.h>
 
 #include <diskconfig/diskconfig.h>
-
 
 static int
 parse_len(const char *str, uint64_t *plen)
@@ -80,7 +79,7 @@ parse_len(const char *str, uint64_t *plen)
         *plen *= multiple;
 
         if (*plen > 0xffffffffULL) {
-            ALOGE("Length specified is too large!: %llu KB", *plen);
+            ALOGE("Length specified is too large!: %"PRIu64" KB", *plen);
             return 1;
         }
     }
@@ -336,7 +335,7 @@ validate(struct disk_info *dinfo)
     }
 
 #if 1
-    ALOGV("Device/file %s: size=%llu bytes, num_lba=%u, sect_size=%d",
+    ALOGV("Device/file %s: size=%" PRIu64 " bytes, num_lba=%u, sect_size=%d",
          dinfo->device, disk_size, dinfo->num_lba, dinfo->sect_size);
 #endif
 
@@ -371,8 +370,8 @@ validate(struct disk_info *dinfo)
 
     /* only matters for disks, not files */
     if (S_ISBLK(stat.st_mode) && total_size > disk_size) {
-        ALOGE("Total requested size of partitions (%llu) is greater than disk "
-             "size (%llu).", total_size, disk_size);
+        ALOGE("Total requested size of partitions (%"PRIu64") is greater than disk "
+             "size (%"PRIu64").", total_size, disk_size);
         goto fail;
     }
 
@@ -399,7 +398,7 @@ validate_and_config(struct disk_info *dinfo, int *fd, struct write_list **lst)
         case PART_SCHEME_GPT:
             /* not supported yet */
         default:
-            ALOGE("Uknown partition scheme.");
+            ALOGE("Unknown partition scheme.");
             break;
     }
 

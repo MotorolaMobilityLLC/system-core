@@ -1,14 +1,35 @@
-#include <alloca.h>
-#include <errno.h>
-#include <sys/socket.h>
-#include <sys/types.h>
-#include <pthread.h>
-#include <string.h>
-#include <arpa/inet.h>
+/*
+ * Copyright (C) 2009-2016 The Android Open Source Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 #define LOG_TAG "SocketClient"
-#include <cutils/log.h>
 
+#include <alloca.h>
+#include <arpa/inet.h>
+#include <errno.h>
+#include <malloc.h>
+#include <pthread.h>
+#include <signal.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <unistd.h>
+
+#include <android-base/file.h>
+#include <android-base/macros.h>
+#include <log/log.h>
 #include <sysutils/SocketClient.h>
 
 SocketClient::SocketClient(int socket, bool owned) {
@@ -23,8 +44,8 @@ void SocketClient::init(int socket, bool owned, bool useCmdNum) {
     mSocket = socket;
     mSocketOwned = owned;
     mUseCmdNum = useCmdNum;
-    pthread_mutex_init(&mWriteMutex, NULL);
-    pthread_mutex_init(&mRefCountMutex, NULL);
+    pthread_mutex_init(&mWriteMutex, nullptr);
+    pthread_mutex_init(&mRefCountMutex, nullptr);
     mPid = -1;
     mUid = -1;
     mGid = -1;
@@ -43,8 +64,7 @@ void SocketClient::init(int socket, bool owned, bool useCmdNum) {
     }
 }
 
-SocketClient::~SocketClient()
-{
+SocketClient::~SocketClient() {
     if (mSocketOwned) {
         close(mSocket);
     }
@@ -71,7 +91,7 @@ int SocketClient::sendMsg(int code, const char *msg, bool addErrno, bool useCmdN
             ret = asprintf(&buf, "%d %s", code, msg);
         }
     }
-    /* Send the zero-terminated message */
+    // Send the zero-terminated message
     if (ret != -1) {
         ret = sendMsg(buf);
         free(buf);
@@ -79,22 +99,25 @@ int SocketClient::sendMsg(int code, const char *msg, bool addErrno, bool useCmdN
     return ret;
 }
 
-/** send 3-digit code, null, binary-length, binary data */
+// send 3-digit code, null, binary-length, binary data
 int SocketClient::sendBinaryMsg(int code, const void *data, int len) {
 
-    /* 4 bytes for the code & null + 4 bytes for the len */
+    // 4 bytes for the code & null + 4 bytes for the len
     char buf[8];
-    /* Write the code */
+    // Write the code
     snprintf(buf, 4, "%.3d", code);
-    /* Write the len */
+    // Write the len
     uint32_t tmp = htonl(len);
     memcpy(buf + 4, &tmp, sizeof(uint32_t));
 
+    struct iovec vec[2];
+    vec[0].iov_base = (void *) buf;
+    vec[0].iov_len = sizeof(buf);
+    vec[1].iov_base = (void *) data;
+    vec[1].iov_len = len;
+
     pthread_mutex_lock(&mWriteMutex);
-    int result = sendDataLocked(buf, sizeof(buf));
-    if (result == 0 && len > 0) {
-        result = sendDataLocked(data, len);
-    }
+    int result = sendDataLockedv(vec, (len > 0) ? 2 : 1);
     pthread_mutex_unlock(&mWriteMutex);
 
     return result;
@@ -114,9 +137,9 @@ char *SocketClient::quoteArg(const char *arg) {
     const char *end = arg + len;
     char *oldresult;
 
-    if(result == NULL) {
+    if(result == nullptr) {
         SLOGW("malloc error (%s)", strerror(errno));
-        return NULL;
+        return nullptr;
     }
 
     *(current++) = '"';
@@ -124,7 +147,8 @@ char *SocketClient::quoteArg(const char *arg) {
         switch (*arg) {
         case '\\':
         case '"':
-            *(current++) = '\\'; // fallthrough
+            *(current++) = '\\';
+            FALLTHROUGH_INTENDED;
         default:
             *(current++) = *(arg++);
         }
@@ -147,48 +171,61 @@ int SocketClient::sendMsg(const char *msg) {
 }
 
 int SocketClient::sendData(const void *data, int len) {
+    struct iovec vec[1];
+    vec[0].iov_base = (void *) data;
+    vec[0].iov_len = len;
 
     pthread_mutex_lock(&mWriteMutex);
-    int rc = sendDataLocked(data, len);
+    int rc = sendDataLockedv(vec, 1);
     pthread_mutex_unlock(&mWriteMutex);
 
     return rc;
 }
 
-int SocketClient::sendDataLocked(const void *data, int len) {
-    int rc = 0;
-    const char *p = (const char*) data;
-    int brtw = len;
+int SocketClient::sendDatav(struct iovec *iov, int iovcnt) {
+    pthread_mutex_lock(&mWriteMutex);
+    int rc = sendDataLockedv(iov, iovcnt);
+    pthread_mutex_unlock(&mWriteMutex);
+
+    return rc;
+}
+
+int SocketClient::sendDataLockedv(struct iovec *iov, int iovcnt) {
 
     if (mSocket < 0) {
         errno = EHOSTUNREACH;
         return -1;
     }
 
-    if (len == 0) {
+    if (iovcnt <= 0) {
         return 0;
     }
 
-    while (brtw > 0) {
-        rc = send(mSocket, p, brtw, MSG_NOSIGNAL);
-        if (rc > 0) {
-            p += rc;
-            brtw -= rc;
-            continue;
-        }
+    int current = 0;
 
-        if (rc < 0 && errno == EINTR)
-            continue;
+    for (;;) {
+        ssize_t rc = TEMP_FAILURE_RETRY(writev(mSocket, iov + current, iovcnt - current));
 
         if (rc == 0) {
-            SLOGW("0 length write :(");
             errno = EIO;
-        } else {
+            SLOGW("0 length write :(");
+            return -1;
+        } else if (rc < 0) {
             SLOGW("write error (%s)", strerror(errno));
+            return -1;
         }
-        return -1;
+
+        size_t written = rc;
+        while (current < iovcnt && written >= iov[current].iov_len) {
+            written -= iov[current].iov_len;
+            current++;
+        }
+        if (current == iovcnt) {
+            return 0;
+        }
+        iov[current].iov_base = (char*)iov[current].iov_base + written;
+        iov[current].iov_len -= written;
     }
-    return 0;
 }
 
 void SocketClient::incRef() {

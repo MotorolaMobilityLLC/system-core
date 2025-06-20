@@ -17,20 +17,18 @@
 #ifndef _BOOTCHART_H
 #define _BOOTCHART_H
 
-#ifndef BOOTCHART
-# define  BOOTCHART  0
-#endif
+#include <string>
+#include <vector>
 
-#if BOOTCHART
+#include "builtin_arguments.h"
+#include "result.h"
 
-extern int   bootchart_init(void);
-extern int   bootchart_step(void);
-extern void  bootchart_finish(void);
+namespace android {
+namespace init {
 
-# define BOOTCHART_POLLING_MS   200   /* polling period in ms */
-# define BOOTCHART_DEFAULT_TIME_SEC    (2*60)  /* default polling time in seconds */
-# define BOOTCHART_MAX_TIME_SEC        (10*60) /* max polling time in seconds */
+Result<void> do_bootchart(const BuiltinArguments& args);
 
-#endif /* BOOTCHART */
+}  // namespace init
+}  // namespace android
 
 #endif /* _BOOTCHART_H */

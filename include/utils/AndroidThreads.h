@@ -20,7 +20,7 @@
 #include <stdint.h>
 #include <sys/types.h>
 
-#if defined(HAVE_PTHREADS)
+#if !defined(_WIN32)
 # include <pthread.h>
 #endif
 
@@ -73,10 +73,7 @@ extern void androidSetCreateThreadFunc(android_create_thread_fn func);
 // ------------------------------------------------------------------
 // Extra functions working with raw pids.
 
-// Get pid for the current thread.
-extern pid_t androidGetTid();
-
-#ifdef HAVE_ANDROID_OS
+#if defined(__ANDROID__)
 // Change the priority AND scheduling group of a particular thread.  The priority
 // should be one of the ANDROID_PRIORITY constants.  Returns INVALID_OPERATION
 // if the priority set failed, else another value if just the group set failed;
@@ -109,7 +106,7 @@ inline bool createThreadEtc(thread_func_t entryFunction,
                             const char* threadName = "android:unnamed_thread",
                             int32_t threadPriority = PRIORITY_DEFAULT,
                             size_t threadStackSize = 0,
-                            thread_id_t *threadId = 0)
+                            thread_id_t *threadId = nullptr)
 {
     return androidCreateThreadEtc(entryFunction, userData, threadName,
         threadPriority, threadStackSize, threadId) ? true : false;
@@ -121,7 +118,7 @@ inline thread_id_t getThreadId() {
 }
 
 // ----------------------------------------------------------------------------
-}; // namespace android
+}  // namespace android
 #endif  // __cplusplus
 // ----------------------------------------------------------------------------
 

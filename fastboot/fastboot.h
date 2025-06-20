@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008 The Android Open Source Project
+ * Copyright (C) 2018 The Android Open Source Project
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -25,46 +25,142 @@
  * OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  */
+#pragma once
 
-#ifndef _FASTBOOT_H_
-#define _FASTBOOT_H_
+#include <string>
+#include "fastboot_driver.h"
+#include "fastboot_driver_interface.h"
+#include "filesystem.h"
+#include "super_flash_helper.h"
+#include "task.h"
+#include "util.h"
 
-#include "usb.h"
+#include <bootimg.h>
 
-struct sparse_file;
+#include "result.h"
+#include "socket.h"
+#include "util.h"
 
-/* protocol.c - fastboot protocol */
-int fb_command(usb_handle *usb, const char *cmd);
-int fb_command_response(usb_handle *usb, const char *cmd, char *response);
-int fb_download_data(usb_handle *usb, const void *data, unsigned size);
-int fb_download_data_sparse(usb_handle *usb, struct sparse_file *s);
-char *fb_get_error(void);
+class FastBootTool {
+  public:
+    int Main(int argc, char* argv[]);
 
-#define FB_COMMAND_SZ 64
-#define FB_RESPONSE_SZ 64
+    void ParseOsPatchLevel(boot_img_hdr_v1*, const char*);
+    void ParseOsVersion(boot_img_hdr_v1*, const char*);
+    unsigned ParseFsOption(const char*);
+};
 
-/* engine.c - high level command queue engine */
-int fb_getvar(struct usb_handle *usb, char *response, const char *fmt, ...);
-int fb_format_supported(usb_handle *usb, const char *partition);
-void fb_queue_flash(const char *ptn, void *data, unsigned sz);
-void fb_queue_flash_sparse(const char *ptn, struct sparse_file *s, unsigned sz);
-void fb_queue_erase(const char *ptn);
-void fb_queue_format(const char *ptn, int skip_if_not_supported);
-void fb_queue_require(const char *prod, const char *var, int invert,
-        unsigned nvalues, const char **value);
-void fb_queue_display(const char *var, const char *prettyname);
-void fb_queue_query_save(const char *var, char *dest, unsigned dest_size);
-void fb_queue_reboot(void);
-void fb_queue_command(const char *cmd, const char *msg);
-void fb_queue_download(const char *name, void *data, unsigned size);
-void fb_queue_notice(const char *notice);
-int fb_execute_queue(usb_handle *usb);
-int fb_queue_is_empty(void);
+enum fb_buffer_type {
+    FB_BUFFER_FD,
+    FB_BUFFER_SPARSE,
+};
 
-/* util stuff */
-void die(const char *fmt, ...);
+struct fastboot_buffer {
+    enum fb_buffer_type type;
+    std::vector<SparsePtr> files;
+    int64_t sz;
+    unique_fd fd;
+    int64_t image_size;
+};
 
-/* Current product */
-extern char cur_product[FB_RESPONSE_SZ + 1];
+enum class ImageType {
+    // Must be flashed for device to boot into the kernel.
+    BootCritical,
+    // Normal partition to be flashed during "flashall".
+    Normal,
+    // Partition that is never flashed during "flashall".
+    Extra
+};
 
-#endif
+struct Image {
+    std::string nickname;
+    std::string img_name;
+    std::string sig_name;
+    std::string part_name;
+    bool optional_if_no_image;
+    ImageType type;
+    bool IsSecondary() const { return nickname.empty(); }
+};
+
+using ImageEntry = std::pair<const Image*, std::string>;
+
+struct FlashingPlan {
+    unsigned fs_options = 0;
+    // If the image uses the default slot, or the user specified "all", then
+    // the paired string will be empty. If the image requests a specific slot
+    // (for example, system_other) it is specified instead.
+    ImageSource* source;
+    bool wants_wipe = false;
+    bool skip_reboot = false;
+    bool wants_set_active = false;
+    bool skip_secondary = false;
+    bool force_flash = false;
+
+    std::string slot_override;
+    std::string current_slot;
+    std::string secondary_slot;
+
+    fastboot::IFastBootDriver* fb;
+};
+
+class FlashAllTool {
+  public:
+    FlashAllTool(FlashingPlan* fp);
+
+    void Flash();
+
+  private:
+    void CheckRequirements();
+    void DetermineSlot();
+    void CollectImages();
+    void FlashImages(const std::vector<std::pair<const Image*, std::string>>& images);
+    void FlashImage(const Image& image, const std::string& slot, fastboot_buffer* buf);
+    void HardcodedFlash();
+
+    std::vector<ImageEntry> boot_images_;
+    std::vector<ImageEntry> os_images_;
+    FlashingPlan* fp_;
+};
+
+bool should_flash_in_userspace(const std::string& partition_name);
+bool is_userspace_fastboot();
+void do_flash(const char* pname, const char* fname, const bool apply_vbmeta);
+void do_for_partitions(const std::string& part, const std::string& slot,
+                       const std::function<void(const std::string&)>& func, bool force_slot);
+std::string find_item(const std::string& item);
+void reboot_to_userspace_fastboot();
+void syntax_error(const char* fmt, ...);
+std::string get_current_slot();
+
+// Code for Parsing fastboot-info.txt
+bool CheckFastbootInfoRequirements(const std::vector<std::string>& command);
+std::unique_ptr<FlashTask> ParseFlashCommand(const FlashingPlan* fp,
+                                             const std::vector<std::string>& parts);
+std::unique_ptr<RebootTask> ParseRebootCommand(const FlashingPlan* fp,
+                                               const std::vector<std::string>& parts);
+std::unique_ptr<WipeTask> ParseWipeCommand(const FlashingPlan* fp,
+                                           const std::vector<std::string>& parts);
+std::unique_ptr<Task> ParseFastbootInfoLine(const FlashingPlan* fp,
+                                            const std::vector<std::string>& command);
+void AddResizeTasks(const FlashingPlan* fp, std::vector<std::unique_ptr<Task>>& tasks);
+std::vector<std::unique_ptr<Task>> ParseFastbootInfo(const FlashingPlan* fp,
+                                                     const std::vector<std::string>& file);
+
+struct NetworkSerial {
+    Socket::Protocol protocol;
+    std::string address;
+    int port;
+};
+
+Result<NetworkSerial, FastbootError> ParseNetworkSerial(const std::string& serial);
+bool supports_AB();
+std::string GetPartitionName(const ImageEntry& entry, const std::string& current_slot_);
+void flash_partition_files(const std::string& partition, const std::vector<SparsePtr>& files);
+int64_t get_sparse_limit(int64_t size);
+std::vector<SparsePtr> resparse_file(sparse_file* s, int64_t max_size);
+
+bool is_retrofit_device();
+bool is_logical(const std::string& partition);
+void fb_perform_format(const std::string& partition, int skip_if_not_supported,
+                       const std::string& type_override, const std::string& size_override,
+                       const unsigned fs_options);

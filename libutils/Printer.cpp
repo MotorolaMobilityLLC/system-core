@@ -21,13 +21,7 @@
 #include <utils/String8.h>
 #include <utils/Log.h>
 
-#include <string.h>
-#include <stdio.h>
 #include <stdlib.h>
-
-#ifndef __BIONIC__
-#define fdprintf dprintf
-#endif
 
 namespace android {
 
@@ -48,12 +42,14 @@ void Printer::printFormatLine(const char* format, ...) {
 
     char* formattedString;
 
-#ifndef USE_MINGW
+#ifndef _WIN32
     if (vasprintf(&formattedString, format, arglist) < 0) { // returns -1 on error
         ALOGE("%s: Failed to format string", __FUNCTION__);
+        va_end(arglist);
         return;
     }
 #else
+    va_end(arglist);
     return;
 #endif
 
@@ -77,7 +73,7 @@ LogPrinter::LogPrinter(const char* logtag,
 }
 
 void LogPrinter::printLine(const char* string) {
-    if (string == NULL) {
+    if (string == nullptr) {
         ALOGW("%s: NULL string passed in", __FUNCTION__);
         return;
     }
@@ -111,7 +107,7 @@ FdPrinter::FdPrinter(int fd, unsigned int indent, const char* prefix) :
 }
 
 void FdPrinter::printLine(const char* string) {
-    if (string == NULL) {
+    if (string == nullptr) {
         ALOGW("%s: NULL string passed in", __FUNCTION__);
         return;
     } else if (mFd < 0) {
@@ -119,8 +115,8 @@ void FdPrinter::printLine(const char* string) {
         return;
     }
 
-#ifndef USE_MINGW
-    fdprintf(mFd, mFormatString, mPrefix, string);
+#ifndef _WIN32
+    dprintf(mFd, mFormatString, mPrefix, string);
 #endif
 }
 
@@ -131,20 +127,21 @@ String8Printer::String8Printer(String8* target, const char* prefix) :
         mTarget(target),
         mPrefix(prefix ?: "") {
 
-    if (target == NULL) {
+    if (target == nullptr) {
         ALOGW("%s: Target string was NULL", __FUNCTION__);
     }
 }
 
 void String8Printer::printLine(const char* string) {
-    if (string == NULL) {
+    if (string == nullptr) {
         ALOGW("%s: NULL string passed in", __FUNCTION__);
         return;
-    } else if (mTarget == NULL) {
+    } else if (mTarget == nullptr) {
         ALOGW("%s: Target string was NULL", __FUNCTION__);
         return;
     }
 
+    mTarget->append(mPrefix);
     mTarget->append(string);
     mTarget->append("\n");
 }

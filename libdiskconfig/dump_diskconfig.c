@@ -16,9 +16,10 @@
  */
 
 #define LOG_TAG "dump_diskconfig"
+
 #include <stdio.h>
 
-#include <cutils/log.h>
+#include <log/log.h>
 
 #include "diskconfig.h"
 

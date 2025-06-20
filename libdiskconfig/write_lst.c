@@ -16,15 +16,15 @@
  */
 
 #define LOG_TAG "write_lst"
-#include <sys/types.h>
+
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/types.h>
 #include <unistd.h>
 
-#include <cutils/log.h>
-
 #include <diskconfig/diskconfig.h>
+#include <log/log.h>
 
 struct write_list *
 alloc_wl(uint32_t data_len)
@@ -71,18 +71,18 @@ wlist_commit(int fd, struct write_list *lst, int test)
 {
     for(; lst; lst = lst->next) {
         if (lseek64(fd, lst->offset, SEEK_SET) != (loff_t)lst->offset) {
-            ALOGE("Cannot seek to the specified position (%lld).", lst->offset);
+            ALOGE("Cannot seek to the specified position (%lld).", (long long)lst->offset);
             goto fail;
         }
 
         if (!test) {
             if (write(fd, lst->data, lst->len) != (int)lst->len) {
                 ALOGE("Failed writing %u bytes at position %lld.", lst->len,
-                     lst->offset);
+                     (long long)lst->offset);
                 goto fail;
             }
         } else
-            ALOGI("Would write %d bytes @ offset %lld.", lst->len, lst->offset);
+            ALOGI("Would write %d bytes @ offset %lld.", lst->len, (long long)lst->offset);
     }
 
     return 0;

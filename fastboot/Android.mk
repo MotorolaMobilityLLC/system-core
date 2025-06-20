@@ -14,66 +14,12 @@
 
 LOCAL_PATH:= $(call my-dir)
 
-include $(CLEAR_VARS)
+#
+# Package fastboot-related executables.
+#
 
-LOCAL_C_INCLUDES := $(LOCAL_PATH)/../mkbootimg \
-  $(LOCAL_PATH)/../../extras/ext4_utils
-LOCAL_SRC_FILES := protocol.c engine.c bootimg.c fastboot.c
-LOCAL_MODULE := fastboot
-LOCAL_MODULE_TAGS := debug
-
-ifeq ($(HOST_OS),linux)
-  LOCAL_SRC_FILES += usb_linux.c util_linux.c
-endif
-
-ifeq ($(HOST_OS),darwin)
-  LOCAL_SRC_FILES += usb_osx.c util_osx.c
-  LOCAL_LDLIBS += -lpthread -framework CoreFoundation -framework IOKit \
-	-framework Carbon
-endif
-
-ifeq ($(HOST_OS),windows)
-  LOCAL_SRC_FILES += usb_windows.c util_windows.c
-  EXTRA_STATIC_LIBS := AdbWinApi
-  ifneq ($(strip $(USE_CYGWIN)),)
-    # Pure cygwin case
-    LOCAL_LDLIBS += -lpthread
-    LOCAL_C_INCLUDES += /usr/include/w32api/ddk
-  endif
-  ifneq ($(strip $(USE_MINGW)),)
-    # MinGW under Linux case
-    LOCAL_LDLIBS += -lws2_32
-    USE_SYSDEPS_WIN32 := 1
-    LOCAL_C_INCLUDES += /usr/i586-mingw32msvc/include/ddk
-  endif
-  LOCAL_C_INCLUDES += development/host/windows/usb/api
-endif
-
-LOCAL_STATIC_LIBRARIES := \
-    $(EXTRA_STATIC_LIBS) \
-    libzipfile \
-    libunz \
-    libext4_utils_host \
-    libsparse_host \
-    libz
-
-ifneq ($(HOST_OS),windows)
-LOCAL_STATIC_LIBRARIES += libselinux
-endif # HOST_OS != windows
-
-include $(BUILD_HOST_EXECUTABLE)
-
-
-$(call dist-for-goals,dist_files sdk,$(LOCAL_BUILT_MODULE))
-
-
-ifeq ($(HOST_OS),linux)
-include $(CLEAR_VARS)
-LOCAL_SRC_FILES := usbtest.c usb_linux.c
-LOCAL_MODULE := usbtest
-include $(BUILD_HOST_EXECUTABLE)
-endif
-
-ifeq ($(HOST_OS),windows)
-$(LOCAL_INSTALLED_MODULE): $(HOST_OUT_EXECUTABLES)/AdbWinApi.dll
-endif
+my_dist_files := $(HOST_OUT_EXECUTABLES)/mke2fs
+my_dist_files += $(HOST_OUT_EXECUTABLES)/make_f2fs
+my_dist_files += $(HOST_OUT_EXECUTABLES)/make_f2fs_casefold
+$(call dist-for-goals,dist_files sdk,$(my_dist_files))
+my_dist_files :=

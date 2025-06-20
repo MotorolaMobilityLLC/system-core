@@ -14,59 +14,50 @@
  * limitations under the License.
  */
 
-//
-// Timer functions.
-//
 #include <utils/Timers.h>
+
+#include <limits.h>
+#include <stdlib.h>
+#include <time.h>
+
+#include <android-base/macros.h>
 #include <utils/Log.h>
 
-#include <stdlib.h>
-#include <stdio.h>
-#include <unistd.h>
-#include <sys/time.h>
-#include <time.h>
-#include <errno.h>
-#include <limits.h>
+static constexpr size_t clock_id_max = 5;
 
-#ifdef HAVE_WIN32_THREADS
-#include <windows.h>
-#endif
-
-nsecs_t systemTime(int clock)
-{
-#if defined(HAVE_POSIX_CLOCKS)
-    static const clockid_t clocks[] = {
-            CLOCK_REALTIME,
-            CLOCK_MONOTONIC,
-            CLOCK_PROCESS_CPUTIME_ID,
-            CLOCK_THREAD_CPUTIME_ID,
-            CLOCK_BOOTTIME
-    };
-    struct timespec t;
-    t.tv_sec = t.tv_nsec = 0;
-    clock_gettime(clocks[clock], &t);
-    return nsecs_t(t.tv_sec)*1000000000LL + t.tv_nsec;
-#else
-    // we don't support the clocks here.
-    struct timeval t;
-    t.tv_sec = t.tv_usec = 0;
-    gettimeofday(&t, NULL);
-    return nsecs_t(t.tv_sec)*1000000000LL + nsecs_t(t.tv_usec)*1000LL;
-#endif
+static void checkClockId(int clock) {
+    LOG_ALWAYS_FATAL_IF(clock < 0 || clock >= clock_id_max, "invalid clock id");
 }
 
-int toMillisecondTimeoutDelay(nsecs_t referenceTime, nsecs_t timeoutTime)
-{
-    int timeoutDelayMillis;
-    if (timeoutTime > referenceTime) {
-        uint64_t timeoutDelay = uint64_t(timeoutTime - referenceTime);
-        if (timeoutDelay > uint64_t((INT_MAX - 1) * 1000000LL)) {
-            timeoutDelayMillis = -1;
-        } else {
-            timeoutDelayMillis = (timeoutDelay + 999999LL) / 1000000LL;
-        }
-    } else {
-        timeoutDelayMillis = 0;
-    }
-    return timeoutDelayMillis;
+#if defined(__linux__)
+nsecs_t systemTime(int clock) {
+    checkClockId(clock);
+    static constexpr clockid_t clocks[] = {CLOCK_REALTIME, CLOCK_MONOTONIC,
+                                           CLOCK_PROCESS_CPUTIME_ID, CLOCK_THREAD_CPUTIME_ID,
+                                           CLOCK_BOOTTIME};
+    static_assert(clock_id_max == arraysize(clocks));
+    timespec t = {};
+    clock_gettime(clocks[clock], &t);
+    return nsecs_t(t.tv_sec)*1000000000LL + t.tv_nsec;
+}
+#else
+nsecs_t systemTime(int clock) {
+    // TODO: is this ever called with anything but REALTIME on mac/windows?
+    checkClockId(clock);
+
+    // Clock support varies widely across hosts. Mac OS doesn't support
+    // CLOCK_BOOTTIME (and doesn't even have clock_gettime until 10.12).
+    // Windows is windows.
+    timeval t = {};
+    gettimeofday(&t, nullptr);
+    return nsecs_t(t.tv_sec)*1000000000LL + nsecs_t(t.tv_usec)*1000LL;
+}
+#endif
+
+int toMillisecondTimeoutDelay(nsecs_t referenceTime, nsecs_t timeoutTime) {
+    if (timeoutTime <= referenceTime) return 0;
+
+    uint64_t timeoutDelay = uint64_t(timeoutTime - referenceTime);
+    if (timeoutDelay > uint64_t((INT_MAX - 1) * 1000000LL)) return -1;
+    return (timeoutDelay + 999999LL) / 1000000LL;
 }

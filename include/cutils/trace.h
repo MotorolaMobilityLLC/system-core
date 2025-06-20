@@ -17,18 +17,15 @@
 #ifndef _LIBS_CUTILS_TRACE_H
 #define _LIBS_CUTILS_TRACE_H
 
+#include <inttypes.h>
+#include <stdatomic.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
 #include <sys/cdefs.h>
 #include <sys/types.h>
-#include <stdint.h>
-#include <stdbool.h>
 #include <unistd.h>
 #include <cutils/compiler.h>
-
-#ifdef ANDROID_SMP
-#include <cutils/atomic-inline.h>
-#else
-#include <cutils/atomic.h>
-#endif
 
 __BEGIN_DECLS
 
@@ -67,10 +64,22 @@ __BEGIN_DECLS
 #define ATRACE_TAG_RESOURCES        (1<<13)
 #define ATRACE_TAG_DALVIK           (1<<14)
 #define ATRACE_TAG_RS               (1<<15)
-#define ATRACE_TAG_LAST             ATRACE_TAG_RS
+#define ATRACE_TAG_BIONIC           (1<<16)
+#define ATRACE_TAG_POWER            (1<<17)
+#define ATRACE_TAG_PACKAGE_MANAGER  (1<<18)
+#define ATRACE_TAG_SYSTEM_SERVER    (1<<19)
+#define ATRACE_TAG_DATABASE         (1<<20)
+#define ATRACE_TAG_NETWORK          (1<<21)
+#define ATRACE_TAG_ADB              (1<<22)
+#define ATRACE_TAG_VIBRATOR         (1<<23)
+#define ATRACE_TAG_AIDL             (1<<24)
+#define ATRACE_TAG_NNAPI            (1<<25)
+#define ATRACE_TAG_RRO              (1<<26)
+#define ATRACE_TAG_THERMAL          (1 << 27)
+#define ATRACE_TAG_LAST             ATRACE_TAG_THERMAL
 
 // Reserved for initialization.
-#define ATRACE_TAG_NOT_READY        (1LL<<63)
+#define ATRACE_TAG_NOT_READY        (1ULL<<63)
 
 #define ATRACE_TAG_VALID_MASK ((ATRACE_TAG_LAST - 1) | ATRACE_TAG_LAST)
 
@@ -79,14 +88,6 @@ __BEGIN_DECLS
 #elif ATRACE_TAG > ATRACE_TAG_VALID_MASK
 #error ATRACE_TAG must be defined to be one of the tags defined in cutils/trace.h
 #endif
-
-#ifdef HAVE_ANDROID_OS
-/**
- * Maximum size of a message that can be logged to the trace buffer.
- * Note this message includes a tag, the pid, and the string given as the name.
- * Names should be kept short to get the most use of the trace buffer.
- */
-#define ATRACE_MESSAGE_LENGTH 1024
 
 /**
  * Opens the trace file for writing and reads the property for initial tags.
@@ -103,25 +104,17 @@ void atrace_setup();
 void atrace_update_tags();
 
 /**
- * Set whether the process is debuggable.  By default the process is not
- * considered debuggable.  If the process is not debuggable then application-
- * level tracing is not allowed unless the ro.debuggable system property is
- * set to '1'.
- */
-void atrace_set_debuggable(bool debuggable);
-
-/**
  * Set whether tracing is enabled for the current process.  This is used to
  * prevent tracing within the Zygote process.
  */
 void atrace_set_tracing_enabled(bool enabled);
 
 /**
- * Flag indicating whether setup has been completed, initialized to 0.
- * Nonzero indicates setup has completed.
- * Note: This does NOT indicate whether or not setup was successful.
+ * This is always set to false. This forces code that uses an old version
+ * of this header to always call into atrace_setup, in which we call
+ * atrace_init unconditionally.
  */
-extern volatile int32_t atrace_is_ready;
+extern atomic_bool atrace_is_ready;
 
 /**
  * Set of ATRACE_TAG flags to trace for, initialized to ATRACE_TAG_NOT_READY.
@@ -142,24 +135,10 @@ extern int atrace_marker_fd;
  * This can be explicitly run to avoid setup delay on first trace function.
  */
 #define ATRACE_INIT() atrace_init()
-static inline void atrace_init()
-{
-    if (CC_UNLIKELY(!android_atomic_acquire_load(&atrace_is_ready))) {
-        atrace_setup();
-    }
-}
-
-/**
- * Get the mask of all tags currently enabled.
- * It can be used as a guard condition around more expensive trace calculations.
- * Every trace function calls this, which ensures atrace_init is run.
- */
 #define ATRACE_GET_ENABLED_TAGS() atrace_get_enabled_tags()
-static inline uint64_t atrace_get_enabled_tags()
-{
-    atrace_init();
-    return atrace_enabled_tags;
-}
+
+void atrace_init();
+uint64_t atrace_get_enabled_tags();
 
 /**
  * Test if a given tag is currently enabled.
@@ -180,11 +159,8 @@ static inline uint64_t atrace_is_tag_enabled(uint64_t tag)
 static inline void atrace_begin(uint64_t tag, const char* name)
 {
     if (CC_UNLIKELY(atrace_is_tag_enabled(tag))) {
-        char buf[ATRACE_MESSAGE_LENGTH];
-        size_t len;
-
-        len = snprintf(buf, ATRACE_MESSAGE_LENGTH, "B|%d|%s", getpid(), name);
-        write(atrace_marker_fd, buf, len);
+        void atrace_begin_body(const char*);
+        atrace_begin_body(name);
     }
 }
 
@@ -196,8 +172,8 @@ static inline void atrace_begin(uint64_t tag, const char* name)
 static inline void atrace_end(uint64_t tag)
 {
     if (CC_UNLIKELY(atrace_is_tag_enabled(tag))) {
-        char c = 'E';
-        write(atrace_marker_fd, &c, 1);
+        void atrace_end_body();
+        atrace_end_body();
     }
 }
 
@@ -214,12 +190,8 @@ static inline void atrace_async_begin(uint64_t tag, const char* name,
         int32_t cookie)
 {
     if (CC_UNLIKELY(atrace_is_tag_enabled(tag))) {
-        char buf[ATRACE_MESSAGE_LENGTH];
-        size_t len;
-
-        len = snprintf(buf, ATRACE_MESSAGE_LENGTH, "S|%d|%s|%d", getpid(),
-                name, cookie);
-        write(atrace_marker_fd, buf, len);
+        void atrace_async_begin_body(const char*, int32_t);
+        atrace_async_begin_body(name, cookie);
     }
 }
 
@@ -228,19 +200,79 @@ static inline void atrace_async_begin(uint64_t tag, const char* name,
  * This should have a corresponding ATRACE_ASYNC_BEGIN.
  */
 #define ATRACE_ASYNC_END(name, cookie) atrace_async_end(ATRACE_TAG, name, cookie)
-static inline void atrace_async_end(uint64_t tag, const char* name,
-        int32_t cookie)
+static inline void atrace_async_end(uint64_t tag, const char* name, int32_t cookie)
 {
     if (CC_UNLIKELY(atrace_is_tag_enabled(tag))) {
-        char buf[ATRACE_MESSAGE_LENGTH];
-        size_t len;
-
-        len = snprintf(buf, ATRACE_MESSAGE_LENGTH, "F|%d|%s|%d", getpid(),
-                name, cookie);
-        write(atrace_marker_fd, buf, len);
+        void atrace_async_end_body(const char*, int32_t);
+        atrace_async_end_body(name, cookie);
     }
 }
 
+/**
+ * Trace the beginning of an asynchronous event. In addition to the name and a
+ * cookie as in ATRACE_ASYNC_BEGIN/ATRACE_ASYNC_END, a track name argument is
+ * provided, which is the name of the row where this async event should be
+ * recorded. The track name, name, and cookie used to begin an event must be
+ * used to end it.
+ * The cookie here must be unique on the track_name level, not the name level.
+ */
+#define ATRACE_ASYNC_FOR_TRACK_BEGIN(track_name, name, cookie) \
+    atrace_async_for_track_begin(ATRACE_TAG, track_name, name, cookie)
+static inline void atrace_async_for_track_begin(uint64_t tag, const char* track_name,
+                                                const char* name, int32_t cookie) {
+    if (CC_UNLIKELY(atrace_is_tag_enabled(tag))) {
+        void atrace_async_for_track_begin_body(const char*, const char*, int32_t);
+        atrace_async_for_track_begin_body(track_name, name, cookie);
+    }
+}
+
+/**
+ * Trace the end of an asynchronous event.
+ * This should correspond to a previous ATRACE_ASYNC_FOR_TRACK_BEGIN.
+ */
+#define ATRACE_ASYNC_FOR_TRACK_END(track_name, cookie) \
+    atrace_async_for_track_end(ATRACE_TAG, track_name, cookie)
+static inline void atrace_async_for_track_end(uint64_t tag, const char* track_name,
+                                              int32_t cookie) {
+    if (CC_UNLIKELY(atrace_is_tag_enabled(tag))) {
+        void atrace_async_for_track_end_body(const char*, int32_t);
+        atrace_async_for_track_end_body(track_name, cookie);
+    }
+}
+
+/**
+ * Trace an instantaneous context. name is used to identify the context.
+ *
+ * An "instant" is an event with no defined duration. Visually is displayed like a single marker
+ * in the timeline (rather than a span, in the case of begin/end events).
+ *
+ * By default, instant events are added into a dedicated track that has the same name of the event.
+ * Use atrace_instant_for_track to put different instant events into the same timeline track/row.
+ */
+#define ATRACE_INSTANT(name) atrace_instant(ATRACE_TAG, name)
+static inline void atrace_instant(uint64_t tag, const char* name) {
+    if (CC_UNLIKELY(atrace_is_tag_enabled(tag))) {
+        void atrace_instant_body(const char*);
+        atrace_instant_body(name);
+    }
+}
+
+/**
+ * Trace an instantaneous context. name is used to identify the context.
+ * track_name is the name of the row where the event should be recorded.
+ *
+ * An "instant" is an event with no defined duration. Visually is displayed like a single marker
+ * in the timeline (rather than a span, in the case of begin/end events).
+ */
+#define ATRACE_INSTANT_FOR_TRACK(trackName, name) \
+    atrace_instant_for_track(ATRACE_TAG, trackName, name)
+static inline void atrace_instant_for_track(uint64_t tag, const char* track_name,
+                                            const char* name) {
+    if (CC_UNLIKELY(atrace_is_tag_enabled(tag))) {
+        void atrace_instant_for_track_body(const char*, const char*);
+        atrace_instant_for_track_body(track_name, name);
+    }
+}
 
 /**
  * Traces an integer counter value.  name is used to identify the counter.
@@ -250,12 +282,8 @@ static inline void atrace_async_end(uint64_t tag, const char* name,
 static inline void atrace_int(uint64_t tag, const char* name, int32_t value)
 {
     if (CC_UNLIKELY(atrace_is_tag_enabled(tag))) {
-        char buf[ATRACE_MESSAGE_LENGTH];
-        size_t len;
-
-        len = snprintf(buf, ATRACE_MESSAGE_LENGTH, "C|%d|%s|%d",
-                getpid(), name, value);
-        write(atrace_marker_fd, buf, len);
+        void atrace_int_body(const char*, int32_t);
+        atrace_int_body(name, value);
     }
 }
 
@@ -267,27 +295,10 @@ static inline void atrace_int(uint64_t tag, const char* name, int32_t value)
 static inline void atrace_int64(uint64_t tag, const char* name, int64_t value)
 {
     if (CC_UNLIKELY(atrace_is_tag_enabled(tag))) {
-        char buf[ATRACE_MESSAGE_LENGTH];
-        size_t len;
-
-        len = snprintf(buf, ATRACE_MESSAGE_LENGTH, "C|%d|%s|%lld",
-                getpid(), name, value);
-        write(atrace_marker_fd, buf, len);
+        void atrace_int64_body(const char*, int64_t);
+        atrace_int64_body(name, value);
     }
 }
-
-#else // not HAVE_ANDROID_OS
-
-#define ATRACE_INIT()
-#define ATRACE_GET_ENABLED_TAGS()
-#define ATRACE_ENABLED() 0
-#define ATRACE_BEGIN(name)
-#define ATRACE_END()
-#define ATRACE_ASYNC_BEGIN(name, cookie)
-#define ATRACE_ASYNC_END(name, cookie)
-#define ATRACE_INT(name, value)
-
-#endif // not HAVE_ANDROID_OS
 
 __END_DECLS
 

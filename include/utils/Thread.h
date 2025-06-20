@@ -21,7 +21,7 @@
 #include <sys/types.h>
 #include <time.h>
 
-#if defined(HAVE_PTHREADS)
+#if !defined(_WIN32)
 # include <pthread.h>
 #endif
 
@@ -36,16 +36,21 @@
 namespace android {
 // ---------------------------------------------------------------------------
 
+// DO NOT USE: please use std::thread
+
 class Thread : virtual public RefBase
 {
 public:
     // Create a Thread object, but doesn't create or start the associated
-    // thread. See the run() method.
-                        Thread(bool canCallJava = true);
+    // thread. See the run() method. This object must be used with RefBase/sp,
+    // like any other RefBase object, because they are conventionally promoted
+    // from bare pointers (Thread::run is particularly problematic here).
+    explicit            Thread(bool canCallJava = true);
     virtual             ~Thread();
 
     // Start the thread in threadLoop() which needs to be implemented.
-    virtual status_t    run(    const char* name = 0,
+    // NOLINTNEXTLINE(google-default-arguments)
+    virtual status_t    run(    const char* name,
                                 int32_t priority = PRIORITY_DEFAULT,
                                 size_t stack = 0);
     
@@ -70,9 +75,9 @@ public:
     // Indicates whether this thread is running or not.
             bool        isRunning() const;
 
-#ifdef HAVE_ANDROID_OS
-    // Return the thread's kernel ID, same as the thread itself calling gettid() or
-    // androidGetTid(), or -1 if the thread is not running.
+#if defined(__ANDROID__)
+    // Return the thread's kernel ID, same as the thread itself calling gettid(),
+    // or -1 if the thread is not running.
             pid_t       getTid() const;
 #endif
 
@@ -101,15 +106,14 @@ private:
     volatile bool           mExitPending;
     volatile bool           mRunning;
             sp<Thread>      mHoldSelf;
-#ifdef HAVE_ANDROID_OS
+#if defined(__ANDROID__)
     // legacy for debugging, not used by getTid() as it is set by the child thread
     // and so is not initialized until the child reaches that point
             pid_t           mTid;
 #endif
 };
 
-
-}; // namespace android
+}  // namespace android
 
 // ---------------------------------------------------------------------------
 #endif // _LIBS_UTILS_THREAD_H

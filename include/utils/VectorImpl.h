@@ -132,7 +132,7 @@ class SortedVectorImpl : public VectorImpl
 {
 public:
                             SortedVectorImpl(size_t itemSize, uint32_t flags);
-                            SortedVectorImpl(const VectorImpl& rhs);
+    explicit                SortedVectorImpl(const VectorImpl& rhs);
     virtual                 ~SortedVectorImpl();
     
     SortedVectorImpl&     operator = (const SortedVectorImpl& rhs);    
@@ -157,7 +157,7 @@ protected:
     virtual int             do_compare(const void* lhs, const void* rhs) const = 0;
 
 private:
-            ssize_t         _indexOrderOf(const void* item, size_t* order = 0) const;
+            ssize_t         _indexOrderOf(const void* item, size_t* order = nullptr) const;
 
             // these are made private, because they can't be used on a SortedVector
             // (they don't have an implementation either)
@@ -175,8 +175,7 @@ private:
             ssize_t         replaceAt(const void* item, size_t index);
 };
 
-}; // namespace android
-
+}  // namespace android
 
 // ---------------------------------------------------------------------------
 

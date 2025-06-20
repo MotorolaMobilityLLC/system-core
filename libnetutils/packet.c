@@ -1,61 +1,58 @@
 /*
  * Copyright 2008, The Android Open Source Project
  *
- * Licensed under the Apache License, Version 2.0 (the "License"); 
- * you may not use this file except in compliance with the License. 
- * You may obtain a copy of the License at 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
- *     http://www.apache.org/licenses/LICENSE-2.0 
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
- * Unless required by applicable law or agreed to in writing, software 
- * distributed under the License is distributed on an "AS IS" BASIS, 
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. 
- * See the License for the specific language governing permissions and 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
  * limitations under the License.
  */
 
+#include <errno.h>
 #include <stdlib.h>
-#include <unistd.h>
-#include <sys/uio.h>
+#include <string.h>
 #include <sys/socket.h>
+#include <sys/uio.h>
+#include <linux/if_ether.h>
+#include <linux/if_packet.h>
 #include <netinet/in.h>
 #include <netinet/ip.h>
 #include <netinet/udp.h>
-#include <linux/if_packet.h>
-#include <linux/if_ether.h>
-#include <errno.h>
+#include <unistd.h>
 
 #ifdef ANDROID
 #define LOG_TAG "DHCP"
-#include <cutils/log.h>
+#include <log/log.h>
 #else
 #include <stdio.h>
-#include <string.h>
 #define ALOGD printf
 #define ALOGW printf
 #endif
 
 #include "dhcpmsg.h"
 
-int fatal();
+int fatal(const char*);
 
-int open_raw_socket(const char *ifname __attribute__((unused)), uint8_t *hwaddr, int if_index)
-{
-    int s, flag;
-    struct sockaddr_ll bindaddr;
+int open_raw_socket(const char* ifname __unused, uint8_t hwaddr[ETH_ALEN], int if_index) {
+    int s = socket(PF_PACKET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
+    if (s < 0) return fatal("socket(PF_PACKET)");
 
-    if((s = socket(PF_PACKET, SOCK_DGRAM, htons(ETH_P_IP))) < 0) {
-        return fatal("socket(PF_PACKET)");
-    }
-
-    memset(&bindaddr, 0, sizeof(bindaddr));
-    bindaddr.sll_family = AF_PACKET;
-    bindaddr.sll_protocol = htons(ETH_P_IP);
-    bindaddr.sll_halen = ETH_ALEN;
+    struct sockaddr_ll bindaddr = {
+            .sll_family = AF_PACKET,
+            .sll_protocol = htons(ETH_P_IP),
+            .sll_ifindex = if_index,
+            .sll_halen = ETH_ALEN,
+    };
     memcpy(bindaddr.sll_addr, hwaddr, ETH_ALEN);
-    bindaddr.sll_ifindex = if_index;
 
     if (bind(s, (struct sockaddr *)&bindaddr, sizeof(bindaddr)) < 0) {
+        close(s);
         return fatal("Cannot bind raw socket to interface");
     }
 
@@ -218,6 +215,20 @@ int receive_packet(int s, struct dhcp_msg *msg)
      * to construct the pseudo header used in the checksum calculation.
      */
     dhcp_size = ntohs(packet.udp.len) - sizeof(packet.udp);
+    /*
+     * check validity of dhcp_size.
+     * 1) cannot be negative or zero.
+     * 2) src buffer contains enough bytes to copy
+     * 3) cannot exceed destination buffer
+     */
+    if ((dhcp_size <= 0) ||
+        ((int)(nread - sizeof(struct iphdr) - sizeof(struct udphdr)) < dhcp_size) ||
+        ((int)sizeof(struct dhcp_msg) < dhcp_size)) {
+#if VERBOSE
+        ALOGD("Malformed Packet");
+#endif
+        return -1;
+    }
     saddr = packet.ip.saddr;
     daddr = packet.ip.daddr;
     nread = ntohs(packet.ip.tot_len);
@@ -230,6 +241,8 @@ int receive_packet(int s, struct dhcp_msg *msg)
     packet.udp.check = 0;
     sum = finish_sum(checksum(&packet, nread, 0));
     packet.udp.check = temp;
+    if (!sum)
+        sum = finish_sum(sum);
     if (temp != sum) {
         ALOGW("UDP header checksum failure (0x%x should be 0x%x)", sum, temp);
         return -1;

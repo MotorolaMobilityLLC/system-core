@@ -16,15 +16,14 @@
  */
 
 #define LOG_TAG "config_mbr"
+
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdio.h>
-
-#include <cutils/log.h>
 
 #include <diskconfig/diskconfig.h>
-
+#include <log/log.h>
 
 /* start and len are in LBA units */
 static void
@@ -88,7 +87,7 @@ mk_pri_pentry(struct disk_info *dinfo, struct part_info *pinfo, int pnum,
         /* DO NOT DEREFERENCE */
         struct pc_boot_record *mbr = (void *)PC_MBR_DISK_OFFSET; 
         /* grab the offset in mbr where to write this partition entry. */
-        item->offset = (loff_t)((uint32_t)((uint8_t *)(&mbr->ptable[pnum])));
+        item->offset = (loff_t)((uintptr_t)((uint8_t *)(&mbr->ptable[pnum])));
     }
 
     pentry = (struct pc_partition *) &item->data;
@@ -208,6 +207,26 @@ fail:
 }
 
 
+static struct write_list *
+mk_mbr_sig()
+{
+    struct write_list *item;
+    if (!(item = alloc_wl(sizeof(uint16_t)))) {
+        ALOGE("Unable to allocate memory for MBR signature.");
+        return NULL;
+    }
+
+    {
+        /* DO NOT DEREFERENCE */
+        struct pc_boot_record *mbr = (void *)PC_MBR_DISK_OFFSET;
+        /* grab the offset in mbr where to write mbr signature. */
+        item->offset = (loff_t)((uintptr_t)((uint8_t *)(&mbr->mbr_sig)));
+    }
+
+    *((uint16_t*)item->data) = PC_BIOS_BOOT_SIG;
+    return item;
+}
+
 struct write_list *
 config_mbr(struct disk_info *dinfo)
 {
@@ -274,6 +293,13 @@ config_mbr(struct disk_info *dinfo)
             goto fail;
         }
         wlist_add(&wr_list, temp_wr);
+    }
+
+    if ((temp_wr = mk_mbr_sig()))
+        wlist_add(&wr_list, temp_wr);
+    else {
+        ALOGE("Cannot set MBR signature");
+        goto fail;
     }
 
     return wr_list;

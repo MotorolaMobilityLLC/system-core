@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010 The Android Open Source Project
+ * Copyright (C) 2007 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,12 +14,30 @@
  * limitations under the License.
  */
 
-#ifndef _INIT_UEVENTD_PARSER_H_
-#define _INIT_UEVENTD_PARSER_H_
+#pragma once
 
-#define UEVENTD_PARSER_MAXARGS 5
+#include <string>
+#include <vector>
 
-int ueventd_parse_config_file(const char *fn);
-void set_device_permission(int nargs, char **args);
+#include "devices.h"
+#include "firmware_handler.h"
 
-#endif
+namespace android {
+namespace init {
+
+struct UeventdConfiguration {
+    std::vector<Subsystem> subsystems;
+    std::vector<SysfsPermissions> sysfs_permissions;
+    std::vector<Permissions> dev_permissions;
+    std::vector<std::string> firmware_directories;
+    std::vector<ExternalFirmwareHandler> external_firmware_handlers;
+    std::vector<std::string> parallel_restorecon_dirs;
+    bool enable_modalias_handling = false;
+    size_t uevent_socket_rcvbuf_size = 0;
+    bool enable_parallel_restorecon = false;
+};
+
+UeventdConfiguration ParseConfig(const std::vector<std::string>& configs);
+
+}  // namespace init
+}  // namespace android

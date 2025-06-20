@@ -26,15 +26,13 @@
  * SUCH DAMAGE.
  */
 
-#ifndef _USB_H_
-#define _USB_H_
+#pragma once
 
-typedef struct usb_handle usb_handle;
+#include <functional>
 
-typedef struct usb_ifc_info usb_ifc_info;
+#include "transport.h"
 
-struct usb_ifc_info
-{
+struct usb_ifc_info {
         /* from device descriptor */
     unsigned short dev_vendor;
     unsigned short dev_product;
@@ -54,14 +52,18 @@ struct usb_ifc_info
 
     char serial_number[256];
     char device_path[256];
+
+    char interface[256];
 };
 
-typedef int (*ifc_match_func)(usb_ifc_info *ifc);
+class UsbTransport : public Transport {
+    // Resets the underlying transport.  Returns 0 on success.
+    // This effectively simulates unplugging and replugging
+  public:
+    virtual int Reset() = 0;
+};
 
-usb_handle *usb_open(ifc_match_func callback);
-int usb_close(usb_handle *h);
-int usb_read(usb_handle *h, void *_data, int len);
-int usb_write(usb_handle *h, const void *_data, int len);
+typedef std::function<int(usb_ifc_info*)> ifc_match_func;
 
-
-#endif
+// 0 is non blocking
+UsbTransport* usb_open(ifc_match_func callback, uint32_t timeout_ms = 0);

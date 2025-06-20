@@ -14,18 +14,99 @@
  * limitations under the License.
  */
 
-#ifndef __CORE_FS_MGR_PRIV_H
-#define __CORE_FS_MGR_PRIV_H
+#pragma once
 
-#include <cutils/klog.h>
+#include <chrono>
+#include <string>
+
+#include <android-base/logging.h>
 #include <fs_mgr.h>
+#include <fstab/fstab.h>
 
-#define INFO(x...)    KLOG_INFO("fs_mgr", x)
-#define ERROR(x...)   KLOG_ERROR("fs_mgr", x)
+#include "fs_mgr_priv_boot_config.h"
 
-#define CRYPTO_TMPFS_OPTIONS "size=128m,mode=0771,uid=1000,gid=1000"
+/* The CHECK() in logging.h will use program invocation name as the tag.
+ * Thus, the log will have prefix "init: " when libfs_mgr is statically
+ * linked in the init process. This might be opaque when debugging.
+ * Appends "in libfs_mgr" at the end of the abort message to explicitly
+ * indicate the check happens in fs_mgr.
+ */
+#define FS_MGR_CHECK(x) CHECK(x) << "in libfs_mgr "
 
-#define WAIT_TIMEOUT 20
+#define FS_MGR_TAG "[libfs_mgr] "
+
+// Logs a message to kernel
+#define LINFO    LOG(INFO) << FS_MGR_TAG
+#define LWARNING LOG(WARNING) << FS_MGR_TAG
+#define LERROR   LOG(ERROR) << FS_MGR_TAG
+#define LFATAL LOG(FATAL) << FS_MGR_TAG
+
+// Logs a message with strerror(errno) at the end
+#define PINFO    PLOG(INFO) << FS_MGR_TAG
+#define PWARNING PLOG(WARNING) << FS_MGR_TAG
+#define PERROR   PLOG(ERROR) << FS_MGR_TAG
+#define PFATAL PLOG(FATAL) << FS_MGR_TAG
+
+#define CRYPTO_TMPFS_OPTIONS "size=512m,mode=0771,uid=1000,gid=1000"
+
+#ifdef MTK_FSTAB_FLAGS
+#define MAX_PATH_LEN        64
+#define MAX_VOLUME_NAME     512
+#define F2FS_MAX_EXTENSION  64  /* # of extension entries */
+#define VERSION_LEN         256
+#define MAX_DEVICES         8
+#define F2FS_MAX_QUOTAS     3
+
+struct f2fs_dev_info {
+    __u8 path[MAX_PATH_LEN];
+    __le32 total_segments;
+};
+
+struct f2fs_super_block {
+    __le32 magic;
+    __le16 major_ver;
+    __le16 minor_ver;
+    __le32 log_sectorsize;
+    __le32 log_sectors_per_block;
+    __le32 log_blocksize;
+    __le32 log_blocks_per_seg;
+    __le32 segs_per_sec;
+    __le32 secs_per_zone;
+    __le32 checksum_offset;
+    __le32 block_count[2];
+    __le32 section_count;
+    __le32 segment_count;
+    __le32 segment_count_ckpt;
+    __le32 segment_count_sit;
+    __le32 segment_count_nat;
+    __le32 segment_count_ssa;
+    __le32 segment_count_main;
+    __le32 segment0_blkaddr;
+    __le32 cp_blkaddr;
+    __le32 sit_blkaddr;
+    __le32 nat_blkaddr;
+    __le32 ssa_blkaddr;
+    __le32 main_blkaddr;
+    __le32 root_ino;
+    __le32 node_ino;
+    __le32 meta_ino;
+    __u8 uuid[16];
+    __le16 volume_name[MAX_VOLUME_NAME];
+    __le32 extension_count;
+    __u8 extension_list[F2FS_MAX_EXTENSION][8];
+    __le32 cp_payload;
+    __u8 version[VERSION_LEN];
+    __u8 init_version[VERSION_LEN];
+    __le32 feature;
+    __u8 encryption_level;
+    __u8 encrypt_pw_salt[16];
+    struct f2fs_dev_info devs[MAX_DEVICES];
+    __le32 qf_ino[F2FS_MAX_QUOTAS];
+    __u8 hot_ext_count;
+    __u8 reserved[310];
+    __le32 crc;
+};
+#endif
 
 /* fstab has the following format:
  *
@@ -45,7 +126,7 @@
  *
  *   <fs_mgr_options> is a comma separated list of flags that control the operation of
  *                     the fs_mgr program.  The list includes "wait", which will wait till
- *                     the <source> file exists, and "check", which requests that the fs_mgr 
+ *                     the <source> file exists, and "check", which requests that the fs_mgr
  *                     run an fscheck program on the <source> before mounting the filesystem.
  *                     If check is specifed on a read-only filesystem, it is ignored.
  *                     Also, "encryptable" means that filesystem can be encrypted.
@@ -62,24 +143,33 @@
  *
  */
 
-#define MF_WAIT         0x1
-#define MF_CHECK        0x2
-#define MF_CRYPT        0x4
-#define MF_NONREMOVABLE 0x8
-#define MF_VOLDMANAGED  0x10
-#define MF_LENGTH       0x20
-#define MF_RECOVERYONLY 0x40
-#define MF_SWAPPRIO     0x80
-#define MF_ZRAMSIZE     0x100
-#define MF_VERIFY       0x200
-/*
- * There is no emulated sdcard daemon running on /data/media on this device,
- * so treat the physical SD card as the only external storage device,
- * a la the Nexus One.
- */
-#define MF_NOEMULATEDSD 0x400
-
 #define DM_BUF_SIZE 4096
 
-#endif /* __CORE_FS_MGR_PRIV_H */
+using namespace std::chrono_literals;
 
+bool fs_mgr_set_blk_ro(const std::string& blockdev, bool readonly = true);
+bool fs_mgr_update_for_slotselect(android::fs_mgr::Fstab* fstab);
+bool fs_mgr_is_device_unlocked();
+const std::string& get_android_dt_dir();
+bool is_dt_compatible();
+
+bool fs_mgr_is_ext4(const std::string& blk_device);
+bool fs_mgr_is_f2fs(const std::string& blk_device);
+
+bool fs_mgr_teardown_verity(android::fs_mgr::FstabEntry* fstab);
+
+bool fs_mgr_filesystem_available(const std::string& filesystem);
+std::string fs_mgr_get_context(const std::string& mount_point);
+
+enum class OverlayfsValidResult {
+    kNotSupported = 0,
+    kOk,
+    kOverrideCredsRequired,
+};
+OverlayfsValidResult fs_mgr_overlayfs_valid();
+
+namespace android {
+namespace fs_mgr {
+bool UnmapDevice(const std::string& name);
+}  // namespace fs_mgr
+}  // namespace android
