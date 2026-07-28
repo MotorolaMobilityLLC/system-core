@@ -1,0 +1,206 @@
+// Copyright 2019 The Android Open Source Project
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package {
+    default_applicable_licenses: ["Android-Apache-2.0"],
+}
+
+prebuilt_etc {
+    name: "init.boringssl.zygote64_32.rc",
+    src: "init.boringssl.zygote64_32.rc",
+    sub_dir: "init/hw",
+    symlinks: [
+        "init.boringssl.zygote32.rc",
+        "init.boringssl.no_zygote.rc",
+    ],
+}
+
+prebuilt_etc {
+    name: "init.boringssl.zygote64.rc",
+    src: "init.boringssl.zygote64.rc",
+    sub_dir: "init/hw",
+}
+
+prebuilt_etc {
+    name: "init.rc",
+    src: "init.rc",
+    sub_dir: "init/hw",
+    required: [
+        "platform-bootclasspath",
+        "init.boringssl.zygote64.rc",
+        "init.boringssl.zygote64_32.rc",
+    ],
+}
+
+prebuilt_etc {
+    name: "ueventd.rc",
+    src: "ueventd.rc",
+}
+
+prebuilt_etc {
+    name: "ueventd.rc.recovery",
+    src: "ueventd.rc",
+    recovery: true,
+    filename: "ueventd.rc",
+}
+
+filegroup {
+    name: "system_linker_config_json_file",
+    srcs: ["etc/linker.config.json"],
+}
+
+// TODO(b/185211376) Scope the native APIs that microdroid will provide to the app payload
+prebuilt_etc {
+    name: "public.libraries.android.txt",
+    src: "etc/public.libraries.android.txt",
+    filename: "public.libraries.txt",
+    no_full_install: true,
+}
+
+// adb_debug.prop in debug ramdisk
+prebuilt_root {
+    name: "adb_debug.prop",
+    src: "adb_debug.prop",
+    debug_ramdisk: true,
+}
+
+prebuilt_etc {
+    name: "init.zygote64.rc",
+    src: "init.zygote64.rc",
+    sub_dir: "init/hw",
+}
+
+prebuilt_etc {
+    name: "init.zygote32.rc",
+    src: "init.zygote32.rc",
+    sub_dir: "init/hw",
+}
+
+prebuilt_etc {
+    name: "init.zygote64_32.rc",
+    src: "init.zygote64_32.rc",
+    sub_dir: "init/hw",
+}
+
+prebuilt_etc {
+    name: "init.usb.rc",
+    src: "init.usb.rc",
+    sub_dir: "init/hw",
+}
+
+prebuilt_etc {
+    name: "init.usb.configfs.rc",
+    src: "init.usb.configfs.rc",
+    sub_dir: "init/hw",
+}
+
+prebuilt_etc {
+    name: "etc_hosts",
+    src: "etc/hosts",
+    filename: "hosts",
+}
+
+prebuilt_etc {
+    name: "init-debug.rc",
+    src: "init-debug.rc",
+    sub_dir: "init",
+}
+
+prebuilt_etc {
+    name: "init-mmd-prop.rc",
+    src: "init-mmd-prop.rc",
+    sub_dir: "init",
+}
+
+prebuilt_etc {
+    name: "asan.options",
+    src: "asan.options",
+}
+
+sh_binary {
+    name: "asan_extract",
+    src: "asan_extract.sh",
+    init_rc: ["asan_extract.rc"],
+    // We need bzip2 on device for extraction.
+    required: ["bzip2"],
+}
+
+llndk_libraries_txt {
+    name: "llndk.libraries.txt",
+}
+
+sanitizer_libraries_txt {
+    name: "sanitizer.libraries.txt",
+}
+
+EXPORT_GLOBAL_ASAN_OPTIONS = select(soong_config_variable("ANDROID", "ASAN_ENABLED"), {
+    true: "export ASAN_OPTIONS include=/system/asan.options",
+    default: "",
+})
+
+EXPORT_GLOBAL_HWASAN_OPTIONS = select(soong_config_variable("ANDROID", "HWASAN_ENABLED"), {
+    true: "export HWASAN_OPTIONS heap_history_size=1023,stack_history_size=512,export_memory_stats=0,max_malloc_fill_size=131072,malloc_fill_byte=0",
+    default: "",
+})
+
+EXPORT_GLOBAL_GCOV_OPTIONS = select(soong_config_variable("ANDROID", "GCOV_COVERAGE"), {
+    true: "export GCOV_PREFIX /data/misc/trace",
+    default: "",
+})
+
+EXPORT_GLOBAL_CLANG_COVERAGE_OPTIONS = select((soong_config_variable("ANDROID", "CLANG_COVERAGE"), soong_config_variable("ANDROID", "CLANG_COVERAGE_CONTINUOUS_MODE")), {
+    (true, true): "export LLVM_PROFILE_FILE /data/misc/trace/clang%c-%20m.profraw",
+    (true, default): "export LLVM_PROFILE_FILE /data/misc/trace/clang-%20m.profraw",
+    (default, default): "",
+})
+
+EXPORT_GLOBAL_SCUDO_ALLOCATION_RING_BUFFER_SIZE = select(soong_config_variable("ANDROID", "SCUDO_ALLOCATION_RING_BUFFER_SIZE"), {
+    "": "",
+    any @ size: "export SCUDO_ALLOCATION_RING_BUFFER_SIZE " + size,
+    default: "",
+})
+
+genrule {
+    name: "init.environ.rc.gen",
+    srcs: ["init.environ.rc.in"],
+    out: ["init.environ.rc"],
+    cmd: "cp -f $(in) $(out) && " +
+        "echo '    " + EXPORT_GLOBAL_ASAN_OPTIONS + "' >> $(out) && " +
+        "echo '    " + EXPORT_GLOBAL_GCOV_OPTIONS + "' >> $(out) && " +
+        "echo '    " + EXPORT_GLOBAL_CLANG_COVERAGE_OPTIONS + "' >> $(out) && " +
+        "echo '    " + EXPORT_GLOBAL_HWASAN_OPTIONS + "' >> $(out) && " +
+        "echo '    " + EXPORT_GLOBAL_SCUDO_ALLOCATION_RING_BUFFER_SIZE + "' >> $(out)",
+}
+
+prebuilt_root {
+    name: "init.environ.rc-soong",
+    src: ":init.environ.rc.gen",
+    filename: "init.environ.rc",
+    install_in_root: true,
+    no_full_install: true,
+    required: select((soong_config_variable("ANDROID", "ASAN_ENABLED"), soong_config_variable("ANDROID", "SANITIZE_TARGET_SYSTEM_ENABLED")), {
+        (true, true): [
+            "asan.options",
+            "asan_extract",
+        ],
+        (true, default): ["asan.options"],
+        (default, default): [],
+    }),
+}
+
+filegroup {
+    name: "ramdisk_node_list",
+    srcs: ["ramdisk_node_list"],
+    export_to_make_var: "RAMDISK_NODE_LIST",
+}
