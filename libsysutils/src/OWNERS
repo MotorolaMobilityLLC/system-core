@@ -1,0 +1,1 @@
+per-file OWNERS,Netlink* = file:platform/packages/modules/Connectivity:main:/OWNERS_core_networking

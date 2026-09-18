@@ -1,0 +1,41 @@
+service storageproxyd_desktop_unused /vendor/bin/storageproxyd \
+        --trusty_dev ${ro.vendor.trusty.security_vm_cid:-/dev/trusty-ipc-dev0} \
+        --rpmb_dev /dev/socket/rpmb_mock_desktop \
+        --data_path /data/vendor/secure_storage \
+        --file_storage_mapping 0:/dev/block/by-name/desktop_security_storage \
+        --file_storage_mapping_no_link persist/0:/dev/block/by-name/desktop_security_persist \
+        --dev_type sock
+    disabled
+    user system
+    group system
+
+service rpmb_mock_init_desktop /vendor/bin/rpmb_dev.desktop \
+        --dev /mnt/vendor/secure_storage_rpmb/RPMB_DATA --init --size 2048
+    disabled
+    user system
+    group system
+    oneshot
+
+service rpmb_mock_desktop /vendor/bin/rpmb_dev.desktop \
+        --dev /mnt/vendor/secure_storage_rpmb/RPMB_DATA \
+        --sock rpmb_mock_desktop
+    disabled
+    user system
+    group system
+    socket rpmb_mock_desktop stream 660 system system
+
+# RPMB Mock
+on post-fs
+    # Create a persistent location for the RPMB data
+    # (work around lack of RPMB block device on AL).
+    # TODO(b/431070133) Allow storageproxyd to run without rpmb.
+    mkdir /mnt/vendor/secure_storage_rpmb 0770 system system
+    exec_start rpmb_mock_init_desktop
+    start rpmb_mock_desktop
+
+# storageproxyd
+on post-fs-data && \
+    property:ro.vendor.trusty.security_vm_cid=*
+    wait /dev/socket/rpmb_mock_desktop
+    mkdir /data/vendor/secure_storage 0770 root system
+    start storageproxyd_desktop_unused

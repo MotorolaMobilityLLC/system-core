@@ -1,0 +1,66 @@
+//
+// Copyright (C) 2025 The Android Open-Source Project
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package {
+    default_applicable_licenses: ["Android-Apache-2.0"],
+}
+
+rust_library {
+    name: "libprocessgroup_rust",
+    crate_name: "processgroup",
+    host_supported: false,
+    edition: "2024",
+    srcs: [
+        "src/lib.rs",
+    ],
+    rustlibs: [
+        "libcxx",
+        "liblibc",
+        "libstatic_assertions",
+    ],
+    shared_libs: [
+        "libprocessgroup",
+    ],
+    static_libs: [
+        "libprocessgroup_rust_bridge",
+    ],
+}
+
+genrule {
+    name: "libprocessgroup_rust_cxx_bridge_code",
+    tools: ["cxxbridge"],
+    cmd: "$(location cxxbridge) $(in) > $(out)",
+    srcs: ["src/processgroup.rs"],
+    out: ["libprocessgroup_rust_cxx_generated.cc"],
+}
+
+cc_library_headers {
+    name: "libprocessgroup_rust_bridge_headers",
+    export_include_dirs: ["include"],
+}
+
+cc_library_static {
+    name: "libprocessgroup_rust_bridge",
+    srcs: ["src/processgroup_rust_bridge.cpp"],
+    generated_sources: ["libprocessgroup_rust_cxx_bridge_code"],
+    shared_libs: [
+        "libprocessgroup",
+    ],
+    generated_headers: ["cxx-bridge-header"],
+    header_libs: [
+        "libprocessgroup_headers",
+        "libprocessgroup_rust_bridge_headers",
+    ],
+}

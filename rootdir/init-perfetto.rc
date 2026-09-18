@@ -1,0 +1,31 @@
+# perf_event_open syscall security: all current kernels are assumed to have
+# SELinux LSM controls on the syscall, so the system-wide perf_event_paranoid
+# sysctl is set to -1 (unrestricted use).
+# Also set sys.init.perf_lsm_hooks sysprop for compatibility as it used to
+# indicate the dynamic presence of the SELinux hooks.
+on load-bpf-programs
+    write /proc/sys/kernel/perf_event_paranoid -1
+    setprop sys.init.perf_lsm_hooks 1
+
+# Additionally, simpleperf profiler uses debug.* and security.perf_harden
+# sysprops to be able to indirectly set perf sysctls when a local shell user is
+# using profiling.
+on property:security.perf_harden=0
+    write /proc/sys/kernel/perf_event_max_sample_rate ${debug.perf_event_max_sample_rate:-100000}
+    write /proc/sys/kernel/perf_cpu_time_max_percent ${debug.perf_cpu_time_max_percent:-25}
+    write /proc/sys/kernel/perf_event_mlock_kb ${debug.perf_event_mlock_kb:-516}
+
+# Default values on user/userdebug builds.
+on property:security.perf_harden=1
+    write /proc/sys/kernel/perf_event_max_sample_rate 100000
+    write /proc/sys/kernel/perf_cpu_time_max_percent 25
+    write /proc/sys/kernel/perf_event_mlock_kb 516
+
+# This property can be set only on userdebug/eng. See neverallow rule in
+# /system/sepolicy/private/property.te .
+on property:security.lower_kptr_restrict=1
+    write /proc/sys/kernel/kptr_restrict 0
+
+on property:security.lower_kptr_restrict=0
+    write /proc/sys/kernel/kptr_restrict 2
+

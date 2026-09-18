@@ -1,0 +1,9 @@
+package: "com.android.core.libprocessgroup.flags"
+container: "system"
+
+flag {
+  name: "reclaim_memcg_before_removal"
+  namespace: "android_kernel"
+  description: "This flag controls whether proactive reclaim will be performed on a memcg before it is removed"
+  bug: "477322451"
+}

@@ -1,0 +1,10 @@
+package: "com.android.ueventd.flags"
+container: "system"
+
+flag {
+  name: "enable_threadpool_coldboot"
+  namespace: "system_performance"
+  description: "Handle coldboot uevents in a thread pool instead of forked subprocesses to improve performance"
+  bug: "421025789"
+  is_fixed_read_only: true
+}
