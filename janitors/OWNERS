@@ -1,0 +1,19 @@
+# go/android-3p requires that all external projects have the "janitors" in
+# their OWNERS files.
+
+# These are also the "owners" for projects that don't really have owners
+# so much as volunteer janitors.
+
+# General maintenance.
+sadafebrahimi@google.com
+
+# C/C++.
+ccross@google.com
+cferris@google.com
+enh@google.com
+
+# Java.
+maco@google.com
+
+# Python.
+dwillemsen@google.com
