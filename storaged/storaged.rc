@@ -1,0 +1,7 @@
+service storaged /system/bin/storaged
+    class main
+    capabilities DAC_READ_SEARCH
+    priority 10
+    task_profiles ServiceCapacityLow
+    user root
+    group package_info

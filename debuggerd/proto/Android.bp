@@ -1,0 +1,60 @@
+package {
+    default_applicable_licenses: ["Android-Apache-2.0"],
+}
+
+filegroup {
+    name: "libtombstone_proto-src",
+    srcs: ["tombstone.proto"],
+}
+
+cc_library_static {
+    name: "libtombstone_proto",
+    cflags: [
+        "-Wall",
+        "-Wextra",
+        "-Wthread-safety",
+        "-Werror",
+        "-DANDROID_DISABLE_TLS_FOR_LINKER=1",
+    ],
+
+    compile_multilib: "both",
+
+    proto: {
+        export_proto_headers: true,
+        type: "lite",
+    },
+
+    srcs: [":libtombstone_proto-src"],
+
+    // b/155341058: Soong doesn't automatically add libprotobuf if there aren't
+    // any explicitly listed protos in srcs. In case it starts doing that at
+    // some point, we include an explicit exclusion of the normal libprotobuf.
+    // This library is a dependency of the Bionic linker, which doesn't support
+    // ELF TLS within itself.
+    static_libs: ["libprotobuf-cpp-lite-notls-for-linker"],
+    exclude_static_libs: ["libprotobuf-cpp-lite"],
+
+    stl: "libc++_static",
+    apex_available: [
+        "//apex_available:platform",
+        "com.android.runtime",
+    ],
+
+    ramdisk_available: true,
+    recovery_available: true,
+    vendor_ramdisk_available: true,
+    host_supported: true,
+}
+
+java_library_static {
+    name: "libtombstone_proto_java",
+    proto: {
+        type: "lite",
+    },
+    srcs: [
+        "tombstone.proto",
+    ],
+    jarjar_rules: "jarjar-rules.txt",
+    sdk_version: "current",
+    static_libs: ["libprotobuf-java-lite"],
+}

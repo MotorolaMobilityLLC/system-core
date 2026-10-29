@@ -1,0 +1,28 @@
+// Copyright 2013 The Android Open Source Project
+
+package {
+    default_applicable_licenses: ["Android-Apache-2.0"],
+}
+
+cc_defaults {
+    name: "reboot_defaults",
+    srcs: ["reboot.c"],
+    shared_libs: ["libcutils"],
+    cflags: ["-Werror"],
+}
+
+cc_binary {
+    name: "reboot",
+    defaults: [
+        "reboot_defaults",
+    ],
+}
+
+cc_binary {
+    name: "reboot.recovery",
+    defaults: [
+        "reboot_defaults",
+    ],
+    recovery: true,
+    stem: "reboot",
+}

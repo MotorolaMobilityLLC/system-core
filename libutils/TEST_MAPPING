@@ -1,0 +1,13 @@
+{
+  "presubmit": [
+    {
+      "name": "libutils_test"
+    },
+    {
+      "name": "libutils_binder_test"
+    },
+    {
+      "name": "libutils_binder_test_custom_allocator"
+    }
+  ]
+}

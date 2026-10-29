@@ -1,0 +1,226 @@
+package {
+    default_team: "trendy_team_android_kernel",
+    default_applicable_licenses: ["system_core_libutils_license"],
+}
+
+cc_library_headers {
+    name: "libutils_binder_headers",
+    vendor_available: true,
+    product_available: true,
+    recovery_available: true,
+    vendor_ramdisk_available: true,
+    host_supported: true,
+    native_bridge_supported: true,
+    defaults: [
+        "apex-lowest-min-sdk-version",
+    ],
+    apex_available: [
+        "//apex_available:platform",
+        "//apex_available:anyapex",
+    ],
+    export_include_dirs: ["include"],
+
+    target: {
+        linux_bionic: {
+            enabled: true,
+        },
+        windows: {
+            enabled: true,
+        },
+    },
+}
+
+cc_defaults {
+    name: "libutils_binder_impl_defaults_nodeps_no_apex",
+    defaults: [
+        "libutils_defaults_nodeps",
+    ],
+    native_bridge_supported: true,
+
+    export_include_dirs: ["include"],
+    srcs: [
+        "Errors.cpp",
+        "RefBase.cpp",
+        "SharedBuffer.cpp",
+        "String16.cpp",
+        "String8.cpp",
+        "StrongPointer.cpp",
+        "Unicode.cpp",
+        "VectorImpl.cpp",
+    ],
+
+    cflags: [
+        "-Winvalid-offsetof",
+        "-Wsequence-point",
+        "-Wzero-as-null-pointer-constant",
+    ],
+
+    afdo: true,
+}
+
+cc_defaults {
+    name: "libutils_binder_impl_defaults_nodeps",
+    defaults: [
+        "apex-lowest-min-sdk-version",
+        "libutils_binder_impl_defaults_nodeps_no_apex",
+    ],
+    apex_available: [
+        "//apex_available:anyapex",
+        "//apex_available:platform",
+    ],
+}
+
+cc_defaults {
+    name: "libutils_binder_impl_defaults",
+    defaults: [
+        "libutils_binder_impl_defaults_nodeps",
+        "libutils_defaults",
+    ],
+}
+
+cc_defaults {
+    name: "libutils_binder_impl_defaults_no_apex",
+    defaults: [
+        "libutils_binder_impl_defaults_nodeps_no_apex",
+        "libutils_defaults",
+    ],
+}
+
+cc_library {
+    name: "libutils_binder",
+    defaults: ["libutils_binder_impl_defaults"],
+    cmake_snapshot_supported: false,
+}
+
+cc_library_shared {
+    name: "libutils_binder_sdk",
+    defaults: ["libutils_binder_impl_defaults_nodeps"],
+    cmake_snapshot_supported: true,
+
+    header_libs: [
+        "liblog_stub",
+    ],
+
+    cflags: [
+        "-DANDROID_LOG_STUB_WEAK_PRINT",
+        "-DANDROID_UTILS_CALLSTACK_ENABLED=0",
+    ],
+}
+
+cc_library {
+    name: "libutils_binder_test_compile",
+    defaults: ["libutils_binder_impl_defaults"],
+
+    cflags: [
+        "-DDEBUG_REFS=1",
+    ],
+
+    visibility: [":__subpackages__"],
+}
+
+cc_library {
+    name: "libutils_binder_custom_allocator",
+    defaults: ["libutils_binder_impl_defaults_no_apex"],
+    cflags: [
+        "-DANDROID_UTILS_CUSTOM_ALLOCATOR",
+    ],
+
+    visibility: ["//system/core/libutils"],
+}
+
+cc_fuzz {
+    name: "libutils_fuzz_string8",
+    defaults: ["libutils_fuzz_defaults"],
+    srcs: ["String8_fuzz.cpp"],
+}
+
+cc_fuzz {
+    name: "libutils_fuzz_string16",
+    defaults: ["libutils_fuzz_defaults"],
+    srcs: ["String16_fuzz.cpp"],
+}
+
+cc_fuzz {
+    name: "libutils_fuzz_vector",
+    defaults: ["libutils_fuzz_defaults"],
+    srcs: ["Vector_fuzz.cpp"],
+}
+
+cc_fuzz {
+    name: "libutils_fuzz_refbase",
+    defaults: ["libutils_fuzz_defaults"],
+    srcs: ["RefBase_fuzz.cpp"],
+}
+
+cc_defaults {
+    name: "libutils_binder_test_defaults_no_libutils",
+    host_supported: true,
+
+    srcs: [
+        "Errors_test.cpp",
+        "SharedBuffer_test.cpp",
+        "String16_test.cpp",
+        "String8_test.cpp",
+        "StrongPointer_test.cpp",
+        "Unicode_test.cpp",
+        "Vector_test.cpp",
+    ],
+
+    target: {
+        android: {
+            shared_libs: [
+                "libbase",
+                "libcutils",
+                "liblog",
+                "liblzma",
+                "libz",
+            ],
+        },
+        linux: {
+            srcs: [
+                "RefBase_test.cpp",
+            ],
+        },
+        host: {
+            static_libs: [
+                "libbase",
+                "liblog",
+                "liblzma",
+            ],
+        },
+    },
+
+    cflags: [
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-Wthread-safety",
+    ],
+
+    static_libs: [
+        "libgmock",
+    ],
+
+    test_suites: ["device-tests"],
+}
+
+cc_test {
+    name: "libutils_binder_test",
+    defaults: ["libutils_binder_test_defaults_no_libutils"],
+    static_libs: ["libutils_binder"],
+}
+
+cc_test {
+    name: "libutils_binder_test_custom_allocator",
+    defaults: ["libutils_binder_test_defaults_no_libutils"],
+    static_libs: ["libutils_binder_custom_allocator"],
+    cflags: [
+        "-DANDROID_UTILS_CUSTOM_ALLOCATOR",
+    ],
+}
+
+cc_benchmark {
+    name: "libutils_binder_benchmark",
+    srcs: ["Vector_benchmark.cpp"],
+    shared_libs: ["libutils"],
+}

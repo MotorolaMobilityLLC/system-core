@@ -1,0 +1,8 @@
+LIBPROCESSGROUP_1 {
+  global:
+    _Z16KillProcessGroupjiibbNSt3__16chrono10time_pointINS0_12steady_clockENS0_8durationIxNS_5ratioILl1ELl1000000000EEEEEEE; # platform-only
+    _Z24createCGroupForCloneIntojim; # platform-only
+
+  # Export all other symbols, since they've already been exposed to mainline modules, and vendor
+  # code with stability guarantees. :'(
+};
