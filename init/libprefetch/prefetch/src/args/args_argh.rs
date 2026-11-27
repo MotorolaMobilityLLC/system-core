@@ -1,0 +1,309 @@
+// Copyright (C) 2024 The Android Open Source Project
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+use std::{option::Option, path::PathBuf, result::Result::Ok, str::FromStr};
+
+use argh::FromArgs;
+use serde::Deserialize;
+
+use crate::args::DEFAULT_EXIT_ON_ERROR;
+use crate::args::DEFAULT_IO_DEPTH;
+use crate::args::DEFAULT_MAX_FDS;
+use crate::args::DEFAULT_RECORD_METRICS;
+use crate::Error;
+
+/// prefetch-rs
+#[derive(Eq, PartialEq, Debug, Default, FromArgs)]
+pub struct MainArgs {
+    /// subcommands
+    #[argh(subcommand)]
+    pub nested: SubCommands,
+}
+
+/// Sub commands for prefetch functions
+#[derive(Eq, PartialEq, Debug, FromArgs)]
+#[argh(subcommand)]
+pub enum SubCommands {
+    /// Records prefetch data.
+    Record(RecordArgs),
+    /// Replays from prefetch data
+    Replay(ReplayArgs),
+    /// Dump prefetch data in human readable format
+    Dump(DumpArgs),
+}
+
+#[cfg(target_os = "android")]
+fn default_build_finger_print_path() -> PathBuf {
+    PathBuf::from("/metadata/prefetch/build_finger_print")
+}
+
+impl Default for SubCommands {
+    fn default() -> Self {
+        Self::Dump(DumpArgs::default())
+    }
+}
+
+fn default_path() -> PathBuf {
+    PathBuf::from("/metadata/prefetch/prefetch.pack")
+}
+
+fn parse_tracing_instance(value: &str) -> Result<Option<String>, String> {
+    Ok(Some(value.to_string()))
+}
+
+#[derive(Eq, PartialEq, Debug, Default, FromArgs)]
+/// Records prefect data.
+#[argh(subcommand, name = "record")]
+pub struct RecordArgs {
+    /// duration in seconds to record the data
+    ///
+    /// On Android, if duration count is set to zero, recording
+    /// will continue until the property sys.boot_completed = 1.
+    #[argh(option)]
+    pub duration: u16,
+
+    /// file path where the records will be written to
+    ///
+    /// A new file is created at the given path. If the path exists, it
+    /// will be overwritten.
+    ///
+    /// The default value depends on tracing_instance:
+    /// "--tracing_instance" is not specified: /metadata/prefetch/prefetch.pack.
+    /// "--tracing_instance" is specified: /metadata/prefetch/<tracing_instance>.pack.
+    #[argh(option)]
+    pub path: Option<PathBuf>,
+
+    /// when set an intermediate file will be created that provides more information
+    /// about collected data.
+    #[argh(option, default = "false")]
+    pub debug: bool,
+
+    /// file path where the intermediate file will be written to
+    ///
+    /// A new file is created at the given path. Errors out if the file
+    /// already exists.
+    #[argh(option)]
+    pub int_path: Option<PathBuf>,
+
+    /// size of the trace buffer which holds trace events. We need larger
+    /// buffer on a system that has faster disks or has large number of events
+    /// enabled. Defaults to TRACE_BUFFER_SIZE_KIB KiB.
+    #[argh(option, long = "trace-buffer-size")]
+    pub trace_buffer_size_kib: Option<u64>,
+
+    /// trace subsystem to use. "mem" subsystem is set by default.
+    #[argh(option, default = "Default::default()")]
+    pub tracing_subsystem: TracerType,
+
+    /// if true enables all the needed trace events. And at the end it restores
+    /// the values of those events.
+    /// If false, assumes that user has setup the needed trace events.
+    #[argh(option, default = "true")]
+    pub setup_tracing: bool,
+
+    /// if specified, works on a tracing instance (like /sys/kernel/tracing/instance/my_instance)
+    /// rather than using on shared global instance (i.e. /sys/kernel/tracing)."
+    #[argh(
+        option,
+        default = "Some(\"prefetch\".to_string())",
+        from_str_fn(parse_tracing_instance)
+    )]
+    pub tracing_instance: Option<String>,
+
+    /// specifies a list of mount points prefixes to be excluded from the record.
+    ///
+    /// Files with a path prefixed by one of the mount points in this list will be
+    /// ignored during the recording process. By default, no paths are excluded.
+    #[argh(option)]
+    pub exclude_mount_prefix: Vec<PathBuf>,
+
+    /// specifies a list of mount points prefixes to be included.
+    ///
+    /// When this option is provided, the recording will be limited to only the files
+    /// with path prefixed by one of these mount points. If omitted, all files are
+    /// recorded by default.
+    #[argh(option)]
+    pub include_mount_prefix: Vec<PathBuf>,
+
+    #[cfg(target_os = "android")]
+    /// store build_finger_print to tie the pack format
+    #[argh(option, default = "default_build_finger_print_path()")]
+    pub build_fingerprint_path: PathBuf,
+
+    #[cfg(target_os = "android")]
+    /// file path to check if prefetch_ready is present.
+    ///
+    /// A new file is created at the given path if it's not present.
+    ///
+    /// Default value depends on tracing_instance:
+    /// "--tracing_instance" is not specified: /metadata/prefetch/prefetch_ready.
+    /// "--tracing_instance" is specified: /metadata/prefetch/<tracing_instance>_ready.
+    #[argh(option)]
+    pub ready_path: Option<PathBuf>,
+}
+
+impl RecordArgs {
+    /// Resolves the final path for the prefetch `.pack` file.
+    ///
+    /// This function determines which path to use in the following order of priority:
+    /// 1. The path provided by the user via the `--path` argument.
+    /// 2. A path derived from the `--tracing-instance` argument, in the format
+    ///    `/metadata/prefetch/{instance}.pack`.
+    /// 3. The default path, `/metadata/prefetch/prefetch.pack`, if neither of the above
+    ///    are specified.
+    ///
+    /// # Returns
+    ///
+    /// A `PathBuf` containing the resolved path to the `.pack` file.
+    pub fn get_pack_path(&self) -> PathBuf {
+        match &self.path {
+            Some(path) => path.to_path_buf(),
+            None => match &self.tracing_instance {
+                Some(instance) => PathBuf::from(format!("/metadata/prefetch/{instance}.pack")),
+                None => PathBuf::from("/metadata/prefetch/prefetch.pack"),
+            },
+        }
+    }
+
+    /// Resolves the final path for the prefetch "ready" file.
+    ///
+    /// This function is only available on Android.
+    ///
+    /// It determines which path to use in the following order of priority:
+    /// 1. The path provided by the user via the `--ready-path` argument.
+    /// 2. A path derived from the `--tracing-instance` argument, in the format
+    ///    `/metadata/prefetch/{instance}_ready`.
+    /// 3. The default path, `/metadata/prefetch/prefetch_ready`, if neither of the above
+    ///    are specified.
+    ///
+    /// # Returns
+    ///
+    /// A `PathBuf` containing the resolved path to the "ready" file.
+    #[cfg(target_os = "android")]
+    pub fn get_ready_path(&self) -> PathBuf {
+        match &self.ready_path {
+            Some(ready_path) => ready_path.to_path_buf(),
+            None => match &self.tracing_instance {
+                Some(instance) => PathBuf::from(format!("/metadata/prefetch/{instance}_ready")),
+                None => PathBuf::from("/metadata/prefetch/prefetch_ready"),
+            },
+        }
+    }
+}
+
+/// Type of tracing subsystem to use.
+#[derive(Deserialize, Clone, Eq, PartialEq, Debug, Default)]
+pub enum TracerType {
+    /// mem tracing subsystem relies on when a file's in-memory page gets added to the fs cache.
+    #[default]
+    Mem,
+}
+
+impl FromStr for TracerType {
+    type Err = Error;
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        Ok(match s.to_lowercase().as_str() {
+            "mem" => Self::Mem,
+            _ => {
+                return Err(Error::InvalidArgs {
+                    arg_name: "tracing_subsystem".to_owned(),
+                    arg_value: s.to_owned(),
+                    error: "unknown value".to_owned(),
+                })
+            }
+        })
+    }
+}
+
+#[derive(Eq, PartialEq, Debug, Default, FromArgs)]
+/// Prefetch data from the recorded file.
+#[argh(subcommand, name = "replay")]
+pub struct ReplayArgs {
+    /// file path from where the records will be read
+    #[argh(option, default = "default_path()")]
+    pub path: PathBuf,
+
+    /// IO depth. Number of IO that can go in parallel.
+    #[argh(option, long = "io-depth", default = "DEFAULT_IO_DEPTH")]
+    pub io_depth: u16,
+
+    /// max number of open fds to cache
+    #[argh(option, arg_name = "max-fds", default = "DEFAULT_MAX_FDS")]
+    pub max_fds: u16,
+
+    /// if true, command exits on encountering any error.
+    ///
+    /// This defaults to false as there is not harm prefetching if we encounter
+    /// non-fatal errors.
+    #[argh(option, default = "DEFAULT_EXIT_ON_ERROR")]
+    pub exit_on_error: bool,
+
+    /// file path from where the prefetch config file will be read
+    #[argh(option, default = "PathBuf::new()")]
+    pub config_path: PathBuf,
+
+    /// enable metric collection for the prefetch replay.
+    ///
+    /// When enabled, metrics are written to a `.stat` file in the same
+    /// location as the input `.pack` file.
+    #[argh(option, default = "DEFAULT_RECORD_METRICS")]
+    pub record_metrics: bool,
+
+    #[cfg(target_os = "android")]
+    /// store build_finger_print to tie the pack format
+    #[argh(option, default = "default_build_finger_print_path()")]
+    pub build_fingerprint_path: PathBuf,
+}
+
+/// dump records file in given format
+#[derive(Eq, PartialEq, Debug, Default, FromArgs)]
+#[argh(subcommand, name = "dump")]
+pub struct DumpArgs {
+    /// file path from where the records will be read
+    #[argh(option)]
+    pub path: PathBuf,
+    /// output format. One of json or csv.
+    /// Note: In csv format, few fields are excluded from the output.
+    #[argh(option)]
+    pub format: OutputFormat,
+}
+
+#[derive(Deserialize, Eq, PartialEq, Debug, Default)]
+pub enum OutputFormat {
+    #[default]
+    Json,
+    Csv,
+}
+
+impl FromStr for OutputFormat {
+    type Err = Error;
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        Ok(match s.to_lowercase().as_str() {
+            "csv" => Self::Csv,
+            "json" => Self::Json,
+            _ => {
+                return Err(Error::InvalidArgs {
+                    arg_name: "format".to_owned(),
+                    arg_value: s.to_owned(),
+                    error: "unknown value".to_owned(),
+                })
+            }
+        })
+    }
+}
+
+/// Build args struct from command line arguments
+pub fn args_from_env() -> MainArgs {
+    argh::from_env()
+}

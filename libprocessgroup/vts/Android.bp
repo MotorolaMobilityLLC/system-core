@@ -1,0 +1,20 @@
+package {
+    default_applicable_licenses: ["Android-Apache-2.0"],
+    default_team: "trendy_team_android_kernel",
+}
+
+cc_test {
+    name: "vts_libprocessgroup",
+    srcs: ["vts_libprocessgroup.cpp"],
+    shared_libs: [
+        "libbase",
+        "libvintf",
+    ],
+    static_libs: ["libgmock"],
+    require_root: true,
+    auto_gen_config: true,
+    test_suites: [
+        "general-tests",
+        "vts",
+    ],
+}

@@ -1,0 +1,13 @@
+# Service is started when selecting com.android.hardware.gatekeeper.trusty vendor apex
+service vendor.gatekeeper_tee \
+    /vendor/bin/hw/android.hardware.gatekeeper-service.trusty_tee \
+    --dev ${ro.hardware.trusty_ipc_dev.gatekeeper:-/dev/trusty-ipc-dev0}
+    disabled
+    class hal
+    user system
+    group system
+
+# legacy cpp implementation through APEX
+on post-fs && property:ro.boot.vendor.apex.com.android.hardware.gatekeeper=\
+com.android.hardware.gatekeeper.trusty_tee
+    enable vendor.gatekeeper_tee

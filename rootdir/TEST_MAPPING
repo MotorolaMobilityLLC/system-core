@@ -1,0 +1,12 @@
+{
+  "presubmit": [
+    {
+      "name": "CtsRlimitTestCases"
+    }
+  ],
+  "hwasan-presubmit": [
+    {
+      "name": "CtsRlimitTestCases"
+    }
+  ]
+}

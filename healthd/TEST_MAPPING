@@ -1,0 +1,17 @@
+{
+  "presubmit": [
+    {
+      "name": "libhealthd_charger_test"
+    }
+  ],
+  "postsubmit": [
+    {
+      "name": "battery_monitor_test"
+    }
+  ],
+  "hwasan-postsubmit": [
+    {
+      "name": "libhealthd_charger_test"
+    }
+  ]
+}

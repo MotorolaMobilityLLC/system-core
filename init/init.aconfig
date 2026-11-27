@@ -1,0 +1,18 @@
+package: "com.android.init.flags"
+container: "system"
+
+flag {
+  name: "ignore_bionic_signal_profiler_before_exec"
+  namespace: "wear_services"
+  description: "Ignore bionic signal profiler before exec."
+  bug: "357736486"
+  is_fixed_read_only: true
+}
+
+flag {
+  name: "enable_init_event_timestamp"
+  namespace: "system_performance"
+  description: "Enables recording timestamp of `on <event>` in init for better boot time analysis"
+  bug: "430701171"
+  is_fixed_read_only: true
+}

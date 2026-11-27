@@ -1,0 +1,57 @@
+service storageproxyd_desktop /system_ext/bin/storageproxyd.system \
+        --trusty_dev ${storageproxyd_system.trusty_ipc_dev:-/dev/trusty-ipc-dev0} \
+        --rpmb_dev /dev/socket/rpmb_mock_system \
+        --data_path /data/secure_storage_system \
+        --file_storage_mapping 0:/dev/block/by-name/desktop_security_storage \
+        --file_storage_mapping_no_link persist/0:/dev/block/by-name/desktop_security_persist \
+        --dev_type sock
+    disabled
+    user system
+    group system
+
+service rpmb_mock_init_system /system_ext/bin/rpmb_dev.desktop.system \
+        --dev /mnt/secure_storage_rpmb_system/persist/RPMB_DATA --init --size 2048
+    disabled
+    user system
+    group system
+    oneshot
+
+service rpmb_mock_system /system_ext/bin/rpmb_dev.desktop.system \
+        --dev /mnt/secure_storage_rpmb_system/persist/RPMB_DATA \
+        --sock rpmb_mock_system
+    disabled
+    user system
+    group system
+    socket rpmb_mock_system stream 660 system system
+
+# storageproxyd
+on late-fs && \
+    property:trusty.security_vm.nonsecure_vm_ready=1 && \
+    property:storageproxyd_system.trusty_ipc_dev=*
+    wait /dev/socket/rpmb_mock_system
+    chown system system /dev/block/by-name/desktop_security_persist
+    start storageproxyd_desktop
+
+
+# RPMB Mock
+on post-fs && \
+    property:trusty.security_vm.nonsecure_vm_ready=1 && \
+    property:trusty.security_vm.vm_cid=*
+    # Create a persistent location for the RPMB data
+    # (work around lack of RPMB block device on AL).
+    # TODO(b/431070133) Allow storageproxyd to run without rpmb.
+    mkdir /metadata/secure_storage_rpmb_system 0770 system system
+    mkdir /mnt/secure_storage_rpmb_system 0770 system system
+    symlink /metadata/secure_storage_rpmb_system \
+            /mnt/secure_storage_rpmb_system/persist
+    setprop storageproxyd_system.trusty_ipc_dev VSOCK:${trusty.security_vm.vm_cid}:0
+    exec_start rpmb_mock_init_system
+    start rpmb_mock_system
+
+on post-fs-data && \
+    property:trusty.security_vm.nonsecure_vm_ready=1 && \
+    property:storageproxyd_system.trusty_ipc_dev=*
+    chown system system /dev/block/by-name/desktop_security_storage
+    # file contexts secure_storage_system_file
+    mkdir /data/secure_storage_system 0770 root system
+    restart storageproxyd_desktop
